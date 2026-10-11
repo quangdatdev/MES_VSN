@@ -4,7 +4,8 @@
 // Tên, đường dẫn, bảng nguồn của tài nguyên và menu hệ thống luôn đồng bộ theo seed-data.ts (do code quyết định).
 // Dùng: npm run seed -w backend                          (cần DEMO_PASSWORD trong .env)
 //       npm run seed -w backend -- --reset-passwords     (đặt lại mật khẩu tài khoản demo, thu hồi phiên của họ)
-//       npm run seed -w backend -- --no-sample-data      (không nạp đơn hàng giả, phòng ban và nhân viên giả; xem SEED_SAMPLE_DATA trong .env.example)
+//       npm run seed -w backend -- --no-sample-data      (chỉ tài khoản admin, không đơn hàng giả, phòng ban và nhân viên giả; xem SEED_SAMPLE_DATA)
+// npm run migrate tự gọi seed không dữ liệu mẫu sau khi tạo bảng: cài lần đầu chỉ cần migrate là đăng nhập được bằng admin.
 import * as argon2 from 'argon2';
 import { sql } from 'kysely';
 import { env } from '../src/config/env';
@@ -42,18 +43,21 @@ import { hasSewingDb } from './sewing-data';
 
 /**
  * coreOnly: chỉ MES_Core (bỏ mục 11–13: đơn hàng giả, bước chuẩn bị SX, nhân sự giả), dùng trong test để không nạp dữ liệu giả vào DB demo.
- * sampleData = false (máy chủ dùng thật): bỏ đơn hàng giả (11), phòng ban và nhân viên giả (13); giữ phần là cấu hình: danh mục bước
- * chuẩn bị SX (12), loại phòng ban và chức danh dùng chung (13).
+ * sampleData = false (máy chủ dùng thật, npm run migrate): chỉ tạo tài khoản admin (10), bỏ đơn hàng giả (11), phòng ban và nhân viên
+ * giả (13); giữ phần là cấu hình: danh mục bước chuẩn bị SX (12), loại phòng ban và chức danh dùng chung (13).
  */
 export async function runSeed({
   resetPasswords = false,
   syncMatrix = false,
   coreOnly = false,
   sampleData = env.seedSampleData,
-}: { resetPasswords?: boolean; syncMatrix?: boolean; coreOnly?: boolean; sampleData?: boolean } = {}) {
+  by = 'scripts/seed.ts',
+}: { resetPasswords?: boolean; syncMatrix?: boolean; coreOnly?: boolean; sampleData?: boolean; by?: string } = {}) {
   if (!env.demoPassword) {
-    throw new Error('Thiếu DEMO_PASSWORD trong backend/.env (mật khẩu chung cho tài khoản demo).');
+    throw new Error('Thiếu DEMO_PASSWORD trong backend/.env (mật khẩu ban đầu của admin và tài khoản demo).');
   }
+  // Máy chủ thật: mật khẩu ban đầu của admin ít nhất 8 ký tự, như màn Người dùng đòi khi đặt mật khẩu
+  if (env.isProd && env.demoPassword.length < 8) throw new Error('DEMO_PASSWORD phải dài ít nhất 8 ký tự khi NODE_ENV=production.');
   const db = createDb<CoreDatabase>(env.db.coreName);
   const stats: Record<string, number> = {};
   const bump = (k: string, n = 1) => (stats[k] = (stats[k] ?? 0) + n);
@@ -383,7 +387,8 @@ export async function runSeed({
     // quản trị đã thu hồi thì chạy lại không cấp lại. Gán lại vai trò mà thiếu phạm vi là nới thành không giới hạn (review 5.4.8 lượt 5)
     const hash = await argon2.hash(env.demoPassword, { type: argon2.argon2id });
     const userId = new Map<string, number>();
-    for (const u of users) {
+    // Không dữ liệu mẫu: chỉ admin để đăng nhập lần đầu; người dùng thật tạo ở màn Người dùng
+    for (const u of sampleData ? users : users.filter((x) => x.username === 'admin')) {
       let row = await db.selectFrom('SysUser').select('Id').where('Username', '=', u.username).executeTakeFirst();
       const isNew = !row;
       if (!row) {
@@ -466,7 +471,7 @@ export async function runSeed({
     }
 
     if (!coreOnly) {
-      if (!sampleData) console.log('Bỏ qua dữ liệu mẫu (SEED_SAMPLE_DATA=false hoặc --no-sample-data): không nạp đơn hàng giả, phòng ban và nhân viên giả.');
+      if (!sampleData) console.log('Không nạp dữ liệu mẫu: chỉ tạo tài khoản admin nếu chưa có; không tài khoản demo, đơn hàng giả, phòng ban và nhân viên giả.');
       // 11. Dữ liệu đơn hàng giả trong MES_Order: chỉ cho nhà máy chưa có đơn hàng nào
       if (sampleData) {
         const order = createDb<OrderDatabase>(env.db.orderName);
@@ -515,7 +520,7 @@ export async function runSeed({
     if (Object.keys(stats).length) {
       await db
         .insertInto('SysAuditLog')
-        .values({ EntityType: 'System', ActionCode: 'SEED', NewValue: JSON.stringify({ by: 'scripts/seed.ts', syncMatrix, resetPasswords, sampleData: !coreOnly && sampleData, stats, ...(scopeChanges.length ? { scopeChanges } : {}) }) } as any)
+        .values({ EntityType: 'System', ActionCode: 'SEED', NewValue: JSON.stringify({ by, syncMatrix, resetPasswords, sampleData: !coreOnly && sampleData, stats, ...(scopeChanges.length ? { scopeChanges } : {}) }) } as any)
         .execute();
     }
     console.log('Seed xong:', Object.keys(stats).length ? stats : 'không có gì mới');

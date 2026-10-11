@@ -17,14 +17,13 @@ Cần: Node.js 22, SQL Server 2019/2022 (Express cũng được) có đăng nh�
 
 1. Tạo `backend/.env` từ `backend/.env.example` và điền:
    - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`: kết nối SQL Server.
-   - `DB_CORE_NAME` (mặc định `MES_Core`) và `DB_ORDER_NAME` (module Đơn hàng, mặc định `MES_Order`). Lệnh migrate tự tạo database nếu chưa có.
+   - Tên database để mặc định: `MES_Core`, `MES_Order`, `MES_Sewing`, `MES_Hr`, `MES_Sync`. Lệnh migrate tự tạo database nếu tài khoản có quyền; không có thì nhờ quản trị CSDL tạo trước và cấp `db_owner`.
    - `JWT_SECRET`: chuỗi ngẫu nhiên dài, giữ bí mật.
-   - `DEMO_PASSWORD`: mật khẩu chung cho các tài khoản demo (chỉ dùng cho dữ liệu giả).
+   - `DEMO_PASSWORD`: mật khẩu ban đầu của `admin` và các tài khoản demo (ít nhất 8 ký tự khi `NODE_ENV=production`).
    - `SEED_SAMPLE_DATA`: máy chủ dùng thật đặt `false` (mặc định `false` khi `NODE_ENV=production`): seed không nạp đơn hàng giả, phòng ban và nhân viên giả; `reset:demo`, `load:bravo`, `sim:board` từ chối chạy.
 2. `npm install`
-3. `npm run migrate` rồi `npm run seed`
-
-Cài lại từ đầu (xóa sạch dữ liệu, kể cả trên máy chủ): dừng ứng dụng rồi `npm run reinstall -- --yes --backup <thư mục trên máy SQL Server>`. Thiếu `--yes` chỉ in việc sẽ làm.
+3. `npm run migrate`: tạo bảng, nạp dữ liệu hệ thống và tài khoản `admin`, đăng nhập được ngay. Máy demo chạy thêm `npm run seed` để có tài khoản demo và dữ liệu mẫu.
+4. Không tài khoản nào tự đổi được mật khẩu của mình. Đổi mật khẩu ban đầu của `admin` bằng một trong hai cách: (a) đăng nhập `admin`, tạo tài khoản quản trị riêng (vai trò Quản trị hệ thống) ở màn Người dùng, đăng nhập bằng tài khoản đó rồi vô hiệu hóa `admin`; (b) đổi `DEMO_PASSWORD` trong `.env` rồi chạy `npm run seed -- --reset-passwords` (máy chủ không dữ liệu mẫu: chỉ đổi mật khẩu `admin`).
 
 ## Chạy khi phát triển
 `npm run dev:backend` và `npm run dev:frontend` (hai cửa sổ), mở http://localhost:5173.

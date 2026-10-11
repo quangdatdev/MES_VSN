@@ -11,7 +11,6 @@
     "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
     "reset:demo": "tsx scripts/reset-demo.ts",
-    "reinstall": "tsx scripts/reinstall.ts",
     "load:bravo": "tsx scripts/load-bravo-orders.ts",
     "sim:board": "tsx scripts/simulate-board.ts",
     "start:demo": "node dist/main.js --serve-web",
