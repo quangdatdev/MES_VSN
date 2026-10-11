@@ -1,0 +1,308 @@
+import type { ColumnType, Generated } from 'kysely';
+
+type Id = Generated<number>;
+type Created = ColumnType<Date, Date | undefined, never>;
+type Audit = {
+  CreatedAt: Created;
+  CreatedBy: number | null;
+  ModifiedAt: Date | null;
+  ModifiedBy: number | null;
+};
+
+export interface SysBranchTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  IsAggregate: boolean;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysUserTable extends Audit {
+  Id: Id;
+  Username: string;
+  PasswordHash: string;
+  FullName: string;
+  Email: string | null;
+  EmployeeCode: string | null;
+  FailedLoginCount: number;
+  LockedUntilAt: Date | null;
+  LastLoginAt: Date | null;
+  IsActive: boolean;
+}
+
+export interface SysUserBranchTable {
+  Id: Id;
+  UserId: number;
+  BranchId: number;
+  IsDefault: boolean;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
+export interface SysRoleTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysUserRoleTable {
+  Id: Id;
+  UserId: number;
+  RoleId: number;
+  ValidFromAt: Date | null;
+  ValidToAt: Date | null;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
+export interface SysResourceTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  ModuleCode: string;
+  ScopeType: 'BRANCH' | 'SHARED';
+  SourceTable: string | null;
+  Description: string | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysPermissionTable extends Audit {
+  Id: Id;
+  Code: string;
+  ResourceId: number;
+  ActionCode: string;
+  Name: string;
+  Description: string | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysRolePermissionTable {
+  Id: Id;
+  RoleId: number;
+  PermissionId: number;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
+export interface SysMenuTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  ParentId: number | null;
+  Path: string | null;
+  Icon: string | null;
+  ResourceId: number | null;
+  IsMobile: boolean;
+  Description: string | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysUserSessionTable {
+  Id: Generated<string>;
+  UserId: number;
+  RefreshTokenHash: string;
+  BranchCode: string | null;
+  IssuedAt: Created;
+  ExpiresAt: Date;
+  RevokedAt: Date | null;
+  IpAddress: string | null;
+  UserAgent: string | null;
+}
+
+export interface SysPermissionVersionTable {
+  Id: number;
+  Version: string;
+  ModifiedAt: Date;
+}
+
+export interface SysAuditLogTable {
+  Id: Generated<string>;
+  EventAt: Created;
+  UserId: number | null;
+  Username: string | null;
+  BranchCode: string | null;
+  EntityType: string;
+  EntityId: string | null;
+  ActionCode: string;
+  OldValue: string | null;
+  NewValue: string | null;
+  IpAddress: string | null;
+}
+
+/** Cấp của cây tổ chức (ADR 0010): Nhà máy → Xưởng → Chuyền; chuyền cũng được nằm thẳng dưới nhà máy */
+export type OrgType = 'FACTORY' | 'WORKSHOP' | 'LINE';
+export type ScopeMode = 'ALL' | 'ORG_SUBTREE' | 'LIST' | 'OWN';
+export type AccessLevel = 'HIDDEN' | 'MASKED' | 'READONLY' | 'EDITABLE';
+
+export interface SysOrgUnitTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  OrgType: OrgType;
+  ParentId: number | null;
+  /** Loại của nút cha (khóa ngoại ghép giữ đúng), NULL ở nút nhà máy */
+  ParentOrgType: OrgType | null;
+  BranchCode: string;
+  Path: string;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysScopeDimensionTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  OrgType: OrgType | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysResourceScopeBindingTable {
+  Id: Id;
+  ResourceId: number;
+  DimensionId: number;
+  ColumnName: string;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
+export interface SysUserRoleScopeTable {
+  Id: Id;
+  UserRoleId: number;
+  DimensionId: number;
+  ScopeMode: ScopeMode;
+  OrgUnitId: number | null;
+  ScopeValue: string | null;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
+export interface SysResourceFieldTable extends Audit {
+  Id: Id;
+  ResourceId: number;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  IsSensitive: boolean;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysFieldPolicyTable {
+  Id: Id;
+  SubjectType: 'ROLE' | 'USER';
+  SubjectId: number;
+  ResourceId: number;
+  FieldCode: string;
+  AccessLevel: AccessLevel;
+  ValidFromAt: Date | null;
+  ValidToAt: Date | null;
+  Reason: string | null;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
+export interface SysUserPermissionOverrideTable {
+  Id: Id;
+  UserId: number;
+  PermissionId: number;
+  Effect: 'ALLOW' | 'DENY';
+  ValidFromAt: Date | null;
+  ValidToAt: Date | null;
+  Reason: string;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
+export interface SysSensitiveReadLogTable {
+  Id: Generated<string>;
+  ReadAt: Created;
+  UserId: number | null;
+  Username: string | null;
+  BranchCode: string | null;
+  ResourceCode: string;
+  FieldCodes: string;
+  RecordCount: number;
+  ActionCode: 'VIEW' | 'EXPORT';
+  IpAddress: string | null;
+}
+
+/** Loại danh mục đơn giản (mã, tên): UNIT, ORDER_TYPE… (migration MES_Core 0003) */
+export interface SysCatalogTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface SysCatalogItemTable extends Audit {
+  Id: Id;
+  CatalogId: number;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+/** Ca làm việc. Cột TIME đọc ra Date ngày 1970-01-01 giờ UTC, ghi vào bằng chuỗi "HH:mm" */
+export interface SysShiftTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  Description: string | null;
+  StartTime: ColumnType<Date, string, string>;
+  EndTime: ColumnType<Date, string, string>;
+  BreakMinutes: number;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+export interface CoreDatabase {
+  SysCatalog: SysCatalogTable;
+  SysCatalogItem: SysCatalogItemTable;
+  SysShift: SysShiftTable;
+  SysOrgUnit: SysOrgUnitTable;
+  SysScopeDimension: SysScopeDimensionTable;
+  SysResourceScopeBinding: SysResourceScopeBindingTable;
+  SysUserRoleScope: SysUserRoleScopeTable;
+  SysResourceField: SysResourceFieldTable;
+  SysFieldPolicy: SysFieldPolicyTable;
+  SysUserPermissionOverride: SysUserPermissionOverrideTable;
+  SysSensitiveReadLog: SysSensitiveReadLogTable;
+  SysBranch: SysBranchTable;
+  SysUser: SysUserTable;
+  SysUserBranch: SysUserBranchTable;
+  SysRole: SysRoleTable;
+  SysUserRole: SysUserRoleTable;
+  SysResource: SysResourceTable;
+  SysPermission: SysPermissionTable;
+  SysRolePermission: SysRolePermissionTable;
+  SysMenu: SysMenuTable;
+  SysUserSession: SysUserSessionTable;
+  SysPermissionVersion: SysPermissionVersionTable;
+  SysAuditLog: SysAuditLogTable;
+}

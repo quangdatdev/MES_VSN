@@ -1,0 +1,349 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
+import { Errors } from '../../common/app.exception';
+import type { AuthUser } from '../auth/auth.types';
+import { CORE_DB, type CoreDb } from '../database/database.module';
+import type { OrgType, ScopeMode } from '../database/core.types';
+
+/** Quyền nhóm quản trị: chỉ người đang có quyền đó mới cấp hoặc quản lý người có quyền đó (xem ADR 0004). */
+const ADMIN_PREFIX = 'admin.';
+
+/** Một điều kiện của phạm vi trên một chiều. `none` là đóng an toàn: không khớp bản ghi nào. */
+export type Condition =
+  | { dim: string; kind: 'in'; values: string[] }
+  | { dim: string; kind: 'own' }
+  | { dim: string; kind: 'none' };
+
+/** Phạm vi của một phép gán: các điều kiện kết hợp AND. Không có điều kiện = không giới hạn (ngoài nhà máy của phiên). */
+export interface Grant {
+  conditions: Condition[];
+}
+
+export interface BranchRef {
+  code: string;
+  isAggregate: boolean;
+}
+
+/** Quyền của một người tại nhà máy của phiên. Mỗi quyền kèm danh sách phạm vi (OR) để BaseRepository sinh điều kiện. */
+export interface UserAccess {
+  userId: number;
+  branchCode: string;
+  isAggregate: boolean;
+  active: boolean;
+  permissions: Set<string>;
+  grants: Map<string, Grant[]>;
+  /** Vai trò đang có hiệu lực ở nhà máy này (chính sách cột lấy theo các vai trò này). */
+  roleIds: number[];
+  /** Quyền của từng vai trò đang hiệu lực: chính sách cột chỉ tính vai trò có quyền xem tài nguyên. */
+  rolePermissions: Map<number, Set<string>>;
+  version: string;
+  /** Mốc (ms) gần nhất một phép gán hay ngoại lệ bắt đầu hoặc hết hiệu lực; qua mốc thì tính lại. */
+  expiresAt: number | null;
+}
+
+interface OrgUnit {
+  id: number;
+  code: string;
+  orgType: OrgType;
+  path: string;
+  active: boolean;
+}
+
+interface ScopeRow {
+  userRoleId: number;
+  dimCode: string;
+  dimOrgType: OrgType | null;
+  dimActive: boolean;
+  mode: ScopeMode;
+  orgUnitId: number | null;
+  value: string | null;
+}
+
+const isValidNow = (from: Date | null, to: Date | null, now: number) =>
+  (!from || from.getTime() <= now) && (!to || to.getTime() >= now);
+
+/** Mốc kế tiếp làm thay đổi kết quả: lúc bắt đầu hiệu lực, hoặc ngay sau lúc hết hiệu lực. */
+function nextBoundary(from: Date | null, to: Date | null, now: number): number | null {
+  const marks = [from?.getTime(), to ? to.getTime() + 1 : undefined].filter((t): t is number => t !== undefined && t > now);
+  return marks.length ? Math.min(...marks) : null;
+}
+
+const minOf = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.min(a, b));
+
+/**
+ * Dấu phiên bản quyền gửi cho giao diện (header X-Permission-Version): đổi khi quản trị đổi quyền (version)
+ * và khi một phép gán hay ngoại lệ tới giờ bắt đầu hoặc hết hạn (mốc hết hạn), để giao diện tải lại menu.
+ */
+export const accessStamp = (a: Pick<UserAccess, 'version' | 'expiresAt'>) => (a.expiresAt ? `${a.version}.${a.expiresAt}` : a.version);
+
+/**
+ * L2 + L3 + L5 (ADR 0005): quyền của user tại nhà máy của phiên.
+ *  1. Deny theo người còn hiệu lực ⇒ mất quyền.
+ *  2. Allow theo người còn hiệu lực ⇒ có quyền, phạm vi = hợp phạm vi mọi phép gán đang hiệu lực ở nhà máy này.
+ *  3. Hợp quyền của các phép gán Role đang hiệu lực, phạm vi tính theo từng phép gán.
+ *  4. Còn lại: từ chối.
+ * Cache theo (user, nhà máy), mất hiệu lực khi SysPermissionVersion đổi hoặc qua mốc ValidFromAt/ValidToAt gần nhất.
+ */
+@Injectable()
+export class PermissionService {
+  private cache = new Map<string, UserAccess>();
+
+  constructor(@Inject(CORE_DB) private readonly db: CoreDb) {}
+
+  async getVersion(): Promise<string> {
+    const row = await this.db.selectFrom('SysPermissionVersion').select('Version').where('Id', '=', 1).executeTakeFirstOrThrow();
+    return String(row.Version);
+  }
+
+  /** Truyền transaction để version tăng cùng lúc với thay đổi quyền; sau khi commit gọi clearCache(). */
+  async bumpVersion(executor: CoreDb = this.db): Promise<void> {
+    await sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1, ModifiedAt = SYSUTCDATETIME() WHERE Id = 1`.execute(executor);
+    this.cache.clear();
+  }
+
+  clearCache(): void {
+    this.cache.clear();
+  }
+
+  /** Quyền của người đang thao tác: dùng kết quả AuthGuard đã tính cho request, không thì tính lại. */
+  async accessOf(user: AuthUser): Promise<UserAccess> {
+    if (user.access) return user.access;
+    if (user.tokenType !== 'access' || !user.branchCode) throw Errors.unauthenticated();
+    return this.getAccess(user.userId, { code: user.branchCode, isAggregate: user.isAggregate });
+  }
+
+  async getAccess(userId: number, branch: BranchRef, version?: string): Promise<UserAccess> {
+    const v = version ?? (await this.getVersion());
+    const key = `${userId}:${branch.code}`;
+    const hit = this.cache.get(key);
+    if (hit && hit.version === v && hit.isAggregate === branch.isAggregate && (hit.expiresAt === null || Date.now() < hit.expiresAt)) {
+      return hit;
+    }
+    const access = await this.compute(userId, branch, v);
+    this.cache.set(key, access);
+    return access;
+  }
+
+  private async compute(userId: number, branch: BranchRef, version: string): Promise<UserAccess> {
+    const now = Date.now();
+    const empty: UserAccess = {
+      userId,
+      branchCode: branch.code,
+      isAggregate: branch.isAggregate,
+      active: false,
+      permissions: new Set(),
+      grants: new Map(),
+      roleIds: [],
+      rolePermissions: new Map(),
+      version,
+      expiresAt: null,
+    };
+    const user = await this.db.selectFrom('SysUser').select('IsActive').where('Id', '=', userId).executeTakeFirst();
+    if (!user?.IsActive) return empty;
+
+    let expiresAt: number | null = null;
+
+    const assignments = await this.db
+      .selectFrom('SysUserRole as ur')
+      .innerJoin('SysRole as r', 'r.Id', 'ur.RoleId')
+      .select(['ur.Id', 'ur.RoleId', 'ur.ValidFromAt', 'ur.ValidToAt'])
+      .where('ur.UserId', '=', userId)
+      .where('r.IsActive', '=', true)
+      .execute();
+    for (const a of assignments) expiresAt = minOf(expiresAt, nextBoundary(a.ValidFromAt, a.ValidToAt, now));
+    const live = assignments.filter((a) => isValidNow(a.ValidFromAt, a.ValidToAt, now));
+
+    const scopes = await this.loadScopes(live.map((a) => a.Id));
+    const orgUnits = scopes.some((s) => s.orgUnitId !== null) ? await this.loadOrgUnits() : new Map<number, OrgUnit>();
+
+    // Phép gán nào có hiệu lực ở nhà máy này, và phạm vi của nó
+    const effective: { roleId: number; grant: Grant }[] = [];
+    for (const a of live) {
+      const grant = this.grantOf(scopes.filter((s) => s.userRoleId === a.Id), orgUnits, branch);
+      if (grant) effective.push({ roleId: a.RoleId, grant });
+    }
+
+    const roleIds = [...new Set(effective.map((e) => e.roleId))];
+    const rolePerms = roleIds.length
+      ? await this.db
+          .selectFrom('SysRolePermission as rp')
+          .innerJoin('SysPermission as p', 'p.Id', 'rp.PermissionId')
+          .innerJoin('SysResource as res', 'res.Id', 'p.ResourceId')
+          .select(['rp.RoleId', 'p.Code'])
+          .where('rp.RoleId', 'in', roleIds)
+          .where('p.IsActive', '=', true)
+          .where('res.IsActive', '=', true)
+          .execute()
+      : [];
+
+    const grants = new Map<string, Grant[]>();
+    for (const e of effective) {
+      for (const p of rolePerms.filter((x) => x.RoleId === e.roleId)) {
+        const list = grants.get(p.Code) ?? [];
+        if (!list.includes(e.grant)) list.push(e.grant);
+        grants.set(p.Code, list);
+      }
+    }
+
+    const overrides = await this.db
+      .selectFrom('SysUserPermissionOverride as o')
+      .innerJoin('SysPermission as p', 'p.Id', 'o.PermissionId')
+      .innerJoin('SysResource as res', 'res.Id', 'p.ResourceId')
+      .select(['p.Code', 'o.Effect', 'o.ValidFromAt', 'o.ValidToAt'])
+      .where('o.UserId', '=', userId)
+      .where('p.IsActive', '=', true)
+      .where('res.IsActive', '=', true)
+      .execute();
+    for (const o of overrides) expiresAt = minOf(expiresAt, nextBoundary(o.ValidFromAt, o.ValidToAt, now));
+    const liveOverrides = overrides.filter((o) => isValidNow(o.ValidFromAt, o.ValidToAt, now));
+
+    // Allow: phạm vi là hợp mọi phép gán đang hiệu lực ở nhà máy này; không có phép gán thì chỉ nhà máy của phiên
+    // (ở A00 không có "nhà máy của phiên" nên đóng an toàn).
+    const allowScope: Grant[] = effective.length
+      ? [...new Set(effective.map((e) => e.grant))]
+      : [{ conditions: branch.isAggregate ? [{ dim: 'FACTORY', kind: 'none' }] : [] }];
+    for (const o of liveOverrides.filter((x) => x.Effect === 'ALLOW')) grants.set(o.Code, allowScope);
+    // Deny thắng mọi thứ, xét sau cùng
+    for (const o of liveOverrides.filter((x) => x.Effect === 'DENY')) grants.delete(o.Code);
+    // Không có quyền xem thì mất mọi hành động khác của tài nguyên: chặn xem là chặn hẳn,
+    // không còn đường đọc qua xuất file hay qua dữ liệu trả về khi sửa (review 5.1 #1)
+    for (const code of [...grants.keys()]) {
+      const resource = code.slice(0, code.lastIndexOf(':'));
+      if (!code.endsWith(':view') && !grants.has(`${resource}:view`)) grants.delete(code);
+    }
+
+    const rolePermissions = new Map<number, Set<string>>();
+    for (const p of rolePerms) rolePermissions.set(p.RoleId, (rolePermissions.get(p.RoleId) ?? new Set()).add(p.Code));
+
+    return {
+      ...empty,
+      active: true,
+      permissions: new Set(grants.keys()),
+      grants,
+      roleIds,
+      rolePermissions,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Phạm vi của một phép gán tại nhà máy của phiên; null nếu phép gán không có hiệu lực ở nhà máy này.
+   * Tổ hợp ngoài danh sách hợp lệ, đơn vị tổ chức hay chiều đã tắt: coi là tập rỗng, không bao giờ là "không giới hạn".
+   */
+  private grantOf(rows: ScopeRow[], orgUnits: Map<number, OrgUnit>, branch: BranchRef): Grant | null {
+    const conditions: Condition[] = [];
+    const byDim = new Map<string, ScopeRow[]>();
+    for (const r of rows) byDim.set(r.dimCode, [...(byDim.get(r.dimCode) ?? []), r]);
+
+    for (const [dim, list] of byDim) {
+      const first = list[0];
+      if (!first.dimActive) {
+        if (dim === 'FACTORY' && !branch.isAggregate) return null;
+        conditions.push({ dim, kind: 'none' });
+        continue;
+      }
+      if (list.some((r) => r.mode === 'ALL')) continue;
+
+      if (first.dimOrgType) {
+        const codes = new Set<string>();
+        for (const r of list) {
+          const unit = r.orgUnitId !== null ? orgUnits.get(r.orgUnitId) : undefined;
+          if (!unit?.active) continue;
+          if (r.mode === 'LIST' && r.value === null && unit.orgType === first.dimOrgType) codes.add(unit.code);
+          if (r.mode === 'ORG_SUBTREE') {
+            for (const u of orgUnits.values()) {
+              if (u.active && u.orgType === first.dimOrgType && u.path.startsWith(unit.path)) codes.add(u.code);
+            }
+          }
+        }
+        if (dim === 'FACTORY') {
+          // Ở nhà máy cụ thể: phép gán chỉ có hiệu lực khi nhà máy nằm trong phạm vi. Ở A00: chỉ đọc các nhà máy trong phạm vi.
+          if (!branch.isAggregate) {
+            if (!codes.has(branch.code)) return null;
+            continue;
+          }
+        }
+        conditions.push(codes.size ? { dim, kind: 'in', values: [...codes].sort() } : { dim, kind: 'none' });
+        continue;
+      }
+
+      if (dim === 'OWNER') {
+        conditions.push(list.every((r) => r.mode === 'OWN') ? { dim, kind: 'own' } : { dim, kind: 'none' });
+        continue;
+      }
+      const values = list.filter((r) => r.mode === 'LIST' && r.orgUnitId === null && r.value).map((r) => r.value!);
+      conditions.push(values.length === list.length ? { dim, kind: 'in', values: [...new Set(values)].sort() } : { dim, kind: 'none' });
+    }
+    return { conditions };
+  }
+
+  private async loadScopes(userRoleIds: number[]): Promise<ScopeRow[]> {
+    if (userRoleIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('SysUserRoleScope as s')
+      .innerJoin('SysScopeDimension as d', 'd.Id', 's.DimensionId')
+      .select(['s.UserRoleId', 'd.Code', 'd.OrgType', 'd.IsActive', 's.ScopeMode', 's.OrgUnitId', 's.ScopeValue'])
+      .where('s.UserRoleId', 'in', userRoleIds)
+      .execute();
+    return rows.map((r) => ({
+      userRoleId: r.UserRoleId,
+      dimCode: r.Code,
+      dimOrgType: r.OrgType,
+      dimActive: !!r.IsActive,
+      mode: r.ScopeMode,
+      orgUnitId: r.OrgUnitId,
+      value: r.ScopeValue,
+    }));
+  }
+
+  private async loadOrgUnits(): Promise<Map<number, OrgUnit>> {
+    const rows = await this.db.selectFrom('SysOrgUnit').select(['Id', 'Code', 'OrgType', 'Path', 'IsActive']).execute();
+    return new Map(rows.map((r) => [r.Id, { id: r.Id, code: r.Code, orgType: r.OrgType, path: r.Path, active: !!r.IsActive }]));
+  }
+
+  /**
+   * Mọi quyền gắn với user qua vai trò hoặc Allow theo người, kể cả vai trò đang tắt hay user đang bị vô hiệu:
+   * tài khoản tạm tắt nhưng có quyền cao vẫn được coi là có quyền cao khi xét ai được quản lý nó.
+   */
+  async assignedToUser(userId: number): Promise<string[]> {
+    const viaRole = await this.db
+      .selectFrom('SysUserRole as ur')
+      .innerJoin('SysRolePermission as rp', 'rp.RoleId', 'ur.RoleId')
+      .innerJoin('SysPermission as p', 'p.Id', 'rp.PermissionId')
+      .select('p.Code')
+      .distinct()
+      .where('ur.UserId', '=', userId)
+      .execute();
+    const viaAllow = await this.db
+      .selectFrom('SysUserPermissionOverride as o')
+      .innerJoin('SysPermission as p', 'p.Id', 'o.PermissionId')
+      .select('p.Code')
+      .where('o.UserId', '=', userId)
+      .where('o.Effect', '=', 'ALLOW')
+      .execute();
+    return [...new Set([...viaRole, ...viaAllow].map((r) => r.Code))];
+  }
+
+  async assignedToRoles(roleIds: number[]): Promise<string[]> {
+    if (roleIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom('SysRolePermission as rp')
+      .innerJoin('SysPermission as p', 'p.Id', 'rp.PermissionId')
+      .select('p.Code')
+      .distinct()
+      .where('rp.RoleId', 'in', roleIds)
+      .execute();
+    return rows.map((r) => r.Code);
+  }
+
+  /**
+   * Trần quyền quản trị: người thao tác phải đang có mọi quyền admin.* trong `codes` (tại nhà máy đang làm việc).
+   * Chặn đường vòng "tạo tài khoản phụ rồi gán vai trò quản trị cao hơn", hoặc đặt lại mật khẩu của người quyền cao hơn.
+   * Quyền nghiệp vụ không bị giới hạn: cấp quyền nghiệp vụ là việc của người giữ admin.permission:update.
+   */
+  async assertAdminCeiling(actor: AuthUser, codes: Iterable<string>, message: string): Promise<void> {
+    const own = (await this.accessOf(actor)).permissions;
+    const missing = [...new Set(codes)].filter((c) => c.startsWith(ADMIN_PREFIX) && !own.has(c));
+    if (missing.length) throw Errors.selfElevation(`${message} Thiếu quyền: ${missing.sort().join(', ')}.`);
+  }
+}

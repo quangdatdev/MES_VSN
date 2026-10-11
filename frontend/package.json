@@ -1,0 +1,48 @@
+{
+  "name": "mes-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "lint": "eslint src --max-warnings 0",
+    "test": "vitest run --passWithNoTests",
+    "perf": "vitest run --config vitest.perf.config.ts"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/source-sans-3": "^5.3.0",
+    "@mantine/core": "^9.7.1",
+    "@mantine/dates": "^9.7.1",
+    "@mantine/form": "^9.7.1",
+    "@mantine/hooks": "^9.7.1",
+    "@mantine/modals": "^9.7.1",
+    "@mantine/notifications": "^9.7.1",
+    "@mantine/spotlight": "^9.7.1",
+    "@tabler/icons-react": "^3.49.0",
+    "@tanstack/react-query": "^5.104.1",
+    "dayjs": "^1.11.23",
+    "mantine-datatable": "^9.4.0",
+    "react": "^19.3.0",
+    "react-datasheet-grid": "4.11.6",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "mes-vietsun",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run start:dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "lint": "npm run lint -w backend && npm run lint -w frontend",
+    "test": "npm test -w backend && npm test -w frontend",
+    "migrate": "npm run migrate -w backend",
+    "seed": "npm run seed -w backend --",
+    "reset:demo": "npm run reset:demo -w backend --",
+    "load:bravo": "npm run load:bravo -w backend --",
+    "sim:board": "npm run sim:board -w backend --",
+    "demo": "npm run build && npm run start:demo -w backend"
+  },
+  "overrides": {
+    "react-resize-detector": {
+      "react": "^19.0.0",
+      "react-dom": "^19.0.0"
+    }
+  }
+}

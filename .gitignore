@@ -1,0 +1,43 @@
+# Thư viện npm: server tự cài lại bằng `npm ci`
+node_modules/
+
+# Kết quả build: server tự build lại bằng `npm run build`
+dist/
+build/
+dev-dist/
+*.tsbuildinfo
+vite.config.*.timestamp-*
+
+# Test, lint, cache công cụ
+coverage/
+.eslintcache
+.vite/
+.cache/
+
+# Biến môi trường và bí mật: chỉ commit .env.example
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Log, file tạm
+logs/
+*.log
+*.tmp
+*.bak
+
+# Máy cá nhân, IDE
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.claude/settings.local.json
+docs/*
+
+# File khóa Word/Excel tạo ra khi đang mở tài liệu trong docs/
+~$*

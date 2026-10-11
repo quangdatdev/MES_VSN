@@ -1,0 +1,11 @@
+{
+  "name": "MES Vietsun",
+  "short_name": "MES",
+  "description": "Kế hoạch, cắt, may, kiểm hàng và hoàn thiện",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#232f3e",
+  "lang": "vi",
+  "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+}

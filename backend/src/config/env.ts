@@ -1,0 +1,57 @@
+import { config } from 'dotenv';
+import { randomBytes } from 'crypto';
+import { resolve } from 'path';
+
+config({ path: resolve(__dirname, '../../.env'), quiet: true });
+
+const num = (v: string | undefined, d: number) => {
+  const n = Number(v);
+  return v !== undefined && v !== '' && Number.isFinite(n) ? n : d;
+};
+
+const isProd = process.env.NODE_ENV === 'production';
+
+if (isProd && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET là bắt buộc ở môi trường production.');
+}
+
+export const env = {
+  isProd,
+  port: num(process.env.PORT, 3000),
+  db: {
+    host: process.env.DB_HOST || 'localhost',
+    port: num(process.env.DB_PORT, 1433),
+    user: process.env.DB_USER ?? '',
+    password: process.env.DB_PASSWORD ?? '',
+    coreName: process.env.DB_CORE_NAME || 'MES_Core',
+    orderName: process.env.DB_ORDER_NAME || 'MES_Order',
+    // Module May (ADR 0009)
+    sewingName: process.env.DB_SEWING_NAME || 'MES_Sewing',
+    // Module Nhân sự: phòng ban, chức danh, hồ sơ nhân viên (ADR 0012)
+    hrName: process.env.DB_HR_NAME || 'MES_Hr',
+    // Bảng chép dữ liệu từ hệ thống ngoài và nhật ký đồng bộ (ADR 0007)
+    syncName: process.env.DB_SYNC_NAME || 'MES_Sync',
+    // Database trung gian chứa view của BRAVO. MES chỉ đọc view ở đây, không đọc thẳng database BRAVO.
+    stagingName: process.env.DB_TRUNGGIAN_NAME ?? '',
+    encrypt: process.env.DB_ENCRYPT === 'true',
+    trustServerCertificate: process.env.DB_TRUST_CERT !== 'false',
+  },
+  // Dev không có JWT_SECRET: dùng khóa tạm theo tiến trình (token mất hiệu lực khi khởi động lại).
+  jwtSecret: process.env.JWT_SECRET || randomBytes(32).toString('hex'),
+  accessTtlSeconds: num(process.env.JWT_ACCESS_TTL, 15 * 60),
+  preAuthTtlSeconds: num(process.env.PRE_AUTH_TTL, 5 * 60),
+  refreshTtlDays: num(process.env.REFRESH_TTL_DAYS, 7),
+  loginMaxFailed: num(process.env.LOGIN_MAX_FAILED, 5),
+  loginLockMinutes: num(process.env.LOGIN_LOCK_MINUTES, 15),
+  demoPassword: process.env.DEMO_PASSWORD ?? '',
+  // Cookie refresh chỉ gửi qua HTTPS. Demo trong mạng nội bộ chạy HTTP thì để COOKIE_SECURE=false.
+  cookieSecure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : isProd,
+  // Chỉ khai báo khi thật sự chạy sau reverse proxy (ví dụ "loopback" hoặc IP của Nginx). Mặc định không tin
+  // X-Forwarded-For, vì client tự đặt được header này để giả IP trong nhật ký.
+  trustProxy: process.env.TRUST_PROXY || false,
+  host: process.env.HOST || '0.0.0.0',
+};
+
+if (isProd && env.jwtSecret.length < 32) {
+  throw new Error('JWT_SECRET phải dài ít nhất 32 ký tự ở môi trường production.');
+}
