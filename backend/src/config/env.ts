@@ -41,6 +41,8 @@ export const env = {
     syncName: process.env.DB_SYNC_NAME || 'MES_Sync',
     // Database trung gian chứa view của BRAVO. MES chỉ đọc view ở đây, không đọc thẳng database BRAVO.
     stagingName: process.env.DB_TRUNGGIAN_NAME ?? '',
+    // Database trung gian nằm ở SQL Server khác: tên linked server tới máy đó (synonym 4 phần). Cùng máy thì để trống.
+    stagingServer: process.env.DB_TRUNGGIAN_SERVER?.trim() ?? '',
     encrypt: process.env.DB_ENCRYPT === 'true',
     trustServerCertificate: process.env.DB_TRUST_CERT !== 'false',
   },

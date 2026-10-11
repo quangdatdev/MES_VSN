@@ -43,17 +43,31 @@ async function ensureDatabase(name: string) {
 }
 
 /**
- * Synonym của nguồn BRAVO trỏ tới view trong database trung gian (DB_TRUNGGIAN_NAME). Tạo lại mỗi lần migrate để
- * đổi tên database trung gian chỉ cần sửa .env, không cần migration mới. Thủ tục chép chỉ đọc qua synonym này.
+ * Synonym của nguồn BRAVO trỏ tới view trong database trung gian (DB_TRUNGGIAN_NAME), qua linked server DB_TRUNGGIAN_SERVER khi
+ * database đó ở máy khác (ADR 0007). Tạo lại mỗi lần migrate để đổi tên chỉ cần sửa .env, không cần migration mới; database
+ * MES_Sync tạo lại cũng tự có synonym đúng. Thủ tục chép chỉ đọc qua synonym này.
  */
 // Kysely<any>: script chạy DDL trên database bất kỳ, không có kiểu bảng
 async function linkSyncSources(db: Kysely<any>) {
   const staging = env.db.stagingName;
   if (!staging) {
-    console.warn(`  [${env.db.syncName}] chưa có DB_TRUNGGIAN_NAME trong .env: bỏ qua tạo synonym, đồng bộ BRAVO sẽ báo lỗi khi chạy`);
+    console.warn(
+      `  [${env.db.syncName}] chưa có DB_TRUNGGIAN_NAME trong .env${env.db.stagingServer ? ' (DB_TRUNGGIAN_SERVER cũng bị bỏ qua)' : ''}: bỏ qua tạo synonym, đồng bộ BRAVO sẽ báo lỗi khi chạy`,
+    );
     return;
   }
   if (!/^[A-Za-z0-9_-]+$/.test(staging)) throw new Error('DB_TRUNGGIAN_NAME chỉ gồm chữ, số, gạch dưới, gạch ngang');
+  const server = env.db.stagingServer;
+  // Tên linked server có thể dạng MAY\INSTANCE
+  if (server && !/^[A-Za-z0-9_.\\-]+$/.test(server)) throw new Error('DB_TRUNGGIAN_SERVER chỉ gồm chữ, số, gạch dưới, gạch ngang, dấu chấm, dấu \\.');
+  // CREATE SYNONYM không kiểm đích: gõ sai tên linked server thì tới lúc đồng bộ mới lỗi, nên báo ngay ở đây
+  if (server) {
+    const ls = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM sys.servers WHERE name = ${server} AND is_linked = 1 AND is_data_access_enabled = 1`.execute(db);
+    if (!ls.rows[0]?.n) console.warn(`  [${env.db.syncName}] không thấy linked server ${server} (hoặc chưa bật Data Access): synonym vẫn tạo nhưng đồng bộ sẽ lỗi. Kiểm DB_TRUNGGIAN_SERVER.`);
+  }
+  const quote = (n: string) => `[${n.replace(/]/g, ']]')}]`;
+  // Định dạng như sys.synonyms.base_object_name để so được với synonym đang có
+  const prefix = `${server ? `${quote(server)}.` : ''}${quote(staging)}.[dbo].`;
   const rows = (
     await sql<{ SourceSynonym: string; SourceObject: string; Current: string | null }>`
       SELECT s.SourceSynonym, s.SourceObject, sy.base_object_name AS [Current]
@@ -63,14 +77,16 @@ async function linkSyncSources(db: Kysely<any>) {
   let changed = 0;
   for (const r of rows) {
     const [schema, name] = r.SourceSynonym.split('.');
-    const quote = (n: string) => `[${n.replace(/]/g, ']]')}]`;
-    const target = `${quote(staging)}.[dbo].${quote(r.SourceObject)}`;
+    const target = `${prefix}${quote(r.SourceObject)}`;
     if (r.Current === target) continue;
-    await sql.raw(`IF OBJECT_ID(N'${r.SourceSynonym.replace(/'/g, "''")}', N'SN') IS NOT NULL DROP SYNONYM ${quote(schema)}.${quote(name)}`).execute(db);
-    await sql.raw(`CREATE SYNONYM ${quote(schema)}.${quote(name)} FOR ${target}`).execute(db);
+    // Xóa và tạo trong một transaction: lượt đồng bộ chạy đúng lúc này không thấy synonym bị thiếu
+    await db.transaction().execute(async (trx) => {
+      await sql.raw(`IF OBJECT_ID(N'${r.SourceSynonym.replace(/'/g, "''")}', N'SN') IS NOT NULL DROP SYNONYM ${quote(schema)}.${quote(name)}`).execute(trx);
+      await sql.raw(`CREATE SYNONYM ${quote(schema)}.${quote(name)} FOR ${target}`).execute(trx);
+    });
     changed++;
   }
-  console.log(`  [${env.db.syncName}] synonym tới ${staging}: ${changed === 0 ? 'đã đúng' : `tạo lại ${changed}`}`);
+  console.log(`  [${env.db.syncName}] synonym tới ${server ? `${server}.` : ''}${staging}: ${changed === 0 ? 'đã đúng' : `tạo lại ${changed}`}`);
 }
 
 async function migrate(folder: string) {

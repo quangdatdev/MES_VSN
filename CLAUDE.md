@@ -126,7 +126,7 @@ Chạy từ thư mục gốc, trừ dòng ghi "(trong `backend`)". Cần Node.js
 
 ### 8.1 Cài đặt lần đầu
 
-1. Tạo `backend/.env` từ `backend/.env.example`. Tối thiểu điền `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (chuỗi ngẫu nhiên dài), `DEMO_PASSWORD` (mật khẩu ban đầu của `admin` và các tài khoản demo). Tên database mặc định `MES_Core`, `MES_Order`, `MES_Sewing`, `MES_Hr`, `MES_Sync`. `DB_TRUNGGIAN_NAME` chỉ cần khi đồng bộ BRAVO; để trống thì migrate bỏ qua tạo synonym. Máy chủ dùng thật chỉ cần `npm ci`, `npm run build`, `npm run migrate`: migrate tạo bảng rồi nạp dữ liệu hệ thống và tài khoản `admin`, không dữ liệu mẫu. `SEED_SAMPLE_DATA=false` (mặc định khi `NODE_ENV=production`): `npm run seed` cũng không nạp tài khoản mẫu, đơn hàng giả, phòng ban và nhân viên giả.
+1. Tạo `backend/.env` từ `backend/.env.example`. Tối thiểu điền `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (chuỗi ngẫu nhiên dài), `DEMO_PASSWORD` (mật khẩu ban đầu của `admin` và các tài khoản demo). Tên database mặc định `MES_Core`, `MES_Order`, `MES_Sewing`, `MES_Hr`, `MES_Sync`. `DB_TRUNGGIAN_NAME` chỉ cần khi đồng bộ BRAVO; để trống thì migrate bỏ qua tạo synonym. Database trung gian ở SQL Server khác: thêm `DB_TRUNGGIAN_SERVER` (tên linked server). Máy chủ dùng thật chỉ cần `npm ci`, `npm run build`, `npm run migrate`: migrate tạo bảng rồi nạp dữ liệu hệ thống và tài khoản `admin`, không dữ liệu mẫu. `SEED_SAMPLE_DATA=false` (mặc định khi `NODE_ENV=production`): `npm run seed` cũng không nạp tài khoản mẫu, đơn hàng giả, phòng ban và nhân viên giả.
 2. Chạy:
 
 ```
