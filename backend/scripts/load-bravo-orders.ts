@@ -15,7 +15,7 @@ import { createDb } from '../src/platform/database/db';
 import type { OrderDatabase } from '../src/modules/order/order.types';
 import { MAX_COLOR_SIZE_ROWS, SIZE_NAME } from '../src/modules/order/order.rules';
 import { clearSewingPrep } from './sewing-data';
-import { assertLocalDb } from './local-db';
+import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { simulateBranch } from './simulate-board';
 
@@ -262,7 +262,7 @@ function build(src: Awaited<ReturnType<typeof readSource>>) {
 }
 
 export async function loadBravoOrders({ plans = !process.argv.includes('--no-plans') }: { plans?: boolean } = {}) {
-  assertLocalDb('load-bravo-orders');
+  assertDemoMachine('load-bravo-orders');
   // Xóa và chèn cả bảng trong một transaction: giới hạn mỗi câu 10 phút thay vì 15 giây mặc định
   const long = { requestTimeoutMs: 10 * 60_000 };
   const core = createDb<CoreDatabase>(env.db.coreName);
@@ -400,7 +400,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
 }
 
 async function main() {
-  assertLocalDb('load-bravo-orders');
+  assertDemoMachine('load-bravo-orders');
   if (!process.argv.includes('--yes')) {
     console.log(
       [

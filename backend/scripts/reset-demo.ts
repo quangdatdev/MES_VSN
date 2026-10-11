@@ -17,13 +17,14 @@ import type { CoreDatabase } from '../src/platform/database/core.types';
 import type { OrderDatabase } from '../src/modules/order/order.types';
 import { clearHr, hrDbState } from './hr-data';
 import { clearOrderData, loadBravoOrders } from './load-bravo-orders';
-import { assertLocalDb } from './local-db';
+import { assertDemoMachine } from './local-db';
 import { clearSewingPrep } from './sewing-data';
 import { runSeed } from './seed';
 import { LINE_COUNT, WORKSHOPS, branches, catalogSeedItems, catalogs, lineCode, roles, shifts, users, workshopCode, workshopName, workshopOfLine } from './seed-data';
 
 async function main() {
-  assertLocalDb('reset-demo');
+  // Kiểm trước cả lời mô tả: máy không dùng dữ liệu mẫu thì đừng hướng dẫn chạy lại với --yes
+  assertDemoMachine('reset-demo');
   if (!process.argv.includes('--yes')) {
     console.log(
       [

@@ -126,7 +126,7 @@ Chạy từ thư mục gốc, trừ dòng ghi "(trong `backend`)". Cần Node.js
 
 ### 8.1 Cài đặt lần đầu
 
-1. Tạo `backend/.env` từ `backend/.env.example`. Tối thiểu điền `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (chuỗi ngẫu nhiên dài), `DEMO_PASSWORD` (mật khẩu chung của tài khoản demo). Tên database mặc định `MES_Core`, `MES_Order`, `MES_Sewing`, `MES_Sync`. `DB_TRUNGGIAN_NAME` chỉ cần khi đồng bộ BRAVO; để trống thì migrate bỏ qua tạo synonym.
+1. Tạo `backend/.env` từ `backend/.env.example`. Tối thiểu điền `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (chuỗi ngẫu nhiên dài), `DEMO_PASSWORD` (mật khẩu chung của tài khoản demo). Tên database mặc định `MES_Core`, `MES_Order`, `MES_Sewing`, `MES_Sync`. `DB_TRUNGGIAN_NAME` chỉ cần khi đồng bộ BRAVO; để trống thì migrate bỏ qua tạo synonym. Máy chủ dùng thật: `SEED_SAMPLE_DATA=false` (mặc định `false` khi `NODE_ENV=production`), seed không nạp đơn hàng giả, phòng ban và nhân viên giả.
 2. Chạy:
 
 ```
@@ -134,7 +134,7 @@ npm install                          # cài toàn bộ workspace (backend + fron
 npx tsx scripts/probe-db.ts          # (trong backend, tùy chọn) kiểm kết nối SQL Server, liệt kê database; chỉ đọc
 npm run migrate                      # tạo database nếu tài khoản có quyền rồi chạy migration mọi database (người chạy, không tự chạy khi khởi động)
 npm run migrate -- MES_Core          # chỉ migrate một database
-npm run seed                         # dữ liệu giả MES_Core + MES_Order; chạy lại chỉ thêm phần thiếu, không cấp lại quyền đã thu hồi
+npm run seed                         # tài khoản, quyền, menu, danh mục + dữ liệu mẫu (đơn hàng, nhân sự giả; tắt: SEED_SAMPLE_DATA=false hoặc -- --no-sample-data); chạy lại chỉ thêm phần thiếu, không cấp lại quyền đã thu hồi
 ```
 
 Tài khoản trong `.env` không tạo được database thì nhờ quản trị CSDL tạo trước và cấp `db_owner`, rồi chạy lại `npm run migrate`.
@@ -160,13 +160,14 @@ npm run demo                         # build backend + frontend rồi chạy ở
 
 ### 8.4 Dữ liệu
 
-Các lệnh có `--yes` xóa/ghi đè dữ liệu và chỉ chạy với SQL Server trên chính máy này (database máy khác bị từ chối trừ khi thêm `--allow-remote-db`). Chạy thiếu `--yes` chỉ in mô tả việc sẽ làm.
+Các lệnh có `--yes` xóa/ghi đè dữ liệu và chỉ chạy với SQL Server trên chính máy này (database máy khác bị từ chối trừ khi thêm `--allow-remote-db`). Chạy thiếu `--yes` chỉ in mô tả việc sẽ làm. Máy đặt `SEED_SAMPLE_DATA=false` (máy dùng thật) thì `reset:demo`, `load:bravo`, `sim:board` từ chối chạy.
 
 ```
 npm run seed -- --reset-passwords    # đặt lại mật khẩu tài khoản demo, thu hồi phiên của họ
 npm run seed -- --sync-matrix        # nạp lại đủ ma trận quyền, chính sách cột, phạm vi, ngoại lệ mẫu
 npm run load:bravo -- --yes          # thay đơn hàng bằng dữ liệu BRAVO đã chép trong MES_Sync (--no-plans: không sinh dàn chuyền mô phỏng; xem db-order.md)
 npm run sim:board -- --yes           # xếp lại dàn chuyền mô phỏng kín các chuyền quanh hôm nay, giữ kế hoạch người dùng lập/sửa (--all: xóa cả các kế hoạch đó)
+npm run reinstall -- --yes --backup F:\Backup   # cài lại như mới (cả máy chủ thật): sao lưu, xóa mọi bảng của MES_Core/Order/Sewing/Hr, migrate, seed; giữ MES_Sync trừ khi --with-sync. Dừng app trước
 npm run check:softkeys -w backend    # kiểm bản ghi mồ côi theo khóa ngầm giữa các database (chỉ đọc)
 npx tsx scripts/sync-gen.ts <Bảng> --out migrations/MES_Sync/NNNN_x.sql  # (trong backend) sinh migration cho nguồn đồng bộ mới, xem docs/thiet-ke/db-sync.md
 ```

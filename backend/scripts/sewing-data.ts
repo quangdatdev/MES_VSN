@@ -3,7 +3,7 @@ import { sql } from 'kysely';
 import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
 import type { SewingDatabase } from '../src/modules/sewing/sewing.types';
-import { assertLocalDb } from './local-db';
+import { assertDemoMachine } from './local-db';
 
 /** Database MES_Sewing đã có chưa: máy chưa tạo thì các script bỏ qua phần module May thay vì hỏng cả lệnh. */
 export async function hasSewingDb(): Promise<boolean> {
@@ -21,7 +21,7 @@ export async function hasSewingDb(): Promise<boolean> {
  * không còn ứng với dòng dàn chuyền nào. Xóa hết (ngày theo bước xóa theo), giữ danh mục bước. Trả số dòng đã xóa.
  */
 export async function clearSewingPrep(): Promise<number> {
-  assertLocalDb('xóa Kế hoạch chuẩn bị SX');
+  assertDemoMachine('xóa Kế hoạch chuẩn bị SX');
   if (!(await hasSewingDb())) return 0;
   const db = createDb<SewingDatabase>(env.db.sewingName);
   try {

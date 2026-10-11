@@ -20,7 +20,7 @@ import { createDb } from '../src/platform/database/db';
 import type { LineStatus, OrderDatabase, PlanStatus, SalesOrderStatus } from '../src/modules/order/order.types';
 import type { SewingDatabase } from '../src/modules/sewing/sewing.types';
 import { addWorkingDays, apportion } from '../src/modules/order/order.util';
-import { assertLocalDb } from './local-db';
+import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { prng } from './seed-data';
 import { hasSewingDb } from './sewing-data';
@@ -562,7 +562,7 @@ async function prepLines(): Promise<Map<number, Date | null>> {
 }
 
 async function main() {
-  assertLocalDb('simulate-board');
+  assertDemoMachine('simulate-board');
   const all = process.argv.includes('--all');
   if (!process.argv.includes('--yes')) {
     console.log(

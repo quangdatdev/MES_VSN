@@ -20,8 +20,11 @@ Cần: Node.js 22, SQL Server 2019/2022 (Express cũng được) có đăng nh�
    - `DB_CORE_NAME` (mặc định `MES_Core`) và `DB_ORDER_NAME` (module Đơn hàng, mặc định `MES_Order`). Lệnh migrate tự tạo database nếu chưa có.
    - `JWT_SECRET`: chuỗi ngẫu nhiên dài, giữ bí mật.
    - `DEMO_PASSWORD`: mật khẩu chung cho các tài khoản demo (chỉ dùng cho dữ liệu giả).
+   - `SEED_SAMPLE_DATA`: máy chủ dùng thật đặt `false` (mặc định `false` khi `NODE_ENV=production`): seed không nạp đơn hàng giả, phòng ban và nhân viên giả; `reset:demo`, `load:bravo`, `sim:board` từ chối chạy.
 2. `npm install`
 3. `npm run migrate` rồi `npm run seed`
+
+Cài lại từ đầu (xóa sạch dữ liệu, kể cả trên máy chủ): dừng ứng dụng rồi `npm run reinstall -- --yes --backup <thư mục trên máy SQL Server>`. Thiếu `--yes` chỉ in việc sẽ làm.
 
 ## Chạy khi phát triển
 `npm run dev:backend` và `npm run dev:frontend` (hai cửa sổ), mở http://localhost:5173.

@@ -11,6 +11,14 @@ const num = (v: string | undefined, d: number) => {
 
 const isProd = process.env.NODE_ENV === 'production';
 
+/** Cờ true/false: để trống thì lấy mặc định; giá trị khác (0, no, yes...) báo lỗi thay vì đoán, kẻo gõ sai mà âm thầm làm ngược ý */
+const flag = (name: string, d: boolean) => {
+  const v = process.env[name]?.trim().toLowerCase();
+  if (!v) return d;
+  if (v === 'true' || v === 'false') return v === 'true';
+  throw new Error(`${name} chỉ nhận true hoặc false (đang là "${process.env[name]}").`);
+};
+
 if (isProd && !process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET là bắt buộc ở môi trường production.');
 }
@@ -44,6 +52,9 @@ export const env = {
   loginMaxFailed: num(process.env.LOGIN_MAX_FAILED, 5),
   loginLockMinutes: num(process.env.LOGIN_LOCK_MINUTES, 15),
   demoPassword: process.env.DEMO_PASSWORD ?? '',
+  // Seed có nạp dữ liệu mẫu (đơn hàng giả, phòng ban và nhân viên giả) không. Mặc định không khi NODE_ENV=production: máy chủ thật
+  // quên đặt biến thì seed chạy lại về sau (sau khi pull) cũng không nạp dữ liệu giả
+  seedSampleData: flag('SEED_SAMPLE_DATA', !isProd),
   // Cookie refresh chỉ gửi qua HTTPS. Demo trong mạng nội bộ chạy HTTP thì để COOKIE_SECURE=false.
   cookieSecure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : isProd,
   // Chỉ khai báo khi thật sự chạy sau reverse proxy (ví dụ "loopback" hoặc IP của Nginx). Mặc định không tin

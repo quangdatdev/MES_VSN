@@ -17,3 +17,12 @@ export function assertLocalDb(script: string) {
     );
   }
 }
+
+/**
+ * Script sinh hay xóa dữ liệu mẫu (reset:demo, load:bravo, sim:board): như assertLocalDb, thêm máy phải dùng dữ liệu mẫu. Máy đặt
+ * SEED_SAMPLE_DATA=false (hoặc NODE_ENV=production) là máy dùng thật, các lệnh này xóa đơn hàng, hồ sơ thật.
+ */
+export function assertDemoMachine(script: string) {
+  assertLocalDb(script);
+  if (!env.seedSampleData) throw new Error(`Máy này không dùng dữ liệu mẫu (SEED_SAMPLE_DATA=false): không chạy ${script}.`);
+}

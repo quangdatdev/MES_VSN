@@ -11,7 +11,7 @@ import { createDb } from '../src/platform/database/db';
 const root = resolve(__dirname, '../migrations');
 
 // Tên thư mục -> tên database thật (cấu hình qua .env)
-function dbName(folder: string): string {
+export function dbName(folder: string): string {
   if (folder === 'MES_Core') return env.db.coreName;
   if (folder === 'MES_Order') return env.db.orderName;
   if (folder === 'MES_Sewing') return env.db.sewingName;
@@ -71,7 +71,7 @@ async function linkSyncSources(db: Kysely<any>) {
   console.log(`  [${env.db.syncName}] synonym tới ${staging}: ${changed === 0 ? 'đã đúng' : `tạo lại ${changed}`}`);
 }
 
-async function migrate(folder: string) {
+export async function migrate(folder: string) {
   const name = dbName(folder);
   await ensureDatabase(name);
   const db = createDb<any>(name);
@@ -104,17 +104,24 @@ async function migrate(folder: string) {
   }
 }
 
+/** Các thư mục migration (mỗi thư mục một database) */
+export function migrationFolders(): string[] {
+  return readdirSync(root, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(resolve(root, d.name)))
+    .map((d) => d.name);
+}
+
 async function main() {
   const only = process.argv[2];
-  const folders = readdirSync(root, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(resolve(root, d.name)))
-    .map((d) => d.name)
-    .filter((n) => !only || n === only);
+  const folders = migrationFolders().filter((n) => !only || n === only);
   if (folders.length === 0) throw new Error('Không có thư mục migration phù hợp.');
   for (const f of folders) await migrate(f);
 }
 
-main().catch((e) => {
-  console.error('Migration lỗi:', e.message ?? e);
-  process.exit(1);
-});
+// Script reinstall gọi lại migrate(): chỉ tự chạy khi gọi thẳng file này
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('Migration lỗi:', e.message ?? e);
+    process.exit(1);
+  });
+}

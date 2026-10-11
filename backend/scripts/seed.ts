@@ -4,6 +4,7 @@
 // Tên, đường dẫn, bảng nguồn của tài nguyên và menu hệ thống luôn đồng bộ theo seed-data.ts (do code quyết định).
 // Dùng: npm run seed -w backend                          (cần DEMO_PASSWORD trong .env)
 //       npm run seed -w backend -- --reset-passwords     (đặt lại mật khẩu tài khoản demo, thu hồi phiên của họ)
+//       npm run seed -w backend -- --no-sample-data      (không nạp đơn hàng giả, phòng ban và nhân viên giả; xem SEED_SAMPLE_DATA trong .env.example)
 import * as argon2 from 'argon2';
 import { sql } from 'kysely';
 import { env } from '../src/config/env';
@@ -39,8 +40,17 @@ import { seedHrIfReady } from './hr-data';
 import { seedOrders } from './seed-order';
 import { hasSewingDb } from './sewing-data';
 
-/** coreOnly: chỉ MES_Core (bỏ mục 11–13: đơn hàng giả, bước chuẩn bị SX, nhân sự giả), dùng trong test để không nạp dữ liệu giả vào DB demo */
-export async function runSeed({ resetPasswords = false, syncMatrix = false, coreOnly = false }: { resetPasswords?: boolean; syncMatrix?: boolean; coreOnly?: boolean } = {}) {
+/**
+ * coreOnly: chỉ MES_Core (bỏ mục 11–13: đơn hàng giả, bước chuẩn bị SX, nhân sự giả), dùng trong test để không nạp dữ liệu giả vào DB demo.
+ * sampleData = false (máy chủ dùng thật): bỏ đơn hàng giả (11), phòng ban và nhân viên giả (13); giữ phần là cấu hình: danh mục bước
+ * chuẩn bị SX (12), loại phòng ban và chức danh dùng chung (13).
+ */
+export async function runSeed({
+  resetPasswords = false,
+  syncMatrix = false,
+  coreOnly = false,
+  sampleData = env.seedSampleData,
+}: { resetPasswords?: boolean; syncMatrix?: boolean; coreOnly?: boolean; sampleData?: boolean } = {}) {
   if (!env.demoPassword) {
     throw new Error('Thiếu DEMO_PASSWORD trong backend/.env (mật khẩu chung cho tài khoản demo).');
   }
@@ -456,22 +466,25 @@ export async function runSeed({ resetPasswords = false, syncMatrix = false, core
     }
 
     if (!coreOnly) {
+      if (!sampleData) console.log('Bỏ qua dữ liệu mẫu (SEED_SAMPLE_DATA=false hoặc --no-sample-data): không nạp đơn hàng giả, phòng ban và nhân viên giả.');
       // 11. Dữ liệu đơn hàng giả trong MES_Order: chỉ cho nhà máy chưa có đơn hàng nào
-      const order = createDb<OrderDatabase>(env.db.orderName);
-      try {
-        const planner = userId.get('kehoach.a') ?? null;
-        const plannerName = users.find((u) => u.username === 'kehoach.a')?.fullName ?? 'Kế hoạch';
-        for (const b of branches.filter((x) => !x.isAggregate)) {
-          const has = await order.selectFrom('SalesOrder').select('Id').where('BranchCode', '=', b.code).executeTakeFirst();
-          if (has) continue;
-          const s = await seedOrders(order, b.code, planner, plannerName);
-          bump('đơn hàng', s.orders);
-          bump('PO', s.pos);
-          bump('kế hoạch xuất hàng', s.plans);
-          bump('dòng dàn chuyền', s.lines);
+      if (sampleData) {
+        const order = createDb<OrderDatabase>(env.db.orderName);
+        try {
+          const planner = userId.get('kehoach.a') ?? null;
+          const plannerName = users.find((u) => u.username === 'kehoach.a')?.fullName ?? 'Kế hoạch';
+          for (const b of branches.filter((x) => !x.isAggregate)) {
+            const has = await order.selectFrom('SalesOrder').select('Id').where('BranchCode', '=', b.code).executeTakeFirst();
+            if (has) continue;
+            const s = await seedOrders(order, b.code, planner, plannerName);
+            bump('đơn hàng', s.orders);
+            bump('PO', s.pos);
+            bump('kế hoạch xuất hàng', s.plans);
+            bump('dòng dàn chuyền', s.lines);
+          }
+        } finally {
+          await order.destroy();
         }
-      } finally {
-        await order.destroy();
       }
 
       // 12. Danh mục Cấu hình chuẩn bị SX trong MES_Sewing: chỉ thêm bước còn thiếu theo mã, không sửa bước đã có.
@@ -492,8 +505,9 @@ export async function runSeed({ resetPasswords = false, syncMatrix = false, core
         await sewing.destroy();
       }
 
-      // 13. Dữ liệu nhân sự giả trong MES_Hr: thêm phần còn thiếu theo mã; nhân viên chỉ khi bảng còn trống. Máy chưa tạo MES_Hr thì bỏ qua
-      for (const [k, v] of Object.entries(await seedHrIfReady())) bump(k, v);
+      // 13. Nhân sự trong MES_Hr: loại phòng ban, chức danh dùng chung luôn nạp; phòng ban, nhân viên giả chỉ khi có dữ liệu mẫu.
+      // Thêm phần còn thiếu theo mã; nhân viên chỉ khi bảng còn trống. Máy chưa tạo MES_Hr thì bỏ qua
+      for (const [k, v] of Object.entries(await seedHrIfReady({ sample: sampleData }))) bump(k, v);
     }
 
     await sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1, ModifiedAt = SYSUTCDATETIME() WHERE Id = 1`.execute(db);
@@ -501,7 +515,7 @@ export async function runSeed({ resetPasswords = false, syncMatrix = false, core
     if (Object.keys(stats).length) {
       await db
         .insertInto('SysAuditLog')
-        .values({ EntityType: 'System', ActionCode: 'SEED', NewValue: JSON.stringify({ by: 'scripts/seed.ts', syncMatrix, resetPasswords, stats, ...(scopeChanges.length ? { scopeChanges } : {}) }) } as any)
+        .values({ EntityType: 'System', ActionCode: 'SEED', NewValue: JSON.stringify({ by: 'scripts/seed.ts', syncMatrix, resetPasswords, sampleData: !coreOnly && sampleData, stats, ...(scopeChanges.length ? { scopeChanges } : {}) }) } as any)
         .execute();
     }
     console.log('Seed xong:', Object.keys(stats).length ? stats : 'không có gì mới');
@@ -511,7 +525,11 @@ export async function runSeed({ resetPasswords = false, syncMatrix = false, core
 }
 
 if (require.main === module) {
-  runSeed({ resetPasswords: process.argv.includes('--reset-passwords'), syncMatrix: process.argv.includes('--sync-matrix') }).catch((e) => {
+  runSeed({
+    resetPasswords: process.argv.includes('--reset-passwords'),
+    syncMatrix: process.argv.includes('--sync-matrix'),
+    ...(process.argv.includes('--no-sample-data') ? { sampleData: false } : {}),
+  }).catch((e) => {
     console.error('Seed lỗi:', e.message ?? e);
     process.exit(1);
   });
