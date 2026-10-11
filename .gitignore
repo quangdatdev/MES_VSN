@@ -41,3 +41,4 @@ docs/*
 
 # File khóa Word/Excel tạo ra khi đang mở tài liệu trong docs/
 ~$*
+docs/
