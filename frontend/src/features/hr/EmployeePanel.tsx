@@ -17,7 +17,8 @@ import { DepartmentSelect, Fact, LoadError } from './common';
 import { initialOf } from './EmployeeList';
 import type { EmployeeDetail, EmployeeField, EmployeeFieldGroup, EmployeeOptions, JobTitleOption, PickDepartment } from './types';
 
-export type EmployeeMode = { kind: 'view' } | { kind: 'edit' } | { kind: 'create'; departmentId: number | null };
+/** `seq`: số lượt bấm thêm, làm khóa của form (bấm lại Thêm nhân viên thì form dựng lại từ đầu) */
+export type EmployeeMode = { kind: 'view' } | { kind: 'edit' } | { kind: 'create'; departmentId: number | null; seq: number };
 
 const RESOURCE = 'hr.employee';
 const GROUPS: EmployeeFieldGroup[] = ['general', 'timekeeping', 'personal', 'contact'];
@@ -89,20 +90,24 @@ interface Props {
   mode: EmployeeMode;
   onMode: (mode: EmployeeMode) => void;
   onDirty: (dirty: boolean) => void;
-  onSaved: (d: EmployeeDetail) => void;
+  /** `created`: vừa thêm mới (khác với lưu khi sửa) */
+  onSaved: (d: EmployeeDetail, created: boolean) => void;
   /** Phòng ban đang chọn trên cây, để gợi ý thêm nhân viên vào đó */
   scope: PickDepartment | null;
+  onCreate: () => void;
+  /** Bỏ chọn nhân viên (nhân viên trên URL không còn) */
+  onClose: () => void;
 }
 
 /** Khung bên phải của Thông tin nhân sự: hồ sơ đang chọn (xem theo 4 nhóm), form thêm, sửa */
-export function EmployeePanel({ id, options, mode, onMode, onDirty, onSaved, scope }: Props) {
+export function EmployeePanel({ id, options, mode, onMode, onDirty, onSaved, scope, onCreate, onClose }: Props) {
   const policy = useFieldPolicy(RESOURCE);
   const canCreate = useCan('hr.employee:create');
   const canUpdate = useCan('hr.employee:update');
   const detail = useEmployee(mode.kind === 'create' ? null : id);
 
   if (mode.kind === 'create') {
-    return <EmployeeForm key={`new-${mode.departmentId}`} detail={null} departmentId={mode.departmentId} options={options} policy={policy} onCancel={() => onMode({ kind: 'view' })} onDirty={onDirty} onSaved={onSaved} />;
+    return <EmployeeForm key={`new-${mode.seq}`} detail={null} departmentId={mode.departmentId} options={options} policy={policy} onCancel={() => onMode({ kind: 'view' })} onDirty={onDirty} onSaved={onSaved} />;
   }
   if (id == null) {
     return (
@@ -112,21 +117,39 @@ export function EmployeePanel({ id, options, mode, onMode, onDirty, onSaved, sco
           Chọn phòng ban trên cây để xem nhân viên của phòng ban đó và mọi phòng ban con.
         </Text>
         {canCreate && (
-          <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => onMode({ kind: 'create', departmentId: scope?.isActive ? scope.id : null })}>
+          <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={onCreate}>
             {scope?.isActive ? `Thêm nhân viên vào ${scope.name}` : 'Thêm nhân viên'}
           </Button>
         )}
       </div>
     );
   }
-  if (detail.isError) {
+  const d = detail.data;
+  // Đang sửa mà tải lại hồ sơ lỗi (mạng chập chờn): giữ form, không thay bằng thông báo lỗi
+  if (mode.kind === 'edit' && d) {
+    return <EmployeeForm key={`edit-${d.id}`} detail={d} departmentId={null} options={options} policy={policy} onCancel={() => onMode({ kind: 'view' })} onDirty={onDirty} onSaved={onSaved} />;
+  }
+  if (detail.isError && !d) {
+    if (detail.error instanceof ApiError && detail.error.status === 404) {
+      return (
+        <div className="hr-panel hr-panel-empty">
+          <Text fw={600}>Không thấy nhân viên này.</Text>
+          <Text size="sm" c="dimmed">
+            Hồ sơ không còn hoặc bạn không được xem.
+          </Text>
+          <Button size="xs" variant="default" onClick={onClose}>
+            Bỏ chọn
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="hr-panel">
         <LoadError error={detail.error} what="hồ sơ nhân viên" onRetry={() => detail.refetch()} retrying={detail.isFetching} />
       </div>
     );
   }
-  if (!detail.data) {
+  if (!d) {
     return (
       <div className="hr-panel" aria-busy>
         <Group gap="md">
@@ -140,15 +163,11 @@ export function EmployeePanel({ id, options, mode, onMode, onDirty, onSaved, sco
       </div>
     );
   }
-  const d = detail.data;
-  if (mode.kind === 'edit') {
-    return <EmployeeForm key={`edit-${d.id}`} detail={d} departmentId={null} options={options} policy={policy} onCancel={() => onMode({ kind: 'view' })} onDirty={onDirty} onSaved={onSaved} />;
-  }
-
   const left = d.employmentStatus === 2;
   const names = Object.fromEntries(options.fields.map((f) => [f.key, f.label]));
   return (
     <article className="hr-panel" aria-labelledby="hr-emp-title">
+      {detail.isError && <LoadError error={detail.error} what="hồ sơ nhân viên mới nhất" onRetry={() => detail.refetch()} retrying={detail.isFetching} />}
       <header className="hr-panel-head">
         <Group gap="md" wrap="nowrap" className="hr-panel-titles">
           <span className="hr-avatar hr-avatar-lg" aria-hidden>{initialOf(String(d.fullName ?? ''))}</span>
@@ -233,7 +252,7 @@ interface FormProps {
   policy: FieldPolicy;
   onCancel: () => void;
   onDirty: (dirty: boolean) => void;
-  onSaved: (d: EmployeeDetail) => void;
+  onSaved: (d: EmployeeDetail, created: boolean) => void;
 }
 
 /** Form thêm, sửa hồ sơ. Chỉ gửi phần đã đổi và được sửa (chính sách cột); máy chủ kiểm lại mọi quy tắc. */
@@ -297,7 +316,7 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
         // Số người đang làm trên cây phòng ban
         qc.invalidateQueries({ queryKey: HR_KEYS.departments }),
       ]);
-      onSaved(d);
+      onSaved(d, creating);
     },
     onError: (e) => {
       const fieldErrors = e instanceof ApiError ? (e.details as { fields?: Record<string, string> } | null)?.fields : undefined;
@@ -325,6 +344,8 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
       className: [!editable || masked ? 'field-readonly' : f.required ? 'field-required' : undefined, WIDE.has(f.key) ? 'hr-span-2' : undefined].filter(Boolean).join(' ') || undefined,
       description: masked ? 'Bị che theo phân quyền của bạn.' : !editable ? 'Chỉ xem theo phân quyền của bạn.' : undefined,
     };
+    // Ô bị Che: hiện *** dạng chữ (ô ngày, ô chọn không hiểu giá trị này)
+    if (masked) return <TextInput key={f.key} {...common} value={MASK} />;
     switch (f.type) {
       case 'date': {
         const endLocked = f.key === 'endDate' && status !== '2';

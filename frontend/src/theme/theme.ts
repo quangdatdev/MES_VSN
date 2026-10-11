@@ -1,11 +1,12 @@
 import { Button, createTheme, type MantineColorsTuple } from '@mantine/core';
 
-// Bảng màu theo docs/nguon/orange-cart-DESIGN.md. Shade 6 (primaryShade) là màu chuẩn của mỗi thang.
+// Màu chủ đạo lấy từ logo Vietsun: cam #F39830 (chữ S, mặt trời) và xám than (chữ VIETSUN). Shade 6 (primaryShade) là màu chuẩn của mỗi thang.
 const brand: MantineColorsTuple = [
-  '#fff8eb', '#ffefcc', '#ffdf99', '#ffcc5c', '#ffb52e', '#ffa41c', '#ff9900', '#e88b00', '#c26f00', '#9a5800',
+  '#fff5ea', '#ffe8cf', '#fdd2a3', '#fabb72', '#f7a94e', '#f5a03e', '#f39830', '#e0851d', '#b86a12', '#8f520e',
 ];
-const navy: MantineColorsTuple = [
-  '#eef1f4', '#d9dfe6', '#b3bfcc', '#8a9cb0', '#5f7690', '#485a70', '#37475a', '#232f3e', '#19222d', '#0f151c',
+// Shade 5, 6 là hai màu xám của chữ trong logo; 7, 8 là dải menu con và thanh bên/thanh trên
+const charcoal: MantineColorsTuple = [
+  '#f3f3f3', '#e4e4e5', '#c9c9ca', '#a9a9aa', '#888889', '#686869', '#4d4e4e', '#3f4041', '#2b2c2d', '#1a1b1b',
 ];
 // Màu chữ liên kết và trạng thái được chọn (#007185)
 const link: MantineColorsTuple = [
@@ -34,7 +35,7 @@ const mono = '"JetBrains Mono", ui-monospace, Consolas, monospace';
 export const theme = createTheme({
   primaryColor: 'brand',
   primaryShade: { light: 6, dark: 5 },
-  colors: { brand, navy, link, teal, red, orange, gray, dark },
+  colors: { brand, charcoal, link, teal, red, orange, gray, dark },
   black: '#0f1111',
   autoContrast: true,
   luminanceThreshold: 0.35,
@@ -68,7 +69,7 @@ export const theme = createTheme({
     Button: Button.extend({
       defaultProps: { size: 'sm', radius: 'md' },
       styles: { root: { fontWeight: 400 } },
-      // Nút chính: vàng gold như "Add to Cart", chữ đen. Nút màu khác (đỏ xóa, xám) giữ nguyên.
+      // Nút chính: cam Vietsun, chữ đen (chữ trắng trên cam chỉ đạt 2,3:1). Nút màu khác (đỏ xóa, xám) giữ nguyên.
       vars: (_theme, props) => {
         const variant = props.variant ?? 'filled';
         // Nút phụ: chữ đen; riêng nút xóa (color="red") giữ chữ đỏ để không lẫn với nút thường
@@ -77,10 +78,10 @@ export const theme = createTheme({
         if (variant !== 'filled' || (props.color && props.color !== 'brand')) return { root: {} };
         return {
           root: {
-            '--button-bg': 'linear-gradient(#ffe24d, #ffd814 2px)',
-            '--button-hover': '#f7ca00',
+            '--button-bg': '#f39830',
+            '--button-hover': '#e0851d',
             '--button-color': '#0f1111',
-            '--button-bd': '1px solid #fcd200',
+            '--button-bd': '1px solid #e0851d',
           },
         };
       },

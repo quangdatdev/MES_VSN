@@ -36,7 +36,7 @@ export function HomePage() {
         <Title order={1}>{greeting()}, {user?.fullName}</Title>
         <Group gap="xs" mt={8}>
           {roles.map((r) => (
-            <Badge key={r.code} variant="light" color="navy" size="md">{r.name}</Badge>
+            <Badge key={r.code} variant="light" color="charcoal" size="md">{r.name}</Badge>
           ))}
           <Text c="dimmed" size="sm">đang làm việc ở {branch?.name}</Text>
         </Group>

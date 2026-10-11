@@ -46,7 +46,7 @@ const UserRow = memo(function UserRow({ u, self, canEdit, canGrant, roleName, br
       <td className="mono" style={{ fontWeight: 600 }}>{u.username}</td>
       <td>{u.fullName}{self && <Badge ml={6} size="xs" variant="light">Bạn</Badge>}</td>
       <td>{u.roleIds.length ? u.roleIds.map((r) => <Badge key={r} mr={4} size="sm" variant="light" color="gray">{roleName(r)}</Badge>) : <Text c="dimmed" size="sm">Chưa gán</Text>}</td>
-      <td>{u.branchIds.length ? u.branchIds.map((b) => <Badge key={b} mr={4} size="sm" variant="outline" color="navy" className="mono">{branchCode(b)}</Badge>) : <Text c="dimmed" size="sm">Chưa gán</Text>}</td>
+      <td>{u.branchIds.length ? u.branchIds.map((b) => <Badge key={b} mr={4} size="sm" variant="outline" color="charcoal" className="mono">{branchCode(b)}</Badge>) : <Text c="dimmed" size="sm">Chưa gán</Text>}</td>
       <td>
         {!u.isActive ? (
           <Badge color="gray" variant="filled" size="sm">Đã khóa</Badge>

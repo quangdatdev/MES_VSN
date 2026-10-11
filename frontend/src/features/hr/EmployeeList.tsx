@@ -1,8 +1,10 @@
 import { Badge, Button, Pagination, SegmentedControl, Select, Skeleton, Stack, Text } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
-import { memo } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import { DebouncedTextInput } from '../../components/DebouncedInput';
 import { fmtNum } from '../../lib/format';
+import { useClampPage } from '../../lib/useUrlParams';
+import { useCan } from '../../shell/permissions';
 import { EMPLOYEE_PAGE_SIZE, useEmployees, type EmployeeQuery } from './api';
 import { LoadError } from './common';
 import type { EmployeeCard, JobTitleOption } from './types';
@@ -12,6 +14,8 @@ export const initialOf = (name: string) => (name.trim().split(/\s+/).pop()?.[0] 
 
 interface Props {
   filter: EmployeeQuery;
+  /** Đã biết phạm vi (phòng ban trên URL đã đổi ra Id): chưa biết thì chưa tải */
+  ready: boolean;
   onFilter: (patch: Partial<EmployeeQuery>) => void;
   /** Tên phạm vi đang lọc ("Tất cả phòng ban" hoặc tên phòng ban) */
   scopeName: string;
@@ -26,10 +30,17 @@ interface Props {
  * Danh sách nhân viên dạng thẻ bên dưới cây phòng ban: tìm (mã, mã chấm công, tên, email, chức danh; không dấu), lọc chức danh,
  * tình trạng; mới tạo lên trước, 20 thẻ mỗi trang. Lọc, tìm chạy trên máy chủ (ADR 0012 mục 10).
  */
-export function EmployeeList({ filter, onFilter, scopeName, titles, selectedId, onSelect, onClear }: Props) {
-  const list = useEmployees(filter);
+export function EmployeeList({ filter, ready, onFilter, scopeName, titles, selectedId, onSelect, onClear }: Props) {
+  const canCreate = useCan('hr.employee:create');
+  // Trang truyền hàm mới mỗi lần vẽ: thẻ nhận hàm ổn định để memo của thẻ có tác dụng (quy-tac J.5)
+  const latest = useRef(onSelect);
+  latest.current = onSelect;
+  const select = useCallback((id: number) => latest.current(id), []);
+  const list = useEmployees(filter, ready);
   const data = list.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / EMPLOYEE_PAGE_SIZE)) : 1;
+  // Link cũ có trang vượt trang cuối: về trang cuối, không báo nhầm là chưa có nhân viên
+  useClampPage(data, filter.page, EMPLOYEE_PAGE_SIZE, (page) => onFilter({ page }));
   const filtered = !!filter.q.trim() || filter.jobTitleId != null || filter.status != null;
   return (
     <div className="hr-list">
@@ -67,7 +78,7 @@ export function EmployeeList({ filter, onFilter, scopeName, titles, selectedId, 
           onChange={(v) => onFilter({ status: v === 'all' ? null : Number(v), page: 1 })}
           data={[
             { value: 'all', label: 'Tất cả' },
-            { value: '1', label: 'Đang làm' },
+            { value: '1', label: 'Đang làm việc' },
             { value: '2', label: 'Nghỉ việc' },
           ]}
         />
@@ -83,11 +94,16 @@ export function EmployeeList({ filter, onFilter, scopeName, titles, selectedId, 
         ) : data && data.items.length === 0 ? (
           <Stack gap={6} p="sm" align="flex-start">
             <Text size="sm">{filtered ? 'Không có nhân viên khớp bộ lọc.' : 'Chưa có nhân viên nào trong phạm vi này.'}</Text>
+            {!filtered && canCreate && (
+              <Text size="sm" c="dimmed">
+                Bấm Thêm nhân viên hoặc Nhập từ Excel ở đầu trang để thêm.
+              </Text>
+            )}
             {filtered && <Button size="xs" variant="default" onClick={onClear}>Xóa lọc</Button>}
           </Stack>
         ) : (
           <ul className="hr-cards" aria-label="Danh sách nhân viên">
-            {data?.items.map((e) => <Card key={e.id} e={e} selected={e.id === selectedId} onSelect={onSelect} />)}
+            {data?.items.map((e) => <Card key={e.id} e={e} selected={e.id === selectedId} onSelect={select} />)}
           </ul>
         )}
       </div>

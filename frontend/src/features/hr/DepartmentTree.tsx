@@ -1,6 +1,6 @@
-import { ActionIcon, Menu, Tree, useTree, type TreeNodeData } from '@mantine/core';
+import { ActionIcon, Menu, Tree, useTree, type RenderTreeNodePayload, type TreeNodeData } from '@mantine/core';
 import { IconBuildingFactory2, IconChevronRight, IconDots } from '@tabler/icons-react';
-import { memo, useCallback, useMemo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { buildTree, filterTree, type DeptTreeNode, type FlatDept } from './tree';
 
 export type TreeDept = FlatDept & { activeEmployees?: number; branchCode?: string | null; isFinalLevel?: boolean };
@@ -34,16 +34,29 @@ export function DepartmentTree<T extends TreeDept>({ items, selectedId, onSelect
   const filtered = useMemo(() => filterTree(roots, search), [roots, search]);
   const data = useMemo(() => toData(filtered.roots), [filtered]);
   const searching = !!search.trim();
-  // Đang tìm: mở các nhánh có kết quả, không ghi đè các nút người dùng đã mở (xóa chữ tìm là về như cũ)
-  const shown = useMemo(() => (searching ? Object.fromEntries([...filtered.open].map((id) => [String(id), true])) : expanded), [searching, filtered, expanded]);
+  // Đang tìm: mở các nhánh có kết quả, không ghi đè các nút người dùng đã mở (xóa chữ tìm là về như cũ). Mở, thu gọn trong lúc
+  // tìm chỉ áp cho kết quả của chữ tìm đó.
+  const [found, setFound] = useState<{ for: typeof filtered; state: Record<string, boolean> } | null>(null);
+  const shown = useMemo(() => {
+    if (!searching) return expanded;
+    if (found?.for === filtered) return found.state;
+    return Object.fromEntries([...filtered.open].map((id) => [String(id), true]));
+  }, [searching, filtered, expanded, found]);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const tree = useTree({
     expandedState: shown,
-    onExpandedStateChange: (next) => {
-      if (!searching) onExpandedChange(next);
-    },
+    onExpandedStateChange: (next) => (searching ? setFound({ for: filtered, state: next }) : onExpandedChange(next)),
     selectedState: selectedId == null ? [] : [String(selectedId)],
   });
+
+  // Trang truyền hàm mới mỗi lần vẽ: dòng cây gọi qua ref để nhận hàm ổn định, memo của dòng mới có tác dụng (quy-tac J.5)
+  const latest = useRef({ tree, onSelect });
+  latest.current = { tree, onSelect };
+  const toggle = useCallback((value: string) => latest.current.tree.toggleExpanded(value), []);
+  const pick = useCallback((id: number) => latest.current.onSelect(id), []);
+  const openMenu = useCallback((value: string, open: boolean) => setMenuFor(open ? value : null), []);
+  // Mantine dựng style mới cho mỗi dòng mỗi lần vẽ: giữ một object cho mỗi nội dung
+  const styles = useRef(new Map<string, CSSProperties>());
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
     const li = (e.target as HTMLElement).closest<HTMLElement>('[role=treeitem]');
@@ -59,9 +72,12 @@ export function DepartmentTree<T extends TreeDept>({ items, selectedId, onSelect
   };
 
   const renderNode = useCallback(
-    ({ node, expanded: open, hasChildren, elementProps, selected }: { node: TreeNodeData; expanded: boolean; hasChildren: boolean; elementProps: Record<string, unknown> & { className: string; onClick: (e: MouseEvent) => void }; selected: boolean }) => {
+    ({ node, expanded: open, hasChildren, elementProps, selected }: RenderTreeNodePayload) => {
       const item = byId.get(node.value);
       if (!item) return null;
+      const key = JSON.stringify(elementProps.style);
+      let style = styles.current.get(key);
+      if (!style) styles.current.set(key, (style = elementProps.style));
       return (
         <DeptRow
           item={item}
@@ -69,16 +85,16 @@ export function DepartmentTree<T extends TreeDept>({ items, selectedId, onSelect
           hasChildren={hasChildren}
           selected={selected}
           elementClass={elementProps.className}
-          style={elementProps.style as CSSProperties}
-          onToggle={() => tree.toggleExpanded(node.value)}
-          onPick={() => onSelect(item.id)}
+          style={style}
+          onToggle={toggle}
+          onPick={pick}
           menu={menu}
           menuOpen={menuFor === node.value}
-          onMenu={(o) => setMenuFor(o ? node.value : null)}
+          onMenu={openMenu}
         />
       );
     },
-    [byId, tree, onSelect, menu, menuFor],
+    [byId, toggle, pick, menu, menuFor, openMenu],
   );
 
   if (data.length === 0) return <div className="hr-tree-empty">{empty}</div>;
@@ -93,7 +109,7 @@ export function DepartmentTree<T extends TreeDept>({ items, selectedId, onSelect
       selectOnClick={false}
       allowRangeSelection={false}
       onKeyDown={onKeyDown}
-      renderNode={renderNode as never}
+      renderNode={renderNode}
     />
   );
 }
@@ -105,16 +121,17 @@ interface RowProps<T extends TreeDept> {
   selected: boolean;
   elementClass: string;
   style: CSSProperties;
-  onToggle: () => void;
-  onPick: () => void;
+  onToggle: (value: string) => void;
+  onPick: (id: number) => void;
   menu?: (item: T) => ReactNode;
   menuOpen: boolean;
-  onMenu: (open: boolean) => void;
+  onMenu: (value: string, open: boolean) => void;
 }
 
 /** Một dòng của cây: mũi tên mở/thu, tên, nhà máy (nếu gắn), số người đang làm, nút ⋯ */
 const DeptRow = memo(function DeptRow<T extends TreeDept>({ item, open, hasChildren, selected, elementClass, style, onToggle, onPick, menu, menuOpen, onMenu }: RowProps<T>) {
   const count = item.activeEmployees;
+  const value = String(item.id);
   return (
     <div
       className={`${elementClass} hr-tree-row`}
@@ -123,7 +140,7 @@ const DeptRow = memo(function DeptRow<T extends TreeDept>({ item, open, hasChild
       data-inactive={!item.isActive || undefined}
       onClick={(e) => {
         e.stopPropagation();
-        onPick();
+        onPick(item.id);
         (e.currentTarget.closest('[role=treeitem]') as HTMLElement | null)?.focus();
       }}
       onContextMenu={
@@ -131,23 +148,29 @@ const DeptRow = memo(function DeptRow<T extends TreeDept>({ item, open, hasChild
           ? (e) => {
               e.preventDefault();
               e.stopPropagation();
-              onMenu(true);
+              onMenu(value, true);
             }
           : undefined
       }
     >
-      <span
-        className="hr-tree-toggle"
-        data-open={open || undefined}
-        aria-hidden
-        onClick={(e) => {
-          if (!hasChildren) return;
-          e.stopPropagation();
-          onToggle();
-        }}
-      >
-        {hasChildren && <IconChevronRight size={15} />}
-      </span>
+      {hasChildren ? (
+        // Bàn phím mở, thu gọn bằng mũi tên trái phải trên nút cây: nút này chỉ cho chuột, chạm, không là điểm dừng của Tab
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden
+          className="hr-tree-toggle"
+          data-open={open || undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(value);
+          }}
+        >
+          <IconChevronRight size={15} />
+        </button>
+      ) : (
+        <span className="hr-tree-toggle" aria-hidden />
+      )}
       <span className="hr-tree-name" title={`${item.name} (${item.code})`}>
         {item.name}
       </span>
@@ -164,7 +187,7 @@ const DeptRow = memo(function DeptRow<T extends TreeDept>({ item, open, hasChild
         </span>
       )}
       {menu && (
-        <Menu opened={menuOpen} onChange={onMenu} position="bottom-end" withinPortal>
+        <Menu opened={menuOpen} onChange={(o) => onMenu(value, o)} position="bottom-end" withinPortal>
           <Menu.Target>
             <ActionIcon
               variant="subtle"

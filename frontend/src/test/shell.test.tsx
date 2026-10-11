@@ -54,15 +54,26 @@ describe('Giao diện chỉ ẩn/hiện theo quyền từ server', () => {
     expect(screen.getByText('trang đăng nhập')).toBeInTheDocument();
   });
 
-  it('có token tạm (chưa chọn nhà máy) thì chuyển sang chọn nhà máy', () => {
+  it('có token tạm (chưa chọn nhà máy) thì về màn đăng nhập, nơi có bước chọn nhà máy', () => {
     useSession.getState().set({ status: 'preauth' });
     renderAt('/', (
       <Routes>
-        <Route path="/select-branch" element={<div>chọn nhà máy</div>} />
+        <Route path="/login" element={<div>chọn nhà máy</div>} />
         <Route element={<RequireReady />}><Route path="*" element={<div>nội dung</div>} /></Route>
       </Routes>
     ));
     expect(screen.getByText('chọn nhà máy')).toBeInTheDocument();
+  });
+
+  it('có token tạm thì /login vẫn mở (bước chọn nhà máy), không chuyển hướng vòng', () => {
+    useSession.getState().set({ status: 'preauth' });
+    renderAt('/login', (
+      <Routes>
+        <Route path="/" element={<div>trang chủ</div>} />
+        <Route element={<AnonymousOnly />}><Route path="/login" element={<div>đăng nhập</div>} /></Route>
+      </Routes>
+    ));
+    expect(screen.getByText('đăng nhập')).toBeInTheDocument();
   });
 
   it('đã đăng nhập thì /login đưa về trang chủ', () => {

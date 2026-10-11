@@ -158,7 +158,7 @@ function ScopeTab({ info, blocked }: { info: UserAccessInfo; blocked: string | n
               ) : (
                 <Group gap={4} mt={4}>
                   {a.scopes.map((s) => (
-                    <Badge key={s.id} variant="light" color={s.dimension === 'LINE' ? 'orange' : s.dimension === 'FACTORY' ? 'navy' : 'link'}>
+                    <Badge key={s.id} variant="light" color={s.dimension === 'LINE' ? 'orange' : s.dimension === 'FACTORY' ? 'charcoal' : 'link'}>
                       {s.dimension === 'FACTORY' ? 'Nhà máy' : s.dimension === 'LINE' ? 'Chuyền' : s.dimension === 'OWNER' ? 'Người tạo' : s.dimension}: {s.mode === 'OWN' ? 'chỉ của mình' : s.mode === 'ALL' ? 'tất cả' : s.orgUnitName ? `${s.orgUnitName} (${s.orgUnitCode})` : s.value}
                     </Badge>
                   ))}
@@ -613,7 +613,7 @@ function EffectiveTab({ userId }: { userId: number }) {
         <>
           <Group gap={6}>
             <Text size="sm">Vai trò có hiệu lực:</Text>
-            {e.roles.length ? e.roles.map((r) => <Badge key={r.code} variant="light" color="navy">{r.name}</Badge>) : <Text size="sm" c="dimmed">không có</Text>}
+            {e.roles.length ? e.roles.map((r) => <Badge key={r.code} variant="light" color="charcoal">{r.name}</Badge>) : <Text size="sm" c="dimmed">không có</Text>}
           </Group>
           {e.screens.length === 0 ? (
             <Text c="dimmed" size="sm">Ở nhà máy này, người này không dùng được màn hình nào.</Text>

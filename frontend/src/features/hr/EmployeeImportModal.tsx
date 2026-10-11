@@ -28,9 +28,12 @@ const BOM = String.fromCharCode(0xfeff);
 /** Ô CSV: thêm ngoặc kép khi có dấu phẩy, ngoặc kép, xuống dòng */
 const csvCell = (s: string) => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
 
+/** Cột phải điền khi nhập: tình trạng bỏ trống là đang làm việc nên không bắt buộc (file mẫu và lưới nói giống nhau) */
+const importRequired = (f: EmployeeField) => f.required && f.key !== 'employmentStatus';
+
 /** File mẫu: dòng tiêu đề cùng thứ tự cột với lưới (kèm BOM để Excel đọc đúng tiếng Việt) */
 export function templateCsv(fields: EmployeeField[]): string {
-  return `${BOM}${fields.map((f) => csvCell(f.required ? `${f.label} *` : f.label)).join(',')}\r\n`;
+  return `${BOM}${fields.map((f) => csvCell(importRequired(f) ? `${f.label} *` : f.label)).join(',')}\r\n`;
 }
 
 function downloadTemplate(fields: EmployeeField[]) {
@@ -125,7 +128,7 @@ export function EmployeeImportModal({ fields, onClose }: { fields: EmployeeField
     () => [
       ...cols.map((f) =>
         sheetText<ImportRow>(f.key, f.label, {
-          required: f.required && f.key !== 'employmentStatus',
+          required: importRequired(f),
           minWidth: f.key === 'fullName' || f.key === 'currentAddress' ? 200 : f.type === 'date' ? 120 : 140,
           error: (r) => !!stateOf(r)?.errors[f.key],
         }),
@@ -152,7 +155,10 @@ export function EmployeeImportModal({ fields, onClose }: { fields: EmployeeField
     [cols, checked, keys],
   );
 
-  const close = () => confirmDiscard(dirty, onClose, 'Các dòng đã dán chưa lưu sẽ mất.');
+  // Đang lưu thì chưa đóng: kết quả từng dòng về sau mới biết dòng nào còn lại
+  const close = () => {
+    if (!commit.isPending) confirmDiscard(dirty, onClose, 'Các dòng đã dán chưa lưu sẽ mất.');
+  };
   const busy = preview.isPending || commit.isPending;
   const label = new Map(cols.map((f) => [f.key, f.label]));
 
@@ -205,7 +211,7 @@ export function EmployeeImportModal({ fields, onClose }: { fields: EmployeeField
               : `${filled.length} dòng: ${valid.length} hợp lệ, ${bad.length} có lỗi${unchecked.length ? `, ${unchecked.length} chưa kiểm` : ''}.`}
           </Text>
           <Group gap="xs">
-            <Button variant="default" onClick={close}>
+            <Button variant="default" disabled={commit.isPending} onClick={close}>
               {dirty ? 'Hủy' : 'Đóng'}
             </Button>
             <ActionButton variant={valid.length && !unchecked.length ? 'default' : 'filled'} loading={preview.isPending} blockedReason={filled.length ? (busy ? 'Đang xử lý.' : null) : 'Dán dữ liệu vào lưới trước.'} onClick={runCheck}>

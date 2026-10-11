@@ -14,24 +14,15 @@ function Splash() {
 export function RequireReady() {
   const status = useSession((s) => s.status);
   if (status === 'booting') return <Splash />;
-  if (status === 'anonymous') return <Navigate to="/login" replace />;
-  if (status === 'preauth') return <Navigate to="/select-branch" replace />;
+  // Token tạm (chưa chọn nhà máy): bước chọn nhà máy nằm ở màn đăng nhập
+  if (status === 'anonymous' || status === 'preauth') return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
-/** Trang đăng nhập: đã đăng nhập thì vào thẳng ứng dụng. */
+/** Trang đăng nhập (gồm bước chọn nhà máy): đã chọn nhà máy thì vào thẳng ứng dụng. */
 export function AnonymousOnly() {
   const status = useSession((s) => s.status);
   if (status === 'booting') return <Splash />;
   if (status === 'ready') return <Navigate to="/" replace />;
-  if (status === 'preauth') return <Navigate to="/select-branch" replace />;
-  return <Outlet />;
-}
-
-/** Chọn nhà máy: dùng được khi vừa đăng nhập (token tạm) hoặc khi đang đổi nhà máy. */
-export function BranchAccess() {
-  const status = useSession((s) => s.status);
-  if (status === 'booting') return <Splash />;
-  if (status === 'anonymous') return <Navigate to="/login" replace />;
   return <Outlet />;
 }

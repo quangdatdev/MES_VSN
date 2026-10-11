@@ -22,6 +22,10 @@ vi.mock('../lib/api', async (importOriginal) => {
   return { ...mod, api: vi.fn() };
 });
 
+// Bố cục điện thoại bật theo từng bài
+const view = vi.hoisted(() => ({ mobile: false }));
+vi.mock('../lib/useMobile', () => ({ useMobile: () => view.mobile }));
+
 const dept = (id: number, code: string, name: string, parentId: number | null, path: string, typeId: number, extra: Partial<Department> = {}): Department => ({
   id,
   code,
@@ -134,6 +138,12 @@ const inputOf = (label: RegExp) => screen.getByLabelText(label, { selector: 'inp
 /** Nút cây theo Id: tên đọc của nút gồm cả chữ của các nút con nên không tìm theo tên được */
 const node = (id: number) => document.querySelector<HTMLElement>(`li[role="treeitem"][data-value="${id}"]`);
 
+/** Đóng hộp hỏi bằng Tiếp tục sửa: số hộp đang mở đếm chung cả module, hộp còn mở thì hộp hỏi ở bài sau bị bỏ qua */
+async function keepEditing() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Tiếp tục sửa' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Tiếp tục sửa' })).not.toBeInTheDocument());
+}
+
 function Url() {
   const l = useLocation();
   return <output data-testid="url">{l.search}</output>;
@@ -177,6 +187,8 @@ describe('Cây phòng ban, chức danh theo phòng ban (hàm thuần)', () => {
   });
 
   it('file mẫu: tiêu đề cùng thứ tự cột của lưới, cột bắt buộc có dấu *', () => {
+    // Tình trạng bỏ trống là đang làm việc: file mẫu không đánh dấu bắt buộc, như lưới (review 5.8 lượt 2 L6)
+    expect(templateCsv([FIELDS[5]])).toBe(`${String.fromCharCode(0xfeff)}Tình trạng\r\n`);
     expect(templateCsv(FIELDS.slice(0, 3))).toBe('﻿Mã nhân viên *,Tên nhân viên *,Giới tính *\r\n');
   });
 });
@@ -186,6 +198,7 @@ describe('Sơ đồ tổ chức', () => {
   const posts: unknown[] = [];
   beforeEach(() => {
     signIn(HR_ALL);
+    view.mobile = false;
     items = [...DEPTS];
     posts.length = 0;
     vi.mocked(api).mockReset();
@@ -256,14 +269,51 @@ describe('Sơ đồ tổ chức', () => {
     // Nút đã mở trước khi lưu vẫn mở
     expect(node(5)).toBeInTheDocument();
   });
+
+  it('thêm phòng ban con dưới phòng ban chưa có con: lưu xong mở nhánh, chọn phòng ban mới (review 5.8 lượt 2 M1)', async () => {
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=KT');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Phòng Kế toán' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Thao tác với Phòng Kế toán' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Thêm phòng ban con' }));
+    await waitFor(() => expect(inputOf(/Mã phòng ban/)).toBeInTheDocument());
+    fireEvent.change(inputOf(/Mã phòng ban/), { target: { value: 'KT-TH' } });
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Tổ tổng hợp' } });
+    fireEvent.click(inputOf(/Loại phòng ban/));
+    fireEvent.click(await screen.findByRole('option', { name: /Bộ phận/ }));
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Tổ tổng hợp' })).toBeInTheDocument();
+    expect(posts[0]).toMatchObject({ code: 'KT-TH', parentId: 3 });
+    await waitFor(() => expect(node(9)).toHaveAttribute('aria-selected', 'true'));
+  });
+
+  it('điện thoại: đổi tab giữa chừng không mất form đang sửa, vẫn hỏi trước khi bỏ (review 5.8 lượt 2 HIGH)', async () => {
+    view.mobile = true;
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=KT');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Phòng Kế toán' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await waitFor(() => expect(inputOf(/Tên phòng ban/)).toHaveValue('Phòng Kế toán'));
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Phòng Kế toán tổng hợp' } });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Cây phòng ban' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Đang sửa' }));
+    expect(inputOf(/Tên phòng ban/)).toHaveValue('Phòng Kế toán tổng hợp');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Cây phòng ban' }));
+    fireEvent.click(node(2)!.querySelector('.hr-tree-row')!);
+    expect(await screen.findByText('Bỏ các thay đổi chưa lưu?')).toBeInTheDocument();
+    await keepEditing();
+  });
 });
 
 describe('Thông tin nhân sự', () => {
   const people = [card(10, 'Trần Thị Mai', 3, 2), card(11, 'Lê Văn Nam', 5, 3)];
   beforeEach(() => {
     signIn(HR_ALL);
+    view.mobile = false;
     vi.mocked(api).mockReset();
-    vi.mocked(api).mockImplementation((async (path: string) => {
+    vi.mocked(api).mockImplementation((async (path: string, opts?: { method?: string; body?: Record<string, unknown> }) => {
+      if (opts?.method === 'PUT') return { ...detailOf(people.find((p) => path.endsWith(`/${p.id}`))!), ...opts.body };
       if (path === '/hr/employees/options') return OPTIONS;
       if (path.startsWith('/hr/employees?') || path === '/hr/employees') return { items: people, total: people.length, page: 1, pageSize: 20 };
       const m = /^\/hr\/employees\/(\d+)$/.exec(path);
@@ -292,5 +342,58 @@ describe('Thông tin nhân sự', () => {
     fireEvent.click(within(list).getByRole('button', { name: /Lê Văn Nam/ }));
     expect(await screen.findByText('Bỏ các thay đổi chưa lưu?')).toBeInTheDocument();
     expect(screen.getByTestId('url')).toHaveTextContent('emp=10');
+    await keepEditing();
+  });
+  it('điện thoại: sửa dở, sang tab Danh sách rồi quay lại vẫn còn phần đang nhập (review 5.8 lượt 2 HIGH)', async () => {
+    view.mobile = true;
+    renderPage(<EmployeesPage />, '/hr/employees?emp=10');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Trần Thị Mai' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await waitFor(() => expect(inputOf(/Tên nhân viên/)).toBeInTheDocument());
+    fireEvent.change(inputOf(/Tên nhân viên/), { target: { value: 'Trần Thị Mai Anh' } });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Danh sách' }));
+    fireEvent.click(within(screen.getByRole('list', { name: 'Danh sách nhân viên' })).getByRole('button', { name: /Lê Văn Nam/ }));
+    expect(await screen.findByText('Bỏ các thay đổi chưa lưu?')).toBeInTheDocument();
+    await keepEditing();
+    fireEvent.click(screen.getByRole('radio', { name: 'Đang sửa' }));
+    expect(inputOf(/Tên nhân viên/)).toHaveValue('Trần Thị Mai Anh');
+  });
+
+  it('bấm Thêm nhân viên lần nữa và bỏ thay đổi: form về trống, không còn hỏi lại (review 5.8 lượt 2 M2)', async () => {
+    renderPage(<EmployeesPage />, '/hr/employees?dept=KT');
+    expect(await screen.findByRole('button', { name: 'Thêm nhân viên vào Phòng Kế toán' })).toBeInTheDocument();
+    // Nút ở đầu trang (nút gửi của form cũng tên Thêm nhân viên)
+    const add = screen.getByRole('button', { name: 'Thêm nhân viên' });
+    fireEvent.click(add);
+    await waitFor(() => expect(inputOf(/Tên nhân viên/)).toBeInTheDocument());
+    fireEvent.change(inputOf(/Tên nhân viên/), { target: { value: 'Người mới' } });
+
+    fireEvent.click(add);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bỏ thay đổi' }));
+    await waitFor(() => expect(inputOf(/Tên nhân viên/)).toHaveValue(''));
+    fireEvent.click(within(screen.getByRole('list', { name: 'Danh sách nhân viên' })).getByRole('button', { name: /Lê Văn Nam/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Lê Văn Nam' })).toBeInTheDocument();
+  });
+
+  it('sửa xong giữ phòng ban đang lọc (review 5.8 lượt 2 M4)', async () => {
+    renderPage(<EmployeesPage />, '/hr/employees?dept=VP&emp=10');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Trần Thị Mai' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await waitFor(() => expect(inputOf(/Tên nhân viên/)).toBeInTheDocument());
+    fireEvent.change(inputOf(/Tên nhân viên/), { target: { value: 'Trần Thị Mai Anh' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(vi.mocked(api)).toHaveBeenCalledWith('/hr/employees/10', expect.objectContaining({ method: 'PUT', body: { fullName: 'Trần Thị Mai Anh' } })));
+    expect(await screen.findByRole('button', { name: 'Sửa' })).toBeInTheDocument();
+    expect(screen.getByTestId('url')).toHaveTextContent('dept=VP');
+    expect(screen.getByTestId('url')).toHaveTextContent('emp=10');
+  });
+
+  it('mở link có phòng ban: chỉ tải danh sách theo phòng ban đó, không tải cả công ty trước (review 5.8 lượt 2 M5)', async () => {
+    renderPage(<EmployeesPage />, '/hr/employees?dept=KT');
+    expect(await screen.findByRole('list', { name: 'Danh sách nhân viên' })).toBeInTheDocument();
+    const lists = vi.mocked(api).mock.calls.map(([p]) => String(p)).filter((p) => p.startsWith('/hr/employees?'));
+    expect(lists.length).toBeGreaterThan(0);
+    expect(lists.every((p) => p.includes('departmentId=3'))).toBe(true);
   });
 });

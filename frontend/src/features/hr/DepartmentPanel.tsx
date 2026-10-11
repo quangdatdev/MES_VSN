@@ -17,7 +17,8 @@ import { DepartmentSelect, DissolvedBadge, Fact, Trail } from './common';
 import { ancestorsOf, subtreeIds, type FlatDept } from './tree';
 import type { Department } from './types';
 
-export type PanelMode = { kind: 'view' } | { kind: 'edit' } | { kind: 'create'; parentId: number | null; typeId: number | null };
+/** `seq`: số lượt bấm thêm, làm khóa của form (chọn lại đúng thao tác thêm thì form dựng lại từ đầu) */
+export type PanelMode = { kind: 'view' } | { kind: 'edit' } | { kind: 'create'; parentId: number | null; typeId: number | null; seq: number };
 
 const CODE = /^[A-Z0-9-]{1,20}$/;
 const CODE_HINT = 'Chữ hoa không dấu, số, gạch ngang; tối đa 20 ký tự.';
@@ -63,8 +64,8 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
     onError: (e) => toastError(e, 'Chưa khôi phục được'),
   });
 
-  if (mode.kind !== 'view') {
-    return <DepartmentForm key={mode.kind === 'edit' ? `e${dept?.id}` : `c${mode.parentId}-${mode.typeId}`} dept={mode.kind === 'edit' ? dept : null} mode={mode} items={items} onCancel={() => onMode({ kind: 'view' })} onDirty={onDirty} onSaved={refresh} />;
+  if (mode.kind === 'create' || (mode.kind === 'edit' && dept)) {
+    return <DepartmentForm key={mode.kind === 'edit' ? `e${dept!.id}` : `c${mode.seq}`} dept={mode.kind === 'edit' ? dept : null} mode={mode} items={items} onCancel={() => onMode({ kind: 'view' })} onDirty={onDirty} onSaved={refresh} />;
   }
   if (!dept) {
     return (
@@ -103,7 +104,7 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
           </Title>
           <Group gap={6} wrap="wrap">
             <span className="mono hr-code">{dept.code}</span>
-            <Badge size="sm" variant="light" color="navy">{dept.typeName}</Badge>
+            <Badge size="sm" variant="light" color="charcoal">{dept.typeName}</Badge>
             {dept.branchCode && (
               <Badge size="sm" variant="light" color="link" leftSection={<IconBuildingFactory2 size={12} />}>
                 Nhà máy {dept.branchCode}
@@ -308,7 +309,7 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
           {...form.getInputProps('branchCode')}
         />
         <DateField label="Ngày thành lập" value={form.values.establishedDate} onChange={(v) => form.setFieldValue('establishedDate', v)} />
-        <NumberInput label="Thứ tự" description="Thứ tự giữa các phòng ban cùng cấp." min={0} max={1_000_000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
+        <NumberInput label="Thứ tự trong cùng cấp" description="Số nhỏ đứng trước." min={0} max={1_000_000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
       </div>
       {!creating && dept && !dept.isActive && (
         <Text size="sm" c="dimmed" mt="sm">
@@ -322,9 +323,9 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
 /** Người quản lý: tìm trên máy chủ theo mã hoặc tên (không nạp hết nhân viên vào ô chọn) */
 function ManagerSelect({ value, current, onChange }: { value: number | null; current: Department | null; onChange: (id: number | null) => void }) {
   const canSearch = useCan('hr.employee:view');
-  const [search, setSearch] = useState('');
-  const [q] = useDebouncedValue(search, 300);
   const [opened, setOpened] = useState(false);
+  const [term, setTerm] = useState('');
+  const [q] = useDebouncedValue(term, 300);
   const managers = useManagerOptions(q, value, opened || value != null);
   const data = useMemo(() => {
     const list = (managers.data ?? []).map((m) => ({ value: String(m.id), label: `${m.code} – ${m.fullName}` }));
@@ -343,7 +344,8 @@ function ManagerSelect({ value, current, onChange }: { value: number | null; cur
       data={data}
       value={value == null ? null : String(value)}
       onChange={(v) => onChange(v ? Number(v) : null)}
-      onSearchChange={setSearch}
+      // Chọn xong, ô tự đặt chữ tìm bằng tên người vừa chọn: đó không phải chữ gõ, không gửi lên máy chủ để tìm
+      onSearchChange={(text) => setTerm(data.some((m) => m.label === text) ? '' : text)}
       // Máy chủ đã lọc theo chữ gõ (không dấu): không lọc thêm ở trình duyệt
       filter={({ options }) => options}
       onDropdownOpen={() => setOpened(true)}

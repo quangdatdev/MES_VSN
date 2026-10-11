@@ -34,17 +34,21 @@ export default function OrgChartPage() {
   const canCreate = useCan('hr.orgchart:create');
 
   const [mode, setMode] = useState<PanelMode>(VIEW);
+  // Mỗi lần bấm thêm là một form mới (chọn lại đúng thao tác thêm đang mở, bỏ thay đổi thì form về trống)
+  const createSeq = useRef(0);
   const [dirty, setDirty] = useState(false);
   useLeaveGuard(dirty);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<'tree' | 'detail'>(code ? 'detail' : 'tree');
 
-  // Mở đường tới một phòng ban (sau khi chọn từ đường dẫn, sau khi lưu), giữ các nút người dùng đã mở
+  // Mở đường tới một phòng ban (sau khi chọn từ đường dẫn, sau khi lưu), giữ các nút người dùng đã mở. Đi theo cha chứ không theo
+  // chính nó: lúc lưu xong, cây trong tay còn là cây cũ, chưa có phòng ban vừa thêm, còn ghi cha cũ của phòng ban vừa chuyển.
   const reveal = useCallback(
-    (id: number) => {
-      const path = ancestorsOf(byId, id);
-      if (path.length) setExpanded((s) => ({ ...s, ...Object.fromEntries(path.map((p) => [String(p.id), true])) }));
+    (d: { parentId: number | null }) => {
+      if (d.parentId == null) return;
+      const ids = [d.parentId, ...ancestorsOf(byId, d.parentId).map((p) => p.id)];
+      setExpanded((s) => ({ ...s, ...Object.fromEntries(ids.map((id) => [String(id), true])) }));
     },
     [byId],
   );
@@ -55,12 +59,12 @@ export default function OrgChartPage() {
     opened.current = true;
     const roots = items.filter((d) => d.parentId == null || !byId.has(d.parentId));
     setExpanded(Object.fromEntries(roots.map((r) => [String(r.id), true])));
-    if (selected) reveal(selected.id);
+    if (selected) reveal(selected);
   }, [items, byId, selected, reveal]);
 
   const go = (d: Department | null) => {
     patch({ dept: d?.code ?? null });
-    if (d) reveal(d.id);
+    if (d) reveal(d);
     if (mobile && d) setTab('detail');
   };
   const pick = useCallback(
@@ -70,7 +74,7 @@ export default function OrgChartPage() {
         setDirty(false);
         const d = byId.get(id);
         patch({ dept: d?.code ?? null });
-        if (d) reveal(d.id);
+        if (d) reveal(d);
         if (mobile) setTab('detail');
       }),
     [dirty, byId, patch, reveal, mobile],
@@ -79,7 +83,7 @@ export default function OrgChartPage() {
     (parentId: number | null, typeId: number | null) =>
       confirmDiscard(dirty, () => {
         setDirty(false);
-        setMode({ kind: 'create', parentId, typeId });
+        setMode({ kind: 'create', parentId, typeId, seq: ++createSeq.current });
         if (mobile) setTab('detail');
       }),
     [dirty, mobile],
@@ -87,6 +91,15 @@ export default function OrgChartPage() {
   const changeMode = (m: PanelMode) => {
     if (m.kind === 'view') setDirty(false);
     setMode(m);
+  };
+  // Đang sửa một phòng ban đã giải thể mà ẩn phòng ban giải thể: phòng ban đó rời cây, hỏi trước khi bỏ form
+  const toggleDissolved = (on: boolean) => {
+    if (on || mode.kind !== 'edit' || selected?.isActive !== false) return patch({ all: on ? '1' : null });
+    confirmDiscard(dirty, () => {
+      setMode(VIEW);
+      setDirty(false);
+      patch({ all: null });
+    });
   };
 
   const menu = useMemo(() => {
@@ -118,8 +131,19 @@ export default function OrgChartPage() {
         </Button>
       </Menu.Target>
       <Menu.Dropdown>
-        {selected?.isActive && !selected.isFinalLevel && <Menu.Item onClick={() => startCreate(selected.id, null)}>Phòng ban con của {selected.name}</Menu.Item>}
-        {selected?.isActive && <Menu.Item onClick={() => startCreate(selected.parentId, selected.departmentTypeId)}>Cùng cấp với {selected.name}</Menu.Item>}
+        {selected && (
+          <>
+            <Menu.Item disabled={!selected.isActive || selected.isFinalLevel} onClick={() => startCreate(selected.id, null)}>
+              Phòng ban con của {selected.name}
+              {selected.isFinalLevel ? ' (loại cấp cuối, không có con)' : ''}
+            </Menu.Item>
+            <Menu.Item disabled={!selected.isActive} onClick={() => startCreate(selected.parentId, selected.departmentTypeId)}>
+              Cùng cấp với {selected.name}
+            </Menu.Item>
+            {!selected.isActive && <Menu.Label>{selected.name} đã giải thể: khôi phục trước khi thêm.</Menu.Label>}
+            <Menu.Divider />
+          </>
+        )}
         <Menu.Item onClick={() => startCreate(null, null)}>Phòng ban gốc (không có cha)</Menu.Item>
       </Menu.Dropdown>
     </Menu>
@@ -138,13 +162,14 @@ export default function OrgChartPage() {
       </div>
       <div className="hr-side-scroll">
         {tree.isError && <LoadError error={tree.error} what="sơ đồ tổ chức" onRetry={() => tree.refetch()} retrying={tree.isFetching} />}
+        {/* Lỗi tải lần đầu (chưa có dữ liệu): chỉ báo lỗi, không hiện "Chưa có phòng ban nào" */}
         {tree.isPending ? (
           <Stack gap={8} p="xs" aria-busy>
             {Array.from({ length: 7 }, (_, i) => (
               <Skeleton key={i} h={18} w={`${90 - (i % 3) * 18}%`} ml={(i % 3) * 18} />
             ))}
           </Stack>
-        ) : (
+        ) : tree.data ? (
           <DepartmentTree
             items={items}
             selectedId={selected?.id ?? null}
@@ -165,14 +190,14 @@ export default function OrgChartPage() {
               )
             }
           />
-        )}
+        ) : null}
       </div>
       <div className="hr-side-foot">
         <Checkbox
           size="sm"
           label="Hiện phòng ban đã giải thể"
           checked={showAll}
-          onChange={(e) => patch({ all: e.currentTarget.checked ? '1' : null })}
+          onChange={(e) => toggleDissolved(e.currentTarget.checked)}
         />
       </div>
     </aside>
@@ -223,7 +248,9 @@ export default function OrgChartPage() {
               { value: 'detail', label: editing ? (mode.kind === 'create' ? 'Thêm mới' : 'Đang sửa') : 'Thông tin' },
             ]}
           />
-          {tab === 'tree' ? side : panel}
+          {/* Ẩn khung không xem chứ không gỡ: đổi tab giữa chừng không mất form đang nhập, vẫn chặn rời màn */}
+          <div hidden={tab !== 'tree'}>{side}</div>
+          <div hidden={tab !== 'detail'}>{panel}</div>
         </Stack>
       ) : (
         <div className="hr-layout" ref={layout} style={{ ['--hr-side' as string]: `${width}px` }}>

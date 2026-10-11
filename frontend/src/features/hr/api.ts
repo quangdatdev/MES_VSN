@@ -66,10 +66,11 @@ export const EMPLOYEE_PAGE_SIZE = 20;
 
 export const employeeParams = (f: Omit<EmployeeQuery, 'page'>) => ({ departmentId: f.departmentId, q: f.q.trim(), jobTitleId: f.jobTitleId, status: f.status });
 
-export function useEmployees(f: EmployeeQuery) {
+export function useEmployees(f: EmployeeQuery, enabled = true) {
   return useQuery({
     queryKey: HR_KEYS.employeeList(f),
     queryFn: () => api<Paged<EmployeeCard>>(`/hr/employees${qs({ ...employeeParams(f), page: f.page, pageSize: EMPLOYEE_PAGE_SIZE })}`),
+    enabled,
     placeholderData: keepPreviousData,
   });
 }

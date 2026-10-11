@@ -2,6 +2,7 @@ import { Alert, Anchor, Badge, Button, Group, Select, Text, type ComboboxItem, t
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
 import { ApiError } from '../../lib/api';
+import { fmtDate } from '../../lib/format';
 import { deptChoices, fold, type FlatDept } from './tree';
 
 /** Lỗi tải kèm nút Thử lại: vùng trống mà không có lời nào thì người dùng tưởng chưa có dữ liệu */
@@ -145,6 +146,9 @@ export function DepartmentSelect({ departments, value, onChange, skip, ...rest }
     },
     [byValue],
   );
+  // Mở ô đang có giá trị thì Mantine đặt chữ tìm bằng nhãn của giá trị đó và không lọc: như vậy chưa phải đang tìm
+  const selectedLabel = value == null ? undefined : data.find((o) => o.value === String(value))?.label;
+  const searching = !!fold(search) && search !== selectedLabel;
   return (
     <Select
       {...rest}
@@ -159,7 +163,6 @@ export function DepartmentSelect({ departments, value, onChange, skip, ...rest }
       renderOption={({ option, checked }) => {
         const c = byValue.get(option.value);
         if (!c) return option.label;
-        const searching = !!fold(search) && search !== option.label;
         return (
           <span className="hr-dept-option" style={{ paddingLeft: searching ? 0 : c.depth * 16 }} data-checked={checked || undefined}>
             <span className="hr-dept-option-name">{c.label}</span>
@@ -205,7 +208,7 @@ export function Trail({ items, onPick }: { items: { id: number; name: string }[]
 export function DissolvedBadge({ date }: { date: string | null }) {
   return (
     <Badge size="sm" variant="light" color="gray">
-      Đã giải thể{date ? ` ${date.split('-').reverse().join('/')}` : ''}
+      Đã giải thể{date ? ` ${fmtDate(date)}` : ''}
     </Badge>
   );
 }

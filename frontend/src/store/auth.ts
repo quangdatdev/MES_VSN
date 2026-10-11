@@ -54,11 +54,23 @@ export async function bootstrap() {
 
 export async function login(username: string, password: string) {
   const r = await api<LoginResponse>('/auth/login', { method: 'POST', body: { username, password }, token: null, noRefresh: true });
-  s().set({ status: 'preauth', preAuthToken: r.preAuthToken, choices: r.branches, pendingName: r.user.fullName, notice: null });
+  s().set({ status: 'preauth', preAuthToken: r.preAuthToken, choices: r.branches, pendingName: r.user.fullName, pendingUserId: r.user.id, notice: null });
   return r;
 }
 
 let switching = false;
+
+// Theo từng người: máy trong xưởng dùng chung, người sau không được chọn sẵn nhà máy của người trước
+const lastBranchKey = (userId: number) => `mes.branch.${userId}`;
+
+/** Nhà máy người này làm việc lần trước trên máy này, để chọn sẵn ở bước chọn nhà máy khi đăng nhập */
+export function lastBranchCode(userId: number): string | null {
+  try {
+    return localStorage.getItem(lastBranchKey(userId));
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Chọn hoặc đổi nhà máy. Sau khi chọn, server cấp access token mang BranchCode. Menu, quyền, chính sách cột nạp bằng token
@@ -85,10 +97,14 @@ export async function selectBranch(branch: Branch, applied?: () => void): Promis
       } catch (e) {
         // Máy chủ đã chuyển phiên (cookie refresh) sang nhà máy mới mà chưa nạp được quyền: giữ phiên cũ trên màn sẽ lệch
         // với máy chủ, nên kết thúc phiên kèm lý do. Phiên đã kết thúc (nhà máy bị thu hồi: api() đã ghi lý do) thì để
-        // nguyên. Lúc đăng nhập (token tạm) thì chưa có gì để lệch: chọn lại được.
+        // nguyên.
         if (state.status === 'ready' && s().status === 'ready') {
           const why = e instanceof TypeError ? ' (mất kết nối)' : '';
           endSession(`Đã chuyển sang ${r.branch.name} nhưng chưa tải được menu và quyền${why}. Hãy đăng nhập lại.`);
+        } else if (state.status === 'preauth') {
+          // Lúc đăng nhập: cookie refresh của phiên mới đã đặt mà chưa vào được ứng dụng. Thu hồi ngay, kẻo người dùng bỏ
+          // đi thì người sau trên máy dùng chung tải lại trang là vào phiên này. Token tạm còn hạn nên chọn lại được.
+          void api('/auth/logout', { method: 'POST', token: null, noRefresh: true }).catch(() => undefined);
         }
         throw e;
       }
@@ -101,17 +117,16 @@ export async function selectBranch(branch: Branch, applied?: () => void): Promis
     }
     queryClient.clear();
     s().set({ ...access, accessToken: r.accessToken, switchCount: s().switchCount + 1 });
+    try {
+      localStorage.setItem(lastBranchKey(access.user.id), r.branch.code);
+    } catch {
+      /* không lưu được thì lần sau chọn lại */
+    }
     applied?.();
     return true;
   } finally {
     switching = false;
   }
-}
-
-export async function fetchBranchChoices() {
-  const list = await api<Branch[]>('/me/branches');
-  s().set({ choices: list });
-  return list;
 }
 
 /** Đăng xuất dựa vào cookie refresh, nên vẫn thu hồi được phiên khi access token đã hết hạn. */

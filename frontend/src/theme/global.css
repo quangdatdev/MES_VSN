@@ -1,4 +1,4 @@
-/* Token theo docs/nguon/orange-cart-DESIGN.md. Màu cam #FF9900 chỉ dùng làm nền/vạch, không dùng cho chữ trên nền trắng. */
+/* Token theo docs/nguon/orange-cart-DESIGN.md, màu chủ đạo lấy từ logo Vietsun (ADR 0003). Cam #F39830 chỉ dùng làm nền/vạch, không dùng cho chữ trên nền trắng. */
 :root {
   --app-bg: #ffffff;
   --app-surface: #ffffff;
@@ -9,15 +9,15 @@
   --app-input-line: #888c8c;
   --app-ink: #0f1111;
   --app-ink-soft: #565959;
-  --app-nav: #232f3e;
-  --app-subnav: #37475a;
+  --app-nav: #2b2c2d;
+  --app-subnav: #3f4041;
   --app-nav-ink: #ffffff;
   --app-nav-ink-soft: #cccccc;
-  --brand: #ff9900;
-  --brand-hover: #e88b00;
-  --brand-soft: #fff8eb;
-  --search-btn: #febd69;
-  --search-btn-hover: #f3a847;
+  --brand: #f39830;
+  --brand-hover: #e0851d;
+  --brand-soft: #fff5ea;
+  --search-btn: #f8b562;
+  --search-btn-hover: #f39830;
   --link: #007185;
   --link-hover: #c7511f;
   --focus-glow: #c8f3fa;
@@ -140,7 +140,7 @@ a.text-link:hover {
   outline: 2px solid var(--link);
   outline-offset: 2px;
 }
-/* Nền navy (thanh bên, thanh trên, dải menu con): viền xanh chỉ đạt 1,7–2,4:1, mục đang mở còn đè mất quầng sáng. Dùng viền trắng. */
+/* Nền xám than (thanh bên, thanh trên, dải menu con): viền xanh khó thấy, mục đang mở còn đè mất quầng sáng. Dùng viền trắng. */
 :is(.rail, .topbar, .tabbar) .focus-ring:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 1px;
@@ -158,7 +158,7 @@ a.text-link:hover {
   box-shadow: 0 0 0 3px var(--focus-glow);
 }
 
-/* ===== Khung ứng dụng: thanh bên + thanh trên cùng màu navy, dải menu con, vùng nội dung ===== */
+/* ===== Khung ứng dụng: thanh bên + thanh trên cùng màu xám than, dải menu con, vùng nội dung ===== */
 .app {
   height: 100dvh;
   display: flex;
@@ -395,7 +395,7 @@ a.text-link:hover {
   }
 }
 
-/* Thanh trên cùng: navy, ô tìm kiếm chiếm phần lớn chiều ngang */
+/* Thanh trên cùng: xám than, ô tìm kiếm chiếm phần lớn chiều ngang */
 .topbar {
   height: 56px;
   flex-shrink: 0;
@@ -532,7 +532,7 @@ a.text-link:hover {
   background: var(--search-btn-hover);
 }
 
-/* Dải menu con: nền navy nhạt, chữ trắng 14px, mục đang mở có vạch cam */
+/* Dải menu con: nền xám than nhạt, chữ trắng 14px, mục đang mở có vạch cam */
 .tabbar {
   flex-shrink: 0;
   height: 40px;
@@ -670,97 +670,135 @@ a.text-link:hover {
 }
 
 /* ===== Đăng nhập ===== */
+/* Bên trái: nền xám than, mặt trời trong logo mọc từ mép dưới. Bên phải: logo trên nền trắng như bản gốc, form gọn. */
 .login-shell {
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  background: var(--app-surface);
-}
-.login-art {
-  background: var(--app-nav);
-  color: #fff;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 40px 48px;
-  box-shadow: inset -4px 0 0 var(--brand);
-}
-.login-form-wrap {
-  display: grid;
-  place-items: center;
-  padding: 32px 20px;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
   background: var(--app-bg);
 }
-.login-card {
+.login-art {
+  position: relative;
+  overflow: hidden;
+  background: var(--app-nav);
+  color: #fff;
+  padding: 56px 56px 0;
+}
+.login-art-title,
+.login-art-sub {
+  position: relative;
+  z-index: 1;
+}
+.login-art-title {
+  margin: 0;
+  font-size: 44px;
+  line-height: 48px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.login-art-sub {
+  margin: 8px 0 0;
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--app-nav-ink-soft);
+}
+/* Vòng xám kim loại bao lõi cam: hình mặt trời trên chữ U của logo, mọc từ mép dưới */
+.login-sun {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(620px, 82%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, 54%);
+  background: radial-gradient(circle at 50% 14%, #ededee 0%, #a9a9aa 28%, #686869 52%, #4d4e4e 74%);
+  box-shadow: 0 0 120px 0 rgba(243, 152, 48, 0.16);
+  animation: login-sunrise 1400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.login-sun::before {
+  content: '';
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 26%, #f9b866 0%, #f39830 42%, #dc7e16 100%);
+  box-shadow: inset 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+@keyframes login-sunrise {
+  from {
+    transform: translate(-50%, 76%);
+  }
+  to {
+    transform: translate(-50%, 54%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-sun {
+    animation: none;
+  }
+}
+.login-main {
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+}
+.login-panel {
   width: 100%;
-  max-width: 380px;
-  border: 1px solid var(--app-line);
+  max-width: 360px;
+}
+.login-panel .mantine-Input-wrapper {
+  --input-height-md: 40px;
+}
+.login-panel .mantine-Button-root {
+  --button-height-md: 40px;
+}
+.login-logo {
+  display: block;
+  height: 56px;
+  width: auto;
+  margin-bottom: 40px;
+}
+/* Chữ xám của logo không đọc được trên nền tối: đặt logo trên nền trắng */
+:root[data-mantine-color-scheme='dark'] .login-logo {
+  box-sizing: content-box;
+  padding: 6px 12px;
   border-radius: 8px;
-  padding: 20px 24px 24px;
-  background: var(--app-surface);
-}
-.demo-user {
-  border: 1px solid var(--app-line);
-  border-radius: 4px;
-  background: var(--app-surface);
-  color: var(--app-ink);
-  padding: 4px 8px;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.demo-user:hover {
-  border-color: var(--link);
-  background: #f3fcff;
-  color: var(--link);
-}
-:root[data-mantine-color-scheme='dark'] .demo-user:hover {
-  background: rgba(79, 195, 214, 0.1);
+  background: #fff;
 }
 @media (max-width: 860px) {
   .login-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
-  /* Điện thoại: chỉ giữ dải logo để form đăng nhập nằm trong màn đầu */
-  .login-art-copy {
-    display: none;
-  }
+  /* Điện thoại: dải tên hệ thống thấp, mặt trời lấp ló bên phải, để form nằm trọn trong màn đầu */
   .login-art {
-    padding: 20px 24px;
-    gap: 16px;
-    box-shadow: inset 0 -4px 0 var(--brand);
+    min-height: 132px;
+    padding: 24px 24px 0;
   }
-}
-
-/* ===== Thẻ chọn nhà máy ===== */
-.branch-tile {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: var(--app-surface);
-  border: 1px solid var(--app-line);
-  border-radius: 8px;
-  padding: 16px 18px;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  transition: border-color 120ms, box-shadow 120ms;
-}
-.branch-tile:hover:not(:disabled) {
-  border-color: var(--app-line-strong);
-  box-shadow: var(--elev-1);
-}
-.branch-tile[aria-current='true'] {
-  border-color: var(--link);
-  box-shadow: 0 0 0 1px var(--link);
-}
-.branch-tile.aggregate {
-  background: var(--app-nav);
-  color: #fff;
-  border-color: var(--app-nav);
-}
-.branch-tile.aggregate:hover:not(:disabled) {
-  background: var(--app-subnav);
+  .login-art-title {
+    font-size: 28px;
+    line-height: 32px;
+  }
+  .login-art-sub {
+    margin-top: 4px;
+    font-size: 15px;
+    line-height: 20px;
+  }
+  /* Nhỏ và lệch hẳn sang phải: điện thoại 320px vẫn không đè lên dòng chữ */
+  .login-sun {
+    left: auto;
+    right: -70px;
+    width: 180px;
+    transform: translateY(58%);
+    animation: none;
+  }
+  .login-main {
+    place-items: start center;
+    padding: 28px 20px 40px;
+  }
+  .login-logo {
+    height: 44px;
+    margin-bottom: 24px;
+  }
 }
 
 /* ===== Bảng dữ liệu mật độ cao ===== */
@@ -1787,7 +1825,7 @@ a:hover > .home-tile .home-tile-name {
   color: #0b1117;
 }
 .board-bar[data-preview] {
-  background: repeating-linear-gradient(135deg, var(--brand), var(--brand) 6px, #ffb84d 6px, #ffb84d 12px);
+  background: repeating-linear-gradient(135deg, var(--brand), var(--brand) 6px, #f8b562 6px, #f8b562 12px);
   color: #0f1111;
   outline: 2px dashed #0f1111;
   outline-offset: -2px;
@@ -1845,7 +1883,7 @@ a:hover > .home-tile .home-tile-name {
   background: var(--app-line-strong);
 }
 .board-legend i[data-k='preview'] {
-  background: repeating-linear-gradient(135deg, var(--brand), var(--brand) 3px, #ffb84d 3px, #ffb84d 6px);
+  background: repeating-linear-gradient(135deg, var(--brand), var(--brand) 3px, #f8b562 3px, #f8b562 6px);
   outline: 1px dashed var(--app-ink);
 }
 .board-legend i[data-k='today'] {
@@ -2695,8 +2733,12 @@ body[data-resizing="horizontal"] {
   align-items: center;
   justify-content: center;
   height: 22px;
+  padding: 0;
+  border: 0;
   border-radius: 4px;
+  background: none;
   color: var(--app-ink-soft);
+  cursor: pointer;
 }
 .hr-tree-toggle:not(:empty):hover {
   background: var(--app-section);
@@ -2761,6 +2803,22 @@ body[data-resizing="horizontal"] {
     opacity: 1;
   }
 }
+/* Màn cảm ứng: dòng cây, mũi tên, nút ba chấm đủ lớn để chạm trúng (quy-tac H.2); chạm lệch sang tên là chọn phòng ban */
+@media (pointer: coarse) {
+  .hr-tree .hr-tree-row {
+    min-height: 40px;
+  }
+  .hr-tree-toggle {
+    flex-basis: 32px;
+    height: 32px;
+  }
+  .hr-tree .hr-tree-more {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+}
 .hr-tree-empty {
   padding: 10px 8px;
 }
@@ -2815,6 +2873,7 @@ body[data-resizing="horizontal"] {
 .hr-panel {
   min-height: 100%;
   padding: 16px 20px 20px;
+  container-type: inline-size;
   border: 1px solid var(--app-line);
   border-radius: 8px;
   background: var(--app-surface);
@@ -2946,6 +3005,13 @@ body[data-resizing="horizontal"] {
 .hr-span-2 {
   grid-column: span 2;
 }
+/* Khung hẹp chỉ đủ một cột (điện thoại, kéo cột trái rộng): ô rộng không chiếm 2 cột, không tạo cột ngầm làm tràn ngang */
+@container (max-width: 459.98px) {
+  .hr-span-2,
+  .hr-fact[data-wide] {
+    grid-column: auto;
+  }
+}
 
 /* Danh sách nhân viên dạng thẻ */
 .hr-cards {
@@ -3011,7 +3077,7 @@ body[data-resizing="horizontal"] {
   color: var(--app-ink-soft);
   font-size: 12px;
 }
-/* Chữ cái đầu của tên gọi trong vòng tròn navy nhạt */
+/* Chữ cái đầu của tên gọi trong vòng tròn xám than nhạt */
 .hr-avatar {
   display: inline-flex;
   flex: 0 0 34px;
@@ -3020,8 +3086,8 @@ body[data-resizing="horizontal"] {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--mantine-color-navy-0);
-  color: var(--mantine-color-navy-7);
+  background: var(--mantine-color-charcoal-0);
+  color: var(--mantine-color-charcoal-7);
   font-weight: 700;
 }
 .hr-card[data-left] .hr-avatar {
@@ -3081,9 +3147,5 @@ body[data-resizing="horizontal"] {
   }
   .hr-panel {
     padding: 12px;
-  }
-  .hr-span-2,
-  .hr-fact[data-wide] {
-    grid-column: auto;
   }
 }

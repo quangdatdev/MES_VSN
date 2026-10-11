@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { IconBuildingCommunity, IconDownload, IconFileImport, IconPlus, IconSearch } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DebouncedTextInput } from '../../components/DebouncedInput';
+import { ActionButton } from '../../components/ActionButton';
 import { WorkPage } from '../../components/WorkPage';
 import { download } from '../../lib/api';
 import { confirmDiscard } from '../../lib/confirm';
@@ -37,6 +38,8 @@ export default function EmployeesPage() {
   const byId = useMemo(() => new Map(depts.map((d) => [d.id, d])), [depts]);
   const deptCode = params.get('dept');
   const scope = useMemo(() => (deptCode ? (depts.find((d) => d.code === deptCode) ?? null) : null), [depts, deptCode]);
+  // Phòng ban trên URL chỉ đổi ra Id khi có danh mục: chưa có thì chưa tải danh sách (khỏi tải cả công ty một lượt rồi bỏ)
+  const scopeReady = !deptCode || !!options.data;
   const empId = Number(params.get('emp')) || null;
   const canCreate = useCan('hr.employee:create');
   const canExport = useCan('hr.employee:export');
@@ -64,6 +67,8 @@ export default function EmployeesPage() {
   );
 
   const [mode, setMode] = useState<EmployeeMode>(VIEW);
+  // Mỗi lần bấm thêm là một form mới (bấm lại Thêm nhân viên, bỏ thay đổi thì form về trống)
+  const createSeq = useRef(0);
   const [dirty, setDirty] = useState(false);
   useLeaveGuard(dirty);
   const [importing, setImporting] = useState(false);
@@ -108,7 +113,7 @@ export default function EmployeesPage() {
     });
   const startCreate = () =>
     guard(() => {
-      setMode({ kind: 'create', departmentId: scope?.isActive ? scope.id : null });
+      setMode({ kind: 'create', departmentId: scope?.isActive ? scope.id : null, seq: ++createSeq.current });
       if (mobile) setTab('detail');
     });
 
@@ -153,6 +158,10 @@ export default function EmployeesPage() {
               <Skeleton key={i} h={16} w={`${85 - (i % 3) * 15}%`} />
             ))}
           </Stack>
+        ) : !options.data ? (
+          <div className="hr-tree-empty">
+            <LoadError error={options.error} what="danh mục phòng ban" onRetry={() => options.refetch()} retrying={options.isFetching} />
+          </div>
         ) : (
           <DepartmentTree
             items={depts}
@@ -172,8 +181,9 @@ export default function EmployeesPage() {
   const list = (
     <EmployeeList
       filter={filter}
+      ready={scopeReady}
       onFilter={setFilter}
-      scopeName={scope?.name ?? 'tất cả phòng ban'}
+      scopeName={scope?.name ?? (scopeReady ? 'tất cả phòng ban' : deptCode!)}
       titles={titles}
       selectedId={empId}
       onSelect={pickEmployee}
@@ -192,12 +202,18 @@ export default function EmployeesPage() {
       }}
       onDirty={setDirty}
       scope={scope}
-      onSaved={(d) => {
+      onCreate={startCreate}
+      onClose={() => {
+        patch({ emp: null });
+        if (mobile) setTab('list');
+      }}
+      onSaved={(d, created) => {
         setMode(VIEW);
         setDirty(false);
-        // Cây chuyển sang phòng ban của nhân viên vừa lưu, danh sách về trang 1 để thấy người vừa thêm
+        // Sửa: giữ bộ lọc, trang đang xem. Thêm: cây chuyển sang phòng ban của người vừa thêm, danh sách về trang 1 để thấy họ
+        if (!created) return;
         const dept = depts.find((x) => x.code === d.departmentCode);
-        patch({ emp: d.id, dept: dept?.code ?? null, page: null });
+        patch({ emp: d.id, dept: dept?.code ?? null, page: null, title: null });
         if (dept) reveal(dept.id);
       }}
     />
@@ -224,9 +240,9 @@ export default function EmployeesPage() {
         </Button>
       )}
       {canExport && (
-        <Button variant="default" leftSection={<IconDownload size={16} />} loading={exportFile.isPending} onClick={() => exportFile.mutate()}>
+        <ActionButton variant="default" leftSection={<IconDownload size={16} />} loading={exportFile.isPending} blockedReason={scopeReady ? null : 'Đang tải danh mục phòng ban.'} onClick={() => exportFile.mutate()}>
           Xuất file
-        </Button>
+        </ActionButton>
       )}
     </>
   );
@@ -249,7 +265,8 @@ export default function EmployeesPage() {
               { value: 'detail', label: mode.kind === 'create' ? 'Thêm mới' : mode.kind === 'edit' ? 'Đang sửa' : 'Hồ sơ' },
             ]}
           />
-          {tab === 'list' ? (
+          {/* Ẩn khung không xem chứ không gỡ: đổi tab giữa chừng không mất form đang nhập, vẫn chặn rời màn */}
+          <div hidden={tab !== 'list'}>
             <div className="hr-side hr-side-mobile">
               <Group px="sm" pt="sm">
                 <Button variant="default" size="xs" leftSection={<IconBuildingCommunity size={14} />} onClick={() => setDrawer(true)}>
@@ -258,9 +275,8 @@ export default function EmployeesPage() {
               </Group>
               {list}
             </div>
-          ) : (
-            panel
-          )}
+          </div>
+          <div hidden={tab !== 'detail'}>{panel}</div>
           <Drawer opened={drawer} onClose={() => setDrawer(false)} title="Chọn phòng ban" position="bottom" size="80%">
             {treeBlock}
           </Drawer>

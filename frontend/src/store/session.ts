@@ -14,6 +14,8 @@ interface SessionState {
   /** Danh sách nhà máy được chọn (từ login hoặc /me/branches) */
   choices: Branch[];
   pendingName: string | null;
+  /** Người vừa qua bước mật khẩu (token tạm), để chọn sẵn nhà máy lần trước của đúng người đó */
+  pendingUserId: number | null;
   /** Lý do phiên vừa kết thúc, hiện ở màn đăng nhập (bị đẩy ra, đăng xuất chưa báo được máy chủ). */
   notice: string | null;
   user: UserInfo | null;
@@ -40,6 +42,7 @@ const empty = {
   preAuthToken: null,
   choices: [] as Branch[],
   pendingName: null,
+  pendingUserId: null,
   notice: null,
   user: null,
   branch: null,
