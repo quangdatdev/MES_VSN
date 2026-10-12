@@ -1,6 +1,10 @@
 // Hàm dùng chung cho các script ghi dữ liệu demo (load-bravo-orders, simulate-board).
 import type { Kysely } from 'kysely';
+import { env } from '../src/config/env';
+import type { HrDatabase } from '../src/modules/hr/hr.types';
 import type { CoreDatabase } from '../src/platform/database/core.types';
+import { createDb } from '../src/platform/database/db';
+import { hrDbState } from './hr-data';
 
 /**
  * Chèn theo lô vừa giới hạn của SQL Server (2.100 tham số, 1.000 dòng mỗi câu); trả các cột OUTPUT nếu cần.
@@ -21,11 +25,43 @@ export async function insertAll(db: Kysely<any>, table: string, rows: Record<str
 /** Hôm nay theo giờ máy (không theo UTC): trạng thái đang may, đã xong tính theo ngày này */
 export const localToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 
-/** Nhà máy đang dùng (không gồm đơn vị tổng hợp), chuyền đang dùng của từng nhà máy và Id người lập mẫu, đọc từ MES_Core */
-export async function readLines(core: Kysely<CoreDatabase>) {
+/**
+ * Chuyền may đang dùng: bộ phận tích "Xưởng sản xuất", đang dùng (chưa giải thể), có ĐVCS ở MES_Hr (phase 5.10, cùng điều kiện
+ * với nguồn chuyền HrLineSource của backend). Bộ phận bỏ tích hay đã giải thể không nhận việc mới nên không xếp vào.
+ */
+function productionLines(hr: Kysely<HrDatabase>) {
+  return hr
+    .selectFrom('Department')
+    .select(['Code', 'BranchCode'])
+    .where('IsProductionWorkshop', '=', true)
+    .where('IsActive', '=', true)
+    .where('BranchCode', 'is not', null)
+    .orderBy('SortOrder')
+    .orderBy('Code')
+    .execute();
+}
+
+/**
+ * Nhà máy đang dùng (không gồm đơn vị tổng hợp) và Id người lập mẫu đọc từ MES_Core; chuyền đang dùng của từng nhà máy đọc từ
+ * MES_Hr. `hr`: kết nối MES_Hr có sẵn (test); không truyền thì mở rồi đóng ở đây. Chưa có MES_Hr hoặc chưa migrate thì không có
+ * chuyền nào (dàn chuyền để trống), không dừng script.
+ */
+export async function readLines(core: Kysely<CoreDatabase>, hr?: Kysely<HrDatabase>) {
   const branches = (await core.selectFrom('SysBranch').select('Code').where('IsActive', '=', true).where('IsAggregate', '=', false).orderBy('Code').execute()).map((b) => b.Code);
-  const lineRows = await core.selectFrom('SysOrgUnit').select(['Code', 'BranchCode']).where('OrgType', '=', 'LINE').where('IsActive', '=', true).orderBy('SortOrder').orderBy('Code').execute();
   const planner = await core.selectFrom('SysUser').select('Id').where('Username', '=', 'kehoach.a').executeTakeFirst();
+  let lineRows: { Code: string; BranchCode: string | null }[] = [];
+  if (hr) {
+    lineRows = await productionLines(hr);
+  } else if ((await hrDbState()) === 'ready') {
+    const own = createDb<HrDatabase>(env.db.hrName);
+    try {
+      lineRows = await productionLines(own);
+    } finally {
+      await own.destroy();
+    }
+  } else {
+    console.warn(`Chưa có database ${env.db.hrName} (hoặc chưa chạy migration): không có chuyền may nào, dàn chuyền để trống.`);
+  }
   return { branches, linesOf: (b: string) => lineRows.filter((l) => l.BranchCode === b).map((l) => l.Code), plannerId: planner?.Id ?? null };
 }
 

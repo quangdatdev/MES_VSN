@@ -498,6 +498,42 @@ describe('Phase 5.5: Kế hoạch chuẩn bị SX', () => {
     }
   });
 
+  it('chuyền mồ côi (mã không còn là bộ phận chuyền nào, Q4 phase 5.10): dòng hiện mã kèm "(chuyền cũ)", không lỗi; Tổ SX bị Che thì không trả tên', async () => {
+    // Như dòng dàn chuyền gắn chuyền cũ A01-L01… trên máy chủ trước 5.10: mã không phải bộ phận nào
+    const own = { BranchCode: 'A01', CreatedBy: null };
+    const orphan = (
+      (await order
+        .insertInto('ShipmentPlanLine')
+        .values({ ShipmentPlanId: fx.planId, LineCode: 'A01-T55X', Qty: 100, AvgOutput: 100, StartDate: FUTURE, ProductionDays: 1, OffDays: 0, EndDate: FUTURE, StatusCode: 'PLANNED', SortOrder: 9, ...own } as any)
+        .output('inserted.Id' as any)
+        .executeTakeFirstOrThrow()) as { Id: number }
+    ).Id;
+    try {
+      let t = await tokenFor('kehoach.a', 'A01');
+      const body = await mine(t);
+      const row = rowOf(body, 'A01-T55X');
+      expect(row).toMatchObject({ lineCode: 'A01-T55X', lineName: 'A01-T55X (chuyền cũ)' });
+      const l03 = ((await api().get('/api/v1/me/lines').set(auth(t)).expect(200)).body as { code: string; name: string }[]).find((l) => l.code === 'A01-L03');
+      expect(rowOf(body, 'A01-L03').lineName).toBe(l03!.name);
+      expect((await api().get(`/api/v1/sewing/prep/${row.id}`).set(auth(t)).expect(200)).body.lineName).toBe('A01-T55X (chuyền cũ)');
+      await api().get(`/api/v1/sewing/prep/export?style=${STYLE}&startFrom=2020-01-01`).set(auth(t)).expect(200);
+      // Tên suy ra được mã: Tổ SX bị Che thì không trả tên
+      try {
+        await plannerPolicy('lineCode', 'MASKED');
+        t = await tokenFor('kehoach.a', 'A01');
+        const masked = (await mine(t)).items as any[];
+        expect(masked.length).toBeGreaterThan(0);
+        expect(masked.every((r) => r.lineCode === '***' && r.lineName === undefined)).toBe(true);
+        expect((await api().get(`/api/v1/sewing/prep/${row.id}`).set(auth(t)).expect(200)).body).not.toHaveProperty('lineName');
+      } finally {
+        await plannerPolicy('lineCode', null);
+      }
+    } finally {
+      // Lần mở màn sau chép lại theo dàn chuyền: bản chép của dòng này mất theo
+      await order.deleteFrom('ShipmentPlanLine').where('Id', '=', orphan).execute();
+    }
+  });
+
   it('nhà máy khác: phiên A02 gọi dòng của A01 theo Id thì 404', async () => {
     const planner = await tokenFor('kehoach.a', 'A01');
     const row = (await mine(planner)).items[0];

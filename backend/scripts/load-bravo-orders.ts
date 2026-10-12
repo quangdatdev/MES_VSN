@@ -57,6 +57,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
     // Đơn hàng lấy hết theo BRAVO (ADR 0013): chép đủ ĐVCS của danh mục chi nhánh trước, để không bỏ đơn của ĐVCS MES chưa có
     const imported = await syncBranchesFromBravo(core);
     if (imported?.added.length) console.log(`Đã thêm đơn vị cơ sở theo BRAVO: ${imported.added.map((b) => b.code).join(', ')}.`);
+    // Chuyền của dàn chuyền mô phỏng: bộ phận tích "Xưởng sản xuất" ở MES_Hr (phase 5.10); reset-demo nạp lại sơ đồ tổ chức trước
     const { branches, linesOf, plannerId } = await readLines(core);
     if (!branches.length) throw new Error('MES_Core chưa có đơn vị cơ sở nào đang dùng: chạy npm run seed trước.');
     // Đơn vị tính BRAVO (mã không dấu) đổi sang tên theo danh mục Đơn vị tính (Quản trị › Danh mục hệ thống)

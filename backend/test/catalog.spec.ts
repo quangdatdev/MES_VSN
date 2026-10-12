@@ -155,8 +155,13 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await api().post('/api/v1/admin/catalogs/items/UNIT').set(auth(planner)).send({ code: 'TEST-P54', name: 'x' }).expect(403);
     await api().get('/api/v1/admin/catalogs/external/BRAVO.DM_Size/rows').set(auth(planner)).expect(403);
     const o = (await api().get('/api/v1/admin/catalogs').set(auth(admin)).expect(200)).body;
-    expect(o.mes.map((c: any) => c.code)).toEqual(['LINE', 'PROD_FACTORY', 'UNIT', 'ORDER_TYPE', 'SHIFT']);
+    // Chuyền may không còn là danh mục hệ thống (phase 5.10): chuyền là bộ phận tích "Xưởng sản xuất" ở Nhân sự
+    expect(o.mes.map((c: any) => c.code)).toEqual(['PROD_FACTORY', 'UNIT', 'ORDER_TYPE', 'SHIFT']);
     expect(o.mes.find((c: any) => c.code === 'PROD_FACTORY').kind).toBe('factory');
+    // Danh sách ĐVCS cho ô chọn của Nhà máy SX: mọi ĐVCS trừ đơn vị tổng hợp, kèm trạng thái
+    expect(o.branches.map((b: any) => b.code)).toEqual(expect.arrayContaining(['A01', 'A02', 'A03']));
+    expect(o.branches.map((b: any) => b.code)).not.toContain('A00');
+    expect(o.branches.find((b: any) => b.code === 'A01')).toMatchObject({ isActive: true, name: expect.any(String) });
     if (externalReady) expect(o.external.every((c: any) => c.code.startsWith('BRAVO.DM_'))).toBe(true);
   });
 
@@ -318,21 +323,16 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     }
   });
 
-  it('chuyền may: mã theo nhà máy, không trùng; thêm xong ô chọn chuyền thấy ngay, ngừng dùng thì mất', async () => {
-    const lines = async () => ((await api().get('/api/v1/me/lines').set(auth(planner)).expect(200)).body as any[]).map((l) => l.code);
-    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A02-T54', name: 'Sai nhà máy' }).expect(422);
-    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-L01', name: 'Trùng' }).expect(409);
-    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A00', code: 'A00-T54', name: 'Tổng hợp' }).expect(404);
-    const created = await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'a01-t54', name: 'Chuyền thử' }).expect(201);
-    expect(await lines()).toContain('A01-T54');
-    const row = await core.selectFrom('SysOrgUnit').select(['Path', 'OrgType', 'BranchCode']).where('Id', '=', created.body.id).executeTakeFirstOrThrow();
-    expect(row).toEqual({ Path: '/A01/A01-T54/', OrgType: 'LINE', BranchCode: 'A01' });
-
-    expect((await api().put(`/api/v1/admin/catalogs/lines/${created.body.id}`).set(auth(admin)).send({ code: 'A01-T55' }).expect(422)).body.error.code).toBe('CODE_IMMUTABLE');
-    await api().put(`/api/v1/admin/catalogs/lines/${created.body.id}`).set(auth(admin)).send({ isActive: false }).expect(200);
-    expect(await lines()).not.toContain('A01-T54');
-    const audit = (await api().get('/api/v1/admin/audit?entityType=SysOrgUnit&pageSize=2').set(auth(admin)).expect(200)).body.items;
-    expect(audit[0].actionCode).toBe('LINE_UPDATE');
+  it('danh mục chuyền may, xưởng cũ đã bỏ (phase 5.10): API cũ trả 404, không tạo nút nào ở cây tổ chức', async () => {
+    const nodes = async () => Number((await core.selectFrom('SysOrgUnit').select(sql<number>`COUNT(*)`.as('n')).executeTakeFirstOrThrow()).n);
+    const before = await nodes();
+    await api().get('/api/v1/admin/catalogs/lines').set(auth(admin)).expect(404);
+    await api().get('/api/v1/admin/catalogs/lines?q=A01&branch=A01').set(auth(admin)).expect(404);
+    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-T54', name: 'Chuyền thử' }).expect(404);
+    await api().put('/api/v1/admin/catalogs/lines/1').set(auth(admin)).send({ isActive: false }).expect(404);
+    await api().post('/api/v1/admin/catalogs/workshops').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-T54W', name: 'Xưởng thử' }).expect(404);
+    await api().put('/api/v1/admin/catalogs/workshops/1').set(auth(admin)).send({ isActive: false }).expect(404);
+    expect(await nodes()).toBe(before);
   });
 
   it('ca làm việc: ca qua đêm tính đúng giờ làm; nghỉ không dài hơn ca; giờ sai dạng => 422', async () => {
@@ -369,125 +369,53 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await api().get(`/api/v1/admin/catalogs/external/${encodeURIComponent('BRAVO.DM_Size;DROP TABLE x')}/rows`).set(auth(admin)).expect(404);
   });
 
-  it('ngừng dùng chuyền đã có kế hoạch: kế hoạch vẫn lưu được, không xếp việc mới vào chuyền; bảng dàn chuyền vẫn có hàng; người được giao chuyền mất dữ liệu ngay', async () => {
-    const line = (await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-T54B', name: 'Chuyền thử' }).expect(201)).body.id as number;
-    // Đơn hàng, kế hoạch riêng của bài này, một dòng dàn chuyền trên A01-T54B
-    const { plan, planLines: [planLine] } = await planOnLines('TEST-P54', ['A01-T54B']);
+  it('chuyền mồ côi (mã không còn là bộ phận chuyền nào, Q4 phase 5.10): hiện mã kèm "(chuyền cũ)", không lỗi; dòng cũ lưu lại được, không xếp việc mới vào; bảng dàn chuyền không có hàng', async () => {
+    // A01-T54B không phải bộ phận nào (như chuyền cũ A01-L01… trên máy chủ trước 5.10); A01-L12 là chuyền mẫu (bộ phận đã tích)
+    const { plan, planLines: [orphan, normal] } = await planOnLines('TEST-P54', ['A01-T54B', 'A01-L12']);
+    const l12 = ((await api().get('/api/v1/me/lines').set(auth(planner)).expect(200)).body as { code: string; name: string }[]).find((l) => l.code === 'A01-L12');
+    expect(l12).toBeDefined();
 
-    // Tài khoản Trưởng chuyền chỉ được giao chuyền A01-T54B
-    const leader = await leaderWith('test.p54', (orgId) => [{ dimension: 'FACTORY', mode: 'LIST', orgUnitId: orgId('A01') }, { dimension: 'LINE', mode: 'LIST', orgUnitId: orgId('A01-T54B') }]);
-    try {
-      const mine = async () => api().get('/api/v1/order/color-size?pageSize=50&style=TEST-P54-FIXTURE').set(auth(leader.token));
-      expect((await mine()).body.items.map((i: any) => i.lineCode)).toEqual(['A01-T54B']);
+    const detail = (await api().get(`/api/v1/order/line-plans/${plan}`).set(auth(planner)).expect(200)).body;
+    expect(detail.lines.map((x: any) => [x.lineCode, x.lineName])).toEqual([
+      ['A01-T54B', 'A01-T54B (chuyền cũ)'],
+      ['A01-L12', l12!.name],
+    ]);
+    // Phân bổ màu cỡ: danh sách, chi tiết, file xuất không lỗi
+    const items = (await api().get('/api/v1/order/color-size?pageSize=50&style=TEST-P54-FIXTURE').set(auth(planner)).expect(200)).body.items as any[];
+    expect(items.find((i) => i.id === orphan)).toMatchObject({ lineCode: 'A01-T54B', lineName: 'A01-T54B (chuyền cũ)' });
+    expect(items.find((i) => i.id === normal)).toMatchObject({ lineCode: 'A01-L12', lineName: l12!.name });
+    expect((await api().get(`/api/v1/order/color-size/${orphan}`).set(auth(planner)).expect(200)).body.lineName).toBe('A01-T54B (chuyền cũ)');
+    await api().get('/api/v1/order/color-size/export?style=TEST-P54-FIXTURE').set(auth(planner)).expect(200);
 
-      await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    // Lưu lại dòng cũ (không đổi chuyền) được; thêm việc mới hay chuyển dòng vào mã mồ côi thì không
+    const keep = { id: orphan, lineCode: 'A01-T54B', qty: 100, avgOutput: 50, startDate: '2026-12-01' };
+    const other = { id: normal, lineCode: 'A01-L12', qty: 100, avgOutput: 100, startDate: '2026-12-01' };
+    await api().put(`/api/v1/order/line-plans/${plan}/lines`).set(auth(planner)).send({ lines: [keep, other] }).expect(200);
+    const added = await api()
+      .put(`/api/v1/order/line-plans/${plan}/lines`)
+      .set(auth(planner))
+      .send({ lines: [keep, other, { lineCode: 'A01-T54B', qty: 50, avgOutput: 50, startDate: '2026-12-03' }] })
+      .expect(422);
+    expect(added.body.error.message).toContain('A01-T54B');
+    await api().put(`/api/v1/order/line-plans/${plan}/lines`).set(auth(planner)).send({ lines: [keep, { ...other, lineCode: 'A01-T54B' }] }).expect(422);
 
-      // Cùng phiên đăng nhập: quyền tính lại ngay, chuyền đã ngừng không còn trong phạm vi
-      const after = await mine();
-      expect(after.status === 403 || after.body.total === 0).toBe(true);
-
-      // Kế hoạch có dòng trên chuyền đã ngừng: lưu lại dòng cũ được, thêm dòng mới vào chuyền đó thì không
-      const detail = (await api().get(`/api/v1/order/line-plans/${plan}`).set(auth(planner)).expect(200)).body;
-      expect(detail.lines.map((x: any) => [x.lineCode, x.lineName])).toEqual([['A01-T54B', 'Chuyền thử']]);
-      const keep = { id: planLine, lineCode: 'A01-T54B', qty: 100, avgOutput: 50, startDate: '2026-12-01' };
-      await api().put(`/api/v1/order/line-plans/${plan}/lines`).set(auth(planner)).send({ lines: [keep] }).expect(200);
-      const added = await api()
-        .put(`/api/v1/order/line-plans/${plan}/lines`)
-        .set(auth(planner))
-        .send({ lines: [keep, { lineCode: 'A01-T54B', qty: 50, avgOutput: 50, startDate: '2026-12-03' }] })
-        .expect(422);
-      expect(added.body.error.message).toContain('đã ngừng dùng');
-      const board = (await api().get('/api/v1/order/line-plans/board?from=2026-11-25&to=2026-12-10').set(auth(planner)).expect(200)).body;
-      expect(board.lines.find((x: any) => x.code === 'A01-T54B')).toMatchObject({ isActive: false });
-      expect(board.bars.some((b: any) => b.planId === plan && b.lineCode === 'A01-T54B')).toBe(true);
-      // Chuyển dòng cũ sang chuyền đang dùng được; chuyển ngược vào chuyền đã ngừng thì không
-      await api().put(`/api/v1/order/line-plans/${plan}/lines`).set(auth(planner)).send({ lines: [{ ...keep, lineCode: 'A01-L12' }] }).expect(200);
-      const back = await api().put(`/api/v1/order/line-plans/${plan}/lines`).set(auth(planner)).send({ lines: [keep] }).expect(422);
-      expect(back.body.error.message).toContain('đã ngừng dùng');
-      // Ô chọn chuyền khi xếp việc mới không còn chuyền này
-      expect(((await api().get('/api/v1/me/lines').set(auth(planner))).body as any[]).map((x) => x.code)).not.toContain('A01-T54B');
-    } finally {
-      await leader.done();
-    }
+    // Bảng dàn chuyền chỉ liệt kê chuyền đang có: không có hàng cho mã mồ côi (thanh của nó không vẽ được), chuyền khác vẫn đủ
+    const board = (await api().get('/api/v1/order/line-plans/board?from=2026-11-25&to=2026-12-10').set(auth(planner)).expect(200)).body;
+    expect(board.lines.map((x: any) => x.code)).not.toContain('A01-T54B');
+    expect(board.lines.map((x: any) => x.code)).toContain('A01-L12');
+    expect(board.bars.some((b: any) => b.planId === plan && b.lineCode === 'A01-L12')).toBe(true);
   });
 
-  // ---------------- Cây Nhà máy → Xưởng → Chuyền (ADR 0010) ----------------
-
-  const path = async (id: number) => (await core.selectFrom('SysOrgUnit').select('Path').where('Id', '=', id).executeTakeFirstOrThrow()).Path;
-  const meLines = async () => (await api().get('/api/v1/me/lines').set(auth(planner)).expect(200)).body as { code: string; workshopCode: string | null; workshopName: string | null }[];
-  const newWorkshop = async (branchCode: string, code: string, name: string) =>
-    (await api().post('/api/v1/admin/catalogs/workshops').set(auth(admin)).send({ branchCode, code, name }).expect(201)).body.id as number;
-  const newLine = async (code: string, workshopId: number | null) =>
-    (await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code, name: `Chuyền ${code}`, workshopId }).expect(201)).body.id as number;
-
-  it('xưởng: mã theo nhà máy; chuyền thêm vào hoặc chuyển giữa các xưởng (mã giữ, Path đổi); ô chọn chuyền biết xưởng; có nhật ký', async () => {
-    await api().post('/api/v1/admin/catalogs/workshops').set(auth(planner)).send({ branchCode: 'A01', code: 'A01-T54W', name: 'x' }).expect(403);
-    await api().post('/api/v1/admin/catalogs/workshops').set(auth(admin)).send({ branchCode: 'A01', code: 'A02-T54W', name: 'Sai nhà máy' }).expect(422);
-    // Mã duy nhất trên cả cây: không trùng mã chuyền
-    await api().post('/api/v1/admin/catalogs/workshops').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-L01', name: 'Trùng mã chuyền' }).expect(409);
-    await api().post('/api/v1/admin/catalogs/workshops').set(auth(admin)).send({ branchCode: 'A00', code: 'A00-T54W', name: 'Tổng hợp' }).expect(404);
-    const ws = (await api().post('/api/v1/admin/catalogs/workshops').set(auth(admin)).send({ branchCode: 'A01', code: 'a01-t54w', name: 'Xưởng thử' }).expect(201)).body.id as number;
-    const otherBranch = await newWorkshop('A02', 'A02-T54W', 'Xưởng thử A02');
-    expect(await core.selectFrom('SysOrgUnit').select(['Path', 'OrgType', 'ParentOrgType']).where('Id', '=', ws).executeTakeFirstOrThrow()).toEqual({ Path: '/A01/A01-T54W/', OrgType: 'WORKSHOP', ParentOrgType: 'FACTORY' });
-
-    // Xưởng của nhà máy khác, hoặc Id không phải xưởng (một chuyền) => 422
-    const l01 = (await core.selectFrom('SysOrgUnit').select('Id').where('Code', '=', 'A01-L01').executeTakeFirstOrThrow()).Id;
-    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-T54C', name: 'x', workshopId: otherBranch }).expect(422);
-    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-T54C', name: 'x', workshopId: l01 }).expect(422);
-    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-T54C', name: 'x', workshopId: 'abc' }).expect(422);
-
-    const line = await newLine('A01-T54C', ws);
-    expect(await path(line)).toBe('/A01/A01-T54W/A01-T54C/');
-    expect((await meLines()).find((l) => l.code === 'A01-T54C')).toMatchObject({ workshopCode: 'A01-T54W', workshopName: 'Xưởng thử' });
-    const cat = (await api().get('/api/v1/admin/catalogs/lines').set(auth(admin)).expect(200)).body;
-    expect(cat.workshops.find((w: any) => w.id === ws)).toMatchObject({ code: 'A01-T54W', branchCode: 'A01', activeLines: 1, isActive: true });
-    expect(cat.items.find((l: any) => l.id === line)).toMatchObject({ code: 'A01-T54C', workshopId: ws });
-    // Tổng quan chỉ đếm chuyền, không đếm xưởng
-    const before = (await api().get('/api/v1/admin/catalogs').set(auth(admin)).expect(200)).body.mes.find((c: any) => c.code === 'LINE').total;
-    expect(before).toBe(cat.items.length);
-
-    // Về thẳng dưới nhà máy rồi vào lại xưởng: mã giữ, Path đổi; đổi tên xưởng thì ô chọn chuyền thấy tên mới
-    await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ workshopId: null }).expect(200);
-    expect(await path(line)).toBe('/A01/A01-T54C/');
-    expect((await meLines()).find((l) => l.code === 'A01-T54C')).toMatchObject({ workshopCode: null, workshopName: null });
-    await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ workshopId: ws }).expect(200);
-    await api().put(`/api/v1/admin/catalogs/workshops/${ws}`).set(auth(admin)).send({ name: 'Xưởng thử 2' }).expect(200);
-    expect((await meLines()).find((l) => l.code === 'A01-T54C')).toMatchObject({ workshopCode: 'A01-T54W', workshopName: 'Xưởng thử 2' });
-    expect((await api().put(`/api/v1/admin/catalogs/workshops/${ws}`).set(auth(admin)).send({ code: 'A01-T54Z' }).expect(422)).body.error.code).toBe('CODE_IMMUTABLE');
-    // Đường của xưởng không sửa chuyền và ngược lại
-    await api().put(`/api/v1/admin/catalogs/workshops/${line}`).set(auth(admin)).send({ name: 'x' }).expect(404);
-    await api().put(`/api/v1/admin/catalogs/lines/${ws}`).set(auth(admin)).send({ name: 'x' }).expect(404);
-
-    const audit = (await api().get('/api/v1/admin/audit?entityType=SysOrgUnit&pageSize=10').set(auth(admin)).expect(200)).body.items as any[];
-    expect(audit.map((a) => a.actionCode)).toEqual(expect.arrayContaining(['WORKSHOP_CREATE', 'WORKSHOP_UPDATE', 'LINE_UPDATE']));
-  });
-
-  it('xưởng còn chuyền đang dùng thì không ngừng được; xưởng đã ngừng không nhận chuyền mới, chuyền chuyển vào, chuyền bật lại', async () => {
-    const ws = await newWorkshop('A01', 'A01-T54S', 'Xưởng thử ngừng');
-    const line = await newLine('A01-T54H', ws);
-    const stop = await api().put(`/api/v1/admin/catalogs/workshops/${ws}`).set(auth(admin)).send({ isActive: false }).expect(409);
-    expect(stop.body.error.message).toContain('1 chuyền đang dùng');
-
-    // Chuyền đã ngừng không giữ xưởng lại
-    await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ isActive: false }).expect(200);
-    await api().put(`/api/v1/admin/catalogs/workshops/${ws}`).set(auth(admin)).send({ isActive: false }).expect(200);
-    await api().post('/api/v1/admin/catalogs/lines').set(auth(admin)).send({ branchCode: 'A01', code: 'A01-T54I', name: 'x', workshopId: ws }).expect(409);
-    const other = await newLine('A01-T54J', null);
-    await api().put(`/api/v1/admin/catalogs/lines/${other}`).set(auth(admin)).send({ workshopId: ws }).expect(409);
-    const on = await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ isActive: true }).expect(409);
-    expect(on.body.error.message).toContain('bật lại xưởng trước');
-    // Bật chuyền kèm chuyển ra khỏi xưởng đã ngừng thì được
-    await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ isActive: true, workshopId: null }).expect(200);
-    expect(await path(line)).toBe('/A01/A01-T54H/');
-    const cat = (await api().get('/api/v1/admin/catalogs/lines').set(auth(admin)).expect(200)).body;
-    expect(cat.workshops.find((w: any) => w.id === ws)).toMatchObject({ isActive: false, activeLines: 0 });
-  });
-
-  it('database giữ đúng cấp: chuyền không làm cha, xưởng chỉ dưới nhà máy, loại cha phải khớp, cùng nhà máy, không đổi loại nút đang có con', async () => {
-    const ws = await newWorkshop('A01', 'A01-T54V', 'Xưởng thử cấp');
-    const line = await newLine('A01-T54E', ws);
-    const base = { Name: 'x', BranchCode: 'A01', SortOrder: 0, IsActive: true, IsSystem: false };
+  it('database giữ đúng cấp của cây tổ chức cũ: chuyền không làm cha, xưởng chỉ dưới nhà máy, loại cha phải khớp, cùng nhà máy, không đổi loại nút đang có con', async () => {
+    // Nút Xưởng, Chuyền không còn API tạo (phase 5.10) nhưng bảng và ràng buộc vẫn còn: thêm thẳng vào bảng, ở trạng thái ngừng dùng
+    const base = { Name: 'x', BranchCode: 'A01', SortOrder: 0, IsActive: false, IsSystem: false };
     const insert = (v: object) => core.insertInto('SysOrgUnit').values({ ...base, ...v } as any).execute();
+    const idOf = async (code: string) => (await core.selectFrom('SysOrgUnit').select('Id').where('Code', '=', code).executeTakeFirstOrThrow()).Id;
+    const factory = await idOf('A01');
+    await insert({ Code: 'A01-T54V', OrgType: 'WORKSHOP', ParentId: factory, ParentOrgType: 'FACTORY', Path: '/A01/A01-T54V/' });
+    const ws = await idOf('A01-T54V');
+    await insert({ Code: 'A01-T54E', OrgType: 'LINE', ParentId: ws, ParentOrgType: 'WORKSHOP', Path: '/A01/A01-T54V/A01-T54E/' });
+    const line = await idOf('A01-T54E');
     await expect(insert({ Code: 'A01-T54E1', OrgType: 'LINE', ParentId: line, ParentOrgType: 'LINE', Path: '/A01/A01-T54V/A01-T54E/A01-T54E1/' })).rejects.toThrow(/CK_SysOrgUnit_Level/);
     // Khai cha là xưởng nhưng Id là một chuyền
     await expect(insert({ Code: 'A01-T54E2', OrgType: 'LINE', ParentId: line, ParentOrgType: 'WORKSHOP', Path: '/A01/A01-T54V/A01-T54E/A01-T54E2/' })).rejects.toThrow(/FK_SysOrgUnit_Parent/);
@@ -532,76 +460,6 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     const csv = (await api().get('/api/v1/order/sales-orders/export?q=TEST-P54-FIXTURE').set(auth(planner)).expect(200)).text;
     expect(csv.split('\n')[0]).toContain('Chi nhánh FOB');
     expect(csv.split('\n').find((l) => l.includes(so.orderNo))!.split(',')).toContain(a01);
-  });
-
-  it('chuyển chuyền giữa xưởng: cần quyền sửa phân quyền; người đang được giao cả xưởng không tự chuyển vào, ra được; xưởng nhà máy khác hay Id không phải xưởng => 422', async () => {
-    const ws = await newWorkshop('A01', 'A01-T54M', 'Xưởng thử chuyển');
-    const free = await newWorkshop('A01', 'A01-T54M2', 'Xưởng thử tự do');
-    // Phạm vi cả xưởng chỉ gán được khi xưởng có chuyền đang dùng
-    const held = await newLine('A01-T54J2', ws);
-    const line = await newLine('A01-T54K', null);
-    const otherBranch = await newWorkshop('A02', 'A02-T54M', 'Xưởng thử A02');
-    await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ workshopId: otherBranch }).expect(422);
-    await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ workshopId: line }).expect(422);
-
-    const matrix = (await api().get('/api/v1/admin/permissions').set(auth(admin)).expect(200)).body;
-    const permissions = matrix.modules.flatMap((m: any) => m.resources).flatMap((r: any) => r.permissions) as { id: number; code: string }[];
-    const permId = (code: string) => permissions.find((p) => p.code === code)!.id;
-    const leader = await leaderWith('test.p54m', (orgId) => [{ dimension: 'FACTORY', mode: 'LIST', orgUnitId: orgId('A01') }, { dimension: 'LINE', mode: 'ORG_SUBTREE', orgUnitId: orgId('A01-T54M') }]);
-    try {
-      const allow = (code: string) =>
-        api().post(`/api/v1/admin/users/${leader.id}/overrides`).set(auth(admin)).send({ permissionId: permId(code), effect: 'ALLOW', reason: 'Thử chuyển xưởng (test)' }).expect(200);
-      const move = (id: number, workshopId: number | null) => api().put(`/api/v1/admin/catalogs/lines/${id}`).set(auth(leader.token)).send({ workshopId });
-      // Không có quyền xem thì mất mọi hành động khác của tài nguyên: cấp kèm quyền xem
-      await allow('admin.catalog:view');
-      await allow('admin.catalog:update');
-      // Chỉ có quyền sửa danh mục: chuyển sang xưởng mình không giữ cũng bị chặn vì thiếu quyền sửa phân quyền
-      const noPerm = (await move(line, free).expect(403)).body.error;
-      expect(noPerm.code).toBe('SELF_ELEVATION_FORBIDDEN');
-      expect(noPerm.message).toContain('Thiếu quyền: admin.permission:update');
-      // Có cả quyền sửa phân quyền nhưng đang giữ phạm vi cả xưởng: không chuyển vào, không chuyển ra được
-      await allow('admin.permission:view');
-      await allow('admin.permission:update');
-      expect((await move(line, ws).expect(403)).body.error.message).toContain('phạm vi cả Xưởng thử chuyển (A01-T54M)');
-      expect((await move(held, null).expect(403)).body.error.message).toContain('phạm vi cả Xưởng thử chuyển (A01-T54M)');
-      expect(await path(line)).toBe('/A01/A01-T54K/');
-      expect(await path(held)).toBe('/A01/A01-T54M/A01-T54J2/');
-      // Đủ quyền và không giữ xưởng nào ở hai đầu: chuyển được
-      await move(line, free).expect(200);
-      expect(await path(line)).toBe('/A01/A01-T54M2/A01-T54K/');
-      await api().put(`/api/v1/admin/catalogs/lines/${line}`).set(auth(admin)).send({ workshopId: ws }).expect(200);
-      expect(await path(line)).toBe('/A01/A01-T54M/A01-T54K/');
-      // Nhật ký ghi mã xưởng cũ, mới (Path mới cũng chứa mã xưởng nên kiểm đúng trường Workshop)
-      const last = (await api().get('/api/v1/admin/audit?entityType=SysOrgUnit&pageSize=1').set(auth(admin)).expect(200)).body.items[0];
-      expect(last.actionCode).toBe('LINE_UPDATE');
-      // Nhật ký lưu JSON dạng chuỗi
-      expect(JSON.parse(last.oldValue)).toMatchObject({ Workshop: 'A01-T54M2' });
-      expect(JSON.parse(last.newValue)).toMatchObject({ Workshop: 'A01-T54M' });
-    } finally {
-      await leader.done();
-    }
-  });
-
-  it('phạm vi theo cả xưởng: thấy chuyền trong xưởng; chuyển chuyền vào xưởng thì thấy ngay, chuyển ra thì mất', async () => {
-    const ws = await newWorkshop('A01', 'A01-T54U', 'Xưởng thử phạm vi');
-    const inside = await newLine('A01-T54F', ws);
-    const outside = await newLine('A01-T54G', null);
-    await planOnLines('TEST-P54-W', ['A01-T54F', 'A01-T54G']);
-    const leader = await leaderWith('test.p54w', (orgId) => [{ dimension: 'FACTORY', mode: 'LIST', orgUnitId: orgId('A01') }, { dimension: 'LINE', mode: 'ORG_SUBTREE', orgUnitId: orgId('A01-T54U') }]);
-    try {
-      const seen = async () => ((await api().get('/api/v1/order/color-size?pageSize=50&style=TEST-P54-FIXTURE').set(auth(leader.token)).expect(200)).body.items as any[]).map((i) => i.lineCode).sort();
-      expect(await seen()).toEqual(['A01-T54F']);
-      await api().put(`/api/v1/admin/catalogs/lines/${outside}`).set(auth(admin)).send({ workshopId: ws }).expect(200);
-      expect(await seen()).toEqual(['A01-T54F', 'A01-T54G']);
-      await api().put(`/api/v1/admin/catalogs/lines/${inside}`).set(auth(admin)).send({ workshopId: null }).expect(200);
-      expect(await seen()).toEqual(['A01-T54G']);
-      // Chuyền mới thêm vào xưởng: người được giao cả xưởng thấy ngay (quyền đã tính được làm mới)
-      await newLine('A01-T54N', ws);
-      await planOnLines('TEST-P54-W2', ['A01-T54N']);
-      expect(await seen()).toEqual(['A01-T54G', 'A01-T54N']);
-    } finally {
-      await leader.done();
-    }
   });
 
   it('nhà máy SX: chỉ quyền sửa danh mục thì sửa được tên, không thêm, đổi ĐVCS, bật/tắt được (cần quyền sửa phân quyền, review 5.9.13 M2)', async () => {

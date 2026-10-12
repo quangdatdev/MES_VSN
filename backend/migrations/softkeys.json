@@ -51,11 +51,10 @@
     },
     {
       "from": "MES_Order.ShipmentPlanLine.LineCode",
-      "to": "MES_Core.SysOrgUnit.Code",
-      "where": "OrgType = 'LINE'",
+      "to": "MES_Hr.Department.Code",
       "sameBranch": true,
       "ownerModule": "order",
-      "status": "MES_Order/0001 (Phase 5.3)"
+      "status": "MES_Order/0001 (Phase 5.3); đích đổi từ MES_Core.SysOrgUnit (OrgType = 'LINE') sang bộ phận ở phase 5.10: chuyền may là bộ phận tích Xưởng sản xuất. Không lọc theo cờ: bộ phận bỏ tích, giải thể vẫn là đích hợp lệ (dữ liệu cũ hiện đúng tên); mã không còn là bộ phận nào là chuyền cũ mồ côi (Q4)"
     },
     {
       "from": "MES_Order.SalesOrder.ProductionFactoryCode",
@@ -135,11 +134,10 @@
     },
     {
       "from": "MES_Sewing.SewingPrep.LineCode",
-      "to": "MES_Core.SysOrgUnit.Code",
-      "where": "OrgType = 'LINE'",
+      "to": "MES_Hr.Department.Code",
       "sameBranch": true,
       "ownerModule": "sewing",
-      "status": "MES_Sewing/0001 (Phase 5.5)"
+      "status": "MES_Sewing/0001 (Phase 5.5); đích đổi từ MES_Core.SysOrgUnit (OrgType = 'LINE') sang bộ phận ở phase 5.10, như ShipmentPlanLine.LineCode"
     },
     {
       "from": "MES_Hr.Department.BranchCode",

@@ -386,7 +386,7 @@ export async function clearSimulated(trx: Kysely<OrderDatabase>, branch: string,
 
 /**
  * Xóa kế hoạch mô phỏng cũ rồi sinh lại cho một nhà máy, trong transaction của nơi gọi. `lines`: mã chuyền đang dùng của
- * nhà máy; `prepLines`, `all`: như clearSimulated.
+ * nhà máy (bộ phận tích "Xưởng sản xuất" ở MES_Hr, đọc bằng readLines); `prepLines`, `all`: như clearSimulated.
  */
 export async function simulateBranch(
   trx: Kysely<OrderDatabase>,
@@ -569,6 +569,7 @@ async function main() {
       [
         `Lệnh này thay các kế hoạch xuất hàng mô phỏng ("${PLANNER_NAME}") của mọi nhà máy trong ${env.db.orderName} (máy chủ ${env.db.host}):`,
         'xóa kế hoạch mô phỏng cũ cùng dàn chuyền, phân màu cỡ của chúng, rồi xếp lại kín các chuyền quanh hôm nay.',
+        `- Chuyền: bộ phận tích "Xưởng sản xuất" đang dùng, có đơn vị cơ sở, trong ${env.db.hrName} (Nhân sự › Sơ đồ tổ chức).`,
         '- Giữ nguyên: kế hoạch người dùng lập; kế hoạch mô phỏng người dùng đã sửa ở Kế hoạch xuất hàng, Xếp chuyền, Phân bổ màu cỡ',
         '  hoặc đã nhập ở Kế hoạch chuẩn bị SX. Thêm --all để xóa cả các kế hoạch đó (kèm ngày chuẩn bị SX đã nhập).',
         '- Đơn hàng của kế hoạch bị xóa trở về trạng thái lúc nạp (Mới, hoặc Hoàn thành nếu đã đóng lệnh ở BRAVO).',

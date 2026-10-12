@@ -29,42 +29,6 @@ export class CatalogItemUpdateDto {
   @Optional() @IsBoolean() isActive?: boolean;
 }
 
-// ---------- Xưởng, chuyền may (cây Nhà máy → Xưởng → Chuyền, ADR 0010) ----------
-
-/** null: chuyền nằm thẳng dưới nhà máy, không thuộc xưởng nào */
-const WorkshopRef = () => ValidateIf((_o, v) => v !== undefined && v !== null);
-
-export class LineCreateDto {
-  @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Chọn đơn vị cơ sở.' }) branchCode!: string;
-  @upper() @Matches(/^[A-Z0-9-]{1,20}$/, { message: 'Mã chuyền gồm chữ không dấu, số, gạch ngang (tối đa 20 ký tự), ví dụ A01-L13.' }) code!: string;
-  @trim() @IsString() @MinLength(1) @MaxLength(100) name!: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
-  @WorkshopRef() @IsInt() @Min(1) workshopId?: number | null;
-}
-
-export class LineUpdateDto {
-  @Optional() @upper() @IsString() code?: string;
-  @Optional() @trim() @IsString() @MinLength(1) @MaxLength(100) name?: string;
-  @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
-  @Optional() @IsBoolean() isActive?: boolean;
-  /** Gửi khi chuyển chuyền sang xưởng khác (null: về thẳng dưới nhà máy); không gửi là giữ nguyên */
-  @WorkshopRef() @IsInt() @Min(1) workshopId?: number | null;
-}
-
-export class WorkshopCreateDto {
-  @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Chọn đơn vị cơ sở.' }) branchCode!: string;
-  @upper() @Matches(/^[A-Z0-9-]{1,20}$/, { message: 'Mã xưởng gồm chữ không dấu, số, gạch ngang (tối đa 20 ký tự), ví dụ A01-X03.' }) code!: string;
-  @trim() @IsString() @MinLength(1) @MaxLength(100) name!: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
-}
-
-export class WorkshopUpdateDto {
-  @Optional() @upper() @IsString() code?: string;
-  @Optional() @trim() @IsString() @MinLength(1) @MaxLength(100) name?: string;
-  @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
-  @Optional() @IsBoolean() isActive?: boolean;
-}
-
 // ---------- Ca làm việc ----------
 
 export class ShiftCreateDto {
@@ -86,12 +50,6 @@ export class ShiftUpdateDto {
   @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(480) breakMinutes?: number;
   @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
   @Optional() @IsBoolean() isActive?: boolean;
-}
-
-/** Ô tìm của bảng cây xưởng, chuyền và nút chọn nhà máy: lọc trên máy chủ. */
-export class CatalogLinesQuery {
-  @IsOptional() @IsString() @MaxLength(60) q?: string;
-  @IsOptional() @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Mã nhà máy không hợp lệ.' }) branch?: string;
 }
 
 /** Ô tìm mã, tên của danh mục đơn giản: lọc trên máy chủ. */

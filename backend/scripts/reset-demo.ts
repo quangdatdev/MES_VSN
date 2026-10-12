@@ -5,9 +5,10 @@
 //
 // Việc script làm:
 //  - MES_Order: xóa toàn bộ dữ liệu đơn hàng (đơn, PO, kế hoạch, dàn chuyền, phân màu cỡ), nạp lại dữ liệu mẫu.
-//  - MES_Hr: xóa loại phòng ban, phòng ban, chức danh, nhân viên rồi nạp lại dữ liệu nhân sự giả (Id đổi).
+//  - MES_Hr: xóa loại phòng ban, phòng ban, chức danh, nhân viên rồi nạp lại dữ liệu nhân sự giả (Id đổi), gồm xưởng, chuyền
+//    may mẫu (bộ phận tích "Xưởng sản xuất", phase 5.10).
 //  - MES_Core: tên đơn vị cơ sở mẫu (ĐVCS theo BRAVO giữ tên BRAVO), vai trò, ma trận quyền, chính sách cột của vai trò mẫu,
-//    danh mục hệ thống (xưởng, chuyền, đơn vị tính, loại đơn hàng, nhà máy SX, ca làm việc), tài khoản demo (họ tên, mật khẩu,
+//    danh mục hệ thống (đơn vị tính, loại đơn hàng, nhà máy SX, ca làm việc), tài khoản demo (họ tên, mật khẩu,
 //    vai trò, phạm vi, ngoại lệ, cột riêng, ĐVCS, nhà máy SX) về như seed; ĐVCS ngoài mẫu và BRAVO, nhà máy SX, vai trò, người
 //    dùng tạo thêm khi demo bị vô hiệu hóa (không xóa vật lý); thu hồi mọi phiên đăng nhập.
 //  - Nhật ký SysAuditLog giữ nguyên (chỉ ghi thêm), có thêm một dòng DEMO_RESET.
@@ -23,7 +24,7 @@ import { clearSewingPrep } from './sewing-data';
 import { runSeed } from './seed';
 import { bravoBranchCode } from '../src/platform/admin/branch-import';
 import { readBravoBranches } from './bravo-branches';
-import { LINE_COUNT, WORKSHOPS, branches, catalogSeedItems, catalogs, lineCode, productionFactories, roles, shifts, users, workshopCode, workshopName, workshopOfLine } from './seed-data';
+import { branches, catalogSeedItems, catalogs, productionFactories, roles, shifts, users } from './seed-data';
 
 async function main() {
   // Kiểm trước cả lời mô tả: máy không dùng dữ liệu mẫu thì đừng hướng dẫn chạy lại với --yes
@@ -34,7 +35,7 @@ async function main() {
         'Lệnh này đưa dữ liệu demo về ban đầu:',
         `  - xóa mọi dữ liệu đơn hàng trong ${env.db.orderName} rồi nạp lại dữ liệu mẫu (--bravo: dữ liệu thật từ ${env.db.syncName});`,
         `  - xóa Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (ngày đã nhập; danh mục bước giữ nguyên);`,
-        `  - xóa loại phòng ban, phòng ban, chức danh, hồ sơ nhân viên trong ${env.db.hrName} rồi nạp lại dữ liệu nhân sự giả;`,
+        `  - xóa loại phòng ban, phòng ban, chức danh, hồ sơ nhân viên trong ${env.db.hrName} rồi nạp lại dữ liệu nhân sự giả (gồm xưởng, chuyền may mẫu);`,
         `  - đặt lại đơn vị cơ sở, nhà máy SX, vai trò, quyền, chính sách cột và tài khoản demo trong ${env.db.coreName} (máy chủ ${env.db.host});`,
         '  - vô hiệu hóa người dùng, vai trò, đơn vị cơ sở, nhà máy SX tạo thêm; thu hồi mọi phiên đăng nhập.',
         'Chỉ dùng cho database demo. Chạy lại với: npm run reset:demo -- --yes',
@@ -95,29 +96,9 @@ async function main() {
       await trx.updateTable('SysUser').set({ IsActive: false, ModifiedAt: now }).where('Username', 'not in', usernames).execute();
       await trx.updateTable('SysUserSession').set({ RevokedAt: now }).where('RevokedAt', 'is', null).execute();
 
-      // Danh mục hệ thống về như seed: xưởng, chuyền, mục danh mục, ca mẫu bật lại đúng tên; phần tạo thêm khi demo ngừng dùng
-      // (không xóa). Chuyền mẫu về đúng xưởng mẫu (xưởng mẫu chưa có thì seed bên dưới tạo rồi nhận chuyền). Kế hoạch mẫu xếp vào
-      // chuyền mẫu nên chuyền mẫu phải đang dùng; chuyền tạo thêm ngừng trước xưởng tạo thêm (chuyền đang dùng phải ở xưởng đang dùng).
-      const workshopCodes = Object.entries(WORKSHOPS).flatMap(([b, list]) => list.map((_, i) => workshopCode(b, i + 1)));
-      for (const code of workshopCodes) {
-        const n = Number(code.slice(-2));
-        await trx.updateTable('SysOrgUnit').set({ Name: workshopName(n), Description: null, SortOrder: n, IsActive: true, ModifiedAt: now }).where('Code', '=', code).where('OrgType', '=', 'WORKSHOP').execute();
-      }
-      const parents = new Map((await trx.selectFrom('SysOrgUnit').select(['Id', 'Code', 'Path', 'OrgType']).where('OrgType', 'in', ['FACTORY', 'WORKSHOP']).execute()).map((u) => [u.Code, u]));
-      const lineCodes: string[] = [];
-      for (const b of branches) {
-        for (let n = 1; n <= (LINE_COUNT[b.code] ?? 0); n++) {
-          const code = lineCode(b.code, n);
-          lineCodes.push(code);
-          const w = workshopOfLine(b.code, n);
-          const parent = (w ? parents.get(workshopCode(b.code, w)) : undefined) ?? parents.get(b.code);
-          const place = parent ? { ParentId: parent.Id, ParentOrgType: parent.OrgType, Path: `${parent.Path}${code}/` } : {};
-          // Chỉ đơn vị loại chuyền: mã chuyền mẫu có thể bị một xưởng tự tạo dùng mất (API chỉ kiểm tiền tố nhà máy)
-          await trx.updateTable('SysOrgUnit').set({ Name: `Chuyền ${code.slice(-2)}`, Description: null, SortOrder: n, IsActive: true, ...place, ModifiedAt: now }).where('Code', '=', code).where('OrgType', '=', 'LINE').execute();
-        }
-      }
-      await trx.updateTable('SysOrgUnit').set({ IsActive: false, ModifiedAt: now }).where('OrgType', '=', 'LINE').where('Code', 'not in', lineCodes).execute();
-      await trx.updateTable('SysOrgUnit').set({ IsActive: false, ModifiedAt: now }).where('OrgType', '=', 'WORKSHOP').where('Code', 'not in', workshopCodes).execute();
+      // Danh mục hệ thống về như seed: mục danh mục, ca mẫu bật lại đúng tên; phần tạo thêm khi demo ngừng dùng (không xóa).
+      // Xưởng, chuyền may mẫu là bộ phận ở MES_Hr: clearHr bên dưới xóa sơ đồ tổ chức, seed nạp lại trước khi nạp đơn hàng BRAVO
+      // (load-bravo-orders đọc chuyền từ MES_Hr), nên dàn chuyền mẫu có chuyền.
       // Nhà máy SX mẫu về đúng tên, ĐVCS; nhà máy tạo thêm khi demo ngừng dùng (seed thêm mẫu còn thiếu)
       for (const [i, f] of productionFactories.entries()) {
         await trx

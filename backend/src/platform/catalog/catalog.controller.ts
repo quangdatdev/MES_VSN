@@ -5,44 +5,26 @@ import {
   CatalogItemCreateDto,
   CatalogItemsQuery,
   CatalogItemUpdateDto,
-  CatalogLinesQuery,
   ExternalRowsQuery,
   FactoryCreateDto,
   FactoryUpdateDto,
-  LineCreateDto,
-  LineUpdateDto,
   ShiftCreateDto,
   ShiftUpdateDto,
-  WorkshopCreateDto,
-  WorkshopUpdateDto,
 } from './catalog.dto';
 import { CatalogService } from './catalog.service';
 
 const id = () => Param('id', ParseIntPipe);
 
-/** Quản trị › Danh mục hệ thống. Không có xóa: danh mục ngừng dùng bằng isActive = false. */
+/**
+ * Quản trị › Danh mục hệ thống. Không có xóa: danh mục ngừng dùng bằng isActive = false. Chuyền may không còn ở đây
+ * (phase 5.10): chuyền là bộ phận tích "Xưởng sản xuất" ở Nhân sự › Sơ đồ tổ chức.
+ */
 @Controller('admin/catalogs')
 export class CatalogController {
   constructor(private readonly catalogs: CatalogService) {}
 
   @Get() @RequirePermission('admin.catalog:view')
   overview() { return this.catalogs.overview(); }
-
-  // ---- Xưởng, chuyền may (một danh sách: GET lines trả cả xưởng) ----
-  @Get('lines') @RequirePermission('admin.catalog:view')
-  lines(@Query() q: CatalogLinesQuery) { return this.catalogs.lines(q); }
-
-  @Post('workshops') @RequirePermission('admin.catalog:create')
-  createWorkshop(@CurrentUser() a: AuthUser, @Body() dto: WorkshopCreateDto) { return this.catalogs.createWorkshop(a, dto); }
-
-  @Put('workshops/:id') @RequirePermission('admin.catalog:update')
-  async updateWorkshop(@CurrentUser() a: AuthUser, @id() wid: number, @Body() dto: WorkshopUpdateDto) { await this.catalogs.updateWorkshop(a, wid, dto); return { ok: true }; }
-
-  @Post('lines') @RequirePermission('admin.catalog:create')
-  createLine(@CurrentUser() a: AuthUser, @Body() dto: LineCreateDto) { return this.catalogs.createLine(a, dto); }
-
-  @Put('lines/:id') @RequirePermission('admin.catalog:update')
-  async updateLine(@CurrentUser() a: AuthUser, @id() lid: number, @Body() dto: LineUpdateDto) { await this.catalogs.updateLine(a, lid, dto); return { ok: true }; }
 
   // ---- Nhà máy SX, mỗi nhà máy thuộc một đơn vị cơ sở (ADR 0013) ----
   @Get('factories') @RequirePermission('admin.catalog:view')
