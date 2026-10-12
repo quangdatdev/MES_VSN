@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import { AppException } from '../../common/app.exception';
 import { CORE_DB, type CoreDb } from '../database/database.module';
+import type { LineSource } from './line-source';
 
 export interface LineInfo {
   code: string;
@@ -21,9 +22,16 @@ export interface LineInfo {
 @Injectable()
 export class OrgService {
   private cache: { at: number; lines: LineInfo[] } | null = null;
+  private source: LineSource | null = null;
   private static readonly TTL_MS = 30_000;
 
   constructor(@Inject(CORE_DB) private readonly db: CoreDb) {}
+
+  /** Module Nhân sự đăng ký nguồn chuyền lúc khởi động (phase 5.10); đăng ký lại thì thay nguồn cũ. */
+  registerSource(source: LineSource) {
+    this.source = source;
+    this.invalidate();
+  }
 
   /**
    * Mọi chuyền, kể cả đã ngừng: dữ liệu cũ (kế hoạch đã xếp) vẫn phải hiện đúng tên chuyền.
@@ -31,6 +39,12 @@ export class OrgService {
    */
   private async all(): Promise<LineInfo[]> {
     if (this.cache && Date.now() - this.cache.at < OrgService.TTL_MS) return this.cache.lines;
+    if (this.source) {
+      this.cache = { at: Date.now(), lines: await this.source.loadLines() };
+      return this.cache.lines;
+    }
+    // TẠM (phase 5.10, bỏ ở bước tích hợp 5.10.14): chưa có nguồn đăng ký thì đọc chuyền cũ ở SysOrgUnit để các luồng
+    // làm song song vẫn chạy được; sau tích hợp, không có nguồn thì không có chuyền nào (đóng an toàn).
     const rows = await this.db
       .selectFrom('SysOrgUnit as l')
       .leftJoin('SysOrgUnit as w', (j) => j.onRef('w.Id', '=', 'l.ParentId').on('w.OrgType', '=', 'WORKSHOP'))
@@ -62,6 +76,11 @@ export class OrgService {
   async lines(branchCode: string, isAggregate = false, { includeInactive = false }: { includeInactive?: boolean } = {}): Promise<LineInfo[]> {
     const all = (await this.all()).filter((l) => includeInactive || l.isActive);
     return isAggregate ? all : all.filter((l) => l.branchCode === branchCode);
+  }
+
+  /** Mã các chuyền đang dùng ở mọi ĐVCS: phạm vi chiều LINE chỉ giữ các mã này (mã không còn là chuyền thì không có tác dụng). */
+  async activeLineCodes(): Promise<Set<string>> {
+    return new Set((await this.all()).filter((l) => l.isActive).map((l) => l.code));
   }
 
   /** Mã chuyền phải là chuyền đang hoạt động của đúng nhà máy (khóa ngầm LineCode → SysOrgUnit.Code). Dùng khi xếp việc mới vào chuyền. */
