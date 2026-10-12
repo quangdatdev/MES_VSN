@@ -62,8 +62,12 @@ CREATE TABLE dbo.PoAllocationRefresh (
     SourceSyncedAt      DATETIME2(3)  NULL,
     -- Số dòng khác nhau của nguồn ở lần làm mới gần nhất
     SourceRows          INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_SourceRows DEFAULT 0,
-    -- Số dòng đang có trong OSM của bảng trước lần làm mới đó (để so với nguồn)
+    -- Mốc đã dùng để so với nguồn ở lần làm mới đó (BaselineRows lúc đó, chưa có thì số dòng đang có trong OSM)
     PreviousRows        INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_PreviousRows DEFAULT 0,
+    -- Mốc so cho chốt giảm: số dòng nguồn của lần làm mới đủ gần nhất (SkippedReason NULL). Không lấy số dòng IsInOsm = 1 của bảng: ở
+    -- lần giữ dòng vắng (SHRINK) dòng cũ còn nguyên mà dòng đổi ETD, FtyName vẫn được thêm, số đó phình dần và chốt không nhả.
+    -- NULL: chưa có lần làm mới đủ nào (dùng số dòng đang có trong OSM)
+    BaselineRows        INT           NULL,
     InsertedRows        INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_InsertedRows DEFAULT 0,
     UpdatedRows         INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_UpdatedRows DEFAULT 0,
     RemovedRows         INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_RemovedRows DEFAULT 0,

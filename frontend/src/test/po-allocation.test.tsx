@@ -269,24 +269,36 @@ describe('Phân bổ PO', () => {
     expect(putBodies().filter((b) => b.dryRun)).toHaveLength(2);
   });
 
-  it('lần làm mới gần nhất giữ dòng vắng hoặc bị bỏ qua thì màn cảnh báo, nhờ báo quản trị kiểm OSM', async () => {
+  it('lần làm mới gần nhất giữ dòng vắng: cảnh báo bằng chữ (cả số dòng), nói lưới có thể có dòng cũ trùng dòng mới, nhờ báo quản trị', async () => {
+    const shrink = { at: '2026-10-12T03:05:00.000Z', reason: 'SHRINK' as const, sourceRows: 18000, previousRows: 25000, keptAbsent: 7000, maxShrinkPercent: 20 };
     signIn(['order.poallocation:view']);
-    serve({
-      items: [row()],
-      total: 1,
-      page: 1,
-      pageSize: 100,
-      ...synced,
-      lastRefresh: { at: '2026-10-12T03:05:00.000Z', reason: 'SHRINK', sourceRows: 18000, previousRows: 25000, keptAbsent: 7000, maxShrinkPercent: 20 },
-    });
+    serve({ items: [row()], total: 1, page: 1, pageSize: 100, ...synced, lastRefresh: shrink });
     const { unmount } = renderPage();
     expect(await screen.findByText('PO-THU-1')).toBeInTheDocument();
-    expect(screen.getByText(/giữ lại 7\.000 dòng không còn trong OSM vì số dòng giảm quá 20%\. Báo quản trị kiểm OSM\./)).toBeInTheDocument();
+    const alert = screen.getByText(/giữ lại 7\.000 dòng không còn trong OSM vì số dòng giảm quá 20%/).closest('[role="alert"]') as HTMLElement;
+    expect(alert).toHaveTextContent('Lưới có thể có cả dòng cũ lẫn dòng mới của cùng PO cho tới lần làm mới đủ.');
+    // Số liệu là chữ, không chỉ nằm trong title (điện thoại không rê chuột được)
+    expect(within(alert).getByText('OSM có 18.000 dòng; lần làm mới đủ gần nhất có 25.000 dòng.')).toBeInTheDocument();
+    expect(within(alert).getByText('Báo quản trị kiểm OSM.')).toBeInTheDocument();
+    // Người không chạy được đồng bộ không thấy cách cấu hình máy chủ
+    expect(alert.textContent).not.toContain('PO_ALLOCATION_MAX_SHRINK_PERCENT');
     unmount();
+
+    // Người chạy được đồng bộ thấy cách xử lý thay cho câu nhờ báo quản trị
+    signIn(['order.poallocation:view', 'admin.sync:update']);
+    const admin = renderPage();
+    expect(await screen.findByText(/PO_ALLOCATION_MAX_SHRINK_PERCENT=100/)).toBeInTheDocument();
+    expect(screen.queryByText('Báo quản trị kiểm OSM.')).toBeNull();
+    admin.unmount();
+  });
+
+  it('lần làm mới gần nhất bị bỏ qua (OSM rỗng) thì cảnh báo; làm mới bình thường thì không', async () => {
+    signIn(['order.poallocation:view']);
     serve({ items: [row()], total: 1, page: 1, pageSize: 100, ...synced, lastRefresh: { at: '2026-10-12T03:05:00.000Z', reason: 'EMPTY', sourceRows: 0, previousRows: 25000, keptAbsent: 0, maxShrinkPercent: 20 } });
-    const second = renderPage();
+    const first = renderPage();
     expect(await screen.findByText(/bị bỏ qua vì bảng chép OSM không có dòng nào/)).toBeInTheDocument();
-    second.unmount();
+    expect(screen.getByText('Báo quản trị kiểm OSM.')).toBeInTheDocument();
+    first.unmount();
     serve({ items: [row()], total: 1, page: 1, pageSize: 100, ...synced });
     renderPage();
     expect(await screen.findByText('PO-THU-1')).toBeInTheDocument();

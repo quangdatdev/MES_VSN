@@ -191,7 +191,10 @@ export interface PoAllocationRefreshResult {
   reason: RefreshSkip | null;
   /** Số dòng khác nhau của nguồn */
   source: number;
-  /** Số dòng đang có trong OSM của bảng trước lần làm mới */
+  /**
+   * Mốc so: số dòng nguồn của lần làm mới đủ gần nhất (PoAllocationRefresh.BaselineRows); chưa có thì số dòng đang có trong OSM của
+   * bảng. Không dùng số dòng đang có: ở lần giữ dòng vắng (SHRINK) số đó phình dần (dòng cũ còn, dòng đổi dấu được thêm)
+   */
   before: number;
   inserted: number;
   /** Dòng còn trong OSM có Nhà máy SX, dấu nhập tay hoặc dấu "còn trong OSM" đổi (dòng không đổi thì không ghi lại) */
@@ -210,7 +213,7 @@ export interface PoAllocationRefreshResult {
   maxShrinkPercent: number;
 }
 
-/** Nguồn ít hơn (100 - phần trăm)% số dòng đang có trong OSM của bảng thì không xóa dòng vắng (chép OSM lỗi, view tạm thiếu dữ liệu) */
+/** Nguồn ít hơn (100 - phần trăm)% mốc so thì không xóa dòng vắng (chép OSM lỗi, view tạm thiếu dữ liệu) */
 export const shrinkGuard = (source: number, before: number, maxShrinkPercent: number) => source * 100 < before * (100 - maxShrinkPercent);
 
 /**
@@ -231,7 +234,8 @@ export class PoAllocationRefreshRepository implements OnApplicationShutdown {
    * một tham số JSON vào bảng tạm (không vượt 2.100 tham số; bảng tạm chỉ sống trong một câu nên mọi bước nằm trong cùng câu).
    *  - Dòng có khóa SO, PO, Style No, Màu đang nhập tay nhận nhà máy nhập tay, dòng khác nhận nhà máy theo OSM; chỉ ghi dòng đổi.
    *  - Dòng không còn trong OSM thì xóa, trừ dòng nhập tay mà OSM không còn dòng nào cùng khóa (giữ, IsInOsm = 0).
-   *  - Nguồn rỗng: không làm gì. Nguồn giảm quá `maxShrinkPercent`: vẫn thêm, sửa, nhưng không xóa, không đánh dấu dòng vắng.
+   *  - Nguồn rỗng: không làm gì. Nguồn giảm quá `maxShrinkPercent` so với mốc (số dòng nguồn của lần làm mới đủ gần nhất): vẫn
+   *    thêm, sửa, nhưng không xóa, không đánh dấu dòng vắng; mốc giữ nguyên, nên OSM trở lại cỡ cũ thì lần sau làm đủ, dọn dòng vắng.
    * `brand`: chỉ xét dòng của Brand này, nguồn đã lọc sẵn (bài test dùng để không đụng dòng khác trên database dùng chung, như
    * productIds của applyOsmFactories). `unknownFactories`: số tên nhà máy của nguồn không có trong danh mục, ghi vào trạng thái.
    */
@@ -240,8 +244,10 @@ export class PoAllocationRefreshRepository implements OnApplicationShutdown {
     const percent = opts.maxShrinkPercent;
     return inTransaction(this.db, async (trx) => {
       if (!(await lockPoAllocation(trx, 30_000))) throw new Error('Đang có người đổi Nhà máy SX ở Phân bổ PO hoặc lần làm mới khác chạy, thử lại sau.');
-      const counted = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM dbo.PoAllocation WHERE IsInOsm = 1 AND (${brand} IS NULL OR Brand = ${brand})`.execute(trx);
-      const before = Number(counted.rows[0]?.n ?? 0);
+      const baseline = (await trx.selectFrom('PoAllocationRefresh').select('BaselineRows').where('Id', '=', 1).executeTakeFirst())?.BaselineRows ?? null;
+      const before =
+        baseline ??
+        Number((await sql<{ n: number }>`SELECT COUNT(*) AS n FROM dbo.PoAllocation WHERE IsInOsm = 1 AND (${brand} IS NULL OR Brand = ${brand})`.execute(trx)).rows[0]?.n ?? 0);
       const rows = new Map<string, OsmPoSourceRow>();
       for (const r of source) if (brand === null || r.brand === brand) rows.set(poRowHash(r), r);
       const unknown = opts.unknownFactories ?? 0;
@@ -275,6 +281,8 @@ export class PoAllocationRefreshRepository implements OnApplicationShutdown {
       MaxShrinkPercent: r.maxShrinkPercent,
       SkippedReason: r.reason,
       ...(syncedAt ? { SourceSyncedAt: syncedAt } : {}),
+      // Mốc chỉ đổi ở lần làm đủ: lần bị bỏ qua, lần giữ dòng vắng không được nâng, hạ mốc
+      ...(r.reason === null ? { BaselineRows: r.source } : {}),
     };
     const res = await trx.updateTable('PoAllocationRefresh').set(values).where('Id', '=', 1).executeTakeFirst();
     if (Number(res.numUpdatedRows) === 0) await trx.insertInto('PoAllocationRefresh').values({ Id: 1, ...values }).execute();

@@ -86,6 +86,8 @@ describe('Phân bổ PO: làm mới theo OSM', () => {
   async function cleanup() {
     await sql`DELETE FROM osm.[OSMData] WHERE Brand LIKE 'TSTPR%'`.execute(syncDb);
     await orderDb.deleteFrom('PoAllocation').where('Brand', 'like', 'TSTPR%').execute();
+    // Mốc so của chốt giảm là của cả bảng (lần làm mới đủ gần nhất, có thể của file test khác): bắt đầu lại từ chưa có mốc
+    await orderDb.updateTable('PoAllocationRefresh').set({ BaselineRows: null }).where('Id', '=', 1).execute();
   }
 
   // Dòng đệm giữ số dòng nguồn trên ngưỡng khi bài test bỏ vài dòng
@@ -138,7 +140,7 @@ describe('Phân bổ PO: làm mới theo OSM', () => {
       ['2026-11-01', FTY_A, FTY_A, false, true],
       ['2026-11-15', FTY_A, FTY_A, false, true],
     ]);
-    expect(await state()).toMatchObject({ SourceRows: 15, PreviousRows: 0, InsertedRows: 15, UpdatedRows: 0, RemovedRows: 0, KeptAbsentRows: 0, UnknownFactories: 1, MaxShrinkPercent: 20, SkippedReason: null });
+    expect(await state()).toMatchObject({ SourceRows: 15, PreviousRows: 0, BaselineRows: 15, InsertedRows: 15, UpdatedRows: 0, RemovedRows: 0, KeptAbsentRows: 0, UnknownFactories: 1, MaxShrinkPercent: 20, SkippedReason: null });
     expect((await state()).SourceSyncedAt).toBeTruthy();
     expect(await lastAudit()).toMatchObject({ reason: null, inserted: 15, unknownFactories: 1, unknownFactoryNames: [FTY_A] });
   });
@@ -177,7 +179,7 @@ describe('Phân bổ PO: làm mới theo OSM', () => {
     await sync([]);
     expect(await refresh()).toMatchObject({ reason: 'EMPTY', source: 0, before: 13 });
     expect(await rows()).toEqual(before);
-    expect(await state()).toMatchObject({ SkippedReason: 'EMPTY', SourceRows: 0, PreviousRows: 13, SourceSyncedAt: syncedAt });
+    expect(await state()).toMatchObject({ SkippedReason: 'EMPTY', SourceRows: 0, PreviousRows: 13, BaselineRows: 13, SourceSyncedAt: syncedAt });
     expect(await lastAudit()).toMatchObject({ reason: 'EMPTY', source: 0, before: 13 });
   });
 
@@ -187,7 +189,7 @@ describe('Phân bổ PO: làm mới theo OSM', () => {
     await sync(fillers);
     expect(await refresh()).toMatchObject({ reason: 'SHRINK', source: 10, before: 13, inserted: 0, updated: 0, removed: 0, missing: 0, keptAbsent: 3 });
     expect(await rows()).toEqual(before);
-    expect(await state()).toMatchObject({ SkippedReason: 'SHRINK', KeptAbsentRows: 3, SourceRows: 10, PreviousRows: 13, MaxShrinkPercent: 20 });
+    expect(await state()).toMatchObject({ SkippedReason: 'SHRINK', KeptAbsentRows: 3, SourceRows: 10, PreviousRows: 13, BaselineRows: 13, MaxShrinkPercent: 20 });
     expect(await lastAudit()).toMatchObject({ reason: 'SHRINK', keptAbsent: 3, maxShrinkPercent: 20 });
 
     const api = () => request(app.getHttpServer());
@@ -211,7 +213,7 @@ describe('Phân bổ PO: làm mới theo OSM', () => {
       [FTY_B, true, false],
       [FTY_B, true, false],
     ]);
-    expect(await state()).toMatchObject({ SkippedReason: null, KeptAbsentRows: 0, MaxShrinkPercent: 100 });
+    expect(await state()).toMatchObject({ SkippedReason: null, KeptAbsentRows: 0, MaxShrinkPercent: 100, BaselineRows: 11 });
   });
 
   it('khóa nhập tay có lại trong OSM: dòng mới nhận nhà máy nhập tay, dòng giữ tạm bị bỏ', async () => {
@@ -219,5 +221,27 @@ describe('Phân bổ PO: làm mới theo OSM', () => {
     expect(await refresh()).toMatchObject({ reason: null, inserted: 1, removed: 1, missing: 0 });
     const p3 = await of(P(3));
     expect(p3.map((x) => [day(x.EtdRevisedDate), x.ProductionFactoryCode, x.OsmFactoryCode, x.IsFactoryManual, x.IsInOsm])).toEqual([['2027-01-05', FTY_B, FTY_A, true, true]]);
+  });
+
+  it('giảm hai lần liên tiếp không làm phình mốc so; OSM trở lại cỡ ban đầu thì làm mới đủ và dọn dòng vắng', async () => {
+    await cleanup();
+    // 15 dòng ban đầu: làm mới đủ, mốc 15
+    const first: Line[] = [...fillers, ...[1, 2, 3, 4, 5].map((i) => ({ po: P(`Q${i}`), so: `SQ${i}`, styleNo: 'ST-Q', color: 'Teal', etd: '2026-10-20', fty: FTY_A }))];
+    await sync(first);
+    expect(await refresh()).toMatchObject({ reason: null, before: 0, inserted: 15 });
+    expect((await state()).BaselineRows).toBe(15);
+    // OSM còn 10 dòng và đổi ETD (dòng mới): thêm 10 dòng mới, giữ 15 dòng cũ; số dòng đang có trong OSM của bảng thành 25
+    const shrunk = fillers.map((l) => ({ ...l, etd: '2026-09-15' }));
+    await sync(shrunk);
+    expect(await refresh()).toMatchObject({ reason: 'SHRINK', before: 15, inserted: 10, keptAbsent: 15, removed: 0 });
+    expect(await orderDb.selectFrom('PoAllocation').select('Id').where('Brand', '=', TAG).where('IsInOsm', '=', true).execute()).toHaveLength(25);
+    // Lần giảm thứ hai vẫn so với mốc 15 (không phải 25 dòng đang có)
+    expect(await refresh()).toMatchObject({ reason: 'SHRINK', before: 15, inserted: 0, keptAbsent: 15 });
+    expect(await state()).toMatchObject({ SkippedReason: 'SHRINK', PreviousRows: 15, BaselineRows: 15 });
+    // OSM trở lại 15 dòng ban đầu: 15 không dưới 80% của mốc 15, làm đủ, bỏ 10 dòng của lần OSM thiếu
+    await sync(first);
+    expect(await refresh()).toMatchObject({ reason: null, before: 15, inserted: 0, removed: 10, keptAbsent: 0, total: 15 });
+    expect(await state()).toMatchObject({ SkippedReason: null, BaselineRows: 15 });
+    expect((await rows()).every((x) => day(x.EtdRevisedDate) !== '2026-09-15')).toBe(true);
   });
 });

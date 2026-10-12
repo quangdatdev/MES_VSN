@@ -63,6 +63,8 @@ describe('Phân bổ PO (OSM)', () => {
     await sql`DELETE FROM osm.[OSMData] WHERE Brand LIKE 'TSTPO%'`.execute(syncDb);
     await orderDb.deleteFrom('PoAllocation').where('Brand', 'like', 'TSTPO%').execute();
     await core.deleteFrom('SysProductionFactory').where('Code', 'like', 'TSTPO%').execute();
+    // Mốc so của chốt giảm là của cả bảng (lần làm mới đủ gần nhất, có thể của file test khác): bắt đầu lại từ chưa có mốc
+    await orderDb.updateTable('PoAllocationRefresh').set({ BaselineRows: null }).where('Id', '=', 1).execute();
   }
 
   beforeAll(async () => {
