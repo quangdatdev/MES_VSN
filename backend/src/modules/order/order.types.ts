@@ -164,15 +164,34 @@ export interface PoAllocationTable {
   IsFactoryManual: ColumnType<boolean, boolean | undefined, boolean>;
   /** false: OSM không còn dòng nào cùng khóa SO, PO, Style No, Màu; chỉ dòng nhập tay được giữ */
   IsInOsm: ColumnType<boolean, boolean | undefined, boolean>;
-  SyncedAt: Date | null;
   CreatedAt: ColumnType<Date, Date | undefined, never>;
   CreatedBy: ColumnType<number | null, number | null | undefined, never>;
   ModifiedAt: Date | null;
   ModifiedBy: number | null;
 }
 
+/** Trạng thái lần làm mới Phân bổ PO gần nhất (một dòng, Id = 1; migration 0009), chỉ bước làm mới ghi */
+export interface PoAllocationRefreshTable {
+  Id: number;
+  RefreshedAt: Date | null;
+  /** Lần chép OSM của dữ liệu đang có trong PoAllocation (lần bị bỏ qua không đổi) */
+  SourceSyncedAt: Date | null;
+  SourceRows: number;
+  PreviousRows: number;
+  InsertedRows: number;
+  UpdatedRows: number;
+  RemovedRows: number;
+  MissingManualRows: number;
+  KeptAbsentRows: number;
+  UnknownFactories: number;
+  MaxShrinkPercent: number;
+  /** null: làm đủ; EMPTY: nguồn rỗng, không làm gì; SHRINK: nguồn giảm quá ngưỡng, không xóa dòng vắng */
+  SkippedReason: 'EMPTY' | 'SHRINK' | null;
+}
+
 export interface OrderDatabase {
   PoAllocation: PoAllocationTable;
+  PoAllocationRefresh: PoAllocationRefreshTable;
   SalesOrder: SalesOrderTable;
   SalesOrderPo: SalesOrderPoTable;
   SalesOrderPoColorSize: SalesOrderPoColorSizeTable;

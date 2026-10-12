@@ -12,7 +12,7 @@ import { FieldPolicyService, MASK, type AccessLevel } from '../../platform/permi
 import { PermissionService } from '../../platform/permission/permission.service';
 import { PoAllocationFactoryDto, PoAllocationQuery, PoAllocationValuesQuery } from './order.dto';
 import { escapeLike, day } from './order.util';
-import { PoAllocationRepository, type PoAllocationListRow } from './po-allocation.repository';
+import { PoAllocationRepository, type PoAllocationListRow, type PoAllocationRefreshState } from './po-allocation.repository';
 
 const RESOURCE = 'order.poallocation';
 /** Số dòng tối đa của một lần xuất file: cả bảng (khoảng 25.000 dòng) vẫn xuất được một lần */
@@ -54,11 +54,15 @@ const isDate = (f: Field) => f === 'etdRevised' || f === 'etdActual';
 type Level = AccessLevel | undefined;
 type Sort = { field: Field; dir: 'asc' | 'desc' };
 
-/** ĐVCS của nhà máy theo danh mục: CASE theo mã (so theo collation của cột như danh mục); nhà máy chưa gắn ĐVCS thì trống */
+/**
+ * ĐVCS của nhà máy theo danh mục, tra trong bảng tra gửi bằng MỘT tham số JSON (so theo collation của cột như danh mục; nhà máy chưa
+ * gắn ĐVCS thì trống). Biểu thức có mặt nhiều lần trong một câu (cột, lọc, sắp xếp): CASE hai tham số mỗi nhà máy sẽ vượt giới hạn
+ * 2.100 tham số khi danh mục có vài trăm nhà máy.
+ */
 function branchExpr(factories: { code: string; branchCode: string }[]): RawBuilder<unknown> {
-  return factories.length
-    ? sql`(CASE PoAllocation.ProductionFactoryCode ${sql.join(factories.map((f) => sql`WHEN ${f.code} THEN ${f.branchCode}`), sql` `)} END)`
-    : sql`CAST(NULL AS VARCHAR(10))`;
+  if (!factories.length) return sql`CAST(NULL AS VARCHAR(10))`;
+  const json = JSON.stringify(factories.map((f) => ({ c: f.code, b: f.branchCode })));
+  return sql`(SELECT TOP 1 j.b FROM OPENJSON(${json}) WITH (c NVARCHAR(100) '$.c', b VARCHAR(10) '$.b') j WHERE j.c = PoAllocation.ProductionFactoryCode)`;
 }
 
 /** Danh sách trắng lọc theo cột (ADR 0011): trường JSON → cột; ĐVCS theo bảng tra của danh mục lúc gọi */
@@ -110,12 +114,27 @@ const EXPORT_COLUMNS = [
   { key: 'factoryName', label: 'Nhà máy SX' },
   { key: 'branchName', label: 'Đơn vị cơ sở', field: 'branchCode' },
   { key: 'manualText', label: 'Nhập tay', field: 'isFactoryManual' },
+  // Cột riêng theo mức của chính isInOsm: ghép vào chữ "Nhập tay" thì lộ dấu này khi riêng nó bị Ẩn, Che
+  { key: 'inOsmText', label: 'Còn trong OSM', field: 'isInOsm' },
   { key: 'osmFactoryName', label: 'Nhà máy SX theo OSM' },
 ];
 /** Cột xuất file chỉ có khi xem được Nhà máy SX */
-const FACTORY_EXPORT_KEYS = new Set(['branchName', 'manualText', 'osmFactoryName']);
+const FACTORY_EXPORT_KEYS = new Set(['branchName', 'manualText', 'inOsmText', 'osmFactoryName']);
 
 const invalid = (msg: string) => new AppException('VALIDATION_FAILED', msg, 422);
+
+/** Cảnh báo về lần làm mới gần nhất: chỉ khi bị bỏ qua (nguồn rỗng) hoặc phải giữ dòng vắng (nguồn giảm quá ngưỡng). Chỉ số đếm */
+function refreshNotice(s: PoAllocationRefreshState | null) {
+  if (!s?.RefreshedAt || !s.SkippedReason) return null;
+  return {
+    at: s.RefreshedAt,
+    reason: s.SkippedReason,
+    sourceRows: s.SourceRows,
+    previousRows: s.PreviousRows,
+    keptAbsent: s.KeptAbsentRows,
+    maxShrinkPercent: s.MaxShrinkPercent,
+  };
+}
 
 /**
  * Màn "Phân bổ PO" (Quản trị đơn hàng): PO được phân cho nhà máy SX nào, theo OSM (view v_OSMData đã chép), đọc bảng làm việc
@@ -154,8 +173,9 @@ export class PoAllocationService {
   }
 
   /**
-   * Sắp xếp theo một trường của danh sách trắng mà người dùng xem được; không có thì theo cột mặc định đầu tiên xem được. Thứ tự
-   * phụ theo các cột xem được (để phân trang ổn định, cuối cùng là Id), cột Ẩn/Che không quyết định thứ tự.
+   * Sắp xếp theo một trường của danh sách trắng mà người dùng xem được; không có thì theo cột mặc định đầu tiên xem được. Thứ tự phụ
+   * chỉ còn Id (BaseRepository thêm, mới chép lên trước) để phân trang ổn định và thứ tự mặc định dùng được chỉ mục
+   * (EtdRevisedDate DESC, Id DESC); cột Ẩn/Che không quyết định thứ tự.
    */
   private sort(sort: string | undefined, blind: Set<Field>): Sort[] {
     const readable = SORT_PRIORITY.filter((f) => !blind.has(f));
@@ -165,8 +185,7 @@ export class PoAllocationService {
       : readable[0]
         ? { field: readable[0], dir: isDate(readable[0]) ? 'desc' : 'asc' }
         : null;
-    if (!picked) return [];
-    return [picked, ...readable.filter((f) => f !== picked.field).map((f) => ({ field: f, dir: 'asc' as const }))];
+    return picked ? [picked] : [];
   }
 
   private orderBy(sort: Sort[], branch: RawBuilder<unknown>) {
@@ -199,20 +218,23 @@ export class PoAllocationService {
     const scope = scopeOf(user);
     const [blind, factoryLevel, branch] = await Promise.all([this.blind(user), this.factoryLevel(user), this.branchCase()]);
     const c = this.criteria(q, blind, branch);
-    const [page, syncedAt] = await Promise.all([
+    const [page, state] = await Promise.all([
       this.repo.list(scope, { page: q.page, pageSize: q.pageSize, q: c.q, where: c.where, searchExclude: c.searchExclude, select: () => [branch.as('BranchCode')], orderBy: this.orderBy(this.sort(q.sort, blind), branch) }),
-      this.repo.lastSyncedAt(scope),
+      this.repo.refreshState(),
     ]);
+    const syncedAt = state?.SourceSyncedAt ?? null;
     const offset = (page.page - 1) * page.pageSize;
     return {
       items: (page.items as PoAllocationListRow[]).map((r, i) => present(r, offset + i + 1, factoryLevel)),
       total: page.total,
       page: page.page,
       pageSize: page.pageSize,
-      /** Lần chép OSM gần nhất có trong bảng; null: chưa đồng bộ, chưa làm mới lần nào */
+      /** Lần chép OSM của dữ liệu đang có; null: chưa đồng bộ, chưa làm mới lần nào */
       syncedAt,
-      /** Nguồn đồng bộ đang bật; false: máy chủ chưa khai database OSM của nguồn này (chỉ hỏi khi bảng chưa có dòng nào) */
+      /** Nguồn đồng bộ đang bật; false: máy chủ chưa khai database OSM của nguồn này (chỉ hỏi khi chưa có dữ liệu) */
       sourceActive: syncedAt ? true : await this.sourceActive(),
+      /** Lần làm mới gần nhất bị bỏ qua hoặc phải giữ dòng không còn trong OSM (màn cảnh báo); null: bình thường */
+      lastRefresh: refreshNotice(state),
     };
   }
 
@@ -266,10 +288,12 @@ export class PoAllocationService {
       const o = present(r, i + 1, factoryLevel);
       const code = o.branchCode as string | null | undefined;
       const manual = o.isFactoryManual;
+      const inOsm = o.isInOsm;
       return {
         ...o,
         branchName: code == null ? null : code === MASK ? MASK : (names.get(code) ?? code),
-        manualText: manual == null ? null : manual === MASK ? MASK : manual ? (o.isInOsm === false ? 'Nhập tay, không còn trong OSM' : 'Nhập tay') : null,
+        manualText: manual == null ? null : manual === MASK ? MASK : manual ? 'Nhập tay' : null,
+        inOsmText: inOsm == null ? null : inOsm === MASK ? MASK : inOsm ? 'Có' : 'Không',
       };
     });
     const columns = factoryLevel === 'HIDDEN' ? EXPORT_COLUMNS.filter((col) => !FACTORY_EXPORT_KEYS.has(col.key)) : EXPORT_COLUMNS;
@@ -288,39 +312,47 @@ export class PoAllocationService {
 
   /**
    * Đổi Nhà máy SX (task 5.10.4): `ids` là dòng đang thấy; máy chủ đổi thành khóa SO, PO, Style No, Màu và áp cho mọi dòng cùng
-   * khóa (quyết định 5.10 Q5). `factoryName` null là "Theo OSM": bỏ nhập tay. `dryRun`: chỉ trả số dòng, số khóa sẽ bị áp, không
-   * ghi. Luật ĐVCS (Q2) do PoAllocationRepository (BaseRepository, factoryBranchWrite) dựng; đơn vị tổng hợp bị từ chối.
+   * khóa (quyết định 5.10 Q5). `factoryName` null là "Theo OSM": bỏ nhập tay. `dryRun`: chỉ trả số dòng, số khóa sẽ bị áp và số dòng
+   * không còn trong OSM sẽ bị bỏ nếu chọn "Theo OSM", không ghi, không giữ khóa ứng dụng. Luật ĐVCS (Q2) do PoAllocationRepository
+   * (BaseRepository, factoryBranchWrite) dựng; đơn vị tổng hợp bị từ chối; cột Nhà máy SX phải Sửa được, kể cả khi xem trước.
    */
   async setFactory(user: AuthUser, dto: PoAllocationFactoryDto) {
     const scope = scopeOf(user);
     await this.repo.assertWritable(scope);
+    // FieldPolicyInterceptor chỉ chặn khi body có factoryName; xem trước không gửi trường này
+    const level = await this.factoryLevel(user);
+    if (level && level !== 'EDITABLE') throw Errors.fieldReadonly(['factoryName'], ['Nhà máy SX']);
     const ids = [...new Set(dto.ids)];
     const factory = dto.factoryName === undefined ? undefined : dto.factoryName === null ? null : await this.factoryCode(dto.factoryName);
     if (factory === undefined && !dto.dryRun) throw invalid('Chọn nhà máy SX, hoặc "Theo OSM" để bỏ nhập tay.');
-    const result = await this.repo.withWriteLock(async (trx) => {
-      const t = await this.repo.target(scope, ids, trx);
+    const check = (t: Awaited<ReturnType<PoAllocationRepository['target']>>) => {
       if (t.found < ids.length) throw Errors.notFound('Có dòng đã chọn không còn trong Phân bổ PO (dữ liệu vừa được làm mới theo OSM). Tải lại trang rồi chọn lại.');
       if (t.otherBranch > 0) throw Errors.factoryOfOtherBranch(t.otherBranch, t.rows);
-      // Mọi dòng xem được đều phải ghi được: không ghi một phần nhóm
-      if (t.writable < t.rows) throw Errors.scopeDenied();
-      if (dto.dryRun || factory === undefined) return { rows: t.rows, keys: t.keys, removed: 0, groups: t.groups, written: false };
-      const done = factory === null ? await this.repo.resetToOsm(scope, ids, trx) : { updated: await this.repo.setManual(scope, ids, factory, trx), removed: 0 };
-      if (done.updated + done.removed !== t.rows) throw Errors.conflict('Dữ liệu Phân bổ PO vừa đổi. Tải lại trang rồi thử lại.');
-      return { rows: t.rows, keys: t.keys, removed: done.removed, groups: t.groups, written: true };
-    });
-    if (result.written) {
-      await this.audit.log({
-        userId: user.userId,
-        username: user.username,
-        branchCode: user.branchCode,
-        entityType: 'PoAllocation',
-        actionCode: 'PO_ALLOCATION_FACTORY',
-        oldValue: {
-          groups: result.groups.map((g) => ({ po: g.PoNo, so: g.SoNo, styleNo: g.StyleNo, color: g.Color, factory: g.ProductionFactoryCode, manual: !!g.IsFactoryManual, rows: Number(g.n) })),
-        },
-        newValue: { factory, manual: factory !== null, rows: result.rows, keys: result.keys, removed: result.removed },
-      });
+      // Không ghi một phần nhóm: mọi dòng cùng khóa xem được phải sửa được, và ngược lại
+      if (t.notWritable > 0 || t.notVisible > 0) throw Errors.scopeDenied();
+      return t;
+    };
+    if (dto.dryRun || factory === undefined) {
+      const t = check(await this.repo.target(scope, ids));
+      return { rows: t.rows, keys: t.keys, removed: 0, removable: t.removable, dryRun: true };
     }
-    return { rows: result.rows, keys: result.keys, removed: result.removed, dryRun: !result.written };
+    const { t, removed } = await this.repo.withWriteLock(async (trx) => {
+      const target = check(await this.repo.target(scope, ids, trx));
+      const done = factory === null ? await this.repo.resetToOsm(scope, ids, trx) : { updated: await this.repo.setManual(scope, ids, factory, trx), removed: 0 };
+      if (done.updated + done.removed !== target.rows) throw Errors.conflict('Dữ liệu Phân bổ PO vừa đổi. Tải lại trang rồi thử lại.');
+      return { t: target, removed: done.removed };
+    });
+    await this.audit.log({
+      userId: user.userId,
+      username: user.username,
+      branchCode: user.branchCode,
+      entityType: 'PoAllocation',
+      actionCode: 'PO_ALLOCATION_FACTORY',
+      oldValue: {
+        groups: t.groups.map((g) => ({ po: g.PoNo, so: g.SoNo, styleNo: g.StyleNo, color: g.Color, factory: g.ProductionFactoryCode, manual: !!g.IsFactoryManual, rows: Number(g.n) })),
+      },
+      newValue: { factory, manual: factory !== null, rows: t.rows, keys: t.keys, removed },
+    });
+    return { rows: t.rows, keys: t.keys, removed, removable: t.removable, dryRun: false };
   }
 }

@@ -9,8 +9,10 @@ import { env } from '../src/config/env';
 import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
 import { PoAllocationRefreshService } from '../src/modules/order/po-allocation-refresh.service';
+import { WRITE_LOCK_TIMEOUT_MS } from '../src/modules/order/po-allocation.repository';
 import { CatalogLookupService } from '../src/platform/catalog/catalog-lookup.service';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
+import { createDb } from '../src/platform/database/db';
 import { SYNC_DB } from '../src/platform/sync/sync.db';
 import type { SyncDb } from '../src/platform/sync/sync.types';
 
@@ -110,7 +112,7 @@ describe('Phân bổ PO: đổi Nhà máy SX', () => {
     await sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1, ModifiedAt = SYSUTCDATETIME() WHERE Id = 1`.execute(core);
     app.get(CatalogLookupService).invalidateFactories();
     await syncDb.insertInto('osm.OSMData' as never).values(SOURCE as never).execute();
-    expect(await refresh()).toMatchObject({ skipped: null, inserted: SOURCE.length });
+    expect(await refresh()).toMatchObject({ reason: null, inserted: SOURCE.length });
     planner = await tokenFor('kehoach.a', 'A01');
     plannerId = (await core.selectFrom('SysUser').select('Id').where('Username', '=', 'kehoach.a').executeTakeFirstOrThrow()).Id;
   });
@@ -132,13 +134,13 @@ describe('Phân bổ PO: đổi Nhà máy SX', () => {
 
   it('xem trước (dryRun) trả số dòng, số khóa sẽ bị áp và không ghi', async () => {
     const res = await put(planner, { ids: [await idOf(P(1)), await idOf(P(1), 1), await idOf(P(4))], dryRun: true }).expect(200);
-    expect(res.body).toEqual({ rows: 3, keys: 2, removed: 0, dryRun: true });
+    expect(res.body).toEqual({ rows: 3, keys: 2, removed: 0, removable: 0, dryRun: true });
     expect((await rows()).some((r) => r.IsFactoryManual)).toBe(false);
   });
 
   it('một lần sửa áp cho mọi dòng cùng SO, PO, Style No, Màu; ghi người sửa và nhật ký', async () => {
     const res = await put(planner, { ids: [await idOf(P(1))], factoryName: FB.toLowerCase() }).expect(200);
-    expect(res.body).toEqual({ rows: 2, keys: 1, removed: 0, dryRun: false });
+    expect(res.body).toEqual({ rows: 2, keys: 1, removed: 0, removable: 0, dryRun: false });
     const p1 = await of(P(1));
     // Lưu đúng mã của danh mục; nhà máy theo OSM giữ để màn hiện cạnh giá trị nhập tay
     expect(p1.map((r) => [r.ProductionFactoryCode, r.OsmFactoryCode, r.IsFactoryManual, r.ModifiedBy])).toEqual([
@@ -177,7 +179,7 @@ describe('Phân bổ PO: đổi Nhà máy SX', () => {
 
   it('dòng chưa có nhà máy, nhà máy chưa gắn ĐVCS hoặc chưa vào danh mục thì ĐVCS nào cũng sửa được', async () => {
     const res = await put(planner, { ids: [await idOf(P(4)), await idOf(P(5)), await idOf(P(6))], factoryName: FA }).expect(200);
-    expect(res.body).toEqual({ rows: 3, keys: 3, removed: 0, dryRun: false });
+    expect(res.body).toEqual({ rows: 3, keys: 3, removed: 0, removable: 0, dryRun: false });
     expect((await rows()).filter((r) => [P(4), P(5), P(6)].includes(r.PoNo!)).map((r) => [r.ProductionFactoryCode, r.IsFactoryManual])).toEqual([
       [FA, true],
       [FA, true],
@@ -196,7 +198,7 @@ describe('Phân bổ PO: đổi Nhà máy SX', () => {
 
   it('"Theo OSM" bỏ nhập tay, Nhà máy SX trở lại giá trị OSM', async () => {
     const res = await put(planner, { ids: [await idOf(P(1), 1)], factoryName: null }).expect(200);
-    expect(res.body).toEqual({ rows: 2, keys: 1, removed: 0, dryRun: false });
+    expect(res.body).toEqual({ rows: 2, keys: 1, removed: 0, removable: 0, dryRun: false });
     expect((await of(P(1))).map((r) => [r.ProductionFactoryCode, r.IsFactoryManual])).toEqual([
       [FA, false],
       [FA, false],
@@ -208,12 +210,14 @@ describe('Phân bổ PO: đổi Nhà máy SX', () => {
   it('"Theo OSM" với dòng nhập tay không còn trong OSM thì xóa dòng đó', async () => {
     // P5 đang nhập tay; OSM bỏ P5 (các dòng khác giữ, trên ngưỡng 80%)
     await sql`DELETE FROM osm.[OSMData] WHERE Brand = ${TAG} AND PO = ${P(5)}`.execute(syncDb);
-    expect(await refresh()).toMatchObject({ skipped: null, missing: 1, removed: 0 });
+    expect(await refresh()).toMatchObject({ reason: null, missing: 1, removed: 0 });
     const [kept] = await of(P(5));
     expect([kept.ProductionFactoryCode, kept.IsFactoryManual, kept.IsInOsm]).toEqual([FA, true, false]);
     const list = (await api().get('/api/v1/order/po-allocations').query({ customer: TAG, q: P(5) }).set(auth(planner)).expect(200)).body;
     expect(list.items[0]).toMatchObject({ isFactoryManual: true, isInOsm: false, osmFactoryName: FREE });
-    expect((await put(planner, { ids: [Number(kept.Id)], factoryName: null }).expect(200)).body).toEqual({ rows: 1, keys: 1, removed: 1, dryRun: false });
+    // Xem trước đếm sẵn dòng sẽ bị bỏ nếu chọn "Theo OSM" (popup báo trước)
+    expect((await put(planner, { ids: [Number(kept.Id)], dryRun: true }).expect(200)).body).toEqual({ rows: 1, keys: 1, removed: 0, removable: 1, dryRun: true });
+    expect((await put(planner, { ids: [Number(kept.Id)], factoryName: null }).expect(200)).body).toEqual({ rows: 1, keys: 1, removed: 1, removable: 1, dryRun: false });
     expect(await of(P(5))).toEqual([]);
     // Dòng đã xóa (hoặc đã đổi sau lần làm mới) thì 404 để người dùng tải lại
     expect((await put(planner, { ids: [Number(kept.Id)], factoryName: FA }).expect(404)).body.error.code).toBe('NOT_FOUND');
@@ -229,6 +233,8 @@ describe('Phân bổ PO: đổi Nhà máy SX', () => {
     try {
       expect((await put(planner, { ids: [await idOf(P(1))], factoryName: FB }).expect(403)).body.error.code).toBe('FIELD_READONLY');
       expect((await put(planner, { ids: [await idOf(P(1))], factoryName: null }).expect(403)).body.error.code).toBe('FIELD_READONLY');
+      // Xem trước không gửi factoryName (bộ chặn chung không bắt được): service vẫn đòi cột Sửa được
+      expect((await put(planner, { ids: [await idOf(P(1))], dryRun: true }).expect(403)).body.error.code).toBe('FIELD_READONLY');
     } finally {
       await setPolicy(null);
     }
@@ -241,4 +247,32 @@ describe('Phân bổ PO: đổi Nhà máy SX', () => {
       expect((await put(planner, body).expect(422)).body.error.code).toBe('VALIDATION_FAILED');
     }
   });
+
+  it('đang làm mới theo OSM (giữ khóa ứng dụng) thì đổi Nhà máy SX nhận 409; xem trước không chờ khóa', async () => {
+    const holder = createDb<any>(env.db.orderName);
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    // Giữ khóa như bước làm mới đang chạy: một transaction riêng trên kết nối riêng
+    const holding = holder.transaction().execute(async (trx) => {
+      await sql`DECLARE @r INT; EXEC @r = sp_getapplock @Resource = 'MES_Order.PoAllocation', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r AS r`.execute(trx);
+      locked();
+      await released;
+    });
+    await isLocked;
+    try {
+      const id = await idOf(P(1));
+      const started = Date.now();
+      expect((await put(planner, { ids: [id], dryRun: true }).expect(200)).body).toMatchObject({ rows: 2, keys: 1, dryRun: true });
+      expect(Date.now() - started).toBeLessThan(WRITE_LOCK_TIMEOUT_MS);
+      const res = await put(planner, { ids: [id], factoryName: FB }).expect(409);
+      expect(res.body.error).toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('đang được làm mới') });
+      expect((await of(P(1))).some((r) => r.IsFactoryManual)).toBe(false);
+    } finally {
+      release();
+      await holding;
+      await holder.destroy();
+    }
+  }, 40_000);
 });

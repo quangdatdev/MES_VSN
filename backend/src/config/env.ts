@@ -19,6 +19,15 @@ const flag = (name: string, d: boolean) => {
   throw new Error(`${name} chỉ nhận true hoặc false (đang là "${process.env[name]}").`);
 };
 
+/** Số nguyên 0–100: để trống thì lấy mặc định; giá trị khác báo lỗi thay vì đoán */
+const percent = (name: string, d: number) => {
+  const v = process.env[name]?.trim();
+  if (!v) return d;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 100) throw new Error(`${name} chỉ nhận số nguyên từ 0 đến 100 (đang là "${process.env[name]}").`);
+  return n;
+};
+
 if (isProd && !process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET là bắt buộc ở môi trường production.');
 }
@@ -75,6 +84,10 @@ export const env = {
   // Làm mới bảng Phân bổ PO (MES_Order.PoAllocation) từ dữ liệu OSM đã chép sau mỗi đợt đồng bộ nguồn OSM.OSMData và lúc khởi
   // động (Phase 5.10). Mặc định bật; test tắt (test/setup-env.ts) để bước này không chạy xen vào bài test, bài test gọi thẳng
   poAllocationRefresh: flag('PO_ALLOCATION_REFRESH', true),
+  // Bước làm mới Phân bổ PO không xóa dòng vắng khi nguồn ít hơn (100 - n)% số dòng đang có trong OSM (chép OSM lỗi, view tạm thiếu
+  // dữ liệu): vẫn thêm, sửa, chỉ giữ dòng vắng và cảnh báo trên màn. 100: không chặn (quản trị đặt rồi khởi động lại khi OSM thật sự
+  // bớt nhiều PO); 0: giảm một dòng cũng giữ
+  poAllocationMaxShrinkPercent: percent('PO_ALLOCATION_MAX_SHRINK_PERCENT', 20),
   // Cookie refresh chỉ gửi qua HTTPS. Demo trong mạng nội bộ chạy HTTP thì để COOKIE_SECURE=false.
   cookieSecure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : isProd,
   // Chỉ khai báo khi thật sự chạy sau reverse proxy (ví dụ "loopback" hoặc IP của Nginx). Mặc định không tin

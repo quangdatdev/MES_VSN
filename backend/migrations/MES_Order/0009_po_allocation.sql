@@ -5,6 +5,8 @@
 -- Tài nguyên order.poallocation dùng chung (SHARED): không có cột BranchCode, ĐVCS suy từ Nhà máy SX theo danh mục Nhà máy SX
 -- (MES_Core.SysProductionFactory, khóa ngầm), vì danh mục đổi ĐVCS của nhà máy thì dòng phải theo ngay.
 -- OPENJSON (bước làm mới gửi nguồn một tham số JSON) cần compatibility level 130: đã kiểm ở 0007.
+-- Không có cột thời điểm chép theo dòng: giữ nó là ghi lại mọi dòng mỗi lần làm mới (khóa cả bảng); thời điểm chép là thông tin
+-- của cả bảng, ở PoAllocationRefresh.
 CREATE TABLE dbo.PoAllocation (
     Id                    BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PoAllocation PRIMARY KEY,
     -- SHA-256 của 11 cột OSM (bỏ khoảng trắng cuối như phép so của SQL Server): dòng OSM không đổi thì giữ Id
@@ -27,8 +29,6 @@ CREATE TABLE dbo.PoAllocation (
     IsFactoryManual       BIT            NOT NULL CONSTRAINT DF_PoAllocation_IsFactoryManual DEFAULT 0,
     -- 0: OSM không còn dòng nào cùng SO, PO, Style No, Màu; giữ lại để nhà máy nhập tay không mất khi OSM tạm thiếu PO
     IsInOsm               BIT            NOT NULL CONSTRAINT DF_PoAllocation_IsInOsm DEFAULT 1,
-    -- Lần chép OSM gần nhất có dòng này (SyncedAt của bảng chép)
-    SyncedAt              DATETIME2(3)   NULL,
     CreatedAt             DATETIME2(3)   NOT NULL CONSTRAINT DF_PoAllocation_CreatedAt DEFAULT SYSUTCDATETIME(),
     -- Dòng do bước làm mới của hệ thống tạo: để trống
     CreatedBy             INT            NULL,
@@ -50,4 +50,35 @@ CREATE INDEX IX_PoAllocation_Manual ON dbo.PoAllocation (IsFactoryManual) INCLUD
 -- Khóa ngầm tới MES_Core.SysUser.Id (softkeys.json); hầu hết dòng để trống nên chỉ mục có lọc
 CREATE INDEX IX_PoAllocation_CreatedBy ON dbo.PoAllocation (CreatedBy) WHERE CreatedBy IS NOT NULL;
 CREATE INDEX IX_PoAllocation_ModifiedBy ON dbo.PoAllocation (ModifiedBy) WHERE ModifiedBy IS NOT NULL;
+GO
+
+-- Trạng thái lần làm mới gần nhất (một dòng, Id = 1): màn Phân bổ PO đọc thời điểm chép OSM của dữ liệu và cảnh báo khi lần làm
+-- mới bị bỏ qua hoặc phải giữ dòng không còn trong OSM (chốt nguồn giảm bất thường). Chỉ bước làm mới của hệ thống ghi.
+CREATE TABLE dbo.PoAllocationRefresh (
+    Id                  INT           NOT NULL CONSTRAINT PK_PoAllocationRefresh PRIMARY KEY,
+    -- Lần làm mới gần nhất, kể cả lần bị bỏ qua; NULL: chưa làm mới lần nào
+    RefreshedAt         DATETIME2(3)  NULL,
+    -- Lần chép OSM (SyncedAt của bảng chép) của dữ liệu đang có trong PoAllocation: lần bị bỏ qua không đổi cột này
+    SourceSyncedAt      DATETIME2(3)  NULL,
+    -- Số dòng khác nhau của nguồn ở lần làm mới gần nhất
+    SourceRows          INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_SourceRows DEFAULT 0,
+    -- Số dòng đang có trong OSM của bảng trước lần làm mới đó (để so với nguồn)
+    PreviousRows        INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_PreviousRows DEFAULT 0,
+    InsertedRows        INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_InsertedRows DEFAULT 0,
+    UpdatedRows         INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_UpdatedRows DEFAULT 0,
+    RemovedRows         INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_RemovedRows DEFAULT 0,
+    -- Dòng nhập tay mà OSM không còn dòng nào cùng khóa: giữ, IsInOsm = 0
+    MissingManualRows   INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_MissingManualRows DEFAULT 0,
+    -- Dòng không còn trong OSM mà không xóa (cũng không đánh dấu) vì nguồn giảm quá MaxShrinkPercent
+    KeptAbsentRows      INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_KeptAbsentRows DEFAULT 0,
+    -- Số tên nhà máy (FtyName) của nguồn không có trong danh mục Nhà máy SX: luật ĐVCS theo nhà máy không bảo vệ các dòng đó
+    UnknownFactories    INT           NOT NULL CONSTRAINT DF_PoAllocationRefresh_UnknownFactories DEFAULT 0,
+    -- Ngưỡng giảm (%) áp ở lần làm mới đó (PO_ALLOCATION_MAX_SHRINK_PERCENT)
+    MaxShrinkPercent    TINYINT       NOT NULL CONSTRAINT DF_PoAllocationRefresh_MaxShrinkPercent DEFAULT 20,
+    -- NULL: làm đủ; EMPTY: nguồn rỗng, không làm gì; SHRINK: nguồn giảm quá ngưỡng, không xóa dòng vắng (KeptAbsentRows)
+    SkippedReason       VARCHAR(10)   NULL CONSTRAINT CK_PoAllocationRefresh_SkippedReason CHECK (SkippedReason IN ('EMPTY', 'SHRINK')),
+    CONSTRAINT CK_PoAllocationRefresh_Single CHECK (Id = 1),
+    CONSTRAINT CK_PoAllocationRefresh_Percent CHECK (MaxShrinkPercent <= 100)
+);
+INSERT INTO dbo.PoAllocationRefresh (Id) VALUES (1);
 GO

@@ -93,7 +93,7 @@ describe('Phân bổ PO (OSM)', () => {
     ];
     await syncDb.insertInto('osm.OSMData' as never).values(rows as never).execute();
     const refreshed = await app.get(PoAllocationRefreshService).refresh({ brand: TAG });
-    expect(refreshed).toMatchObject({ skipped: null, source: 4, inserted: 4, total: 4 });
+    expect(refreshed).toMatchObject({ reason: null, source: 4, inserted: 4, total: 4 });
     planner = await tokenFor('kehoach.a', 'A01');
   });
 
@@ -137,7 +137,7 @@ describe('Phân bổ PO (OSM)', () => {
 
   it('làm mới lần nữa với dữ liệu không đổi thì giữ nguyên Id của dòng', async () => {
     const before = (await list({ sort: 'po:asc' })).items.map((r) => r.id);
-    expect(await app.get(PoAllocationRefreshService).refresh({ brand: TAG })).toMatchObject({ skipped: null, inserted: 0, removed: 0 });
+    expect(await app.get(PoAllocationRefreshService).refresh({ brand: TAG })).toMatchObject({ reason: null, inserted: 0, updated: 0, removed: 0 });
     expect((await list({ sort: 'po:asc' })).items.map((r) => r.id)).toEqual(before);
   });
 
@@ -211,9 +211,30 @@ describe('Phân bổ PO (OSM)', () => {
       r.on('end', () => cb(null, text));
     }).expect(200);
     const lines = (res.body as string).replace(new RegExp(`^${String.fromCharCode(0xfeff)}`), '').split('\r\n');
-    expect(lines[0]).toBe('Brand,Season,PO,SO,Ship mode,Style name,Style No,Màu,ETD-Actual,ETD-Revised,Nhà máy SX,Đơn vị cơ sở,Nhập tay,Nhà máy SX theo OSM');
+    expect(lines[0]).toBe('Brand,Season,PO,SO,Ship mode,Style name,Style No,Màu,ETD-Actual,ETD-Revised,Nhà máy SX,Đơn vị cơ sở,Nhập tay,Còn trong OSM,Nhà máy SX theo OSM');
     expect(lines).toHaveLength(5);
     expect(lines[1].startsWith(`${TAG},SS26,${P(1)},S1,SEA,Áo ST-A,ST-A,Navy,2026-10-01,2026-11-01,${FTY},`)).toBe(true);
-    expect(lines[1].endsWith(`,,${FTY}`)).toBe(true);
+    expect(lines[1].endsWith(`,,Có,${FTY}`)).toBe(true);
+  });
+
+  it('danh mục vài trăm nhà máy đã gắn ĐVCS: danh sách, sắp xếp, lọc, popup lọc, xuất file theo ĐVCS không vượt giới hạn tham số', async () => {
+    // Bảng tra nhà máy → ĐVCS đi bằng một tham số JSON; CASE hai tham số mỗi nhà máy, dùng vài lần trong một câu, vượt 2.100 ở khoảng 330 nhà máy
+    const many = Array.from({ length: 400 }, (_, i) => ({ Code: `${TAG}-M${i}`, Name: `Nhà máy thử ${i}`, BranchCode: i % 2 ? 'A02' : 'A03', SortOrder: 9000 + i, IsActive: true, IsSystem: false }));
+    for (let i = 0; i < many.length; i += 100) await core.insertInto('SysProductionFactory').values(many.slice(i, i + 100)).execute();
+    app.get(CatalogLookupService).invalidateFactories();
+    try {
+      const cf = JSON.stringify({ branchCode: { in: ['A01', null] } });
+      // Trống lên trước khi tăng dần; trong cùng ĐVCS theo Id (thứ tự phụ duy nhất)
+      const sorted = pos(await list({ sort: 'branchCode:asc', cf }));
+      expect([sorted.slice(0, 2).sort(), sorted.slice(2).sort()]).toEqual([
+        ['P2', 'P3'],
+        ['P1', 'P4'],
+      ]);
+      expect((await api().get('/api/v1/order/po-allocations/values').query({ customer: TAG, field: 'branchCode', cf }).set(auth(planner)).expect(200)).body.values).toEqual(['A01', null]);
+      await api().get('/api/v1/order/po-allocations/export').query({ customer: TAG, sort: 'branchCode:desc', cf }).set(auth(planner)).expect(200);
+    } finally {
+      await core.deleteFrom('SysProductionFactory').where('Code', 'like', `${TAG}-M%`).execute();
+      app.get(CatalogLookupService).invalidateFactories();
+    }
   });
 });
