@@ -11,6 +11,11 @@ export interface CatalogEntry extends CatalogOption {
   isActive: boolean;
 }
 
+/** Nhà máy SX (ADR 0013) cho module nghiệp vụ: mã, tên, ĐVCS quản lý */
+export interface FactoryEntry extends CatalogEntry {
+  branchCode: string | null;
+}
+
 /**
  * Đọc danh mục cho module nghiệp vụ (chỉ đọc, cache ngắn). Tách khỏi CatalogService để module khác không gọi được
  * các hàm ghi của màn Quản trị › Danh mục hệ thống.
@@ -20,6 +25,7 @@ export class CatalogLookupService {
   private readonly logger = new Logger(CatalogLookupService.name);
   private cache = new Map<string, { at: number; items: CatalogEntry[] }>();
   private branches: { at: number; names: Map<string, string> } | null = null;
+  private factories: { at: number; items: FactoryEntry[] } | null = null;
   /** Lần đọc tên chi nhánh đang chạy: các request đến cùng lúc khi cache hết hạn dùng chung, không mỗi request đọc một lần */
   private loadingBranches: Promise<Map<string, string>> | null = null;
   /** Lần đọc danh mục BRAVO trước có lỗi không: chỉ ghi cảnh báo khi đổi trạng thái, không mỗi 30 giây một lần */
@@ -34,10 +40,9 @@ export class CatalogLookupService {
   ) {}
 
   /**
-   * Tên chi nhánh theo mã nhà máy, hiện thay mã (A01) ở cột Chi nhánh của các màn: TenChiNhanh trong danh mục chi nhánh
-   * BRAVO. Chi nhánh BRAVO chưa có tên hoặc chưa chép được (máy chưa có MES_Sync) thì lấy tên ở Quản trị › Nhà máy; tên đó
-   * cũng trống thì không có trong danh sách (màn hình hiện mã). Chỉ các nhà máy của MES (SysBranch, trừ đơn vị tổng hợp):
-   * dòng BRAVO không phải nhà máy MES (văn phòng, công ty) không lọt vào.
+   * Tên chi nhánh theo mã đơn vị cơ sở, hiện thay mã (A01) ở cột Chi nhánh, ĐVCS của các màn: TenChiNhanh trong danh mục
+   * chi nhánh BRAVO. Chưa chép được (máy chưa có MES_Sync) thì lấy tên ở Quản trị › Đơn vị cơ sở; tên đó cũng trống thì không
+   * có trong danh sách (màn hình hiện mã). Chỉ các ĐVCS của MES (SysBranch, trừ đơn vị tổng hợp).
    */
   async branchNames(): Promise<Map<string, string>> {
     if (this.branches && Date.now() - this.branches.at < CatalogLookupService.TTL_MS) return this.branches.names;
@@ -50,7 +55,7 @@ export class CatalogLookupService {
     return this.loadingBranches;
   }
 
-  /** Gọi sau khi sửa tên nhà máy ở Quản trị › Nhà máy */
+  /** Gọi sau khi sửa hoặc chép ĐVCS ở Quản trị › Đơn vị cơ sở */
   invalidateBranchNames() {
     this.branches = null;
     this.loadingBranches = null;
@@ -71,7 +76,7 @@ export class CatalogLookupService {
       if (this.bravoFailed) this.logger.log('Đã đọc lại được danh mục chi nhánh BRAVO.');
       this.bravoFailed = false;
     } catch (e) {
-      if (!this.bravoFailed) this.logger.warn(`Chưa đọc được danh mục chi nhánh BRAVO, dùng tên ở Quản trị › Nhà máy: ${(e as Error).message}`);
+      if (!this.bravoFailed) this.logger.warn(`Chưa đọc được danh mục chi nhánh BRAVO, dùng tên ở Quản trị › Đơn vị cơ sở: ${(e as Error).message}`);
       this.bravoFailed = true;
     }
     if (gen === this.branchGen) this.branches = { at: Date.now(), names };
@@ -85,7 +90,7 @@ export class CatalogLookupService {
   }
 
   /**
-   * Mọi mục của một danh mục mã-tên (UNIT, ORDER_TYPE, PROD_FACTORY…) theo thứ tự hiển thị, kể cả mục đã ngừng: dữ liệu cũ
+   * Mọi mục của một danh mục mã-tên (UNIT, ORDER_TYPE…) theo thứ tự hiển thị, kể cả mục đã ngừng: dữ liệu cũ
    * vẫn phải hiện đúng tên. Danh mục chưa có hoặc đã ngừng thì rỗng.
    */
   async items(catalogCode: string): Promise<CatalogEntry[]> {
@@ -113,5 +118,19 @@ export class CatalogLookupService {
   /** Gọi sau khi sửa danh mục để gợi ý ở màn nghiệp vụ thấy ngay */
   invalidate(catalogCode: string) {
     this.cache.delete(catalogCode);
+  }
+
+  /** Mọi nhà máy SX theo thứ tự hiển thị, kể cả nhà máy đã ngừng (đơn hàng cũ vẫn hiện đúng tên) */
+  async productionFactories(): Promise<FactoryEntry[]> {
+    if (this.factories && Date.now() - this.factories.at < CatalogLookupService.TTL_MS) return this.factories.items;
+    const rows = await this.db.selectFrom('SysProductionFactory').select(['Code', 'Name', 'BranchCode', 'IsActive']).orderBy('SortOrder').orderBy('Code').execute();
+    const items = rows.map((r) => ({ code: r.Code, name: r.Name, branchCode: r.BranchCode, isActive: !!r.IsActive }));
+    this.factories = { at: Date.now(), items };
+    return items;
+  }
+
+  /** Gọi sau khi sửa danh mục Nhà máy SX */
+  invalidateFactories() {
+    this.factories = null;
   }
 }

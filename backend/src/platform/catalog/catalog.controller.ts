@@ -7,6 +7,8 @@ import {
   CatalogItemUpdateDto,
   CatalogLinesQuery,
   ExternalRowsQuery,
+  FactoryCreateDto,
+  FactoryUpdateDto,
   LineCreateDto,
   LineUpdateDto,
   ShiftCreateDto,
@@ -41,6 +43,16 @@ export class CatalogController {
 
   @Put('lines/:id') @RequirePermission('admin.catalog:update')
   async updateLine(@CurrentUser() a: AuthUser, @id() lid: number, @Body() dto: LineUpdateDto) { await this.catalogs.updateLine(a, lid, dto); return { ok: true }; }
+
+  // ---- Nhà máy SX, mỗi nhà máy thuộc một đơn vị cơ sở (ADR 0013) ----
+  @Get('factories') @RequirePermission('admin.catalog:view')
+  factories(@Query() q: CatalogItemsQuery) { return this.catalogs.factories(q.q); }
+
+  @Post('factories') @RequirePermission('admin.catalog:create')
+  createFactory(@CurrentUser() a: AuthUser, @Body() dto: FactoryCreateDto) { return this.catalogs.createFactory(a, dto); }
+
+  @Put('factories/:id') @RequirePermission('admin.catalog:update')
+  async updateFactory(@CurrentUser() a: AuthUser, @id() fid: number, @Body() dto: FactoryUpdateDto) { await this.catalogs.updateFactory(a, fid, dto); return { ok: true }; }
 
   // ---- Ca làm việc ----
   @Get('shifts') @RequirePermission('admin.catalog:view')

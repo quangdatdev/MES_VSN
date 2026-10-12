@@ -13,6 +13,10 @@ export const ACTION_LABEL: Record<Action, string> = {
   export: 'Xuất file',
 };
 
+/**
+ * Đơn vị cơ sở (SysBranch, ADR 0013). A00 là đơn vị tổng hợp của MES, luôn tạo. A01–A03 chỉ là dữ liệu mẫu (máy demo chưa
+ * có đồng bộ BRAVO): danh sách thật lấy theo danh mục chi nhánh BRAVO (MES_Sync.bravo.DM_CHINHANH), seed chép sau bước này.
+ */
 export const branches = [
   { code: 'A00', name: 'Toàn công ty', isAggregate: true, sort: 0 },
   { code: 'A01', name: 'Nhà máy 1', isAggregate: false, sort: 10 },
@@ -83,9 +87,10 @@ export interface ResourceDef {
 }
 
 export const resources: ResourceDef[] = [
-  { code: 'order.allocation', name: 'Thông tin đơn hàng', path: '/order/info', table: 'SalesOrder', matrix: ['V', 'VE', 'VCUDE', '', '', 'VE'] },
+  // Đơn hàng, PO lấy hết từ BRAVO, dùng chung toàn công ty, không lọc theo ĐVCS (ADR 0013, đổi từ BRANCH ngày 11/10/2026)
+  { code: 'order.allocation', name: 'Thông tin đơn hàng', path: '/order/info', table: 'SalesOrder', scope: 'SHARED', matrix: ['V', 'VE', 'VCUDE', '', '', 'VE'] },
   { code: 'order.shipment', name: 'Kế hoạch xuất hàng', path: '/order/shipment', table: 'ShipmentPlan', matrix: ['V', 'VE', 'VCUDE', '', '', 'VE'] },
-  { code: 'order.po', name: 'Cập nhật tỷ lệ cắt', path: '/order/cut-ratio', table: 'SalesOrderPo', matrix: ['V', 'VE', 'VCUDE', 'V', '', 'VE'] },
+  { code: 'order.po', name: 'Cập nhật tỷ lệ cắt', path: '/order/cut-ratio', table: 'SalesOrderPo', scope: 'SHARED', matrix: ['V', 'VE', 'VCUDE', 'V', '', 'VE'] },
   { code: 'order.lineplan', name: 'Xếp chuyền', path: '/order/line-plan', table: 'ShipmentPlan', matrix: ['V', 'VE', 'VCUDE', 'V', '', 'VE'] },
   { code: 'order.colorsize', name: 'Phân bổ màu cỡ', path: '/order/color-size', table: 'ShipmentPlanLine', matrix: ['V', 'VE', 'VCUDE', 'VU', '', 'VE'] },
   // Kế hoạch chuẩn bị SX (Phase 5.5, ADR 0009): màn thuộc nhóm Quản trị đơn hàng, dữ liệu ở MES_Sewing (module May).
@@ -123,7 +128,7 @@ export const resources: ResourceDef[] = [
   { code: 'admin.role', name: 'Vai trò', path: '/admin/roles', matrix: ['VCUD', '', '', '', '', ''] },
   { code: 'admin.permission', name: 'Phân quyền', path: '/admin/permissions', matrix: ['VU', '', '', '', '', ''] },
   { code: 'admin.fieldpolicy', name: 'Chính sách cột', path: '/admin/field-policies', matrix: ['VU', '', '', '', '', ''] },
-  { code: 'admin.branch', name: 'Nhà máy', path: '/admin/branches', matrix: ['VCU', '', '', '', '', ''] },
+  { code: 'admin.branch', name: 'Đơn vị cơ sở', path: '/admin/branches', matrix: ['VCU', '', '', '', '', ''] },
   // Không có quyền xóa: danh mục ngừng dùng bằng IsActive (CLAUDE.md mục 5)
   { code: 'admin.catalog', name: 'Danh mục hệ thống', path: '/admin/catalogs', matrix: ['VCU', '', '', '', '', ''] },
   { code: 'admin.audit', name: 'Nhật ký hệ thống', path: '/admin/audit', matrix: ['VE', '', '', '', '', ''] },
@@ -135,9 +140,10 @@ export const ROLE_ORDER = ['ADMIN', 'DIRECTOR', 'PLANNER', 'LINE_LEADER', 'QC', 
 
 /** Chiều phạm vi (ngoài FACTORY luôn có) gắn với từng tài nguyên: chiều → cột của bảng nguồn. */
 export const scopeBindings: Record<string, Record<string, string>> = {
-  'order.allocation': { FACTORY: 'BranchCode', OWNER: 'CreatedBy' },
+  // Đơn hàng, PO dùng chung (ADR 0013): BranchCode chỉ là Chi nhánh FOB, không còn là chiều phạm vi
+  'order.allocation': { OWNER: 'CreatedBy' },
   'order.shipment': { FACTORY: 'BranchCode', OWNER: 'CreatedBy' },
-  'order.po': { FACTORY: 'BranchCode', OWNER: 'CreatedBy' },
+  'order.po': { OWNER: 'CreatedBy' },
   'order.lineplan': { FACTORY: 'BranchCode', OWNER: 'CreatedBy' },
   'order.colorsize': { FACTORY: 'BranchCode', LINE: 'LineCode', OWNER: 'CreatedBy' },
   'order.prep': { FACTORY: 'BranchCode', LINE: 'LineCode' },
@@ -311,6 +317,8 @@ export interface UserDef {
   role: string;
   branches: string[];
   defaultBranch: string;
+  /** Nhà máy SX được tích (ADR 0013): lập kế hoạch xuất hàng chỉ thấy đơn hàng của các nhà máy này */
+  productionFactories?: string[];
   /** Phạm vi của phép gán vai trò (L3) */
   scopes?: { dimension: string; mode: 'ALL' | 'ORG_SUBTREE' | 'LIST' | 'OWN'; org?: string; value?: string }[];
   /** Ngoại lệ theo người (L5) */
@@ -323,7 +331,7 @@ export interface UserDef {
 export const users: UserDef[] = [
   { username: 'admin', fullName: 'Quản trị hệ thống', role: 'ADMIN', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00' },
   { username: 'giamdoc', fullName: 'Phạm Quốc Hưng', role: 'DIRECTOR', branches: ['A00', 'A01'], defaultBranch: 'A00' },
-  { username: 'kehoach.a', fullName: 'Lê Thị Mai', role: 'PLANNER', branches: ['A01'], defaultBranch: 'A01' },
+  { username: 'kehoach.a', fullName: 'Lê Thị Mai', role: 'PLANNER', branches: ['A01'], defaultBranch: 'A01', productionFactories: ['A01', 'A01-B'] },
   {
     username: 'truongchuyen.a',
     fullName: 'Nguyễn Văn Tâm',
@@ -421,19 +429,24 @@ export const catalogs = [
       ['SXND', 'Sản xuất nội địa'],
     ],
   },
-  {
-    code: 'PROD_FACTORY',
-    name: 'Nhà máy sản xuất',
-    description: 'Nơi sản xuất thực tế của đơn hàng (cột Nhà máy SX), có thể khác chi nhánh FOB. Mục ban đầu theo các nhà máy đang có; thêm xưởng gia công ngoài khi cần. Đơn hàng lưu mã.',
-    items: [],
-    fromBranches: true,
-  },
 ] as const;
 
-/** Mục seed của một danh mục: danh mục fromBranches lấy theo danh sách nhà máy truyền vào (không gồm đơn vị tổng hợp). */
-export function catalogSeedItems(c: (typeof catalogs)[number], factories: { code: string; name: string }[]): [code: string, name: string][] {
-  return 'fromBranches' in c ? factories.map((f) => [f.code, f.name]) : c.items.map(([code, name]) => [code, name]);
+/** Mục seed của một danh mục mã-tên */
+export function catalogSeedItems(c: (typeof catalogs)[number]): [code: string, name: string][] {
+  return c.items.map(([code, name]) => [code, name]);
 }
+
+/**
+ * Nhà máy SX mẫu (SysProductionFactory, ADR 0013), chỉ nạp khi có dữ liệu mẫu: mỗi ĐVCS mẫu một nhà máy cùng mã (như danh
+ * mục PROD_FACTORY cũ, đơn hàng đã chọn vẫn trỏ đúng), A01 thêm một nhà máy thứ hai để thấy một ĐVCS có nhiều nhà máy.
+ * Máy dùng thật tạo nhà máy ở Quản trị › Danh mục hệ thống.
+ */
+export const productionFactories = [
+  { code: 'A01', name: 'Nhà máy 1', branch: 'A01' },
+  { code: 'A01-B', name: 'Nhà máy 1B', branch: 'A01' },
+  { code: 'A02', name: 'Nhà máy 2', branch: 'A02' },
+  { code: 'A03', name: 'Nhà máy 3', branch: 'A03' },
+];
 
 /** Ca làm việc mẫu: [mã, tên, bắt đầu, kết thúc, phút nghỉ] */
 export const shifts = [

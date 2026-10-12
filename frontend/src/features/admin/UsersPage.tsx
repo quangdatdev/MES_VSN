@@ -18,13 +18,14 @@ import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
 import { emailError, EmptyRow, escapeToClose, FilterBar, IconAction, LoadError, SkeletonRows } from './common';
 import { pageOf, useClampPage, useUrlParams } from '../../lib/useUrlParams';
-import type { AdminBranch, AdminRole, AdminUser } from './types';
+import type { AdminBranch, AdminFactory, AdminRole, AdminUser } from './types';
 import { UserAccessDrawer } from './UserAccessDrawer';
+import { UserBranchesDialog } from './UserBranchesDialog';
 
 type Dialog = { kind: 'create' } | { kind: 'edit' | 'roles' | 'branches' | 'password' | 'access'; user: AdminUser } | null;
 
 const SELF_ROLES = 'Bạn không tự gán vai trò cho chính mình. Nhờ quản trị viên khác.';
-const SELF_BRANCHES = 'Bạn không tự gán nhà máy cho chính mình. Nhờ quản trị viên khác.';
+const SELF_BRANCHES = 'Bạn không tự gán đơn vị cơ sở, nhà máy SX cho chính mình. Nhờ quản trị viên khác.';
 const SELF_PASSWORD = 'Không tự đặt lại mật khẩu của chính mình ở màn quản trị. Nhờ quản trị viên khác.';
 /** Cỡ trang dùng chung cho truy vấn, kéo về trang cuối và chân bảng */
 const PAGE_SIZE = 100;
@@ -36,17 +37,19 @@ interface UserRowProps {
   canGrant: boolean;
   roleName: (id: number) => string;
   branchCode: (id: number) => string;
+  factoryCode: (id: number) => string;
   onDialog: (d: Dialog) => void;
 }
 
 /** Một dòng người dùng (tới 5 nút có Tooltip): memo, mở popup hay ngăn kéo không vẽ lại cả 100 dòng */
-const UserRow = memo(function UserRow({ u, self, canEdit, canGrant, roleName, branchCode, onDialog }: UserRowProps) {
+const UserRow = memo(function UserRow({ u, self, canEdit, canGrant, roleName, branchCode, factoryCode, onDialog }: UserRowProps) {
   return (
     <tr onClick={() => onDialog({ kind: 'access', user: u })} style={{ cursor: 'pointer' }}>
       <td className="mono" style={{ fontWeight: 600 }}>{u.username}</td>
       <td>{u.fullName}{self && <Badge ml={6} size="xs" variant="light">Bạn</Badge>}</td>
       <td>{u.roleIds.length ? u.roleIds.map((r) => <Badge key={r} mr={4} size="sm" variant="light" color="gray">{roleName(r)}</Badge>) : <Text c="dimmed" size="sm">Chưa gán</Text>}</td>
       <td>{u.branchIds.length ? u.branchIds.map((b) => <Badge key={b} mr={4} size="sm" variant="outline" color="charcoal" className="mono">{branchCode(b)}</Badge>) : <Text c="dimmed" size="sm">Chưa gán</Text>}</td>
+      <td>{u.productionFactoryIds.length ? u.productionFactoryIds.map((f) => <Badge key={f} mr={4} size="sm" variant="light" color="gray" className="mono">{factoryCode(f)}</Badge>) : <Text c="dimmed" size="sm">Chưa tích</Text>}</td>
       <td>
         {!u.isActive ? (
           <Badge color="gray" variant="filled" size="sm">Đã khóa</Badge>
@@ -62,7 +65,7 @@ const UserRow = memo(function UserRow({ u, self, canEdit, canGrant, roleName, br
           <IconAction label="Phân quyền chi tiết" color="link" icon={<IconAdjustmentsHorizontal size={16} />} onClick={() => onDialog({ kind: 'access', user: u })} />
           {canEdit && <IconAction label="Sửa thông tin" icon={<IconPencil size={16} />} onClick={() => onDialog({ kind: 'edit', user: u })} />}
           {canGrant && <IconAction label="Gán vai trò" blockedReason={self ? SELF_ROLES : null} icon={<IconUserShield size={16} />} onClick={() => onDialog({ kind: 'roles', user: u })} />}
-          {canGrant && <IconAction label="Gán nhà máy" blockedReason={self ? SELF_BRANCHES : null} icon={<IconBuildingFactory2 size={16} />} onClick={() => onDialog({ kind: 'branches', user: u })} />}
+          {canGrant && <IconAction label="Gán đơn vị cơ sở, nhà máy SX" blockedReason={self ? SELF_BRANCHES : null} icon={<IconBuildingFactory2 size={16} />} onClick={() => onDialog({ kind: 'branches', user: u })} />}
           {canEdit && <IconAction label="Đặt lại mật khẩu" blockedReason={self ? SELF_PASSWORD : null} icon={<IconKey size={16} />} onClick={() => onDialog({ kind: 'password', user: u })} />}
         </Group>
       </td>
@@ -96,6 +99,8 @@ export default function UsersPage() {
   useClampPage(users.data, page, PAGE_SIZE, (p) => setUrl({ page: p === 1 ? null : p }));
   const roles = useQuery({ queryKey: ['admin', 'roles'], queryFn: () => api<AdminRole[]>('/admin/roles') });
   const branches = useQuery({ queryKey: ['admin', 'branches'], queryFn: () => api<AdminBranch[]>('/admin/branches') });
+  // Nhà máy SX để tích (theo quyền của màn Người dùng): lỗi thì cột hiện Id, popup gán báo lý do
+  const factories = useQuery({ queryKey: ['admin', 'user-factories'], queryFn: () => api<AdminFactory[]>('/admin/users/production-factories') });
   const refresh = () => qc.invalidateQueries({ queryKey: ['admin', 'users'] });
   const roleById = useMemo(() => new Map((roles.data ?? []).map((r) => [r.id, r.name])), [roles.data]);
   const branchById = useMemo(() => new Map((branches.data ?? []).map((b) => [b.id, b.code])), [branches.data]);
@@ -103,13 +108,16 @@ export default function UsersPage() {
   const branchesPending = branches.isPending;
   const roleName = useCallback((id: number) => roleById.get(id) ?? (rolesPending ? '…' : `#${id}`), [roleById, rolesPending]);
   const branchCode = useCallback((id: number) => branchById.get(id) ?? (branchesPending ? '…' : `#${id}`), [branchById, branchesPending]);
+  const factoryById = useMemo(() => new Map((factories.data ?? []).map((f) => [f.id, f.code])), [factories.data]);
+  const factoriesPending = factories.isPending;
+  const factoryCode = useCallback((id: number) => factoryById.get(id) ?? (factoriesPending ? '…' : `#${id}`), [factoryById, factoriesPending]);
   const rows = users.data?.items ?? [];
 
   return (
     <>
       <PageHeader
         title="Người dùng"
-        subtitle="Tạo tài khoản, gán vai trò và nhà máy. Bấm vào một người để xem phân quyền chi tiết: phạm vi chuyền, ngoại lệ, cột riêng."
+        subtitle="Tạo tài khoản, gán vai trò, đơn vị cơ sở và nhà máy SX. Bấm vào một người để xem phân quyền chi tiết: phạm vi chuyền, ngoại lệ, cột riêng."
         actions={
           <Can permission="admin.user:create">
             <Button leftSection={<IconPlus size={15} />} onClick={() => setDialog({ kind: 'create' })}>Thêm người dùng</Button>
@@ -133,20 +141,20 @@ export default function UsersPage() {
       <div className="table-frame">
         <table className="dense-table">
           <thead>
-            <tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Nhà máy</th><th>Trạng thái</th><th style={{ width: 190 }}>Thao tác</th></tr>
+            <tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Đơn vị cơ sở</th><th>Nhà máy SX</th><th>Trạng thái</th><th style={{ width: 190 }}>Thao tác</th></tr>
           </thead>
           <tbody>
-            {users.isPending && <SkeletonRows cols={6} />}
+            {users.isPending && <SkeletonRows cols={7} />}
             {rows.map((u) => (
-              <UserRow key={u.id} u={u} self={u.id === me?.id} canEdit={canEdit} canGrant={canGrant} roleName={roleName} branchCode={branchCode} onDialog={setDialog} />
+              <UserRow key={u.id} u={u} self={u.id === me?.id} canEdit={canEdit} canGrant={canGrant} roleName={roleName} branchCode={branchCode} factoryCode={factoryCode} onDialog={setDialog} />
             ))}
             {users.isSuccess && rows.length === 0 && (
               query ? (
-                <EmptyRow colSpan={6} action={<Button size="xs" variant="default" onClick={clearSearch}>Xóa tìm kiếm</Button>}>
+                <EmptyRow colSpan={7} action={<Button size="xs" variant="default" onClick={clearSearch}>Xóa tìm kiếm</Button>}>
                   Không tìm thấy người dùng nào khớp “{query}”.
                 </EmptyRow>
               ) : (
-                <EmptyRow colSpan={6}>Chưa có người dùng nào. Bấm “Thêm người dùng” để tạo.</EmptyRow>
+                <EmptyRow colSpan={7}>Chưa có người dùng nào. Bấm “Thêm người dùng” để tạo.</EmptyRow>
               )
             )}
           </tbody>
@@ -174,18 +182,14 @@ export default function UsersPage() {
         />
       )}
       {dialog?.kind === 'branches' && (
-        <PickMany
-          title={`Nhà máy của ${dialog.user.username}`}
-          hint="Người dùng chỉ chọn được những nhà máy ở đây khi đăng nhập. A00 là chế độ xem tổng hợp, chỉ đọc."
-          options={(branches.data ?? []).filter((b) => b.isActive).map((b) => ({ value: b.id, label: `${b.code} – ${b.name}`, hint: b.isAggregate ? 'Xem tổng hợp mọi nhà máy, chỉ đọc' : null }))}
-          stopped={(branches.data ?? []).filter((b) => !b.isActive && dialog.user.branchIds.includes(b.id)).map((b) => ({ value: b.id, label: `${b.code} – ${b.name}` }))}
-          initial={dialog.user.branchIds}
+        <UserBranchesDialog
+          user={dialog.user}
+          branches={branches.data ?? []}
+          factories={factories.data ?? null}
+          factoriesError={factories.isError ? factories.error : null}
+          onRetryFactories={() => void factories.refetch()}
           onClose={() => setDialog(null)}
-          onSave={async (ids) => {
-            await api(`/admin/users/${dialog.user.id}/branches`, { method: 'PUT', body: { branchIds: ids, defaultBranchId: dialog.user.defaultBranchId ?? undefined } });
-            toastOk(`Đã cập nhật nhà máy được phép chọn của ${dialog.user.username}.`);
-            await refresh();
-          }}
+          onDone={refresh}
         />
       )}
     </>
@@ -206,7 +210,7 @@ function CreateUser({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   const m = useMutation({
     mutationFn: (v: typeof form.values) => api('/admin/users', { method: 'POST', body: { ...v, fullName: v.fullName.trim(), email: v.email.trim() || undefined } }),
     onSuccess: (_r, v) => {
-      toastOk(`Đã thêm người dùng ${v.username}. Hãy gán vai trò và nhà máy để họ đăng nhập được.`);
+      toastOk(`Đã thêm người dùng ${v.username}. Hãy gán vai trò và đơn vị cơ sở để họ đăng nhập được.`);
       onDone();
       onClose();
     },

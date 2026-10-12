@@ -43,6 +43,10 @@ export class AdminController {
   @Get('users') @RequirePermission('admin.user:view')
   listUsers(@Query() q: PageQuery) { return this.users.list(q); }
 
+  /** Nhà máy SX để tích cho người dùng (ADR 0013) */
+  @Get('users/production-factories') @RequirePermission('admin.user:view')
+  userFactories() { return this.users.productionFactories(); }
+
   @Post('users') @RequirePermission('admin.user:create')
   createUser(@CurrentUser() a: AuthUser, @Body() dto: UserCreateDto) { return this.users.create(a, dto); }
 
@@ -121,9 +125,13 @@ export class AdminController {
   @Get('menus') @RequirePermission('admin.permission:view')
   listMenus() { return this.access.listMenus(); }
 
-  // ---- Nhà máy ----
+  // ---- Đơn vị cơ sở (ADR 0013) ----
   @Get('branches') @RequirePermission('admin.branch:view')
   listBranches() { return this.branches.list(); }
+
+  /** Cập nhật ĐVCS theo danh mục chi nhánh BRAVO đã đồng bộ (cũng tự chạy sau mỗi lần đồng bộ danh mục chi nhánh) */
+  @Post('branches/import') @HttpCode(200) @RequirePermission('admin.branch:update')
+  importBranches(@CurrentUser() a: AuthUser) { return this.branches.importFromBravo(a); }
 
   @Post('branches') @RequirePermission('admin.branch:create')
   createBranch(@CurrentUser() a: AuthUser, @Body() dto: BranchCreateDto) { return this.branches.create(a, dto); }

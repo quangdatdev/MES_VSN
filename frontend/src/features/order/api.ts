@@ -23,15 +23,16 @@ export interface SalesOrder {
   shipDate: string;
   statusCode: string;
   branchCode: string;
-  /** Mã mục danh mục Nhà máy sản xuất; null: chưa chọn */
+  /** Mã nhà máy SX (danh mục Nhà máy SX); null: chưa chọn */
   productionFactoryCode?: Masked<string | null>;
 }
 
-/** Mục danh mục Nhà máy sản xuất (ô chọn chỉ cho mục đang dùng; mục đã ngừng để hiện tên ở đơn hàng cũ) */
+/** Nhà máy SX (ô chọn chỉ cho nhà máy đang dùng; nhà máy đã ngừng để hiện tên ở đơn hàng cũ), gom theo đơn vị cơ sở */
 export interface FactoryOption {
   code: string;
   name: string;
   isActive: boolean;
+  branchCode: string | null;
 }
 
 export interface ShipmentPlan {
@@ -75,6 +76,7 @@ export interface Candidate {
   styleCode: string;
   productName: string;
   branchCode: string;
+  productionFactoryCode?: string | null;
   orderQty: number;
   plannedQty: number;
   remainingQty: number;

@@ -143,7 +143,7 @@ function ScopeTab({ info, blocked }: { info: UserAccessInfo; blocked: string | n
   return (
     <Stack gap="sm">
       <Text size="sm" c="dimmed">
-        Phạm vi gắn vào từng vai trò: vai trò này chỉ có hiệu lực ở nhà máy, chuyền được chọn. Để trống là không giới hạn thêm (vẫn chỉ trong các nhà máy người đó được chọn khi đăng nhập).
+        Phạm vi gắn vào từng vai trò: vai trò này chỉ có hiệu lực ở đơn vị cơ sở, chuyền được chọn. Để trống là không giới hạn thêm (vẫn chỉ trong các đơn vị người đó được chọn khi đăng nhập).
       </Text>
       {info.assignments.map((a) => (
         <Paper key={a.userRoleId} withBorder p="sm">
@@ -159,7 +159,7 @@ function ScopeTab({ info, blocked }: { info: UserAccessInfo; blocked: string | n
                 <Group gap={4} mt={4}>
                   {a.scopes.map((s) => (
                     <Badge key={s.id} variant="light" color={s.dimension === 'LINE' ? 'orange' : s.dimension === 'FACTORY' ? 'charcoal' : 'link'}>
-                      {s.dimension === 'FACTORY' ? 'Nhà máy' : s.dimension === 'LINE' ? 'Chuyền' : s.dimension === 'OWNER' ? 'Người tạo' : s.dimension}: {s.mode === 'OWN' ? 'chỉ của mình' : s.mode === 'ALL' ? 'tất cả' : s.orgUnitName ? `${s.orgUnitName} (${s.orgUnitCode})` : s.value}
+                      {s.dimension === 'FACTORY' ? 'Đơn vị cơ sở' : s.dimension === 'LINE' ? 'Chuyền' : s.dimension === 'OWNER' ? 'Người tạo' : s.dimension}: {s.mode === 'OWN' ? 'chỉ của mình' : s.mode === 'ALL' ? 'tất cả' : s.orgUnitName ? `${s.orgUnitName} (${s.orgUnitCode})` : s.value}
                     </Badge>
                   ))}
                 </Group>
@@ -184,7 +184,7 @@ function ScopeTab({ info, blocked }: { info: UserAccessInfo; blocked: string | n
             (catalog.data ? (
               <ScopeEditor userId={info.user.id} assignment={a} catalog={catalog.data} onClose={() => setEditing(null)} />
             ) : catalog.isError ? (
-              <LoadError mb={0} error={catalog.error} what="danh sách nhà máy, chuyền" onRetry={() => void catalog.refetch()} retrying={catalog.isFetching} />
+              <LoadError mb={0} error={catalog.error} what="danh sách đơn vị cơ sở, chuyền" onRetry={() => void catalog.refetch()} retrying={catalog.isFetching} />
             ) : (
               <Skeleton h={120} mt="sm" />
             ))}
@@ -198,7 +198,7 @@ type ScopeRow = UserAccessInfo['assignments'][number]['scopes'][number];
 /** Dòng phạm vi bộ sửa này hiển thị được: nhà máy, chuyền chọn theo danh sách; chỉ bản ghi của mình. */
 const editableScope = (s: ScopeRow) => ((s.dimension === 'FACTORY' || s.dimension === 'LINE') && s.mode === 'LIST' && !!s.orgUnitId) || (s.dimension === 'OWNER' && s.mode === 'OWN');
 const scopeText = (s: ScopeRow) =>
-  `${s.dimension === 'FACTORY' ? 'Nhà máy' : s.dimension === 'LINE' ? 'Chuyền' : s.dimension === 'OWNER' ? 'Người tạo' : s.dimension}: ${
+  `${s.dimension === 'FACTORY' ? 'Đơn vị cơ sở' : s.dimension === 'LINE' ? 'Chuyền' : s.dimension === 'OWNER' ? 'Người tạo' : s.dimension}: ${
     s.mode === 'ORG_SUBTREE' ? `cả nhánh ${s.orgUnitName ?? s.orgUnitCode ?? ''}` : s.mode === 'ALL' ? 'tất cả' : s.mode === 'OWN' ? 'chỉ của mình' : (s.orgUnitName ?? s.value ?? '')
   }`;
 
@@ -223,7 +223,7 @@ export function scopeLineGroups(orgUnits: OrgUnit[], branches: Set<string>): { g
   // Tên nhóm kèm mã xưởng: tên xưởng có thể trùng
   const groupOf = (o: OrgUnit) => {
     const w = workshopOf(o);
-    return `Nhà máy ${o.branchCode}${w ? ` – ${w.name} (${w.code})` : ''}`;
+    return `ĐVCS ${o.branchCode}${w ? ` – ${w.name} (${w.code})` : ''}`;
   };
   return Object.entries(
     orgUnits
@@ -280,7 +280,7 @@ function ScopeEditor({ userId, assignment, catalog, onClose }: { userId: number;
           Giữ nguyên khi lưu (chưa sửa được ở đây): {kept.map(scopeText).join('; ')}.
         </Text>
       )}
-      <MultiSelect label="Nhà máy" description="Vai trò chỉ có hiệu lực khi đang làm việc ở các nhà máy này. Ở chế độ xem tổng hợp (A00) chỉ đọc dữ liệu của các nhà máy này." placeholder="Không giới hạn" data={factoryData} value={factories} onChange={setFactories} clearable />
+      <MultiSelect label="Đơn vị cơ sở" description="Vai trò chỉ có hiệu lực khi đang làm việc ở các đơn vị này. Ở chế độ xem tổng hợp (A00) chỉ đọc dữ liệu của các đơn vị này (Thông tin đơn hàng dùng chung nên không giới hạn)." placeholder="Không giới hạn" data={factoryData} value={factories} onChange={setFactories} clearable />
       <MultiSelect label="Chuyền" description="Chỉ thấy và sửa dữ liệu của các chuyền này ở màn có cột chuyền (ví dụ Phân bổ màu cỡ)." placeholder="Không giới hạn" data={lineOptions} value={lines} onChange={setLines} searchable clearable maxDropdownHeight={260} />
       <Switch label="Chỉ bản ghi do chính người này tạo" checked={own} onChange={(e) => setOwn(e.currentTarget.checked)} />
       <Group justify="flex-end" gap="xs">
@@ -600,14 +600,14 @@ function EffectiveTab({ userId }: { userId: number }) {
       <Select label="Khi làm việc ở" data={(branches.data ?? []).filter((b) => b.isActive).map((b) => ({ value: b.code, label: `${b.code} – ${b.name}` }))} value={branchCode} onChange={setBranchCode} allowDeselect={false} w={260} maw="100%" />
       {branches.error &&
         (branches.error instanceof ApiError && branches.error.status === 403 ? (
-          <Alert color="red" variant="light" py={6}>Không tải được danh sách nhà máy: bạn cần quyền xem Nhà máy ở màn Quản trị.</Alert>
+          <Alert color="red" variant="light" py={6}>Không tải được danh sách đơn vị cơ sở: bạn cần quyền xem Đơn vị cơ sở ở màn Quản trị.</Alert>
         ) : (
-          <LoadError mb={0} error={branches.error} what="danh sách nhà máy" onRetry={() => void branches.refetch()} retrying={branches.isFetching} />
+          <LoadError mb={0} error={branches.error} what="danh sách đơn vị cơ sở" onRetry={() => void branches.refetch()} retrying={branches.isFetching} />
         ))}
       {eff.error && <LoadError mb={0} error={eff.error} what="quyền thực tế" onRetry={() => void eff.refetch()} retrying={eff.isFetching} />}
       {eff.isLoading && <Skeleton h={160} />}
       {e && !e.branch.allowed && (
-        <Alert color="orange" variant="light" py={6}>Người này chưa được chọn nhà máy {e.branch.code} khi đăng nhập. Kết quả dưới đây chỉ để tham khảo.</Alert>
+        <Alert color="orange" variant="light" py={6}>Người này chưa được chọn đơn vị cơ sở {e.branch.code} khi đăng nhập. Kết quả dưới đây chỉ để tham khảo.</Alert>
       )}
       {e && (
         <>
@@ -616,7 +616,7 @@ function EffectiveTab({ userId }: { userId: number }) {
             {e.roles.length ? e.roles.map((r) => <Badge key={r.code} variant="light" color="charcoal">{r.name}</Badge>) : <Text size="sm" c="dimmed">không có</Text>}
           </Group>
           {e.screens.length === 0 ? (
-            <Text c="dimmed" size="sm">Ở nhà máy này, người này không dùng được màn hình nào.</Text>
+            <Text c="dimmed" size="sm">Ở đơn vị cơ sở này, người này không dùng được màn hình nào.</Text>
           ) : (
             <div className="grid-wrap">
               <table className="grid" aria-label="Màn hình được dùng">
@@ -637,7 +637,7 @@ function EffectiveTab({ userId }: { userId: number }) {
                         )}
                       </td>
                       <td style={{ whiteSpace: 'normal' }}>{s.actions.map((a) => ACTION_LABEL[a] ?? a).join(', ')}</td>
-                      <td style={{ whiteSpace: 'normal' }}>{s.scope.length ? s.scope.join(' hoặc ') : <Text span size="sm" c="dimmed">Toàn bộ nhà máy</Text>}</td>
+                      <td style={{ whiteSpace: 'normal' }}>{s.scope.length ? s.scope.join(' hoặc ') : <Text span size="sm" c="dimmed">Toàn bộ đơn vị cơ sở</Text>}</td>
                     </tr>
                   ))}
                 </tbody>

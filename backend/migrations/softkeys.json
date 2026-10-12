@@ -59,11 +59,10 @@
     },
     {
       "from": "MES_Order.SalesOrder.ProductionFactoryCode",
-      "to": "MES_Core.SysCatalogItem.Code",
-      "catalog": "PROD_FACTORY",
+      "to": "MES_Core.SysProductionFactory.Code",
       "nullable": true,
       "ownerModule": "order",
-      "status": "MES_Order/0004 (Phase 5.3, cột Nhà máy SX)"
+      "status": "MES_Order/0004 (Phase 5.3, cột Nhà máy SX); đích đổi sang SysProductionFactory ở MES_Core/0007 (Phase 5.9, ADR 0013)"
     },
     {
       "from": "MES_Order.SalesOrder.CreatedBy",

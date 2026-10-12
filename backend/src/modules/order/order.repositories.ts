@@ -37,10 +37,16 @@ export type AllocationListRow = PlanLineRow & {
 
 // ---------- Thông tin đơn hàng (order.allocation) ----------
 
+/**
+ * Đơn hàng lấy hết từ BRAVO, dùng chung toàn công ty (SHARED, ADR 0013): BranchCode là Chi nhánh FOB, đơn nhập tay đóng dấu
+ * ĐVCS của phiên. Popup Chọn mã hàng của kế hoạch xuất hàng lọc theo nhà máy SX được tích (cột ProductionFactoryCode).
+ */
 @Injectable()
 export class SalesOrderRepository extends BaseRepository<SalesOrderRow> {
   protected readonly table = 'SalesOrder';
   protected readonly resource = 'order.allocation';
+  protected readonly originBranch = true;
+  protected readonly productionFactoryColumn = 'ProductionFactoryCode';
   protected readonly searchColumns = ['OrderNo', 'StyleCode', 'CustomerName', 'ProductName'];
   protected readonly sortable = ['Id', 'OrderNo', 'CustomerName', 'StyleCode', 'Season', 'Qty', 'ShipDate', 'SyncedAt', 'StatusCode', 'BranchCode', 'UnitPrice', 'Amount', 'CreatedAt'];
   protected readonly defaultSort = 'CreatedAt:desc';
@@ -58,10 +64,12 @@ export class SalesOrderRepository extends BaseRepository<SalesOrderRow> {
 
 // ---------- Cập nhật tỷ lệ cắt (order.po) ----------
 
+/** PO của đơn hàng: dùng chung như đơn hàng (ADR 0013); PO nhập tay đóng dấu ĐVCS của phiên */
 @Injectable()
 export class SalesOrderPoRepository extends BaseRepository<SalesOrderPoRow> {
   protected readonly table = 'SalesOrderPo';
   protected readonly resource = 'order.po';
+  protected readonly originBranch = true;
   protected readonly searchColumns = ['PoCode', 'PoNumber', 'StyleCode', 'CustomerName'];
   protected readonly sortable = ['Id', 'PoCode', 'PoNumber', 'Qty', 'ShipDate', 'SyncedAt', 'StatusCode', 'CreatedAt'];
   protected readonly defaultSort = 'CreatedAt:desc';
@@ -148,10 +156,11 @@ export class ShipmentPlanRepository extends BaseRepository<ShipmentPlanRow> {
 
   /**
    * Số lượng đã lập kế hoạch theo đơn hàng và màu cỡ (để tính "SL đã tạo KHXH", "SL còn lại").
-   * Tính trên mọi kế hoạch của nhà máy, không theo phạm vi người xem: người chỉ thấy kế hoạch mình tạo cũng không
-   * được lập vượt số lượng gốc (review 5.1 #7). Chỉ trả tổng số, không trả dòng kế hoạch của người khác.
+   * Tính trên mọi kế hoạch của đơn hàng ở mọi ĐVCS, không theo phạm vi người xem: đơn hàng dùng chung toàn công ty, kế hoạch
+   * lập ở ĐVCS nào cũng trừ vào cùng số lượng gốc (ADR 0013), và người chỉ thấy kế hoạch mình tạo cũng không được lập vượt
+   * (review 5.1 #7). Chỉ trả tổng số, không trả dòng kế hoạch nào.
    */
-  async plannedBySalesOrder(scope: Scope, salesOrderIds: number[], excludePlanId?: number, db: Kysely<any> = this.db) {
+  async plannedBySalesOrder(salesOrderIds: number[], excludePlanId?: number, db: Kysely<any> = this.db) {
     if (salesOrderIds.length === 0) return [];
     let qb: any = db
       .selectFrom('ShipmentPlanColorSize as cs')
@@ -159,7 +168,6 @@ export class ShipmentPlanRepository extends BaseRepository<ShipmentPlanRow> {
       .select(['p.SalesOrderId', 'cs.ColorName', 'cs.SizeName', sql<number>`SUM(cs.PlanQty)`.as('PlanQty')])
       .where('p.SalesOrderId', 'in', salesOrderIds)
       .groupBy(['p.SalesOrderId', 'cs.ColorName', 'cs.SizeName']);
-    qb = await this.branchOnly(qb, scope, 'p');
     if (excludePlanId) qb = qb.where('p.Id', '<>', excludePlanId);
     return (await qb.execute()) as { SalesOrderId: number; ColorName: string; SizeName: string; PlanQty: number }[];
   }
@@ -252,7 +260,7 @@ export class LinePlanLineRepository extends ChildRepository<PlanLineRow> {
       .selectFrom('ShipmentPlanLine')
       .select([sql<number>`COALESCE(SUM(Qty), 0)`.as('Qty'), sql<number>`COUNT(*)`.as('N')])
       .where('ShipmentPlanId', '=', planId);
-    qb = this.branchOnly(qb, scope);
+    qb = await this.branchOnly(qb, scope);
     if (excludeIds.length) qb = qb.where('Id', 'not in', excludeIds);
     const row = (await qb.executeTakeFirst()) as { Qty: number; N: number } | undefined;
     return { qty: Number(row?.Qty ?? 0), count: Number(row?.N ?? 0) };

@@ -33,12 +33,12 @@ import { useCan } from '../../shell/permissions';
 import { EmptyRow, escapeToClose, IconAction, LoadError, SkeletonRows, upper } from './common';
 import type { PrepStep } from '../sewing/api';
 import { PREP_STEPS_KEY, PrepStepsPane } from './PrepStepsPane';
-import type { CatalogItem, CatalogLine, CatalogLines, CatalogOverview, CatalogShift, CatalogWorkshop, ExternalCatalog, ExternalRows, MesCatalog } from './types';
+import type { AdminFactory, CatalogItem, CatalogLine, CatalogLines, CatalogOverview, CatalogShift, CatalogWorkshop, ExternalCatalog, ExternalRows, MesCatalog } from './types';
 
 const KEY = ['admin', 'catalogs'] as const;
 /** Cây đầy đủ xưởng, chuyền (khung Chuyền may là khung mặc định) */
 const LINES_QUERY = { queryKey: [...KEY, 'lines'], queryFn: () => api<CatalogLines>('/admin/catalogs/lines') };
-const KIND_ICON = { line: IconBuildingFactory2, shift: IconClock, item: IconListDetails } as const;
+const KIND_ICON = { line: IconNeedleThread, factory: IconBuildingFactory2, shift: IconClock, item: IconListDetails } as const;
 
 /** Thời điểm UTC từ API hiện theo giờ máy */
 const when = (iso: string | null) => (iso ? fmtDateTime(iso) : 'chưa chép');
@@ -114,6 +114,7 @@ export default function CatalogsPage() {
           {overview.isLoading && <Skeleton h={240} />}
           {overview.isError && <LoadError error={overview.error} what="danh mục" onRetry={() => void overview.refetch()} retrying={overview.isFetching} />}
           {currentMes?.kind === 'line' && <LinesPane info={currentMes} />}
+          {currentMes?.kind === 'factory' && <FactoriesPane info={currentMes} />}
           {currentMes?.kind === 'item' && <ItemsPane key={currentMes.code} info={currentMes} />}
           {currentMes?.kind === 'shift' && <ShiftsPane info={currentMes} />}
           {currentExt && <ExternalPane key={currentExt.code} info={currentExt} />}
@@ -169,6 +170,9 @@ function useSave(onDone?: () => void) {
       void qc.invalidateQueries({ queryKey: ORDER_OPTIONS_KEY });
       // Ô chọn chuyền ở màn phạm vi người dùng gom theo xưởng
       void qc.invalidateQueries({ queryKey: ['admin', 'scope-catalog'] });
+      // Nhà máy SX hiện ở màn Đơn vị cơ sở và popup gán của màn Người dùng
+      void qc.invalidateQueries({ queryKey: ['admin', 'branches'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'user-factories'] });
       onDone?.();
     },
     onError: (e) => toastError(e, 'Chưa lưu được'),
@@ -347,7 +351,7 @@ function LinesPane({ info }: { info: MesCatalog }) {
             value={branch}
             onChange={setBranch}
             data={[{ value: 'ALL', label: 'Tất cả' }, ...(data?.branches ?? []).map((b) => ({ value: b.code, label: b.code }))]}
-            aria-label="Lọc theo nhà máy"
+            aria-label="Lọc theo đơn vị cơ sở"
           />
           {/* Gõ tìm thì mở mọi xưởng, để không giấu mất kết quả */}
           <SearchBox value={search} onChange={(v) => { setSearch(v); setCollapsed(new Set()); }} placeholder="Tìm mã, tên xưởng hoặc chuyền" />
@@ -381,7 +385,7 @@ function LinesPane({ info }: { info: MesCatalog }) {
                       <span className="tree-node">
                         <span className="tree-toggle tree-icon" aria-hidden><IconBuildingFactory2 size={16} stroke={1.7} /></span>
                         <span className="tree-name">{r.branch.code} – {r.branch.name}</span>
-                        <span className="tree-meta">{r.branch.isActive ? activeCount(r.active) : 'Nhà máy đang tắt'}</span>
+                        <span className="tree-meta">{r.branch.isActive ? activeCount(r.active) : 'Đơn vị đang tắt'}</span>
                       </span>
                     </td>
                   </tr>
@@ -444,7 +448,7 @@ function LinesPane({ info }: { info: MesCatalog }) {
                 <EmptyRow colSpan={5} action={clearButton(() => { setSearch(''); setBranch('ALL'); }, 'Xóa bộ lọc')}>Không có xưởng, chuyền nào khớp bộ lọc.</EmptyRow>
               ) : (
                 <EmptyRow colSpan={5}>
-                  {branch === 'ALL' ? 'Chưa có xưởng, chuyền.' : `Nhà máy ${branch} chưa có xưởng, chuyền.`}
+                  {branch === 'ALL' ? 'Chưa có xưởng, chuyền.' : `Đơn vị cơ sở ${branch} chưa có xưởng, chuyền.`}
                   {canCreate && ' Bấm “Thêm xưởng” hoặc “Thêm chuyền” để tạo.'}
                 </EmptyRow>
               )
@@ -490,7 +494,7 @@ function nextWorkshop(workshops: CatalogWorkshop[], branch: string) {
 function workshopOptions(data: CatalogLines, branch: string, current: number | null) {
   const list = data.workshops.filter((w) => w.branchCode === branch && (w.isActive || w.id === current)).sort(bySort);
   return [
-    { value: NO_WORKSHOP, label: 'Không thuộc xưởng (thẳng dưới nhà máy)' },
+    { value: NO_WORKSHOP, label: 'Không thuộc xưởng (thẳng dưới đơn vị cơ sở)' },
     ...list.map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})${w.isActive ? '' : ', đã ngừng'}` })),
   ];
 }
@@ -512,7 +516,7 @@ function LineDialog({ line, data, defaultBranch, defaultWorkshop, onClose }: { l
     },
     validateInputOnBlur: true,
     validate: {
-      branchCode: (v) => (v ? null : 'Chọn nhà máy'),
+      branchCode: (v) => (v ? null : 'Chọn đơn vị cơ sở'),
       code: (v, all) => (line || (/^[A-Z0-9-]{1,20}$/.test(v.trim().toUpperCase()) && v.trim().toUpperCase().startsWith(`${all.branchCode}-`)) ? null : `Mã bắt đầu bằng ${all.branchCode}-, gồm chữ không dấu, số, gạch ngang`),
       name: (v) => (v.trim() ? null : 'Nhập tên chuyền'),
     },
@@ -529,7 +533,7 @@ function LineDialog({ line, data, defaultBranch, defaultWorkshop, onClose }: { l
       if (!('workshopId' in moved)) return go();
       const target = data.workshops.find((w) => w.id === workshopId);
       confirmAction({
-        title: `Chuyển chuyền ${line.code} ${target ? `sang ${target.name} (${target.code})` : 'ra thẳng dưới nhà máy'}?`,
+        title: `Chuyển chuyền ${line.code} ${target ? `sang ${target.name} (${target.code})` : 'ra thẳng dưới đơn vị cơ sở'}?`,
         consequence: MOVE_CONSEQUENCE,
         confirmLabel: 'Chuyển chuyền',
         onConfirm: go,
@@ -546,12 +550,12 @@ function LineDialog({ line, data, defaultBranch, defaultWorkshop, onClose }: { l
       <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="sm">
           <Select
-            label="Nhà máy"
+            label="Đơn vị cơ sở"
             withAsterisk={!line}
             data={branches.map((b) => ({ value: b.code, label: `${b.code} – ${b.name}` }))}
             readOnly={!!line}
             className={line ? 'field-readonly' : undefined}
-            description={line ? 'Chuyền không chuyển sang nhà máy khác được.' : undefined}
+            description={line ? 'Chuyền không chuyển sang đơn vị cơ sở khác được.' : undefined}
             allowDeselect={false}
             {...form.getInputProps('branchCode')}
             onChange={(v) => {
@@ -592,7 +596,7 @@ function LineDialog({ line, data, defaultBranch, defaultWorkshop, onClose }: { l
             onChange={upper((v) => form.setFieldValue('code', v))}
           />
           <TextInput label="Tên chuyền" withAsterisk data-autofocus {...form.getInputProps('name')} />
-          <NumberInput label="Thứ tự" description="Bỏ trống: xếp cuối danh sách của nhà máy." min={0} max={100000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
+          <NumberInput label="Thứ tự" description="Bỏ trống: xếp cuối danh sách của đơn vị cơ sở." min={0} max={100000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={close}>Hủy</Button>
             <Button type="submit" loading={save.isPending}>{line ? 'Lưu thay đổi' : 'Thêm chuyền'}</Button>
@@ -611,7 +615,7 @@ function WorkshopDialog({ workshop, data, defaultBranch, onClose }: { workshop: 
     initialValues: { branchCode: workshop?.branchCode ?? firstBranch, code: workshop?.code ?? suggest.code, name: workshop?.name ?? suggest.name, sortOrder: (workshop?.sortOrder ?? '') as number | '' },
     validateInputOnBlur: true,
     validate: {
-      branchCode: (v) => (v ? null : 'Chọn nhà máy'),
+      branchCode: (v) => (v ? null : 'Chọn đơn vị cơ sở'),
       code: (v, all) => (workshop || (/^[A-Z0-9-]{1,20}$/.test(v.trim().toUpperCase()) && v.trim().toUpperCase().startsWith(`${all.branchCode}-`)) ? null : `Mã bắt đầu bằng ${all.branchCode}-, gồm chữ không dấu, số, gạch ngang`),
       name: (v) => (v.trim() ? null : 'Nhập tên xưởng'),
     },
@@ -631,12 +635,12 @@ function WorkshopDialog({ workshop, data, defaultBranch, onClose }: { workshop: 
       <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="sm">
           <Select
-            label="Nhà máy"
+            label="Đơn vị cơ sở"
             withAsterisk={!workshop}
             data={branches.map((b) => ({ value: b.code, label: `${b.code} – ${b.name}` }))}
             readOnly={!!workshop}
             className={workshop ? 'field-readonly' : undefined}
-            description={workshop ? 'Xưởng không chuyển sang nhà máy khác được.' : undefined}
+            description={workshop ? 'Xưởng không chuyển sang đơn vị cơ sở khác được.' : undefined}
             allowDeselect={false}
             {...form.getInputProps('branchCode')}
             onChange={(v) => {
@@ -656,7 +660,7 @@ function WorkshopDialog({ workshop, data, defaultBranch, onClose }: { workshop: 
             onChange={upper((v) => form.setFieldValue('code', v))}
           />
           <TextInput label="Tên xưởng" withAsterisk data-autofocus {...form.getInputProps('name')} />
-          <NumberInput label="Thứ tự" description="Bỏ trống: xếp cuối các xưởng của nhà máy." min={0} max={100000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
+          <NumberInput label="Thứ tự" description="Bỏ trống: xếp cuối các xưởng của đơn vị cơ sở." min={0} max={100000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
           {!workshop && <Text size="sm" c="dimmed">Thêm xưởng xong, bấm dấu cộng trên dòng xưởng để thêm chuyền, hoặc sửa chuyền có sẵn để chuyển vào xưởng.</Text>}
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={close}>Hủy</Button>
@@ -777,6 +781,165 @@ function ItemDialog({ catalog, item, onClose }: { catalog: MesCatalog; item: Cat
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={close}>Hủy</Button>
             <Button type="submit" loading={save.isPending}>{item ? 'Lưu thay đổi' : 'Thêm mục'}</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------- Nhà máy SX (ADR 0013) ----------------
+
+const STOP_FACTORY = 'Không còn trong ô chọn Nhà máy SX của đơn hàng. Người được tích nhà máy này không chọn được đơn hàng của nó khi lập kế hoạch xuất hàng. Đơn hàng đã chọn nhà máy này giữ nguyên.';
+
+/** Nhà máy SX: mỗi nhà máy thuộc một đơn vị cơ sở. Đơn hàng lưu mã ở cột Nhà máy SX; người dùng được tích nhà máy ở màn Người dùng. */
+function FactoriesPane({ info }: { info: MesCatalog }) {
+  const canCreate = useCan('admin.catalog:create');
+  const canEdit = useCan('admin.catalog:update');
+  const [search, setSearch] = useState('');
+  const [branch, setBranch] = useState<string | null>(null);
+  const debounced = search.trim();
+  const q = useQuery({
+    queryKey: [...KEY, 'factories', debounced],
+    queryFn: () => api<AdminFactory[]>(`/admin/catalogs/factories${qs({ q: debounced || undefined })}`),
+    placeholderData: keepPreviousData,
+  });
+  // Danh sách ĐVCS (kể cả đang tắt, để hiện đúng tên) lấy cùng nguồn với khung Chuyền may
+  const lines = useQuery(LINES_QUERY);
+  const branches = lines.data?.branches ?? [];
+  const [dialog, setDialog] = useState<AdminFactory | 'create' | null>(null);
+  const save = useSave();
+  const all = q.data ?? [];
+  const rows = branch ? all.filter((f) => (branch === '-' ? f.branchCode === null : f.branchCode === branch)) : all;
+  const unassigned = all.some((f) => f.branchCode === null);
+
+  return (
+    <>
+      <PaneHead title={info.name} description={info.description} actions={canCreate && <Button leftSection={<IconPlus size={15} />} onClick={() => setDialog('create')}>Thêm nhà máy</Button>}>
+        <Group gap="xs" wrap="wrap">
+          <SearchBox value={search} onChange={setSearch} placeholder="Tìm mã, tên nhà máy" />
+          <Select
+            aria-label="Lọc theo đơn vị cơ sở"
+            placeholder="Mọi đơn vị cơ sở"
+            clearable
+            value={branch}
+            onChange={setBranch}
+            w={220}
+            data={[...branches.map((b) => ({ value: b.code, label: `${b.name} (${b.code})` })), ...(unassigned ? [{ value: '-', label: 'Chưa gắn đơn vị cơ sở' }] : [])]}
+          />
+        </Group>
+      </PaneHead>
+      <PaneError query={q} what="danh mục nhà máy SX" />
+      <PaneError query={lines} what="danh sách đơn vị cơ sở (ô Đơn vị cơ sở trong popup cần danh sách này)" />
+      <div className="table-frame">
+        <table className="dense-table">
+          <thead>
+            <tr><th style={{ width: 120 }}>Mã</th><th>Tên</th><th>Đơn vị cơ sở</th><th>Mô tả</th><th style={{ width: 80 }}>Thứ tự</th><th style={{ width: 150 }}>Trạng thái</th><th style={{ width: 56 }} aria-label="Thao tác" /></tr>
+          </thead>
+          <tbody>
+            {q.isPending && <SkeletonRows cols={7} />}
+            {rows.map((f) => (
+              <tr key={f.id} data-inactive={!f.isActive || undefined}>
+                <td className="mono" style={{ fontWeight: 600 }}>{f.code}</td>
+                <td>{f.name}</td>
+                <td>
+                  {f.branchCode ? (
+                    <span title={f.branchCode}>{f.branchName ?? f.branchCode}</span>
+                  ) : (
+                    <Badge size="sm" color="yellow" variant="light">Chưa gắn</Badge>
+                  )}
+                </td>
+                <td className="cell-wrap"><Text size="sm" c="dimmed">{f.description}</Text></td>
+                <td className="num">{f.sortOrder}</td>
+                <td>
+                  <StatusCell
+                    active={f.isActive}
+                    canEdit={canEdit}
+                    busy={save.isPending}
+                    label={f.code}
+                    onChange={(on) =>
+                      confirmStop(on, `${f.name} (${f.code})`, STOP_FACTORY, () =>
+                        save.mutate({ method: 'PUT', path: `/admin/catalogs/factories/${f.id}`, body: { isActive: on }, done: `Đã ${on ? 'dùng lại' : 'ngừng dùng'} ${f.name} (${f.code}).` }),
+                      )
+                    }
+                  />
+                </td>
+                <td>{canEdit && <EditButton label={f.code} onClick={() => setDialog(f)} />}</td>
+              </tr>
+            ))}
+            {q.isSuccess && !q.isPlaceholderData && rows.length === 0 && (
+              debounced || branch ? (
+                <EmptyRow colSpan={7} action={clearButton(() => { setSearch(''); setBranch(null); }, 'Xóa bộ lọc')}>Không có nhà máy SX nào khớp bộ lọc.</EmptyRow>
+              ) : (
+                <EmptyRow colSpan={7}>Chưa có nhà máy SX nào. Bấm “Thêm nhà máy” để tạo.</EmptyRow>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+      {dialog && <FactoryDialog factory={dialog === 'create' ? null : dialog} branches={branches} branchesLoading={lines.isPending} defaultBranch={branch && branch !== '-' ? branch : undefined} onClose={() => setDialog(null)} />}
+    </>
+  );
+}
+
+function FactoryDialog({ factory, branches, branchesLoading, defaultBranch, onClose }: { factory: AdminFactory | null; branches: CatalogLines['branches']; branchesLoading: boolean; defaultBranch?: string; onClose: () => void }) {
+  const form = useForm({
+    initialValues: {
+      code: factory?.code ?? '',
+      name: factory?.name ?? '',
+      branchCode: factory?.branchCode ?? defaultBranch ?? '',
+      description: factory?.description ?? '',
+      sortOrder: (factory?.sortOrder ?? '') as number | '',
+    },
+    validateInputOnBlur: true,
+    validate: {
+      code: (v) => (factory || /^[A-Z0-9._-]{1,30}$/.test(v.trim().toUpperCase()) ? null : 'Gồm chữ không dấu, số, dấu chấm, gạch (tối đa 30 ký tự)'),
+      name: (v) => (v.trim() ? null : 'Nhập tên nhà máy'),
+      branchCode: (v) => (v ? null : 'Chọn đơn vị cơ sở'),
+    },
+  });
+  const save = useSave(onClose);
+  // ĐVCS đang tắt chỉ còn trong ô chọn khi là ĐVCS hiện tại của nhà máy
+  const options = branches.filter((b) => b.isActive || b.code === factory?.branchCode).map((b) => ({ value: b.code, label: `${b.name} (${b.code})${b.isActive ? '' : ' – ngừng dùng'}` }));
+  const submit = (v: typeof form.values) => {
+    const body = { name: v.name.trim(), branchCode: v.branchCode, description: v.description.trim() || null, sortOrder: v.sortOrder === '' ? undefined : v.sortOrder };
+    const code = v.code.trim().toUpperCase();
+    if (factory) save.mutate({ method: 'PUT', path: `/admin/catalogs/factories/${factory.id}`, body, done: `Đã lưu ${factory.code} – ${body.name}.` });
+    else save.mutate({ method: 'POST', path: '/admin/catalogs/factories', body: { ...body, code }, done: `Đã thêm nhà máy SX ${code} – ${body.name}.` });
+  };
+  useLeaveGuard(form.isDirty());
+  const close = () => confirmDiscard(form.isDirty(), onClose);
+  return (
+    <Modal opened onClose={close} {...escapeToClose(close)} title={factory ? `Sửa nhà máy SX ${factory.code}` : 'Thêm nhà máy SX'}>
+      <form onSubmit={form.onSubmit(submit)}>
+        <Stack gap="sm">
+          <TextInput
+            label="Mã"
+            withAsterisk={!factory}
+            description={factory ? `${CODE_LOCKED} vì đơn hàng đã lưu theo mã.` : 'Chữ không dấu; không sửa được sau khi tạo.'}
+            readOnly={!!factory}
+            className={factory ? 'field-readonly' : undefined}
+            data-autofocus={!factory || undefined}
+            {...form.getInputProps('code')}
+            onChange={upper((v) => form.setFieldValue('code', v))}
+          />
+          <TextInput label="Tên nhà máy" withAsterisk maxLength={100} data-autofocus={factory ? true : undefined} {...form.getInputProps('name')} />
+          <Select
+            label="Đơn vị cơ sở"
+            withAsterisk
+            placeholder="Chọn đơn vị quản lý nhà máy"
+            data={options}
+            searchable={options.length > 6}
+            allowDeselect={false}
+            nothingFoundMessage="Không có đơn vị khớp"
+            description={branchesLoading ? 'Đang tải danh sách đơn vị cơ sở…' : options.length === 0 ? 'Chưa tải được danh sách đơn vị cơ sở. Đóng popup, tải lại trang rồi thử lại.' : undefined}
+            {...form.getInputProps('branchCode')}
+          />
+          <Textarea label="Mô tả" autosize minRows={2} maxLength={300} {...form.getInputProps('description')} />
+          <NumberInput label="Thứ tự" description="Bỏ trống: xếp cuối danh sách." min={0} max={100000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
+          <Group justify="flex-end" mt="xs">
+            <Button variant="default" onClick={close}>Hủy</Button>
+            <Button type="submit" loading={save.isPending}>{factory ? 'Lưu thay đổi' : 'Thêm nhà máy'}</Button>
           </Group>
         </Stack>
       </form>

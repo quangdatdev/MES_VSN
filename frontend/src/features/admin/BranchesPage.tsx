@@ -1,19 +1,17 @@
-import { Badge, Button, Group, Modal, Stack, Switch, Text, TextInput, Tooltip } from '@mantine/core';
-import { useForm } from '@mantine/form';
-import { IconCheck, IconPencil, IconPlus, IconX } from '@tabler/icons-react';
+import { Badge, Button, Group, Switch, Text, TextInput, Tooltip } from '@mantine/core';
+import { IconCheck, IconPencil, IconRefresh, IconX } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { api } from '../../lib/api';
-import { confirmAction, confirmDiscard } from '../../lib/confirm';
-import { useLeaveGuard } from '../../lib/leaveGuard';
+import { confirmAction } from '../../lib/confirm';
 import { toastError, toastOk } from '../../lib/notify';
 import { Can } from '../../shell/Can';
 import { useCan } from '../../shell/permissions';
 import { loadAccess } from '../../store/auth';
 import { useSession } from '../../store/session';
-import { EmptyRow, escapeToClose, IconAction, LoadError, SkeletonRows, upper } from './common';
-import type { AdminBranch } from './types';
+import { EmptyRow, IconAction, LoadError, SkeletonRows } from './common';
+import type { AdminBranch, BranchImportResult } from './types';
 
 /** Trạng thái không đổi được ở dòng này: vẫn nói vì sao (rê chuột, chạm hoặc Tab tới). */
 function StatusBadge({ active, reason }: { active: boolean; reason: string | null }) {
@@ -25,14 +23,31 @@ function StatusBadge({ active, reason }: { active: boolean; reason: string | nul
   return reason ? <Tooltip label={reason} multiline maw={300} events={{ hover: true, focus: true, touch: true }}>{badge}</Tooltip> : badge;
 }
 
+/** Nguồn của ĐVCS: BRAVO, riêng của MES (đơn vị tổng hợp), hoặc không còn trong BRAVO */
+function SourceBadge({ b }: { b: AdminBranch }) {
+  if (b.isAggregate) return <Badge size="sm" color="orange" variant="light">Tổng hợp, chỉ đọc</Badge>;
+  if (b.inBravo === true) return <Text size="sm">BRAVO</Text>;
+  if (b.inBravo === false) {
+    return (
+      <Tooltip label="Mã này không có trong danh mục chi nhánh BRAVO. Không dùng nữa thì tắt ở cột Trạng thái." multiline maw={280} events={{ hover: true, focus: true, touch: true }}>
+        <Badge size="sm" color="yellow" variant="light" tabIndex={0} className="focus-ring" style={{ cursor: 'help' }}>Không có trong BRAVO</Badge>
+      </Tooltip>
+    );
+  }
+  return <Text size="sm" c="dimmed">MES</Text>;
+}
+
+/**
+ * Quản trị › Đơn vị cơ sở (ADR 0013): danh sách theo danh mục chi nhánh BRAVO, tự cập nhật sau mỗi lần đồng bộ danh mục
+ * chi nhánh. Mã, tên của ĐVCS có trong BRAVO sửa ở BRAVO; ở đây bật, tắt (ai chọn được khi đăng nhập) và xem nhà máy SX.
+ */
 export default function BranchesPage() {
   const qc = useQueryClient();
   const canEdit = useCan('admin.branch:update');
   const current = useSession((s) => s.branch);
   const [editing, setEditing] = useState<{ id: number; name: string; error?: string } | null>(null);
-  const [creating, setCreating] = useState(false);
   const branches = useQuery({ queryKey: ['admin', 'branches'], queryFn: () => api<AdminBranch[]>('/admin/branches') });
-  // Tên nhà máy là tên dự phòng của cột Chi nhánh ở các màn (khi danh mục chi nhánh BRAVO chưa có tên)
+  // Tên ĐVCS là tên hiện ở cột Chi nhánh, ĐVCS của các màn
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ['admin', 'branches'] }), qc.invalidateQueries({ queryKey: ['me', 'branch-names'] })]);
 
   const update = useMutation({
@@ -41,26 +56,37 @@ export default function BranchesPage() {
       toastOk(v.done);
       setEditing(null);
       void refresh();
-      // Tên nhà máy đang chọn ở thanh trên cùng cập nhật theo; lỗi ở đây không làm hỏng thao tác vừa lưu.
+      // Tên đơn vị đang chọn ở thanh trên cùng cập nhật theo; lỗi ở đây không làm hỏng thao tác vừa lưu.
       void loadAccess().catch(() => undefined);
     },
     onError: (e) => toastError(e),
   });
 
+  const importBravo = useMutation({
+    mutationFn: () => api<BranchImportResult>('/admin/branches/import', { method: 'POST' }),
+    onSuccess: (r) => {
+      const parts = [r.added.length && `thêm ${r.added.map((b) => b.code).join(', ')}`, r.updated.length && `đổi tên ${r.updated.map((b) => b.code).join(', ')}`].filter(Boolean);
+      toastOk(parts.length ? `Đã ${parts.join(', ')} theo BRAVO.` : `Đã khớp với ${r.rows} chi nhánh của BRAVO, không có gì thay đổi.`, 'Đã cập nhật từ BRAVO');
+      void refresh();
+      void loadAccess().catch(() => undefined);
+    },
+    onError: (e) => toastError(e, 'Chưa cập nhật được từ BRAVO'),
+  });
+
   function rename(b: AdminBranch) {
     if (!editing) return;
     const name = editing.name.trim();
-    if (!name) return setEditing({ ...editing, error: 'Nhập tên nhà máy' });
-    update.mutate({ id: b.id, body: { name }, done: `Đã đổi tên nhà máy ${b.code} thành ${name}.` });
+    if (!name) return setEditing({ ...editing, error: 'Nhập tên đơn vị' });
+    update.mutate({ id: b.id, body: { name }, done: `Đã đổi tên ${b.code} thành ${name}.` });
   }
 
   function toggleActive(b: AdminBranch, on: boolean) {
-    if (on) return update.mutate({ id: b.id, body: { isActive: true }, done: `Đã dùng lại nhà máy ${b.code} – ${b.name}.` });
+    if (on) return update.mutate({ id: b.id, body: { isActive: true }, done: `Đã dùng lại ${b.code} – ${b.name}.` });
     confirmAction({
-      title: `Ngừng dùng nhà máy ${b.code} – ${b.name}?`,
-      consequence: 'Người đang làm việc ở nhà máy này bị đưa về màn đăng nhập và không chọn lại được cho tới khi dùng lại. Dữ liệu của nhà máy vẫn giữ nguyên.',
+      title: `Ngừng dùng ${b.code} – ${b.name}?`,
+      consequence: 'Người đang làm việc ở đơn vị này bị đưa về màn đăng nhập và không chọn lại được cho tới khi dùng lại. Dữ liệu của đơn vị vẫn giữ nguyên.',
       confirmLabel: 'Ngừng dùng',
-      onConfirm: () => update.mutate({ id: b.id, body: { isActive: false }, done: `Đã ngừng dùng nhà máy ${b.code} – ${b.name}.` }),
+      onConfirm: () => update.mutate({ id: b.id, body: { isActive: false }, done: `Đã ngừng dùng ${b.code} – ${b.name}.` }),
     });
   }
 
@@ -68,27 +94,45 @@ export default function BranchesPage() {
   return (
     <>
       <PageHeader
-        title="Nhà máy"
-        subtitle="Tên nhà máy sửa được bất cứ lúc nào. Mã nhà máy gắn với dữ liệu nên không sửa được."
-        actions={<Can permission="admin.branch:create"><Button leftSection={<IconPlus size={15} />} onClick={() => setCreating(true)}>Thêm nhà máy</Button></Can>}
+        title="Đơn vị cơ sở"
+        subtitle="Theo danh mục chi nhánh của BRAVO, tự cập nhật sau mỗi lần đồng bộ. Mã và tên sửa ở BRAVO; ở đây bật, tắt đơn vị được chọn khi đăng nhập. Nhà máy SX của từng đơn vị thêm ở Danh mục hệ thống."
+        actions={
+          <Can permission="admin.branch:update">
+            <Button variant="default" leftSection={<IconRefresh size={15} />} loading={importBravo.isPending} onClick={() => importBravo.mutate()}>
+              Cập nhật từ BRAVO
+            </Button>
+          </Can>
+        }
       />
-      {branches.isError && <LoadError error={branches.error} what="danh sách nhà máy" onRetry={() => void branches.refetch()} retrying={branches.isFetching} />}
+      {branches.isError && <LoadError error={branches.error} what="danh sách đơn vị cơ sở" onRetry={() => void branches.refetch()} retrying={branches.isFetching} />}
       <div className="table-frame">
         <table className="dense-table">
-          <thead><tr><th style={{ width: 90 }}>Mã</th><th>Tên hiển thị</th><th>Loại</th><th>Trạng thái</th><th style={{ width: 90 }}>Thao tác</th></tr></thead>
+          <thead>
+            <tr>
+              <th style={{ width: 80 }}>Mã</th>
+              <th>Tên</th>
+              <th>Tên đầy đủ</th>
+              <th>Nhà máy SX</th>
+              <th>Nguồn</th>
+              <th>Trạng thái</th>
+              <th style={{ width: 60 }}>Thao tác</th>
+            </tr>
+          </thead>
           <tbody>
-            {branches.isPending && <SkeletonRows cols={5} rows={3} />}
+            {branches.isPending && <SkeletonRows cols={7} rows={3} />}
             {rows.map((b) => {
               const isEditing = editing?.id === b.id;
+              // Tên của đơn vị theo BRAVO lần cập nhật sau sẽ ghi đè, nên chỉ sửa được tên đơn vị riêng của MES
+              const renamable = canEdit && b.inBravo !== true;
               const lockReason = b.isAggregate
                 ? 'Đơn vị tổng hợp luôn dùng, không ngừng dùng được.'
                 : current?.code === b.code
-                  ? 'Bạn đang làm việc ở nhà máy này nên không ngừng dùng được. Đổi sang nhà máy khác trước.'
+                  ? 'Bạn đang làm việc ở đơn vị này nên không ngừng dùng được. Đổi sang đơn vị khác trước.'
                   : null;
               return (
                 <tr key={b.id} data-inactive={!b.isActive || undefined}>
                   <td className="mono" style={{ fontWeight: 600 }}>{b.code}</td>
-                  <td style={{ minWidth: 180 }}>
+                  <td style={{ minWidth: 160 }}>
                     {isEditing ? (
                       <Group gap={4} wrap="nowrap" align="flex-start">
                         <TextInput
@@ -114,7 +158,25 @@ export default function BranchesPage() {
                       </Group>
                     )}
                   </td>
-                  <td>{b.isAggregate ? <Badge size="sm" color="orange" variant="light">Tổng hợp, chỉ đọc</Badge> : <Text size="sm">Nhà máy</Text>}</td>
+                  <td style={{ whiteSpace: 'normal', minWidth: 200 }}>
+                    <Text size="sm" c={b.description ? undefined : 'dimmed'}>{b.description || '–'}</Text>
+                  </td>
+                  <td style={{ whiteSpace: 'normal' }}>
+                    {b.isAggregate ? (
+                      <Text size="sm" c="dimmed">–</Text>
+                    ) : b.factories.length ? (
+                      <Group gap={4}>
+                        {b.factories.map((f) => (
+                          <Badge key={f.code} size="sm" variant="light" color={f.isActive ? 'gray' : 'gray.4'} title={`${f.code}${f.isActive ? '' : ' (ngừng dùng)'}`} style={f.isActive ? undefined : { textDecoration: 'line-through' }}>
+                            {f.name}
+                          </Badge>
+                        ))}
+                      </Group>
+                    ) : (
+                      <Text size="sm" c="dimmed">Chưa có</Text>
+                    )}
+                  </td>
+                  <td><SourceBadge b={b} /></td>
                   <td>
                     {canEdit && !lockReason ? (
                       <Switch
@@ -129,58 +191,14 @@ export default function BranchesPage() {
                       <StatusBadge active={b.isActive} reason={canEdit ? lockReason : null} />
                     )}
                   </td>
-                  <td>
-                    {canEdit && !isEditing && <IconAction label={`Đổi tên ${b.code}`} icon={<IconPencil size={16} />} onClick={() => setEditing({ id: b.id, name: b.name })} />}
-                  </td>
+                  <td>{renamable && !isEditing && <IconAction label={`Đổi tên ${b.code}`} icon={<IconPencil size={16} />} onClick={() => setEditing({ id: b.id, name: b.name })} />}</td>
                 </tr>
               );
             })}
-            {branches.isSuccess && rows.length === 0 && <EmptyRow colSpan={5}>Chưa có nhà máy nào. Bấm “Thêm nhà máy” để tạo.</EmptyRow>}
+            {branches.isSuccess && rows.length === 0 && <EmptyRow colSpan={7}>Chưa có đơn vị cơ sở nào. Đồng bộ danh mục chi nhánh BRAVO rồi bấm “Cập nhật từ BRAVO”.</EmptyRow>}
           </tbody>
         </table>
       </div>
-      {creating && <CreateBranch onClose={() => setCreating(false)} onDone={refresh} />}
     </>
-  );
-}
-
-function CreateBranch({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const form = useForm({
-    initialValues: { code: '', name: '' },
-    validateInputOnBlur: true,
-    validate: { code: (v) => (/^A\d{2}$/.test(v) && v !== 'A00' ? null : 'Dạng A04, A05... (A00 dành cho tổng hợp)'), name: (v) => (v.trim() ? null : 'Nhập tên nhà máy') },
-  });
-  const m = useMutation({
-    mutationFn: (v: typeof form.values) => api('/admin/branches', { method: 'POST', body: { code: v.code, name: v.name.trim() } }),
-    onSuccess: (_x, v) => {
-      toastOk(`Đã thêm nhà máy ${v.code} – ${v.name.trim()}. Vào Người dùng để cho phép người dùng chọn nhà máy này.`);
-      onDone();
-      onClose();
-    },
-    onError: (e) => toastError(e, 'Chưa lưu được'),
-  });
-  useLeaveGuard(form.isDirty());
-  const close = () => confirmDiscard(form.isDirty(), onClose);
-  return (
-    <Modal opened onClose={close} {...escapeToClose(close)} title="Thêm nhà máy">
-      <form onSubmit={form.onSubmit((v) => m.mutate(v))}>
-        <Stack gap="sm">
-          <TextInput
-            label="Mã nhà máy"
-            withAsterisk
-            description="Mã không đổi được sau khi tạo."
-            placeholder="A04"
-            data-autofocus
-            {...form.getInputProps('code')}
-            onChange={upper((v) => form.setFieldValue('code', v))}
-          />
-          <TextInput label="Tên hiển thị" withAsterisk {...form.getInputProps('name')} />
-          <Group justify="flex-end" mt="xs">
-            <Button variant="default" onClick={close}>Hủy</Button>
-            <Button type="submit" loading={m.isPending}>Thêm nhà máy</Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
   );
 }

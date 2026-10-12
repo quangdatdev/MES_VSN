@@ -301,6 +301,19 @@ export function ExportButton({ resource, path, fileName }: { resource: string; p
 }
 
 /** Thao tác ghi chỉ có ở nhà máy cụ thể (A00 chỉ đọc); vẫn để backend cưỡng chế. */
+/**
+ * Đơn hàng, PO dùng chung toàn công ty nhưng chỉ ghi được ở ĐVCS nguồn (Chi nhánh FOB, ADR 0013): lý do khóa nút ghi khi
+ * dòng thuộc ĐVCS khác, null khi ghi được. Chỉ để phản chiếu, máy chủ vẫn chặn (404).
+ */
+export function useOriginLock(what: string) {
+  const current = useSession((s) => s.branch?.code);
+  const branchName = useBranchName();
+  return useCallback(
+    (code: string | null | undefined) => (code && current && code !== current ? `${what} của ${branchName(code)}: chỉ sửa, xóa khi đang làm việc ở đơn vị cơ sở đó.` : null),
+    [current, branchName, what],
+  );
+}
+
 export function useCanWrite(permission: string) {
   const can = useCan(permission);
   const aggregate = useSession((s) => !!s.branch?.isAggregate);

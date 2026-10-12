@@ -150,7 +150,7 @@ export class ShipmentService {
     const scope = scopeOf(user);
     const plan = await this.plans.getById(scope, id);
     const [colorSizes, links] = await Promise.all([this.planColorSizes.listByParent(scope, id), this.planPos.listByParent(scope, id)]);
-    const planned = await this.plannedMap(scope, plan.SalesOrderId, id);
+    const planned = await this.plannedMap(plan.SalesOrderId, id);
     return {
       ...presentPlan(plan),
       poIds: links.map((l) => l.SalesOrderPoId),
@@ -161,22 +161,29 @@ export class ShipmentService {
     };
   }
 
-  private async plannedMap(scope: Scope, salesOrderId: number, excludePlanId?: number, db?: OrderDb) {
-    const rows = await this.plans.plannedBySalesOrder(scope, [salesOrderId], excludePlanId, db);
+  private async plannedMap(salesOrderId: number, excludePlanId?: number, db?: OrderDb) {
+    const rows = await this.plans.plannedBySalesOrder([salesOrderId], excludePlanId, db);
     return new Map(rows.map((r) => [csKey(r.ColorName, r.SizeName), Number(r.PlanQty)]));
   }
 
   /**
-   * Popup "Chọn mã hàng": đơn hàng kèm số lượng đã lập kế hoạch và còn lại. Dữ liệu đọc từ Thông tin đơn hàng nên
-   * đi qua chính sách cột của tài nguyên đó (review 5.1 #4); SL còn lại suy ra được SL đơn hàng nên theo cùng mức.
+   * Popup "Chọn mã hàng": đơn hàng kèm số lượng đã lập kế hoạch và còn lại. Chỉ đơn hàng của các nhà máy SX được tích cho
+   * người dùng (ở mọi ĐVCS, ADR 0013); đơn chưa chọn nhà máy SX không hiện. Dữ liệu đọc từ Thông tin đơn hàng nên đi qua
+   * chính sách cột của tài nguyên đó (review 5.1 #4); SL còn lại suy ra được SL đơn hàng nên theo cùng mức.
    */
   async candidates(user: AuthUser, query: CandidateQuery) {
     const scope = scopeOf(user);
     const q = await readableQuery(this.fields, user, 'order.allocation', query);
     const filter = businessFilter({ ...q, page: 1, pageSize: 200 });
     // Đơn đã hoàn thành hoặc hủy không còn gì để lập: với dữ liệu BRAVO, 200 đơn đầu theo ngày xuất phần lớn là đơn đã đóng lệnh
-    const page = await this.orders.list(scope, { page: 1, pageSize: 200, sort: 'ShipDate:asc', where: (qb) => filter(qb).where('StatusCode', 'not in', ['DONE', 'CANCELLED']) });
-    const planned = await this.plans.plannedBySalesOrder(scope, page.items.map((o) => o.Id));
+    const page = await this.orders.list(scope, {
+      page: 1,
+      pageSize: 200,
+      sort: 'ShipDate:asc',
+      assignedFactories: true,
+      where: (qb) => filter(qb).where('StatusCode', 'not in', ['DONE', 'CANCELLED']),
+    });
+    const planned = await this.plans.plannedBySalesOrder(page.items.map((o) => o.Id));
     const shaped = await this.fields.shape(
       user,
       'order.allocation',
@@ -187,6 +194,7 @@ export class ShipmentService {
         styleCode: o.StyleCode,
         productName: o.ProductName,
         branchCode: o.BranchCode,
+        productionFactoryCode: o.ProductionFactoryCode,
         qty: o.Qty as number | typeof MASK | undefined,
         syncedAt: day(o.SyncedAt),
         shipDate: day(o.ShipDate),
@@ -198,9 +206,16 @@ export class ShipmentService {
     });
   }
 
+  /** Đơn hàng phải thuộc nhà máy SX được tích cho người dùng mới lập kế hoạch mới được (cùng điều kiện với popup Chọn mã hàng) */
+  private assignedOrder(scope: Scope, salesOrderId: number, db?: OrderDb) {
+    return this.orders.getById(scope, salesOrderId, 'view', db, { assignedFactories: true });
+  }
+
   /** PO của đơn hàng cho popup chọn mã hàng: đi qua chính sách cột của Cập nhật tỷ lệ cắt (order.po). */
   async candidatePos(user: AuthUser, salesOrderId: number) {
-    const page = await this.pos.list(scopeOf(user), { page: 1, pageSize: 200, sort: 'ShipDate:asc', where: (qb) => qb.where('SalesOrderId', '=', salesOrderId) });
+    const scope = scopeOf(user);
+    await this.assignedOrder(scope, salesOrderId);
+    const page = await this.pos.list(scope, { page: 1, pageSize: 200, sort: 'ShipDate:asc', where: (qb) => qb.where('SalesOrderId', '=', salesOrderId) });
     return this.fields.shape(
       user,
       'order.po',
@@ -226,11 +241,22 @@ export class ShipmentService {
     const page = await this.pos.list(scope, { page: 1, pageSize: 200, where: (qb) => qb.where('SalesOrderId', '=', salesOrderId).where('Id', 'in', poIds) }, 'view', db);
     if (page.items.length !== new Set(poIds).size) throw invalid('Có PO không thuộc mã hàng đã chọn hoặc bạn không được xem.');
     const original = byColorSize(await this.poColorSizes.listByParents(scope, poIds, 'view', db), (r) => r.Qty);
-    const planned = await this.plannedMap(scope, salesOrderId, excludePlanId, db);
+    const planned = await this.plannedMap(salesOrderId, excludePlanId, db);
     return [...original.values()].map((o) => {
       const done = planned.get(csKey(o.colorName, o.sizeName)) ?? 0;
       return { colorName: o.colorName, sizeName: o.sizeName, originalQty: o.qty, plannedQty: done, remainingQty: Math.max(0, o.qty - done) };
     });
+  }
+
+  /**
+   * Lưới màu cỡ cho popup (GET draft): lập mới thì đơn hàng phải thuộc nhà máy SX được tích; sửa kế hoạch (`excludePlanId`)
+   * thì kế hoạch phải xem được và đúng đơn hàng đó (đổi nhà máy được tích không khóa việc sửa kế hoạch đã lập).
+   */
+  async draftFor(user: AuthUser, salesOrderId: number, poIds: number[], excludePlanId?: number) {
+    const scope = scopeOf(user);
+    if (excludePlanId === undefined) await this.assignedOrder(scope, salesOrderId);
+    else if ((await this.plans.getById(scope, excludePlanId)).SalesOrderId !== salesOrderId) throw invalid('Kế hoạch không thuộc mã hàng này.');
+    return this.draft(user, salesOrderId, poIds, excludePlanId);
   }
 
   private checkLines(draft: DraftLine[], lines: PlanLineQtyDto[]) {
@@ -254,16 +280,18 @@ export class ShipmentService {
 
   async create(user: AuthUser, dto: ShipmentPlanCreateDto) {
     const scope = scopeOf(user);
-    const order = await this.orders.getById(scope, dto.salesOrderId);
+    const order = await this.assignedOrder(scope, dto.salesOrderId);
     // Cùng điều kiện với danh sách ứng viên: đơn đã xong hoặc đã hủy không lập thêm kế hoạch
     if (order.StatusCode === 'DONE' || order.StatusCode === 'CANCELLED') throw invalid('Đơn hàng đã hoàn thành hoặc đã hủy, không lập thêm kế hoạch.');
     const poIds = [...new Set(dto.poIds)];
     const plannerName = await this.users.fullName(user.userId);
     await this.plans.assertWritable(scope);
     const plan = await inTransaction(this.db, async (trx) => {
-      // Khóa đơn hàng đến hết transaction: hai người cùng lập kế hoạch cho một đơn phải lần lượt,
-      // người sau tính SL còn lại đã trừ kế hoạch của người trước (review 5.1 #7)
+      // Khóa đơn hàng đến hết transaction: hai người (ở bất kỳ ĐVCS nào) cùng lập kế hoạch cho một đơn phải lần lượt,
+      // người sau tính SL còn lại đã trừ kế hoạch của người trước (review 5.1 #7). Đọc lại sau khi khóa: nhà máy SX của đơn
+      // có thể vừa đổi
       await this.orders.lock(scope, order.Id, 'view', trx);
+      await this.assignedOrder(scope, order.Id, trx);
       const lines = this.checkLines(await this.draft(user, order.Id, poIds, undefined, trx), dto.lines);
       const row = await this.plans.createNumbered(
         scope,

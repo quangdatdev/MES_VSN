@@ -267,6 +267,28 @@ export interface SysCatalogItemTable extends Audit {
   IsSystem: boolean;
 }
 
+/** Nhà máy SX (MES_Core/0007, ADR 0013): mỗi nhà máy thuộc một Đơn vị cơ sở; mã lưu ở SalesOrder.ProductionFactoryCode */
+export interface SysProductionFactoryTable extends Audit {
+  Id: Id;
+  Code: string;
+  Name: string;
+  /** ĐVCS quản lý (SysBranch.Code, không phải đơn vị tổng hợp). NULL: chưa gắn */
+  BranchCode: string | null;
+  Description: string | null;
+  SortOrder: number;
+  IsActive: boolean;
+  IsSystem: boolean;
+}
+
+/** Nhà máy SX được tích cho người dùng: lập kế hoạch xuất hàng chỉ chọn được đơn hàng của các nhà máy này */
+export interface SysUserProductionFactoryTable {
+  Id: Id;
+  UserId: number;
+  ProductionFactoryId: number;
+  CreatedAt: Created;
+  CreatedBy: number | null;
+}
+
 /** Ca làm việc. Cột TIME đọc ra Date ngày 1970-01-01 giờ UTC, ghi vào bằng chuỗi "HH:mm" */
 export interface SysShiftTable extends Audit {
   Id: Id;
@@ -285,6 +307,8 @@ export interface CoreDatabase {
   SysCatalog: SysCatalogTable;
   SysCatalogItem: SysCatalogItemTable;
   SysShift: SysShiftTable;
+  SysProductionFactory: SysProductionFactoryTable;
+  SysUserProductionFactory: SysUserProductionFactoryTable;
   SysOrgUnit: SysOrgUnitTable;
   SysScopeDimension: SysScopeDimensionTable;
   SysResourceScopeBinding: SysResourceScopeBindingTable;

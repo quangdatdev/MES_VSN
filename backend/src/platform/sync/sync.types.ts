@@ -56,11 +56,12 @@ export interface SyncRunTable {
   ModifiedBy: number | null;
 }
 
-/** Danh mục chi nhánh chép từ BRAVO (nguồn BRAVO.DM_CHINHANH, MES_Sync/0002): BranchCode trùng mã nhà máy của MES */
+/** Danh mục chi nhánh chép từ BRAVO (nguồn BRAVO.DM_CHINHANH, MES_Sync/0002): mỗi dòng là một Đơn vị cơ sở, BranchCode là mã của MES (ADR 0013) */
 export interface BravoBranchTable {
   BranchCode: string;
   MaChiNhanh: string | null;
   TenChiNhanh: string | null;
+  TenDayDu: string | null;
 }
 
 export interface SyncDatabase {

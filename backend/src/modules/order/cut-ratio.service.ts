@@ -181,8 +181,9 @@ export class CutRatioService {
   /** "Thêm PO": dữ liệu PO chưa đồng bộ được từ BRAVO nên cho nhập tay, kèm màu cỡ. */
   async create(user: AuthUser, dto: PoCreateDto) {
     const scope = scopeOf(user);
-    // Lấy khách hàng, mã hàng từ đơn hàng: cần quyền xem Thông tin đơn hàng
-    const order = await this.orders.getById(scope, dto.salesOrderId);
+    // Lấy khách hàng, mã hàng từ đơn hàng: cần quyền xem Thông tin đơn hàng. Đơn hàng dùng chung nhưng PO chỉ thêm ở ĐVCS
+    // của đơn (PO đóng dấu ĐVCS của phiên, khóa ngoại ghép PO – đơn hàng giữ cùng ĐVCS; review 5.9 M2)
+    const order = await this.orders.getById(scope, dto.salesOrderId, 'view', undefined, { sameBranch: true });
     const lines = cleanLines(dto.lines);
     const po = await inTransaction(this.db, async (trx) => {
       const row = await this.pos.createNumbered(

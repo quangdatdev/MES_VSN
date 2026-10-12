@@ -33,6 +33,10 @@ export class SyncService implements OnModuleInit {
   /** Đã xác nhận MES_Sync tồn tại và vào được; chưa thì mỗi yêu cầu hỏi lại (rẻ, qua MES_Core) */
   private dbReady = false;
   private startup: Promise<void> = Promise.resolve();
+  /** Việc chạy sau khi một nguồn chép thành công, theo mã nguồn (onSucceeded) */
+  private readonly followUps = new Map<string, (() => Promise<unknown>)[]>();
+  /** Việc chạy một lần khi hàng đợi chạy hết, nếu đã có nguồn liên quan chép thành công (onQueueDrained) */
+  private readonly drainHooks: { codes: Set<string>; work: () => Promise<unknown>; pending: boolean }[] = [];
 
   constructor(
     private readonly repo: SyncRepository,
@@ -174,9 +178,58 @@ export class SyncService implements OnModuleInit {
     });
   }
 
-  /** Tên chi nhánh (TenChiNhanh) theo mã nhà máy, chép từ danh mục chi nhánh BRAVO */
+  /** Tên chi nhánh (TenChiNhanh) theo mã đơn vị cơ sở, chép từ danh mục chi nhánh BRAVO */
   branchNames() {
     return this.ready(() => this.repo.branchNames());
+  }
+
+  /** Danh mục chi nhánh BRAVO (mã, tên ngắn, tên đầy đủ) để chép thành Đơn vị cơ sở (ADR 0013) */
+  bravoBranches() {
+    return this.ready(() => this.repo.bravoBranches());
+  }
+
+  /**
+   * Đăng ký việc chạy mỗi khi nguồn `sourceCode` chép thành công trong tiến trình này (ví dụ cập nhật Đơn vị cơ sở theo
+   * danh mục chi nhánh BRAVO). Việc lỗi chỉ ghi log, không làm hỏng lần đồng bộ đã xong.
+   */
+  onSucceeded(sourceCode: string, work: () => Promise<unknown>) {
+    this.followUps.set(sourceCode, [...(this.followUps.get(sourceCode) ?? []), work]);
+  }
+
+  /**
+   * Đăng ký việc chạy một lần khi hàng đợi đồng bộ của tiến trình này chạy hết, nếu từ lần trước có nguồn trong `sourceCodes`
+   * chép thành công: một lần bấm Đồng bộ nhiều nguồn chỉ chạy một lần, sau khi mọi nguồn đã chép (ví dụ nạp đơn hàng cần
+   * đủ đơn, PO, màu cỡ). Việc lỗi chỉ ghi log. Việc đang chạy thì lần đồng bộ bấm sau chờ tới khi xong.
+   */
+  onQueueDrained(sourceCodes: string[], work: () => Promise<unknown>) {
+    this.drainHooks.push({ codes: new Set(sourceCodes), work, pending: false });
+  }
+
+  /** Đơn hàng, PO, màu cỡ BRAVO đã chép (chỉ đọc) của các ĐVCS `branches`, cho bước nạp vào MES_Order */
+  bravoOrderSource(branches: string[]) {
+    return this.ready(() => this.repo.bravoOrderSource(branches));
+  }
+
+  private async followUp(runId: string) {
+    if (this.followUps.size === 0 && this.drainHooks.length === 0) return;
+    const run = await this.repo.runOutcome(runId);
+    if (!run || run.StatusCode !== 'SUCCEEDED') return;
+    for (const hook of this.drainHooks) if (hook.codes.has(run.Code)) hook.pending = true;
+    for (const work of this.followUps.get(run.Code) ?? []) {
+      await work().catch((e) => this.logger.error(`Việc sau khi chép ${run.Code} lỗi: ${(e as Error).message}`, (e as Error).stack));
+    }
+  }
+
+  /** Việc lỗi thì giữ cờ chờ: lần hàng đợi chạy hết sau đó (đợt đồng bộ kế tiếp) thử lại */
+  private async afterDrain() {
+    for (const hook of this.drainHooks) {
+      if (!hook.pending) continue;
+      hook.pending = false;
+      await hook.work().catch((e) => {
+        hook.pending = true;
+        this.logger.error(`Việc sau đồng bộ lỗi, thử lại ở đợt đồng bộ sau: ${(e as Error).message}`, (e as Error).stack);
+      });
+    }
   }
 
   /** Một trang dữ liệu của bảng chép danh mục. Bảng lấy theo mã nguồn trong SyncSource, không nhận tên bảng từ client. */
@@ -252,10 +305,14 @@ export class SyncService implements OnModuleInit {
     const tried = new Set<string>();
     for (;;) {
       const next = (await this.repo.queuedRunIds()).find((id) => !tried.has(id));
-      if (!next) return;
+      if (!next) {
+        await this.afterDrain();
+        return;
+      }
       tried.add(next);
       try {
         await this.repo.execute(next);
+        await this.followUp(next).catch((e) => this.logger.error(`Không đọc được kết quả lần #${next}: ${(e as Error).message}`));
       } catch (e) {
         // Thủ tục tự ghi lỗi của việc chép; tới đây là lỗi kết nối hoặc quá giờ (kết nối riêng đã đóng, khóa đã nhả)
         const message = (e as Error).message;

@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { BravoOrderImportRepository } from './bravo-order-import.repository';
+import { BravoOrderImportService } from './bravo-order-import.service';
 import { ColorSizeService } from './color-size.service';
 import { CutRatioService } from './cut-ratio.service';
 import { LinePlanService } from './line-plan.service';
@@ -46,6 +48,8 @@ import { ShipmentService } from './shipment.service';
     LinePlanService,
     ColorSizeService,
     ScheduleFeed,
+    BravoOrderImportRepository,
+    BravoOrderImportService,
   ],
   // API công khai cho module khác (module May đọc dàn chuyền, ADR 0009)
   exports: [ScheduleFeed],

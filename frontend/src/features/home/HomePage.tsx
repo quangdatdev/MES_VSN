@@ -43,8 +43,8 @@ export function HomePage() {
       </div>
 
       {branch?.isAggregate && (
-        <Alert variant="light" color="orange" icon={<IconEye size={18} />} title="Bạn đang xem tổng hợp mọi nhà máy" maw={720}>
-          Chế độ này chỉ đọc. Muốn thêm hoặc sửa dữ liệu, hãy đổi sang một nhà máy cụ thể ở thanh trên cùng (cạnh chữ MES - VSN).
+        <Alert variant="light" color="orange" icon={<IconEye size={18} />} title="Bạn đang xem tổng hợp mọi đơn vị cơ sở" maw={720}>
+          Chế độ này chỉ đọc. Muốn thêm hoặc sửa dữ liệu, hãy đổi sang một đơn vị cơ sở cụ thể ở thanh trên cùng (cạnh chữ MES - VSN).
         </Alert>
       )}
 
@@ -52,7 +52,7 @@ export function HomePage() {
         <Title order={2} fz="lg" lh="22px" mb="sm">Màn hình bạn được dùng</Title>
         {leaves.length === 0 ? (
           <Paper withBorder p="lg">
-            <Text>Ở nhà máy này tài khoản chưa được dùng màn hình nào. Hãy đổi nhà máy khác hoặc nhờ quản trị viên gán vai trò.</Text>
+            <Text>Ở đơn vị cơ sở này tài khoản chưa được dùng màn hình nào. Hãy đổi đơn vị khác hoặc nhờ quản trị viên gán vai trò.</Text>
           </Paper>
         ) : (
           <Stack gap="lg">

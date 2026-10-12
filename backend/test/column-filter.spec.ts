@@ -90,8 +90,10 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
     await so('TEST-CF-3', CUST.b, '', 'A01', '2099-01-01T10:00:00Z');
     // 23:30 UTC ngày 31/12 là 06:30 ngày 01/01 giờ Việt Nam
     await so('TEST-CF-4', CUST.a, 'SS27', 'A01', '2098-12-31T23:30:00Z');
-    await so('TEST-CF-X', CUST.other, 'FW26', 'A02', '2099-01-04T10:00:00Z');
+    const other = await so('TEST-CF-X', CUST.other, 'FW26', 'A02', '2099-01-04T10:00:00Z');
     const planId = await id('ShipmentPlan', { PlanNo: 'TEST-CF-P1', SalesOrderId: first, CustomerName: CUST.a, StyleCode: STYLE, ProductName: 'Áo test', PoBuyDate: 'TEST-CF', PlanQty: 100, ShipDate: '2027-12-31', PlannerName: 'Test', StatusCode: 'SCHEDULED', BranchCode: 'A01' });
+    // Kế hoạch xuất hàng vẫn theo ĐVCS: kế hoạch của A02 để kiểm phạm vi ĐVCS của popup giá trị
+    await id('ShipmentPlan', { PlanNo: 'TEST-CF-P2', SalesOrderId: other, CustomerName: CUST.other, StyleCode: STYLE, ProductName: 'Áo test', PoBuyDate: 'TEST-CF', PlanQty: 100, ShipDate: '2027-12-31', PlannerName: 'Test', StatusCode: 'PLANNED', BranchCode: 'A02' });
     await id('ShipmentPlanLine', { ShipmentPlanId: planId, LineCode: 'A01-L03', Qty: 100, AvgOutput: 100, StartDate: '2027-11-02', ProductionDays: 1, OffDays: 0, EndDate: '2027-11-02', StatusCode: 'PLANNED', SortOrder: 0, BranchCode: 'A01' });
     await id('SalesOrderPo', { SalesOrderId: first, PoCode: 'TEST-CF-PO', PoNumber: 'TEST-CF-PO', CustomerName: CUST.a, StyleCode: STYLE, Qty: 100, ShipDate: '2027-12-31', StatusCode: 'DRAFT', BranchCode: 'A01', CreatedAt: new Date('2099-01-05T00:00:00Z') });
   }
@@ -118,7 +120,8 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
   it('mặc định 100 dòng đầu, mới tạo lên trước (dữ liệu chép từ BRAVO cùng thời điểm nạp thì theo Id giảm dần)', async () => {
     const body = await list(admin, '/api/v1/order/sales-orders');
     expect(body.pageSize).toBe(100);
-    expect(body.items.slice(0, 4).map((i: any) => i.orderNo)).toEqual(['TEST-CF-1', 'TEST-CF-2', 'TEST-CF-3', 'TEST-CF-4']);
+    // Đơn hàng dùng chung toàn công ty (ADR 0013): có cả đơn của A02 khi đang ở A01
+    expect(body.items.slice(0, 5).map((i: any) => i.orderNo)).toEqual(['TEST-CF-X', 'TEST-CF-1', 'TEST-CF-2', 'TEST-CF-3', 'TEST-CF-4']);
     const times = body.items.map((i: any) => new Date(i.createdAt).getTime());
     expect(times).toEqual([...times].sort((a, b) => b - a));
     for (const path of ['/api/v1/order/shipment-plans', '/api/v1/order/line-plans', '/api/v1/order/color-size', '/api/v1/order/cut-ratio/pos', '/api/v1/order/cut-ratio/styles']) {
@@ -132,29 +135,32 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
   it('lọc in, notIn, ô trống chạy trong DB và kết hợp với dải lọc', async () => {
     const nos = async (q: string) => (await list(planner, `/api/v1/order/sales-orders?style=${STYLE}&${q}`)).items.map((i: any) => i.orderNo).sort();
     expect(await nos(`cf=${cf({ customerName: { in: [CUST.a] } })}`)).toEqual(['TEST-CF-1', 'TEST-CF-4']);
-    expect(await nos(`cf=${cf({ customerName: { notIn: [CUST.a] } })}`)).toEqual(['TEST-CF-2', 'TEST-CF-3']);
+    expect(await nos(`cf=${cf({ customerName: { notIn: [CUST.a] } })}`)).toEqual(['TEST-CF-2', 'TEST-CF-3', 'TEST-CF-X']);
     // Season trống gồm cả NULL lẫn chuỗi rỗng
     expect(await nos(`cf=${cf({ season: { in: [null] } })}`)).toEqual(['TEST-CF-2', 'TEST-CF-3']);
-    expect(await nos(`cf=${cf({ season: { notIn: [null] } })}`)).toEqual(['TEST-CF-1', 'TEST-CF-4']);
+    expect(await nos(`cf=${cf({ season: { notIn: [null] } })}`)).toEqual(['TEST-CF-1', 'TEST-CF-4', 'TEST-CF-X']);
     expect(await nos(`cf=${cf({ season: { notIn: ['FW26'] } })}`)).toEqual(['TEST-CF-2', 'TEST-CF-3', 'TEST-CF-4']);
     expect(await nos(`cf=${cf({ season: { in: ['FW26', null] }, customerName: { in: [CUST.b] } })}`)).toEqual(['TEST-CF-2', 'TEST-CF-3']);
     // Ngày tạo lọc theo ngày giờ Việt Nam
     expect(await nos(`cf=${cf({ createdAt: { in: ['2099-01-01'] } })}`)).toEqual(['TEST-CF-3', 'TEST-CF-4']);
-    // Không thấy đơn của nhà máy khác dù gửi đúng giá trị
-    expect(await nos(`cf=${cf({ customerName: { in: [CUST.other] } })}`)).toEqual([]);
+    // Đơn hàng dùng chung (ADR 0013): đơn của ĐVCS khác lọc ra được
+    expect(await nos(`cf=${cf({ customerName: { in: [CUST.other] } })}`)).toEqual(['TEST-CF-X']);
     const total = (await list(planner, `/api/v1/order/sales-orders?style=${STYLE}&cf=${cf({ customerName: { in: [CUST.a] } })}`)).total;
     expect(total).toBe(2);
   });
 
-  it('giá trị cho popup lấy từ DB trong phạm vi nhà máy, theo các bộ lọc khác, tìm thu hẹp được', async () => {
+  it('giá trị cho popup lấy từ DB trong phạm vi được xem, theo các bộ lọc khác, tìm thu hẹp được', async () => {
     const values = async (t: string, q: string) => (await list(t, `/api/v1/order/sales-orders/values?style=${STYLE}&${q}`)) as { values: unknown[]; truncated: boolean };
     const all = await values(planner, 'field=customerName');
-    expect(all.values).toEqual(expect.arrayContaining([CUST.a, CUST.b]));
-    expect(all.values).not.toContain(CUST.other);
+    // Đơn hàng dùng chung (ADR 0013): có cả khách của đơn ĐVCS khác
+    expect(all.values).toEqual(expect.arrayContaining([CUST.a, CUST.b, CUST.other]));
     expect(all.truncated).toBe(false);
-    // A00 xem mọi nhà máy
+    // Kế hoạch xuất hàng vẫn theo ĐVCS: ở A01 không thấy khách của kế hoạch A02; A00 xem mọi ĐVCS
+    const planCustomers = async (t: string) => (await list(t, '/api/v1/order/shipment-plans/values?field=customerName&search=CF')).values as unknown[];
+    expect(await planCustomers(planner)).toContain(CUST.a);
+    expect(await planCustomers(planner)).not.toContain(CUST.other);
     const agg = await tokenFor('admin', 'A00');
-    expect((await values(agg, 'field=customerName')).values).toEqual(expect.arrayContaining([CUST.a, CUST.b, CUST.other]));
+    expect(await planCustomers(agg)).toEqual(expect.arrayContaining([CUST.a, CUST.other]));
     // Cột trống có mục (Trống) ở cuối
     const seasons = (await values(planner, 'field=season')).values;
     expect(seasons[seasons.length - 1]).toBeNull();
@@ -163,7 +169,7 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
     expect((await values(planner, `field=customerName&cf=${cf({ customerName: { in: [CUST.a] } })}`)).values).toEqual(expect.arrayContaining([CUST.a, CUST.b]));
     expect((await values(planner, 'field=customerName&search=hai')).values).toEqual([CUST.b]);
     // Cột ngày: mới nhất lên trước như lưới
-    expect((await values(planner, 'field=createdAt&search=01/2099')).values).toEqual(['2099-01-03', '2099-01-02', '2099-01-01']);
+    expect((await values(planner, 'field=createdAt&search=01/2099')).values).toEqual(['2099-01-04', '2099-01-03', '2099-01-02', '2099-01-01']);
   });
 
   it('cột ngoài danh sách trắng, cột giá, JSON sai: 422', async () => {

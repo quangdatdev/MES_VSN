@@ -19,17 +19,17 @@ export const Errors = {
   accountLocked: (until: Date) =>
     new AppException('ACCOUNT_LOCKED', 'Tài khoản tạm thời bị khóa do đăng nhập sai nhiều lần.', 423, { until }),
   permissionDenied: () => new AppException('PERMISSION_DENIED', 'Bạn không có quyền thực hiện thao tác này.', 403),
-  branchNotAllowed: () => new AppException('BRANCH_NOT_ALLOWED', 'Bạn không được phép chọn nhà máy này.', 403),
+  branchNotAllowed: () => new AppException('BRANCH_NOT_ALLOWED', 'Bạn không được phép chọn đơn vị cơ sở này.', 403),
   endpointNotDeclared: () =>
     new AppException('ENDPOINT_NOT_DECLARED', 'Endpoint chưa khai báo quyền truy cập.', 403),
   notFound: (msg = 'Không tìm thấy dữ liệu.') => new AppException('NOT_FOUND', msg, 404),
   aggregateReadOnly: () =>
-    new AppException('AGGREGATE_READ_ONLY', 'Chế độ xem tổng hợp chỉ đọc. Hãy chọn một nhà máy cụ thể để thêm hoặc sửa dữ liệu.', 403),
+    new AppException('AGGREGATE_READ_ONLY', 'Chế độ xem tổng hợp chỉ đọc. Hãy chọn một đơn vị cơ sở cụ thể để thêm hoặc sửa dữ liệu.', 403),
   selfElevation: (msg = 'Bạn không được tự thay đổi quyền của chính mình.') => new AppException('SELF_ELEVATION_FORBIDDEN', msg, 403),
   conflict: (msg: string) => new AppException('CONFLICT', msg, 409),
   codeImmutable: () => new AppException('CODE_IMMUTABLE', 'Mã không được sửa sau khi đã tạo. Chỉ sửa được tên.', 422),
   scopeDenied: () =>
-    new AppException('SCOPE_DENIED', 'Dữ liệu này nằm ngoài phạm vi bạn được giao (chuyền, nhà máy hoặc người tạo).', 403),
+    new AppException('SCOPE_DENIED', 'Dữ liệu này nằm ngoài phạm vi bạn được giao (chuyền, đơn vị cơ sở, nhà máy SX hoặc người tạo).', 403),
   fieldReadonly: (fields: string[], names: string[] = []) =>
     new AppException('FIELD_READONLY', names.length ? `Bạn không được sửa cột: ${names.join(', ')}.` : 'Bạn không được sửa một số cột trong dữ liệu gửi lên.', 403, { fields }),
   syncNotReady: () =>

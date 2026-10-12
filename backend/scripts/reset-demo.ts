@@ -6,10 +6,10 @@
 // Việc script làm:
 //  - MES_Order: xóa toàn bộ dữ liệu đơn hàng (đơn, PO, kế hoạch, dàn chuyền, phân màu cỡ), nạp lại dữ liệu mẫu.
 //  - MES_Hr: xóa loại phòng ban, phòng ban, chức danh, nhân viên rồi nạp lại dữ liệu nhân sự giả (Id đổi).
-//  - MES_Core: tên nhà máy, vai trò, ma trận quyền, chính sách cột của vai trò mẫu, danh mục hệ thống (xưởng, chuyền, đơn vị tính,
-//    loại đơn hàng, nhà máy sản xuất, ca làm việc), tài khoản demo (họ tên, mật khẩu,
-//    vai trò, phạm vi, ngoại lệ, cột riêng, nhà máy) về như seed; nhà máy, vai trò, người dùng tạo thêm khi demo bị
-//    vô hiệu hóa (không xóa vật lý); thu hồi mọi phiên đăng nhập.
+//  - MES_Core: tên đơn vị cơ sở mẫu (ĐVCS theo BRAVO giữ tên BRAVO), vai trò, ma trận quyền, chính sách cột của vai trò mẫu,
+//    danh mục hệ thống (xưởng, chuyền, đơn vị tính, loại đơn hàng, nhà máy SX, ca làm việc), tài khoản demo (họ tên, mật khẩu,
+//    vai trò, phạm vi, ngoại lệ, cột riêng, ĐVCS, nhà máy SX) về như seed; ĐVCS ngoài mẫu và BRAVO, nhà máy SX, vai trò, người
+//    dùng tạo thêm khi demo bị vô hiệu hóa (không xóa vật lý); thu hồi mọi phiên đăng nhập.
 //  - Nhật ký SysAuditLog giữ nguyên (chỉ ghi thêm), có thêm một dòng DEMO_RESET.
 import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
@@ -20,7 +20,9 @@ import { clearOrderData, loadBravoOrders } from './load-bravo-orders';
 import { assertDemoMachine } from './local-db';
 import { clearSewingPrep } from './sewing-data';
 import { runSeed } from './seed';
-import { LINE_COUNT, WORKSHOPS, branches, catalogSeedItems, catalogs, lineCode, roles, shifts, users, workshopCode, workshopName, workshopOfLine } from './seed-data';
+import { bravoBranchCode } from '../src/platform/admin/branch-import';
+import { readBravoBranches } from './bravo-branches';
+import { LINE_COUNT, WORKSHOPS, branches, catalogSeedItems, catalogs, lineCode, productionFactories, roles, shifts, users, workshopCode, workshopName, workshopOfLine } from './seed-data';
 
 async function main() {
   // Kiểm trước cả lời mô tả: máy không dùng dữ liệu mẫu thì đừng hướng dẫn chạy lại với --yes
@@ -32,8 +34,8 @@ async function main() {
         `  - xóa mọi dữ liệu đơn hàng trong ${env.db.orderName} rồi nạp lại dữ liệu mẫu (--bravo: dữ liệu thật từ ${env.db.syncName});`,
         `  - xóa Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (ngày đã nhập; danh mục bước giữ nguyên);`,
         `  - xóa loại phòng ban, phòng ban, chức danh, hồ sơ nhân viên trong ${env.db.hrName} rồi nạp lại dữ liệu nhân sự giả;`,
-        `  - đặt lại nhà máy, vai trò, quyền, chính sách cột và tài khoản demo trong ${env.db.coreName} (máy chủ ${env.db.host});`,
-        '  - vô hiệu hóa người dùng, vai trò, nhà máy tạo thêm; thu hồi mọi phiên đăng nhập.',
+        `  - đặt lại đơn vị cơ sở, nhà máy SX, vai trò, quyền, chính sách cột và tài khoản demo trong ${env.db.coreName} (máy chủ ${env.db.host});`,
+        '  - vô hiệu hóa người dùng, vai trò, đơn vị cơ sở, nhà máy SX tạo thêm; thu hồi mọi phiên đăng nhập.',
         'Chỉ dùng cho database demo. Chạy lại với: npm run reset:demo -- --yes',
       ].join('\n'),
     );
@@ -48,15 +50,18 @@ async function main() {
   const core = createDb<CoreDatabase>(env.db.coreName);
   const order = createDb<OrderDatabase>(env.db.orderName);
   try {
-    const branchCodes = branches.map((b) => b.code);
+    // ĐVCS theo danh mục chi nhánh BRAVO giữ tên BRAVO và vẫn dùng (seed bên dưới chép lại tên); ĐVCS mẫu khác về tên mẫu
+    const bravoCodes = new Set(((await readBravoBranches()) ?? []).map(bravoBranchCode).filter((c): c is string => !!c));
+    const branchCodes = [...new Set([...branches.map((b) => b.code), ...bravoCodes])];
     const roleCodes = roles.map((r) => r.code);
     const usernames = users.map((u) => u.username);
     const now = new Date();
 
     await core.transaction().execute(async (trx) => {
       for (const b of branches) {
-        await trx.updateTable('SysBranch').set({ Name: b.name, IsActive: true, ModifiedAt: now }).where('Code', '=', b.code).execute();
+        await trx.updateTable('SysBranch').set({ ...(bravoCodes.has(b.code) ? {} : { Name: b.name }), IsActive: true, ModifiedAt: now }).where('Code', '=', b.code).execute();
       }
+      if (bravoCodes.size) await trx.updateTable('SysBranch').set({ IsActive: true, ModifiedAt: now }).where('Code', 'in', [...bravoCodes]).execute();
       await trx.updateTable('SysBranch').set({ IsActive: false, ModifiedAt: now }).where('Code', 'not in', branchCodes).execute();
 
       for (const r of roles) {
@@ -78,6 +83,7 @@ async function main() {
       await trx.deleteFrom('SysFieldPolicy').where('SubjectType', '=', 'USER').where('SubjectId', 'in', seedUserIds).execute();
       await trx.deleteFrom('SysUserRole').where('UserId', 'in', seedUserIds).execute();
       await trx.deleteFrom('SysUserBranch').where('UserId', 'in', seedUserIds).execute();
+      await trx.deleteFrom('SysUserProductionFactory').where('UserId', 'in', seedUserIds).execute();
       for (const u of users) {
         await trx
           .updateTable('SysUser')
@@ -111,11 +117,19 @@ async function main() {
       }
       await trx.updateTable('SysOrgUnit').set({ IsActive: false, ModifiedAt: now }).where('OrgType', '=', 'LINE').where('Code', 'not in', lineCodes).execute();
       await trx.updateTable('SysOrgUnit').set({ IsActive: false, ModifiedAt: now }).where('OrgType', '=', 'WORKSHOP').where('Code', 'not in', workshopCodes).execute();
-      const seedFactories = branches.filter((b) => !b.isAggregate);
+      // Nhà máy SX mẫu về đúng tên, ĐVCS; nhà máy tạo thêm khi demo ngừng dùng (seed thêm mẫu còn thiếu)
+      for (const [i, f] of productionFactories.entries()) {
+        await trx
+          .updateTable('SysProductionFactory')
+          .set({ Name: f.name, BranchCode: f.branch, Description: null, SortOrder: (i + 1) * 10, IsActive: true, ModifiedAt: now })
+          .where('Code', '=', f.code)
+          .execute();
+      }
+      await trx.updateTable('SysProductionFactory').set({ IsActive: false, ModifiedAt: now }).where('Code', 'not in', productionFactories.map((f) => f.code)).execute();
       for (const c of catalogs) {
         const cat = await trx.selectFrom('SysCatalog').select('Id').where('Code', '=', c.code).executeTakeFirst();
         if (!cat) continue;
-        const items = catalogSeedItems(c, seedFactories);
+        const items = catalogSeedItems(c);
         for (const [j, [code, name]] of items.entries()) {
           await trx.updateTable('SysCatalogItem').set({ Name: name, Description: null, SortOrder: (j + 1) * 10, IsActive: true, ModifiedAt: now }).where('CatalogId', '=', cat.Id).where('Code', '=', code).execute();
         }

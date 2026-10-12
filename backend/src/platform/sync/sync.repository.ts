@@ -3,6 +3,7 @@ import { sql } from 'kysely';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import { env } from '../../config/env';
 import { CORE_DB, type CoreDb } from '../database/database.module';
+import { readBravoOrderSource } from './bravo-order-source';
 import { createSyncRunner, SYNC_DB } from './sync.db';
 import type { SyncDb, SyncMode } from './sync.types';
 
@@ -159,6 +160,34 @@ export class SyncRepository {
   /** Tên chi nhánh theo BRAVO (chỉ đọc) */
   branchNames() {
     return this.db.selectFrom('bravo.DM_CHINHANH').select(['BranchCode', 'TenChiNhanh']).execute();
+  }
+
+  /** Danh mục chi nhánh BRAVO đủ cột để chép thành Đơn vị cơ sở (chỉ đọc) */
+  bravoBranches() {
+    return this.db.selectFrom('bravo.DM_CHINHANH').select(['BranchCode', 'TenChiNhanh', 'TenDayDu']).orderBy('BranchCode').execute();
+  }
+
+  /**
+   * Đơn hàng, PO, màu cỡ BRAVO đã chép của các ĐVCS `branches` (chỉ đọc). Kết nối riêng, không theo giới hạn 15 giây của pool
+   * màn hình: bảng chép lớn dần theo năm
+   */
+  async bravoOrderSource(branches: string[]) {
+    const reader = createSyncRunner();
+    try {
+      return await readBravoOrderSource(reader, branches);
+    } finally {
+      await reader.destroy();
+    }
+  }
+
+  /** Mã nguồn và trạng thái của một lần chạy, để chạy việc nối tiếp khi nguồn chép xong */
+  runOutcome(runId: string) {
+    return this.db
+      .selectFrom('SyncRun as r')
+      .innerJoin('SyncSource as s', 's.Id', 'r.SyncSourceId')
+      .select(['s.Code', 'r.StatusCode'])
+      .where('r.Id', '=', runId)
+      .executeTakeFirst();
   }
 
   /** Cột dữ liệu của bảng chép theo thứ tự trong bảng, bỏ cột kỹ thuật của lớp đồng bộ */

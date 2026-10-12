@@ -24,7 +24,7 @@ import type { Paged } from '../../lib/types';
 import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
 import { emptyFilter, type CutStyle, type Po, type PoColorSize, type SalesOrder } from './api';
-import { EmptyState, ExportButton, filterParams, IssueList, loadError, OrderFilters, PO_STATUS, readable, StatusBadge, useCanWrite, useCustomers, useUrlFilter } from './common';
+import { EmptyState, ExportButton, filterParams, IssueList, loadError, OrderFilters, PO_STATUS, readable, StatusBadge, useCanWrite, useCustomers, useOriginLock, useUrlFilter } from './common';
 import { pageOf, useClampPage, useUrlParams } from '../../lib/useUrlParams';
 import { useColumnFilters, valuesLoader } from '../../lib/columnFilter';
 import { blank, checkColorSize, signature, SIZE_RULE, type ColorSizeCheck, type EditRow } from './cutRatioRules';
@@ -34,7 +34,7 @@ const RESOURCE = 'order.po';
 const STYLE_COLS: Column<CutStyle>[] = [
   { key: 'customerName', title: 'Khách hàng', field: 'customerName', filterKey: 'customerName', minWidth: 140, maxWidth: 220 },
   { key: 'styleCode', title: 'Mã hàng', field: 'styleCode', filterKey: 'styleCode', format: 'code' },
-  { key: 'branchCode', title: 'Chi nhánh', field: null, filterKey: 'branchCode' },
+  { key: 'branchCode', title: 'Chi nhánh FOB', field: null, filterKey: 'branchCode' },
   { key: 'poCount', title: 'Số PO', format: 'number', field: null },
   { key: 'statusCode', title: 'Trạng thái', field: 'statusCode', render: (s) => <StatusBadge map={PO_STATUS} code={s.statusCode} /> },
 ];
@@ -172,6 +172,7 @@ export default function CutRatioPage() {
   // Thêm PO cần đọc khách hàng, mã hàng từ Thông tin đơn hàng
   const canViewOrders = useCan('order.allocation:view');
   const canCreate = canAddPo && canViewOrders;
+  const originLock = useOriginLock('PO');
   const p = filterParams(filter);
   // Lưới mã hàng (trang page, lọc theo cột cf) và lưới PO (trang ppage, lọc theo cột pcf) phân trang, lọc riêng
   const styleCols = useColumnFilters(url, patch);
@@ -268,8 +269,9 @@ export default function CutRatioPage() {
     [statusCode],
   );
   const styleColumns = useMemo(
-    () => (branch?.isAggregate ? withBranchNames(STYLE_COLS, branchName) : STYLE_COLS.filter((c) => c.key !== 'branchCode')),
-    [branch?.isAggregate, branchName],
+    // PO của mọi ĐVCS (dùng chung, ADR 0013): luôn hiện Chi nhánh FOB để biết dòng nào sửa được
+    () => withBranchNames(STYLE_COLS, branchName),
+    [branchName],
   );
 
   const startEdit = () => {
@@ -277,9 +279,13 @@ export default function CutRatioPage() {
     const rows = lines.map((l) => ({ key: nextKey++, colorName: l.colorName, sizeName: l.sizeName, qty: typeof l.qty === 'number' ? l.qty : null }));
     setEdit({ po: currentPo, rows });
   };
+  // PO của ĐVCS khác: xem được, không sửa, xác nhận, xóa được
+  const poLock = currentPo ? originLock(currentPo.branchCode) : null;
   const editBlocked = !currentPo
     ? PICK_PO
-    : !policy.editable('qty')
+    : poLock
+      ? poLock
+      : !policy.editable('qty')
       ? 'Bạn chỉ được xem cột Số lượng nên không sửa được tỷ lệ'
       : confirmed
         ? 'PO đã xác nhận, hủy xác nhận trước khi sửa'
@@ -290,7 +296,9 @@ export default function CutRatioPage() {
             : null;
   const confirmBlocked = !currentPo
     ? PICK_PO
-    : confirmed
+    : poLock
+      ? poLock
+      : confirmed
       ? 'PO đã xác nhận'
       : detail.isLoading
         ? 'Đang tải màu cỡ…'
@@ -369,9 +377,9 @@ export default function CutRatioPage() {
                 Danh sách PO {style && <Text span size="xs" c="dimmed" fw={400}>của {style.styleCode}</Text>}
               </span>
               {canCreate && style && (
-                <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => setAdding(true)}>
+                <ActionButton size="xs" variant="default" leftSection={<IconPlus size={14} />} blockedReason={originLock(style.branchCode)} onClick={() => setAdding(true)}>
                   Thêm PO
-                </Button>
+                </ActionButton>
               )}
             </div>
             <DataGrid
@@ -449,7 +457,7 @@ export default function CutRatioPage() {
                       variant="default"
                       color="red"
                       leftSection={<IconTrash size={15} />}
-                      blockedReason={!currentPo ? PICK_PO : confirmed ? 'PO đã xác nhận, hủy xác nhận trước khi xóa' : null}
+                      blockedReason={!currentPo ? PICK_PO : poLock ?? (confirmed ? 'PO đã xác nhận, hủy xác nhận trước khi xóa' : null)}
                       loading={busy('delete')}
                       onClick={() =>
                         currentPo &&
@@ -469,7 +477,7 @@ export default function CutRatioPage() {
                       <ActionButton
                         variant="default"
                         leftSection={<IconLockOpen size={15} />}
-                        blockedReason={!currentPo ? PICK_PO : !confirmed ? 'PO chưa xác nhận' : null}
+                        blockedReason={!currentPo ? PICK_PO : poLock ?? (!confirmed ? 'PO chưa xác nhận' : null)}
                         loading={busy('unconfirm')}
                         onClick={() =>
                           currentPo &&

@@ -31,7 +31,7 @@ const COLUMNS: Column<ShipmentPlan>[] = [
   { key: 'styleCode', title: 'Mã hàng', filterKey: 'styleCode', format: 'code', sortKey: 'styleCode' },
   { key: 'productName', title: 'Tên sản phẩm', filterKey: 'productName', minWidth: 170, maxWidth: 260 },
   { key: 'poBuyDate', title: 'PO/Buy date', filterKey: 'poBuyDate', sortKey: 'poBuyDate' },
-  { key: 'branchCode', title: 'Chi nhánh', filterKey: 'branchCode', field: null },
+  { key: 'branchCode', title: 'ĐVCS', filterKey: 'branchCode', field: null },
   { key: 'syncedAt', title: 'Ngày đồng bộ', filterKey: 'syncedAt', format: 'date', sortKey: 'syncedAt' },
   { key: 'shipDate', title: 'Ngày xuất hàng', filterKey: 'shipDate', format: 'date', sortKey: 'shipDate' },
   { key: 'plannerName', title: 'Nhân viên lập', filterKey: 'plannerName' },
@@ -81,7 +81,7 @@ export default function ShipmentPage() {
   return (
     <WorkPage
       title="Kế hoạch xuất hàng"
-      subtitle={branch?.isAggregate ? 'Kế hoạch của mọi nhà máy bạn được xem' : `Kế hoạch xuất hàng của ${branchName(branch?.code)}, kèm lũy kế cắt, may, kiểm, hoàn thiện`}
+      subtitle={branch?.isAggregate ? 'Kế hoạch của mọi đơn vị cơ sở bạn được xem' : `Kế hoạch xuất hàng của ${branchName(branch?.code)}, kèm lũy kế cắt, may, kiểm, hoàn thiện`}
       actions={
         <>
           <PolicyHint policy={policy} names={NAMES} />
@@ -327,7 +327,7 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
     >
       <Stack gap="sm">
         <SimpleGrid cols={{ base: 2, sm: 4, lg: 7 }} spacing="xs">
-          <TextInput label="Chi nhánh" value={branchName(head?.branchCode ?? branch?.code)} readOnly className="field-readonly" />
+          <TextInput label="Đơn vị cơ sở" value={branchName(head?.branchCode ?? branch?.code)} readOnly className="field-readonly" />
           <TextInput label="Khách hàng" value={head?.customerName ?? ''} readOnly className="field-readonly" placeholder="Chọn mã hàng" />
           <TextInput label="Mã hàng" value={head?.styleCode ?? ''} readOnly className="field-readonly" />
           {policy.visible('poBuyDate') && <TextInput label="PO/Buy date" withAsterisk={canPoBuy} className="field-required" {...form.getInputProps('poBuyDate')} {...lock('poBuyDate')} />}
@@ -426,7 +426,8 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
 const CANDIDATE_COLS: Column<Candidate>[] = [
   { key: 'customerName', title: 'Khách hàng', field: null, minWidth: 150, maxWidth: 240 },
   { key: 'styleCode', title: 'Mã hàng', format: 'code', field: null },
-  { key: 'branchCode', title: 'Chi nhánh', field: null },
+  { key: 'branchCode', title: 'Chi nhánh FOB', field: null },
+  { key: 'productionFactoryCode', title: 'Nhà máy SX', field: null },
   { key: 'orderQty', title: 'SL đơn hàng', format: 'number', field: null },
   { key: 'plannedQty', title: 'SL đã tạo KH', format: 'number', field: null },
   { key: 'remainingQty', title: 'SL còn lại', format: 'number', field: null },
@@ -442,9 +443,13 @@ const CANDIDATE_PO_COLS: Column<CandidatePo>[] = [
   { key: 'statusCode', title: 'Tỷ lệ cắt', field: null, render: (p) => <StatusBadge map={PO_STATUS} code={p.statusCode} /> },
 ];
 
-/** Popup B3 "Chọn mã hàng": chọn đơn hàng còn số lượng, chọn PO, nhập PO/Buy date. */
+/**
+ * Popup B3 "Chọn mã hàng": chọn đơn hàng còn số lượng, chọn PO, nhập PO/Buy date. Chỉ có đơn hàng của các nhà máy SX được
+ * tích cho người dùng, ở mọi đơn vị cơ sở (máy chủ lọc, ADR 0013); kế hoạch lập ra thuộc đơn vị cơ sở đang làm việc.
+ */
 function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (p: Picked) => void }) {
   const branch = useSession((s) => s.branch);
+  const factories = useSession((s) => s.productionFactories);
   const mobile = useMobile();
   const { customers } = useCustomers();
   // Mã hàng đọc từ Thông tin đơn hàng nên bộ lọc theo chính sách cột của màn đó (máy chủ cũng vậy)
@@ -452,7 +457,13 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
   // Mặc định bỏ đơn có ngày xuất đã qua lâu (dữ liệu BRAVO còn nhiều đơn cũ chưa đóng lệnh); xóa bộ lọc để xem hết
   const [filter, setFilter] = useState<OrderFilter>(() => ({ ...emptyFilter, shipFrom: addDays(today(), -30) }));
   const branchName = useBranchName();
-  const cols = useMemo(() => withBranchNames(CANDIDATE_COLS, branchName), [branchName]);
+  const cols = useMemo(() => {
+    const name = new Map(factories.map((f) => [f.code, f.name]));
+    const withFactory = CANDIDATE_COLS.map((c) =>
+      c.key === 'productionFactoryCode' ? { ...c, render: (r: Candidate) => (r.productionFactoryCode ? <span title={r.productionFactoryCode}>{name.get(r.productionFactoryCode) ?? r.productionFactoryCode}</span> : '') } : c,
+    );
+    return withBranchNames(withFactory, branchName);
+  }, [branchName, factories]);
   const [chosenId, setChosenId] = useState<number | null>(null);
   const [poIds, setPoIds] = useState<(string | number)[]>([]);
   const [poBuyDate, setPoBuyDate] = useState('');
@@ -483,6 +494,13 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
     <Modal opened onClose={close} size="min(1180px, 97vw)" fullScreen={mobile} title="Chọn mã hàng">
       <Stack gap="sm">
         <OrderFilters policy={orderPolicy} value={filter} onChange={setFilter} customers={customers} />
+        {factories.length === 0 ? (
+          <Alert color="orange" variant="light" py={8}>
+            Bạn chưa được tích nhà máy SX nào nên chưa có mã hàng để lập kế hoạch. Nhờ quản trị viên tích nhà máy SX cho bạn ở Quản trị › Người dùng.
+          </Alert>
+        ) : (
+          <Text size="xs" c="dimmed">Chỉ hiện đơn hàng có Nhà máy SX bạn được giao: {factories.map((f) => f.name).join(', ')}. Kế hoạch lập ra thuộc {branchName(branch?.code)}.</Text>
+        )}
         <div style={{ height: 'min(34vh, 300px)', display: 'flex', flexDirection: 'column' }}>
           <DataGrid
             label="Mã hàng có thể lập kế hoạch"
@@ -500,7 +518,7 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
               setChosenId(c.salesOrderId);
               setPoIds([]);
             }}
-            empty={<EmptyState filtered={Object.values(filter).some(Boolean)} what="mã hàng" onClear={() => setFilter(emptyFilter)} hint="Không có mã hàng nào còn số lượng để lập kế hoạch." />}
+            empty={<EmptyState filtered={Object.values(filter).some(Boolean)} what="mã hàng" onClear={() => setFilter(emptyFilter)} hint="Không có mã hàng nào của nhà máy SX bạn được giao còn số lượng để lập kế hoạch. Đơn chưa chọn Nhà máy SX ở Thông tin đơn hàng cũng không hiện ở đây." />}
           />
         </div>
         {/* Máy chủ trả tối đa 200 đơn theo ngày xuất */}

@@ -24,7 +24,7 @@ export class MeService {
     private readonly fields: FieldPolicyService,
   ) {}
 
-  /** Nhà máy user được phép chọn (dùng khi đổi nhà máy). */
+  /** Đơn vị cơ sở user được phép chọn (dùng khi đổi ĐVCS). */
   async branchList(user: AuthUser) {
     const list = await this.branches.listForUser(user.userId);
     return list.map((b) => ({ code: b.code, name: b.name, isAggregate: b.isAggregate }));
@@ -43,10 +43,15 @@ export class MeService {
     const roles = access.roleIds.length
       ? await this.db.selectFrom('SysRole').select(['Code', 'Name']).where('Id', 'in', access.roleIds).orderBy('SortOrder').execute()
       : [];
+    // Nhà máy SX được tích (ADR 0013): giao diện nói rõ popup Chọn mã hàng lọc theo các nhà máy này
+    const factories = access.productionFactories.length
+      ? await this.db.selectFrom('SysProductionFactory').select(['Code', 'Name', 'BranchCode']).where('Code', 'in', access.productionFactories).orderBy('SortOrder').orderBy('Code').execute()
+      : [];
     return {
       user: { id: row.Id, username: row.Username, fullName: row.FullName },
       branch: branch ? { code: branch.Code, name: branch.Name, isAggregate: !!branch.IsAggregate } : null,
       roles: roles.map((r) => ({ code: r.Code, name: r.Name })),
+      productionFactories: factories.map((f) => ({ code: f.Code, name: f.Name, branchCode: f.BranchCode })),
       permissionVersion: Number(access.version),
     };
   }

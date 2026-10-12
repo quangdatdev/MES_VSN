@@ -33,7 +33,7 @@ export class CatalogItemUpdateDto {
 const WorkshopRef = () => ValidateIf((_o, v) => v !== undefined && v !== null);
 
 export class LineCreateDto {
-  @Matches(/^A\d{2}$/, { message: 'Chọn nhà máy.' }) branchCode!: string;
+  @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Chọn đơn vị cơ sở.' }) branchCode!: string;
   @upper() @Matches(/^[A-Z0-9-]{1,20}$/, { message: 'Mã chuyền gồm chữ không dấu, số, gạch ngang (tối đa 20 ký tự), ví dụ A01-L13.' }) code!: string;
   @trim() @IsString() @MinLength(1) @MaxLength(100) name!: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
@@ -50,7 +50,7 @@ export class LineUpdateDto {
 }
 
 export class WorkshopCreateDto {
-  @Matches(/^A\d{2}$/, { message: 'Chọn nhà máy.' }) branchCode!: string;
+  @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Chọn đơn vị cơ sở.' }) branchCode!: string;
   @upper() @Matches(/^[A-Z0-9-]{1,20}$/, { message: 'Mã xưởng gồm chữ không dấu, số, gạch ngang (tối đa 20 ký tự), ví dụ A01-X03.' }) code!: string;
   @trim() @IsString() @MinLength(1) @MaxLength(100) name!: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
@@ -95,6 +95,27 @@ export class CatalogLinesQuery {
 /** Ô tìm mã, tên của danh mục đơn giản: lọc trên máy chủ. */
 export class CatalogItemsQuery {
   @IsOptional() @IsString() @MaxLength(60) q?: string;
+}
+
+// ---------- Nhà máy SX (ADR 0013) ----------
+
+export class FactoryCreateDto {
+  /** Mã lưu vào đơn hàng (SalesOrder.ProductionFactoryCode) nên chữ hoa, không dấu, không sửa được sau khi tạo */
+  @upper() @Matches(/^[A-Z0-9._-]{1,30}$/, { message: 'Mã gồm chữ không dấu, số, dấu chấm, gạch (tối đa 30 ký tự).' }) code!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(100) name!: string;
+  @upper() @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Chọn đơn vị cơ sở.' }) branchCode!: string;
+  @IsOptional() @trim() @IsString() @MaxLength(300) description?: string | null;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
+}
+
+export class FactoryUpdateDto {
+  /** Gửi kèm mã thì phải trùng mã cũ: mã không sửa được */
+  @Optional() @upper() @IsString() code?: string;
+  @Optional() @trim() @IsString() @MinLength(1) @MaxLength(100) name?: string;
+  @Optional() @upper() @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Chọn đơn vị cơ sở.' }) branchCode?: string;
+  @IsOptional() @trim() @IsString() @MaxLength(300) description?: string | null;
+  @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(100_000) sortOrder?: number;
+  @Optional() @IsBoolean() isActive?: boolean;
 }
 
 // ---------- Danh mục chép từ BRAVO (chỉ xem) ----------

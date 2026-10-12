@@ -30,7 +30,7 @@ export function WorkPage({ title, subtitle, actions, filters, aggregateNote = tr
       </header>
       {aggregate && aggregateNote && (
         <Alert variant="light" color="orange" icon={<IconEye size={16} />} py={6} className="work-note">
-          Đang xem tổng hợp mọi nhà máy, chỉ đọc. Muốn thêm hoặc sửa, đổi sang một nhà máy cụ thể ở thanh trên cùng.
+          Đang xem tổng hợp mọi đơn vị cơ sở, chỉ đọc. Muốn thêm hoặc sửa, đổi sang một đơn vị cụ thể ở thanh trên cùng.
         </Alert>
       )}
       {filters && <div className="work-filters">{filters}</div>}

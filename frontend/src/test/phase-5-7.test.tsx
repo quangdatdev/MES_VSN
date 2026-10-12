@@ -69,7 +69,7 @@ beforeEach(() => vi.mocked(api).mockReset());
 describe('Người dùng: link cũ có trang vượt trang cuối (L1)', () => {
   it('150 người, 100 dòng một trang, mở page=3: về trang 2 (trước đây tính theo 20 dòng nên kẹt ở trang rỗng)', async () => {
     signIn(['admin.user:view']);
-    const user = (id: number) => ({ id, username: `nguoi${id}`, fullName: `Người ${id}`, email: null, isActive: true, isLocked: false, lastLoginAt: null, roleIds: [], branchIds: [], defaultBranchId: null });
+    const user = (id: number) => ({ id, username: `nguoi${id}`, fullName: `Người ${id}`, email: null, isActive: true, isLocked: false, lastLoginAt: null, roleIds: [], branchIds: [], defaultBranchId: null, productionFactoryIds: [] });
     serve((p) => {
       if (p.startsWith('/admin/users?page=3')) return { items: [], total: 150, page: 3, pageSize: 100 };
       if (p.startsWith('/admin/users?page=2')) return { items: [user(101)], total: 150, page: 2, pageSize: 100 };

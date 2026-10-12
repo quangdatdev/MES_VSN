@@ -13,7 +13,7 @@ import { fmtDate, today } from '../../lib/format';
 import { toastError, toastOk } from '../../lib/notify';
 import { useCan } from '../../shell/permissions';
 import { HR_KEYS, useDepartmentOptions, useManagerOptions } from './api';
-import { DepartmentSelect, DissolvedBadge, Fact, Trail } from './common';
+import { DepartmentSelect, DissolvedBadge, Fact, FieldCell, Trail } from './common';
 import { ancestorsOf, subtreeIds, type FlatDept } from './tree';
 import type { Department } from './types';
 
@@ -107,7 +107,7 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
             <Badge size="sm" variant="light" color="charcoal">{dept.typeName}</Badge>
             {dept.branchCode && (
               <Badge size="sm" variant="light" color="link" leftSection={<IconBuildingFactory2 size={12} />}>
-                Nhà máy {dept.branchCode}
+                Đơn vị cơ sở {dept.branchCode}
               </Badge>
             )}
             {!dept.isActive && <DissolvedBadge date={dept.dissolvedDate} />}
@@ -264,52 +264,63 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
         </Group>
       </header>
       <div className="hr-form-grid">
-        <TextInput
-          label="Mã phòng ban"
-          withAsterisk={creating}
-          readOnly={!creating}
-          className={creating ? 'field-required' : 'field-readonly'}
-          description={creating ? `${CODE_HINT} Không sửa được sau khi tạo.` : 'Mã nằm trong đường dẫn của cây nên không sửa được.'}
-          maxLength={20}
-          data-autofocus={creating || undefined}
-          {...form.getInputProps('code')}
-          onChange={(e) => form.setFieldValue('code', e.currentTarget.value.toUpperCase())}
-        />
-        <TextInput label="Tên phòng ban" withAsterisk className="field-required hr-span-2" maxLength={255} data-autofocus={!creating || undefined} {...form.getInputProps('name')} />
-        <TextInput label="Tên tiếng Anh" maxLength={255} {...form.getInputProps('nameEn')} />
-        <Select
-          label="Loại phòng ban"
-          withAsterisk
-          className="field-required"
-          data={types.filter((t) => t.isActive || String(t.id) === form.values.departmentTypeId).map((t) => ({ value: String(t.id), label: t.isFinalLevel ? `${t.name} (cấp cuối)` : t.name }))}
-          allowDeselect={false}
-          {...form.getInputProps('departmentTypeId')}
-          error={form.errors.departmentTypeId ?? typeError}
-          description="Cấp cuối thì không thêm phòng ban con được."
-        />
-        <DepartmentSelect
-          label="Phòng ban cha"
-          className="hr-span-2"
-          placeholder="Không có (phòng ban gốc)"
-          clearable
-          departments={items}
-          skip={skip}
-          value={form.values.parentId}
-          onChange={(id) => form.setFieldValue('parentId', id)}
-          description={!creating && hasChildren ? 'Chuyển sang cha khác thì cả nhánh con đi theo.' : 'Không có chính nó, các phòng ban con của nó và phòng ban cấp cuối.'}
-          nothingFoundMessage="Không có phòng ban khớp."
-        />
+        <FieldCell hint={creating ? `${CODE_HINT} Không sửa được sau khi tạo.` : 'Mã nằm trong đường dẫn của cây nên không sửa được.'}>
+          <TextInput
+            label="Mã phòng ban"
+            withAsterisk={creating}
+            readOnly={!creating}
+            className={creating ? 'field-required' : 'field-readonly'}
+            maxLength={20}
+            data-autofocus={creating || undefined}
+            {...form.getInputProps('code')}
+            onChange={(e) => form.setFieldValue('code', e.currentTarget.value.toUpperCase())}
+          />
+        </FieldCell>
+        <FieldCell wide>
+          <TextInput label="Tên phòng ban" withAsterisk className="field-required" maxLength={255} data-autofocus={!creating || undefined} {...form.getInputProps('name')} />
+        </FieldCell>
+        <FieldCell>
+          <TextInput label="Tên tiếng Anh" maxLength={255} {...form.getInputProps('nameEn')} />
+        </FieldCell>
+        <FieldCell hint="Cấp cuối thì không thêm phòng ban con được.">
+          <Select
+            label="Loại phòng ban"
+            withAsterisk
+            className="field-required"
+            data={types.filter((t) => t.isActive || String(t.id) === form.values.departmentTypeId).map((t) => ({ value: String(t.id), label: t.isFinalLevel ? `${t.name} (cấp cuối)` : t.name }))}
+            allowDeselect={false}
+            {...form.getInputProps('departmentTypeId')}
+            error={form.errors.departmentTypeId ?? typeError}
+          />
+        </FieldCell>
+        <FieldCell wide hint={!creating && hasChildren ? 'Chuyển sang cha khác thì cả nhánh con đi theo.' : 'Không có chính nó, các phòng ban con của nó và phòng ban cấp cuối.'}>
+          <DepartmentSelect
+            label="Phòng ban cha"
+            placeholder="Không có (phòng ban gốc)"
+            clearable
+            departments={items}
+            skip={skip}
+            value={form.values.parentId}
+            onChange={(id) => form.setFieldValue('parentId', id)}
+            nothingFoundMessage="Không có phòng ban khớp."
+          />
+        </FieldCell>
         <ManagerSelect value={form.values.managerEmployeeId} current={dept} onChange={(id) => form.setFieldValue('managerEmployeeId', id)} />
-        <Select
-          label="Nhà máy"
-          placeholder="Không thuộc nhà máy nào"
-          clearable
-          data={factories.map((f) => ({ value: f.code, label: `${f.code} – ${f.name}` }))}
-          description="Phòng ban của một nhà máy (bộ phận cắt, may...)."
-          {...form.getInputProps('branchCode')}
-        />
-        <DateField label="Ngày thành lập" value={form.values.establishedDate} onChange={(v) => form.setFieldValue('establishedDate', v)} />
-        <NumberInput label="Thứ tự trong cùng cấp" description="Số nhỏ đứng trước." min={0} max={1_000_000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
+        <FieldCell hint="Phòng ban của một đơn vị cơ sở (bộ phận cắt, may...).">
+          <Select
+            label="Đơn vị cơ sở"
+            placeholder="Không thuộc đơn vị cơ sở nào"
+            clearable
+            data={factories.map((f) => ({ value: f.code, label: `${f.code} – ${f.name}` }))}
+            {...form.getInputProps('branchCode')}
+          />
+        </FieldCell>
+        <FieldCell>
+          <DateField label="Ngày thành lập" value={form.values.establishedDate} onChange={(v) => form.setFieldValue('establishedDate', v)} />
+        </FieldCell>
+        <FieldCell hint="Số nhỏ đứng trước.">
+          <NumberInput label="Thứ tự trong cùng cấp" min={0} max={1_000_000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
+        </FieldCell>
       </div>
       {!creating && dept && !dept.isActive && (
         <Text size="sm" c="dimmed" mt="sm">
@@ -336,24 +347,25 @@ function ManagerSelect({ value, current, onChange }: { value: number | null; cur
     return list;
   }, [managers.data, current]);
   return (
-    <Select
-      label="Người quản lý"
-      placeholder={canSearch ? 'Gõ mã hoặc tên để tìm' : 'Chưa chọn'}
-      searchable
-      clearable
-      data={data}
-      value={value == null ? null : String(value)}
-      onChange={(v) => onChange(v ? Number(v) : null)}
-      // Chọn xong, ô tự đặt chữ tìm bằng tên người vừa chọn: đó không phải chữ gõ, không gửi lên máy chủ để tìm
-      onSearchChange={(text) => setTerm(data.some((m) => m.label === text) ? '' : text)}
-      // Máy chủ đã lọc theo chữ gõ (không dấu): không lọc thêm ở trình duyệt
-      filter={({ options }) => options}
-      onDropdownOpen={() => setOpened(true)}
-      nothingFoundMessage={managers.isFetching ? 'Đang tìm…' : 'Không có nhân viên đang làm khớp.'}
-      description={canSearch ? 'Nhân viên đang làm việc.' : 'Cần quyền xem Thông tin nhân sự để chọn người quản lý.'}
-      readOnly={!canSearch}
-      className={canSearch ? undefined : 'field-readonly'}
-    />
+    <FieldCell hint={canSearch ? 'Nhân viên đang làm việc.' : 'Cần quyền xem Thông tin nhân sự để chọn người quản lý.'}>
+      <Select
+        label="Người quản lý"
+        placeholder={canSearch ? 'Gõ mã hoặc tên để tìm' : 'Chưa chọn'}
+        searchable
+        clearable
+        data={data}
+        value={value == null ? null : String(value)}
+        onChange={(v) => onChange(v ? Number(v) : null)}
+        // Chọn xong, ô tự đặt chữ tìm bằng tên người vừa chọn: đó không phải chữ gõ, không gửi lên máy chủ để tìm
+        onSearchChange={(text) => setTerm(data.some((m) => m.label === text) ? '' : text)}
+        // Máy chủ đã lọc theo chữ gõ (không dấu): không lọc thêm ở trình duyệt
+        filter={({ options }) => options}
+        onDropdownOpen={() => setOpened(true)}
+        nothingFoundMessage={managers.isFetching ? 'Đang tìm…' : 'Không có nhân viên đang làm khớp.'}
+        readOnly={!canSearch}
+        className={canSearch ? undefined : 'field-readonly'}
+      />
+    </FieldCell>
   );
 }
 

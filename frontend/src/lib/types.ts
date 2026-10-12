@@ -36,10 +36,19 @@ export interface SelectBranchResponse {
   branch: Branch;
 }
 
+/** Nhà máy SX được tích cho người dùng (ADR 0013) */
+export interface ProductionFactory {
+  code: string;
+  name: string;
+  branchCode: string | null;
+}
+
 export interface MeResponse {
   user: UserInfo;
   branch: Branch | null;
   roles: RoleInfo[];
+  /** Không có ở máy chủ cũ hơn Phase 5.9 */
+  productionFactories?: ProductionFactory[];
   permissionVersion: number;
 }
 

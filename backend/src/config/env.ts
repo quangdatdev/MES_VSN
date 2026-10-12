@@ -57,6 +57,10 @@ export const env = {
   // Seed có nạp dữ liệu mẫu (đơn hàng giả, phòng ban và nhân viên giả) không. Mặc định không khi NODE_ENV=production: máy chủ thật
   // quên đặt biến thì seed chạy lại về sau (sau khi pull) cũng không nạp dữ liệu giả
   seedSampleData: flag('SEED_SAMPLE_DATA', !isProd),
+  // Backend tự nạp tăng dần đơn hàng BRAVO vào MES_Order sau mỗi đợt đồng bộ và lúc khởi động (ADR 0013 mục 8). Mặc định bật
+  // trên máy dùng thật (không dữ liệu mẫu), tắt trên máy demo, máy test: đơn giả không bị trộn đơn thật, test không tự nạp;
+  // máy demo nạp đơn BRAVO bằng npm run load:bravo
+  bravoOrderImport: flag('BRAVO_ORDER_IMPORT', !flag('SEED_SAMPLE_DATA', !isProd)),
   // Cookie refresh chỉ gửi qua HTTPS. Demo trong mạng nội bộ chạy HTTP thì để COOKIE_SECURE=false.
   cookieSecure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : isProd,
   // Chỉ khai báo khi thật sự chạy sau reverse proxy (ví dụ "loopback" hoặc IP của Nginx). Mặc định không tin

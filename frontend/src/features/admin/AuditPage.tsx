@@ -16,7 +16,8 @@ import type { AuditRow } from './types';
 const ENTITIES = [
   { value: 'SysUser', label: 'Người dùng' },
   { value: 'SysRole', label: 'Vai trò và quyền' },
-  { value: 'SysBranch', label: 'Nhà máy' },
+  { value: 'SysBranch', label: 'Đơn vị cơ sở' },
+  { value: 'SysProductionFactory', label: 'Nhà máy SX' },
   { value: 'SysUserRoleScope', label: 'Phạm vi' },
   { value: 'SysUserPermissionOverride', label: 'Ngoại lệ quyền' },
   { value: 'SysFieldPolicy', label: 'Chính sách cột' },
@@ -34,19 +35,22 @@ const ENTITIES = [
 const ACTION_TEXT: Record<string, string> = {
   LOGIN: 'Đăng nhập',
   LOGIN_FAILED: 'Đăng nhập sai',
-  SELECT_BRANCH: 'Chọn nhà máy',
+  SELECT_BRANCH: 'Chọn đơn vị cơ sở',
   LOGOUT: 'Đăng xuất',
   USER_CREATE: 'Thêm người dùng',
   USER_UPDATE: 'Sửa người dùng',
   PASSWORD_RESET: 'Đặt lại mật khẩu',
   USER_ROLES: 'Gán vai trò',
-  USER_BRANCHES: 'Gán nhà máy',
+  USER_BRANCHES: 'Gán đơn vị cơ sở, nhà máy SX',
   ROLE_CREATE: 'Thêm vai trò',
   ROLE_UPDATE: 'Sửa vai trò',
   ROLE_DELETE: 'Ngừng dùng vai trò',
   ROLE_PERMISSIONS: 'Đổi quyền vai trò',
-  BRANCH_CREATE: 'Thêm nhà máy',
-  BRANCH_UPDATE: 'Sửa nhà máy',
+  BRANCH_CREATE: 'Thêm đơn vị cơ sở',
+  BRANCH_IMPORT: 'Cập nhật đơn vị cơ sở từ BRAVO',
+  FACTORY_CREATE: 'Thêm nhà máy SX',
+  FACTORY_UPDATE: 'Sửa nhà máy SX',
+  BRANCH_UPDATE: 'Sửa đơn vị cơ sở',
   USER_ROLE_SCOPE: 'Đổi phạm vi',
   OVERRIDE_CREATE: 'Thêm ngoại lệ',
   OVERRIDE_UPDATE: 'Sửa ngoại lệ',
@@ -120,7 +124,7 @@ export default function AuditPage() {
 
   return (
     <>
-      <PageHeader title="Nhật ký hệ thống" subtitle="Ai đã làm gì, ở nhà máy nào, lúc nào. Nhật ký chỉ ghi thêm, không sửa hay xóa được." />
+      <PageHeader title="Nhật ký hệ thống" subtitle="Ai đã làm gì, ở đơn vị cơ sở nào, lúc nào. Nhật ký chỉ ghi thêm, không sửa hay xóa được." />
       <FilterBar>
         {/* Ô tìm giữ chữ đang gõ; URL và truy vấn đổi khi ngừng gõ */}
         <DebouncedTextInput
@@ -138,7 +142,7 @@ export default function AuditPage() {
       {log.isError && <LoadError error={log.error} what="nhật ký" onRetry={() => void log.refetch()} retrying={log.isFetching} />}
       <div className="table-frame">
         <table className="dense-table">
-          <thead><tr><th>Thời điểm</th><th>Người thực hiện</th><th>Nhà máy</th><th>Hành động</th><th>Đối tượng</th><th style={{ width: 80 }}>Chi tiết</th></tr></thead>
+          <thead><tr><th>Thời điểm</th><th>Người thực hiện</th><th>ĐVCS</th><th>Hành động</th><th>Đối tượng</th><th style={{ width: 80 }}>Chi tiết</th></tr></thead>
           <tbody>
             {log.isPending && <SkeletonRows cols={6} />}
             {rows.map((r) => (

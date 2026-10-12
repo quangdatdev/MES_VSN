@@ -751,6 +751,25 @@ a.text-link:hover {
 .login-panel .mantine-Button-root {
   --button-height-md: 40px;
 }
+/* Đúng mật khẩu: ô Đơn vị cơ sở mở ra ngay dưới ô mật khẩu, cùng form */
+.login-reveal {
+  animation: login-reveal 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes login-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-reveal {
+    animation: none;
+  }
+}
 .login-logo {
   display: block;
   height: 56px;
@@ -3004,6 +3023,42 @@ body[data-resizing="horizontal"] {
 }
 .hr-span-2 {
   grid-column: span 2;
+}
+/* Ô của form (FieldCell): chú thích hiện bằng Tooltip, dòng description chỉ để trình đọc màn hình đọc */
+.hr-cell {
+  position: relative;
+  min-width: 0;
+}
+.hr-cell .mantine-InputWrapper-description {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+/* Mantine đệm trên ô nhập khi có description (biến đặt inline nên ghi đè thẳng margin) */
+.hr-cell .mantine-Input-wrapper {
+  margin-top: 0;
+}
+.hr-cell[data-hint] .mantine-InputWrapper-label::after {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-left: 5px;
+  vertical-align: -2px;
+  background-color: var(--mantine-color-dimmed);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0'/%3E%3Cpath d='M12 9h.01'/%3E%3Cpath d='M11 12h1v4h1'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0'/%3E%3Cpath d='M12 9h.01'/%3E%3Cpath d='M11 12h1v4h1'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: background-color 120ms;
+}
+.hr-cell[data-hint]:hover .mantine-InputWrapper-label::after,
+.hr-cell[data-hint]:focus-within .mantine-InputWrapper-label::after {
+  background-color: var(--link);
 }
 /* Khung hẹp chỉ đủ một cột (điện thoại, kéo cột trái rộng): ô rộng không chiếm 2 cột, không tạo cột ngầm làm tràn ngang */
 @container (max-width: 459.98px) {

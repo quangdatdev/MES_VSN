@@ -11,8 +11,6 @@ import { SalesOrderRepository, type SalesOrderRow } from './order.repositories';
 import { businessFilter, conflict, day, invalid, isReferenceError, num, readableQuery, sortOf } from './order.util';
 
 const RESOURCE = 'order.allocation';
-/** Danh mục "Nhà máy sản xuất" ở Quản trị › Danh mục hệ thống (cột Nhà máy SX) */
-const FACTORY_CATALOG = 'PROD_FACTORY';
 const SORT: Record<string, string> = {
   orderNo: 'OrderNo',
   customerName: 'CustomerName',
@@ -160,7 +158,7 @@ export class SalesOrderService {
       this.catalogs.activeItems('ORDER_TYPE'),
       this.catalogs.activeItems('UNIT'),
       // Kể cả nhà máy đã ngừng: lưới vẫn hiện đúng tên cho đơn hàng cũ, ô chọn chỉ cho chọn nhà máy đang dùng
-      blind.has('productionFactoryCode') ? [] : this.catalogs.items(FACTORY_CATALOG),
+      blind.has('productionFactoryCode') ? [] : this.catalogs.productionFactories(),
     ]);
     // Loại: theo danh mục Loại đơn hàng trước, rồi các giá trị đã có trong dữ liệu mà danh mục chưa có (nhập tay, ngừng dùng)
     const orderTypes = blind.has('orderType') ? [] : [...new Set([...types.map((t) => t.code), ...used])];
@@ -174,12 +172,12 @@ export class SalesOrderService {
     };
   }
 
-  /** Nhà máy SX phải là mục đang dùng của danh mục Nhà máy sản xuất; rỗng là bỏ chọn; giữ nguyên giá trị hiện tại của đơn thì không kiểm (mục có thể đã ngừng) */
+  /** Nhà máy SX phải là nhà máy đang dùng của danh mục Nhà máy SX; rỗng là bỏ chọn; giữ nguyên giá trị hiện tại của đơn thì không kiểm (nhà máy có thể đã ngừng) */
   private async factoryCode(code: string | null | undefined, current?: string | null): Promise<string | null> {
     if (!code) return null;
     if (code === current) return code;
-    if (!(await this.catalogs.activeItems(FACTORY_CATALOG)).some((f) => f.code === code)) {
-      throw invalid(`Nhà máy SX "${code}" không có trong danh mục Nhà máy sản xuất hoặc đã ngừng dùng.`);
+    if (!(await this.catalogs.productionFactories()).some((f) => f.code === code && f.isActive)) {
+      throw invalid(`Nhà máy SX "${code}" không có trong danh mục Nhà máy SX hoặc đã ngừng dùng.`);
     }
     return code;
   }
@@ -253,7 +251,7 @@ export class SalesOrderService {
     const q = await readableQuery(this.fields, user, RESOURCE, query);
     const rows = await this.repo.listAll(scopeOf(user), { q: q.q, searchExclude: q.searchExclude, sort: await this.sort(user, q.sort), where: await this.where(user, q) });
     // File xuất ghi tên nhà máy SX, tên chi nhánh như trên lưới; chính sách cột vẫn áp theo khóa productionFactoryCode
-    const factoryName = new Map((await this.catalogs.items(FACTORY_CATALOG)).map((f) => [f.code, f.name]));
+    const factoryName = new Map((await this.catalogs.productionFactories()).map((f) => [f.code, f.name]));
     const items = rows.map((r) => {
       const o = presentSalesOrder(r);
       return { ...o, productionFactoryCode: o.productionFactoryCode && (factoryName.get(o.productionFactoryCode) ?? o.productionFactoryCode) };

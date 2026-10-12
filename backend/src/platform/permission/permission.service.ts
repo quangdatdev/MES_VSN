@@ -36,6 +36,11 @@ export interface UserAccess {
   roleIds: number[];
   /** Quyền của từng vai trò đang hiệu lực: chính sách cột chỉ tính vai trò có quyền xem tài nguyên. */
   rolePermissions: Map<number, Set<string>>;
+  /**
+   * Mã nhà máy SX (đang dùng) được tích cho người này (SysUserProductionFactory, ADR 0013), không theo ĐVCS của phiên:
+   * BaseRepository lọc theo danh sách này khi bên gọi yêu cầu (popup chọn mã hàng lúc lập kế hoạch xuất hàng).
+   */
+  productionFactories: string[];
   version: string;
   /** Mốc (ms) gần nhất một phép gán hay ngoại lệ bắt đầu hoặc hết hiệu lực; qua mốc thì tính lại. */
   expiresAt: number | null;
@@ -135,6 +140,7 @@ export class PermissionService {
       grants: new Map(),
       roleIds: [],
       rolePermissions: new Map(),
+      productionFactories: [],
       version,
       expiresAt: null,
     };
@@ -215,6 +221,15 @@ export class PermissionService {
     const rolePermissions = new Map<number, Set<string>>();
     for (const p of rolePerms) rolePermissions.set(p.RoleId, (rolePermissions.get(p.RoleId) ?? new Set()).add(p.Code));
 
+    const factories = await this.db
+      .selectFrom('SysUserProductionFactory as uf')
+      .innerJoin('SysProductionFactory as f', 'f.Id', 'uf.ProductionFactoryId')
+      .select('f.Code')
+      .where('uf.UserId', '=', userId)
+      .where('f.IsActive', '=', true)
+      .orderBy('f.Code')
+      .execute();
+
     return {
       ...empty,
       active: true,
@@ -222,6 +237,7 @@ export class PermissionService {
       grants,
       roleIds,
       rolePermissions,
+      productionFactories: factories.map((f) => f.Code),
       expiresAt,
     };
   }

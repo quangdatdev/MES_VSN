@@ -81,7 +81,7 @@ function renderAt(path: string) {
   );
 }
 
-describe('Đổi nhà máy trên thanh trên cùng', () => {
+describe('Đổi đơn vị cơ sở trên thanh trên cùng', () => {
   beforeEach(() => {
     vi.mocked(api).mockReset();
     queryClient.clear();
@@ -92,7 +92,7 @@ describe('Đổi nhà máy trên thanh trên cùng', () => {
   it('bấm vào nhà máy trên thanh trên cùng mở danh sách để chọn ngay tại chỗ, không sang trang chọn nhà máy; nhà máy đang chọn có đánh dấu', async () => {
     serve({ A01: ['/order/prep'] });
     renderAt('/order/prep');
-    const button = screen.getByRole('combobox', { name: 'Chi nhánh SX A01 Nhà máy 1, đổi nhà máy' });
+    const button = screen.getByRole('combobox', { name: 'Đơn vị cơ sở A01 Nhà máy 1, đổi đơn vị cơ sở' });
     fireEvent.click(button);
     // Tên đọc lấy từ chữ đang hiện; nhà máy đang làm việc báo bằng aria-selected
     expect(await screen.findByRole('option', { name: /Nhà máy 1\s*A01/ })).toHaveAttribute('aria-selected', 'true');
@@ -105,13 +105,13 @@ describe('Đổi nhà máy trên thanh trên cùng', () => {
   it('chọn nhà máy khác: đổi phiên, ở lại màn đang mở nếu nhà máy mới có màn đó, không có thì về Trang chủ', async () => {
     serve({ A02: ['/order/prep'], A00: ['/order/info'] });
     renderAt('/order/prep');
-    fireEvent.click(screen.getByRole('combobox', { name: /đổi nhà máy/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ }));
     fireEvent.click(await screen.findByRole('option', { name: /Nhà máy 2/ }));
     await waitFor(() => expect(useSession.getState().branch?.code).toBe('A02'));
     expect(screen.getByTestId('where')).toHaveTextContent('/order/prep');
     expect(vi.mocked(api).mock.calls.find((c) => c[0] === '/auth/select-branch')?.[1]).toMatchObject({ method: 'POST', body: { branchCode: 'A02' } });
 
-    fireEvent.click(screen.getByRole('combobox', { name: /đổi nhà máy/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ }));
     fireEvent.click(await screen.findByRole('option', { name: /Toàn công ty/ }));
     await waitFor(() => expect(useSession.getState().branch?.code).toBe('A00'));
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/));
@@ -120,7 +120,7 @@ describe('Đổi nhà máy trên thanh trên cùng', () => {
   it('chọn lại đúng nhà máy đang làm việc thì không gọi máy chủ', async () => {
     serve({ A01: ['/order/prep'] });
     renderAt('/order/prep');
-    fireEvent.click(screen.getByRole('combobox', { name: /đổi nhà máy/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ }));
     fireEvent.click(await screen.findByRole('option', { name: /Nhà máy 1/ }));
     expect(vi.mocked(api).mock.calls.some((c) => c[0] === '/auth/select-branch')).toBe(false);
   });
@@ -140,7 +140,7 @@ describe('Đổi nhà máy trên thanh trên cùng', () => {
       </MantineProvider>,
     );
     const pick = async () => {
-      fireEvent.click(screen.getByRole('combobox', { name: /đổi nhà máy/ }));
+      fireEvent.click(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ }));
       fireEvent.click(await screen.findByRole('option', { name: /Nhà máy 2/ }));
     };
     await pick();
@@ -157,15 +157,15 @@ describe('Đổi nhà máy trên thanh trên cùng', () => {
   it('máy chủ không cho đổi: giữ nguyên phiên; đổi được mà chưa nạp được quyền: kết thúc phiên kèm lý do, không để phiên lệch máy chủ', async () => {
     serve({ A02: ['/order/prep'] }, { select: true });
     renderAt('/order/prep');
-    fireEvent.click(screen.getByRole('combobox', { name: /đổi nhà máy/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ }));
     fireEvent.click(await screen.findByRole('option', { name: /Nhà máy 2/ }));
     await waitFor(() => expect(vi.mocked(api).mock.calls.some((c) => c[0] === '/auth/select-branch')).toBe(true));
-    await waitFor(() => expect(screen.getByRole('combobox', { name: /đổi nhà máy/ })).not.toHaveAttribute('aria-busy'));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ })).not.toHaveAttribute('aria-busy'));
     expect(useSession.getState()).toMatchObject({ status: 'ready', branch: A01, accessToken: 't' });
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     serve({ A02: ['/order/prep'] }, { me: true });
-    fireEvent.click(screen.getByRole('combobox', { name: /đổi nhà máy/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ }));
     fireEvent.click(await screen.findByRole('option', { name: /Nhà máy 2/ }));
     await waitFor(() => expect(useSession.getState().status).toBe('anonymous'));
     expect(useSession.getState().notice).toContain('Đã chuyển sang Nhà máy 2 nhưng chưa tải được menu và quyền');
@@ -200,7 +200,7 @@ describe('Đổi nhà máy trên thanh trên cùng', () => {
     expect(screen.getByTestId('search')).toHaveTextContent('?line=A01-L03');
 
     // Tự đổi ở thanh trên cùng: màn mở lại từ đầu, URL không còn bộ lọc cũ
-    fireEvent.click(screen.getByRole('combobox', { name: /đổi nhà máy/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: /đổi đơn vị cơ sở/ }));
     fireEvent.click(await screen.findByRole('option', { name: /Nhà máy 1/ }));
     expect(await screen.findByRole('button', { name: 'Đã bấm 0' })).toBeInTheDocument();
     expect(useSession.getState().branch?.code).toBe('A01');

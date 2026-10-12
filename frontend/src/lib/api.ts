@@ -111,14 +111,14 @@ async function sendAuthed(path: string, opts: Options): Promise<Response> {
 
   if (res.status === 401 && branchSwitch && opts.token === undefined && path !== '/auth/select-branch') {
     await branchSwitch.catch(() => undefined);
-    throw new ApiError(409, 'BRANCH_SWITCHED', 'Bạn vừa đổi nhà máy nên thao tác này chưa được gửi. Kiểm tra lại rồi làm lại.');
+    throw new ApiError(409, 'BRANCH_SWITCHED', 'Bạn vừa đổi đơn vị cơ sở nên thao tác này chưa được gửi. Kiểm tra lại rồi làm lại.');
   }
 
   if (res.status === 401 && !opts.noRefresh && opts.token === undefined && session.status === 'ready') {
     const r = await refreshSession();
     if (r.ok && r.branchChanged) {
       // Không gửi lại: yêu cầu này được tạo khi màn hình còn ở nhà máy cũ, gửi lại sẽ ghi nhầm nhà máy.
-      const name = useSession.getState().branch?.name ?? 'nhà máy khác';
+      const name = useSession.getState().branch?.name ?? 'đơn vị cơ sở khác';
       throw new ApiError(409, 'BRANCH_CHANGED', `Phiên đã chuyển sang ${name} từ một tab khác. Thao tác chưa được gửi, hãy kiểm tra lại rồi làm lại.`);
     }
     if (r.ok) res = await send(path, opts, useSession.getState().accessToken);
@@ -130,7 +130,7 @@ async function sendAuthed(path: string, opts: Options): Promise<Response> {
   if (res.status === 403 && session.status === 'ready' && path !== '/auth/select-branch') {
     const body = await res.clone().json().catch(() => null);
     if (body?.error?.code === 'BRANCH_NOT_ALLOWED') {
-      endSession('Nhà máy bạn đang làm việc không còn được cấp hoặc đã tạm tắt. Hãy đăng nhập lại và chọn nhà máy khác.');
+      endSession('Đơn vị cơ sở bạn đang làm việc không còn được cấp hoặc đã tạm tắt. Hãy đăng nhập lại và chọn đơn vị khác.');
     }
   }
 

@@ -4,13 +4,24 @@ import { AppException, Errors } from '../../common/app.exception';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
-import type { SysCatalogItemTable, SysOrgUnitTable, SysShiftTable } from '../database/core.types';
+import type { SysCatalogItemTable, SysOrgUnitTable, SysProductionFactoryTable, SysShiftTable } from '../database/core.types';
 import { CORE_DB, type CoreDb } from '../database/database.module';
 import { OrgService } from '../org/org.service';
 import { PermissionService } from '../permission/permission.service';
 import { SyncService } from '../sync/sync.service';
 import { CatalogLookupService } from './catalog-lookup.service';
-import { CatalogItemCreateDto, CatalogItemUpdateDto, LineCreateDto, LineUpdateDto, ShiftCreateDto, ShiftUpdateDto, WorkshopCreateDto, WorkshopUpdateDto } from './catalog.dto';
+import {
+  CatalogItemCreateDto,
+  CatalogItemUpdateDto,
+  FactoryCreateDto,
+  FactoryUpdateDto,
+  LineCreateDto,
+  LineUpdateDto,
+  ShiftCreateDto,
+  ShiftUpdateDto,
+  WorkshopCreateDto,
+  WorkshopUpdateDto,
+} from './catalog.dto';
 
 /** Mẫu LIKE "chứa chuỗi": thoát %, _, [ để người dùng gõ ký tự này vẫn tìm đúng chữ. */
 const containsLike = (s: string) => `%${s.replace(/[%_[]/g, (c) => `[${c}]`)}%`;
@@ -63,7 +74,7 @@ export class CatalogService {
   // ---------------- Tổng quan ----------------
 
   async overview() {
-    const [catalogs, lines, shifts] = await Promise.all([
+    const [catalogs, lines, shifts, factories] = await Promise.all([
       this.db
         .selectFrom('SysCatalog as c')
         .leftJoin('SysCatalogItem as i', 'i.CatalogId', 'c.Id')
@@ -80,6 +91,10 @@ export class CatalogService {
         .executeTakeFirstOrThrow(),
       this.db
         .selectFrom('SysShift')
+        .select([sql<number>`COUNT(*)`.as('Total'), sql<number>`SUM(CASE WHEN IsActive = 1 THEN 1 ELSE 0 END)`.as('Active')])
+        .executeTakeFirstOrThrow(),
+      this.db
+        .selectFrom('SysProductionFactory')
         .select([sql<number>`COUNT(*)`.as('Total'), sql<number>`SUM(CASE WHEN IsActive = 1 THEN 1 ELSE 0 END)`.as('Active')])
         .executeTakeFirstOrThrow(),
     ]);
@@ -99,8 +114,15 @@ export class CatalogService {
           code: 'LINE',
           kind: 'line',
           name: 'Chuyền may',
-          description: 'Xưởng và chuyền của từng nhà máy. Chuyền dùng ở Xếp chuyền, Phân bổ màu cỡ và phạm vi phân quyền; xưởng gom chuyền để ô chọn, báo cáo dễ nhìn.',
+          description: 'Xưởng và chuyền của từng đơn vị cơ sở. Chuyền dùng ở Xếp chuyền, Phân bổ màu cỡ và phạm vi phân quyền; xưởng gom chuyền để ô chọn, báo cáo dễ nhìn.',
           ...count(lines),
+        },
+        {
+          code: 'PROD_FACTORY',
+          kind: 'factory',
+          name: 'Nhà máy SX',
+          description: 'Nơi sản xuất thực tế của đơn hàng (cột Nhà máy SX), mỗi nhà máy thuộc một đơn vị cơ sở. Người dùng được tích nhà máy SX ở màn Người dùng để lập kế hoạch xuất hàng cho đơn hàng của nhà máy đó.',
+          ...count(factories),
         },
         ...catalogs.map((c) => ({ code: c.Code, kind: 'item', name: c.Name, description: c.Description, nameMax: NAME_MAX[c.Code] ?? 100, ...count(c) })),
         { code: 'SHIFT', kind: 'shift', name: 'Ca làm việc', description: 'Ca làm, giờ bắt đầu, kết thúc, thời gian nghỉ: dùng cho kế hoạch may, sản lượng theo giờ.', ...count(shifts) },
@@ -450,6 +472,88 @@ export class CatalogService {
       await this.audit.logStrict(this.entry(actor, 'SysCatalogItem', id, 'CATALOG_ITEM_UPDATE', { catalog: c.Code, ...before }, set), trx);
     });
     this.lookup.invalidate(c.Code);
+  }
+
+  // ---------------- Nhà máy SX (ADR 0013) ----------------
+
+  /** Mọi nhà máy SX kèm tên ĐVCS; `q`: tìm mã, tên, mô tả, mã ĐVCS trong DB. */
+  async factories(search?: string) {
+    const q = search?.trim();
+    let qb = this.db
+      .selectFrom('SysProductionFactory as f')
+      .leftJoin('SysBranch as b', 'b.Code', 'f.BranchCode')
+      .select(['f.Id', 'f.Code', 'f.Name', 'f.BranchCode', 'b.Name as BranchName', 'f.Description', 'f.SortOrder', 'f.IsActive']);
+    if (q) {
+      const l = containsLike(q);
+      qb = qb.where((eb) => eb.or([eb('f.Code', 'like', l), eb('f.Name', 'like', l), eb('f.Description', 'like', l), eb('f.BranchCode', 'like', l)]));
+    }
+    const rows = await qb.orderBy('f.SortOrder').orderBy('f.Code').execute();
+    return rows.map((r) => ({
+      id: r.Id,
+      code: r.Code,
+      name: r.Name,
+      branchCode: r.BranchCode,
+      branchName: r.BranchName,
+      description: r.Description,
+      sortOrder: r.SortOrder,
+      isActive: !!r.IsActive,
+    }));
+  }
+
+  /** ĐVCS gắn nhà máy: phải có, không phải đơn vị tổng hợp; đang tắt thì chỉ giữ được khi không đổi */
+  private async factoryBranch(code: string, current?: string | null) {
+    const b = await this.db.selectFrom('SysBranch').select(['Code', 'IsAggregate', 'IsActive']).where('Code', '=', code).executeTakeFirst();
+    if (!b) throw invalid(`Không có đơn vị cơ sở ${code}.`);
+    if (b.IsAggregate) throw invalid('Đơn vị tổng hợp không có nhà máy SX. Chọn một đơn vị cơ sở cụ thể.');
+    if (!b.IsActive && b.Code !== current) throw invalid(`Đơn vị cơ sở ${code} đang ngừng dùng.`);
+    return b.Code;
+  }
+
+  async createFactory(actor: AuthUser, dto: FactoryCreateDto) {
+    const branchCode = await this.factoryBranch(dto.branchCode);
+    const max = await this.db.selectFrom('SysProductionFactory').select((eb) => eb.fn.max('SortOrder').as('m')).executeTakeFirst();
+    const message = `Mã nhà máy SX ${dto.code} đã được dùng.`;
+    if (await this.db.selectFrom('SysProductionFactory').select('Id').where('Code', '=', dto.code).executeTakeFirst()) throw Errors.conflict(message);
+    const id = await unique(
+      () =>
+        this.db.transaction().execute(async (trx) => {
+          const row = await trx
+            .insertInto('SysProductionFactory')
+            .values({ Code: dto.code, Name: dto.name, BranchCode: branchCode, Description: dto.description || null, SortOrder: dto.sortOrder ?? (max?.m ?? 0) + 10, IsActive: true, IsSystem: false, CreatedBy: actor.userId })
+            .output('inserted.Id')
+            .executeTakeFirstOrThrow();
+          await this.audit.logStrict(this.entry(actor, 'SysProductionFactory', row.Id, 'FACTORY_CREATE', undefined, { code: dto.code, name: dto.name, branchCode }), trx);
+          return row.Id;
+        }),
+      message,
+    );
+    this.lookup.invalidateFactories();
+    return { id };
+  }
+
+  /**
+   * Sửa tên, ĐVCS, mô tả, thứ tự, bật/tắt; mã không sửa được. Bật/tắt đổi danh sách nhà máy SX trong quyền của người được
+   * tích (lọc popup Chọn mã hàng) nên tăng phiên bản quyền.
+   */
+  async updateFactory(actor: AuthUser, id: number, dto: FactoryUpdateDto) {
+    const before = await this.db.selectFrom('SysProductionFactory').select(['Code', 'Name', 'BranchCode', 'Description', 'SortOrder', 'IsActive']).where('Id', '=', id).executeTakeFirst();
+    if (!before) throw Errors.notFound('Không tìm thấy nhà máy SX.');
+    if (dto.code !== undefined && dto.code !== before.Code) throw Errors.codeImmutable();
+    const set: Updateable<SysProductionFactoryTable> = {};
+    if (dto.name !== undefined) set.Name = dto.name;
+    if (dto.branchCode !== undefined && dto.branchCode !== before.BranchCode) set.BranchCode = await this.factoryBranch(dto.branchCode, before.BranchCode);
+    if (dto.description !== undefined) set.Description = dto.description || null;
+    if (dto.sortOrder !== undefined) set.SortOrder = dto.sortOrder;
+    if (dto.isActive !== undefined) set.IsActive = dto.isActive;
+    if (!Object.keys(set).length) return;
+    const activeChanged = dto.isActive !== undefined && dto.isActive !== !!before.IsActive;
+    await this.db.transaction().execute(async (trx) => {
+      await trx.updateTable('SysProductionFactory').set({ ...set, ModifiedAt: new Date(), ModifiedBy: actor.userId }).where('Id', '=', id).execute();
+      if (activeChanged) await this.permissions.bumpVersion(trx);
+      await this.audit.logStrict(this.entry(actor, 'SysProductionFactory', id, 'FACTORY_UPDATE', before, set), trx);
+    });
+    this.lookup.invalidateFactories();
+    if (activeChanged) this.permissions.clearCache();
   }
 
   // ---------------- Ca làm việc ----------------

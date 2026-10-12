@@ -21,7 +21,7 @@ import { toastError, toastOk } from '../../lib/notify';
 import { useMobile } from '../../lib/useMobile';
 import { useSession } from '../../store/session';
 import type { FactoryOption, SalesOrder } from './api';
-import { EmptyState, ExportButton, OrderFilters, PICK_ROW, SALES_STATUS, StatusBadge, statusOptions, useCanWrite, useCustomers, usePagedList } from './common';
+import { EmptyState, ExportButton, OrderFilters, PICK_ROW, SALES_STATUS, StatusBadge, statusOptions, useCanWrite, useCustomers, useOriginLock, usePagedList } from './common';
 
 const RESOURCE = 'order.allocation';
 
@@ -62,7 +62,6 @@ function withFactoryNames(factories: FactoryOption[]): Column<SalesOrder>[] {
 export default function SalesOrderPage() {
   const qc = useQueryClient();
   const policy = useFieldPolicy(RESOURCE);
-  const branch = useSession((s) => s.branch);
   const branchName = useBranchName();
   const { customers, seasons, factories } = useCustomers();
   const columns = useMemo(() => withBranchNames(withFactoryNames(factories), branchName), [factories, branchName]);
@@ -73,6 +72,7 @@ export default function SalesOrderPage() {
   const canCreate = useCanWrite(`${RESOURCE}:create`);
   const canUpdate = useCanWrite(`${RESOURCE}:update`);
   const canDelete = useCanWrite(`${RESOURCE}:delete`);
+  const originLock = useOriginLock('Đơn hàng');
   // Ghi đơn hàng làm đổi cả gợi ý của ô lọc (khách hàng, season)
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ['order'] }), qc.invalidateQueries({ queryKey: ORDER_OPTIONS_KEY })]);
   const refreshAfterClose = useAfterClose(refresh);
@@ -80,6 +80,8 @@ export default function SalesOrderPage() {
   const items = list.query.data?.items ?? [];
   // Đổi lọc hay trang mà dòng đã chọn không còn trong lưới thì coi như chưa chọn
   const selected = items.find((r) => r.id === selectedId) ?? null;
+  // Đơn của ĐVCS khác: xem được, không sửa, xóa được
+  const writeBlocked = selected ? originLock(selected.branchCode) : PICK_ROW;
   // Cột số lượng bị Che hoặc Ẩn thì không có tổng (null)
   const sumQty = sumOf(items.map((r) => r.qty));
 
@@ -96,11 +98,7 @@ export default function SalesOrderPage() {
   return (
     <WorkPage
       title="Thông tin đơn hàng"
-      subtitle={
-        branch?.isAggregate
-          ? 'Đơn hàng của mọi nhà máy bạn được xem'
-          : `Đơn hàng của chi nhánh ${branchName(branch?.code)} (Chi nhánh FOB): nạp từ BRAVO hoặc nhập tay. Nhà máy SX chọn tay theo danh mục Nhà máy sản xuất.`
-      }
+      subtitle="Đơn hàng của toàn công ty lấy từ BRAVO, không lọc theo đơn vị cơ sở. Chọn Nhà máy SX cho từng đơn: người được tích nhà máy đó mới lập kế hoạch xuất hàng cho đơn."
       actions={
         <>
           <PolicyHint policy={policy} names={NAMES} />
@@ -110,7 +108,7 @@ export default function SalesOrderPage() {
               variant="default"
               color="red"
               leftSection={<IconTrash size={15} />}
-              blockedReason={selected ? null : PICK_ROW}
+              blockedReason={writeBlocked}
               loading={remove.isPending}
               onClick={() =>
                 selected &&
@@ -126,7 +124,7 @@ export default function SalesOrderPage() {
             </ActionButton>
           )}
           {canUpdate && (
-            <ActionButton variant="default" leftSection={<IconPencil size={15} />} blockedReason={selected ? null : PICK_ROW} onClick={() => selected && setDialog({ order: selected })}>
+            <ActionButton variant="default" leftSection={<IconPencil size={15} />} blockedReason={writeBlocked} onClick={() => selected && setDialog({ order: selected })}>
               Sửa
             </ActionButton>
           )}
@@ -157,7 +155,7 @@ export default function SalesOrderPage() {
         onRowClick={(r) => setSelectedId(r.id)}
         onRowDoubleClick={(r) => {
           setSelectedId(r.id);
-          if (canUpdate) setDialog({ order: r });
+          if (canUpdate && !originLock(r.branchCode)) setDialog({ order: r });
         }}
         empty={
           <EmptyState
@@ -199,11 +197,18 @@ function Guarded({ policy, field, label, render }: { policy: FieldPolicy; field:
   return render(level === 'READONLY' ? { readOnly: true, className: 'field-readonly', description: 'Bạn chỉ được xem trường này' } : {});
 }
 
-/** Ô chọn Nhà máy SX: nhà máy đang dùng, cộng nhà máy hiện tại của đơn (kể cả đã ngừng hoặc không còn trong danh mục) để không mất giá trị */
-function factorySelectData(factories: FactoryOption[], current: string | null) {
-  const data = factories.filter((f) => f.isActive || f.code === current).map((f) => ({ value: f.code, label: f.isActive ? f.name : `${f.name} (đã ngừng)` }));
-  if (current && current !== MASK && !factories.some((f) => f.code === current)) data.push({ value: current, label: current });
-  return data;
+/**
+ * Ô chọn Nhà máy SX gom theo đơn vị cơ sở: nhà máy đang dùng, cộng nhà máy hiện tại của đơn (kể cả đã ngừng hoặc không còn
+ * trong danh mục) để không mất giá trị
+ */
+function factorySelectData(factories: FactoryOption[], current: string | null, branchName: (code: string | null | undefined) => string) {
+  const shown = factories.filter((f) => f.isActive || f.code === current);
+  const groups = [...new Set(shown.map((f) => f.branchCode))].map((code) => ({
+    group: code ? branchName(code) : 'Chưa gắn đơn vị cơ sở',
+    items: shown.filter((f) => f.branchCode === code).map((f) => ({ value: f.code, label: f.isActive ? f.name : `${f.name} (đã ngừng)` })),
+  }));
+  if (current && current !== MASK && !factories.some((f) => f.code === current)) groups.push({ group: 'Không còn trong danh mục', items: [{ value: current, label: current }] });
+  return groups;
 }
 
 /** Trường bắt buộc khi thêm đơn hàng: không được sửa trường nào trong số này thì không thêm được. */
@@ -249,7 +254,7 @@ function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrde
   const mobile = useMobile();
   const form = useOrderForm(order, policy);
   const { orderTypes, orderTypeNames, units, factories } = useCustomers();
-  const factoryData = factorySelectData(factories, form.getInitialValues().productionFactoryCode);
+  const factoryData = factorySelectData(factories, form.getInitialValues().productionFactoryCode, branchName);
   const blocked = order ? [] : Object.keys(REQUIRED).filter((f) => !policy.editable(f));
   const dirty = form.isDirty();
   useLeaveGuard(dirty);
@@ -294,7 +299,7 @@ function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrde
                 render={(lock) => (
                   <Select
                     label="Nhà máy SX"
-                    placeholder="Chọn nhà máy"
+                    placeholder="Chọn nhà máy SX"
                     data={factoryData}
                     searchable
                     clearable

@@ -34,10 +34,12 @@ export interface SalesOrderTable extends Audit {
   SyncedAt: Date | null;
   ShipDate: DateCol;
   StatusCode: SalesOrderStatus;
-  /** Nhà máy sản xuất (mã mục danh mục PROD_FACTORY ở MES_Core, khóa ngầm); NULL: chưa chọn */
+  /** Nhà máy SX (MES_Core.SysProductionFactory.Code, khóa ngầm; ADR 0013); NULL: chưa chọn */
   ProductionFactoryCode: ColumnType<string | null, string | null | undefined, string | null>;
   /** ProductId của BRAVO khi đơn hàng nạp từ bảng chép MES_Sync; NULL: nhập tay */
   SourceProductId: ColumnType<number | null, number | null | undefined, never>;
+  /** SHA-256 các cột lấy từ BRAVO ở lần nạp gần nhất (bước nạp tăng dần, migration 0006); NULL: nhập tay hoặc chưa lấy mốc */
+  SourceHash: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 export interface SalesOrderPoTable extends Audit {

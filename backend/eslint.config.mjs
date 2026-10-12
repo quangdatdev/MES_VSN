@@ -1,10 +1,13 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
-// Module nghiệp vụ không đọc MES_Sync trực tiếp (ADR 0007): tên, danh mục chép từ BRAVO lấy qua CatalogLookupService.
-// Thêm module mới thì gắn NO_SYNC vào khối luật của module đó: flat config lấy khối viết sau cho cùng một luật, không gộp,
-// nên không dùng được một khối chung src/modules/**.
-const NO_SYNC = { group: ['**/platform/sync/*'], message: 'Module nghiệp vụ không đọc MES_Sync trực tiếp (ADR 0007): dùng CatalogLookupService.' };
+// Module nghiệp vụ không đọc MES_Sync trực tiếp (ADR 0007): tên, danh mục chép từ BRAVO lấy qua CatalogLookupService, dữ liệu
+// nghiệp vụ chép từ BRAVO (đơn hàng) qua BravoFeedService. Thêm module mới thì gắn NO_SYNC vào khối luật của module đó: flat
+// config lấy khối viết sau cho cùng một luật, không gộp, nên không dùng được một khối chung src/modules/**.
+const NO_SYNC = {
+  group: ['**/platform/sync/*'],
+  message: 'Module nghiệp vụ không đọc MES_Sync trực tiếp (ADR 0007): dùng CatalogLookupService hoặc BravoFeedService.',
+};
 // Module Nhân sự chưa có API công khai cho module khác (ADR 0012): không import phần bên trong
 const NO_HR = { group: ['../hr/*', '**/modules/hr/*'], message: 'Module Nhân sự chưa có API công khai (ADR 0012): không import phần bên trong.' };
 

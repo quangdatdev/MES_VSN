@@ -33,7 +33,25 @@ export interface ListOptions {
   select?: (eb: ExpressionBuilder<any, any>) => any[];
   /** Cột không tìm theo q: cột người dùng không được xem nguyên giá trị (tìm được là đoán được giá trị). */
   searchExclude?: string[];
+  /**
+   * Chỉ dòng của các nhà máy SX được tích cho người dùng (ADR 0013), theo cột `productionFactoryColumn` của repository.
+   * Danh sách nhà máy lấy từ quyền của phiên, không từ client.
+   */
+  assignedFactories?: boolean;
 }
+
+/** Tùy chọn của getById */
+export interface GetOptions {
+  /** Như ListOptions.assignedFactories */
+  assignedFactories?: boolean;
+  /**
+   * Bảng dùng chung có ĐVCS nguồn (`originBranch`): chỉ dòng của ĐVCS đang làm việc, khi đọc để ghi vào dòng con (ví dụ
+   * thêm PO cho đơn hàng: PO cùng ĐVCS với đơn). Đơn vị tổng hợp không ghi nên không áp.
+   */
+  sameBranch?: boolean;
+}
+
+const WRITE_ACTIONS: ReadonlySet<DataAction> = new Set(['create', 'update', 'delete']);
 
 /** Cột do nền tảng quản lý, không bao giờ lấy từ dữ liệu module truyền vào (so không phân biệt hoa thường như SQL Server). */
 const SYSTEM_COLUMNS = new Set(['id', 'branchcode', 'createdat', 'createdby', 'modifiedat', 'modifiedby']);
@@ -69,6 +87,8 @@ export interface ScopedParent {
   /** SELECT Id các dòng trong phạm vi của hành động (để kiểm nhiều dòng cha một câu). */
   scopedIds(scope: Scope, action: DataAction, db?: Kysely<any>): Promise<any>;
   assertWritable(scope: Scope): Promise<void>;
+  /** Dòng của bảng có lọc theo BranchCode của phiên không (BRANCH); bảng con lọc theo cùng cách với cha. */
+  byBranch(scope: Scope): Promise<boolean>;
 }
 
 const valueOf = (row: Record<string, unknown>, column: string) => {
@@ -107,7 +127,9 @@ function rowSatisfies(row: Record<string, unknown>, conds: { c: Condition; colum
  *  - BRANCH: mọi thao tác tự thêm BranchCode của phiên; đơn vị tổng hợp (A00) đọc không lọc nhà máy, ghi bị từ chối.
  *  - Phạm vi L3: điều kiện sinh từ phạm vi của quyền đang dùng (view khi đọc; create, update, delete khi ghi),
  *    theo SysResourceScopeBinding. Không có quyền thì không thấy gì.
- *  - SHARED: không lọc nhà máy.
+ *  - SHARED: không lọc nhà máy. Bảng dùng chung có cột BranchCode ghi ĐVCS nguồn (`originBranch`, ví dụ đơn hàng: Chi
+ *    nhánh FOB): đọc không lọc, nhưng tạo thì đóng dấu ĐVCS của phiên, sửa, xóa chỉ dòng của ĐVCS đang làm việc, đơn vị
+ *    tổng hợp chỉ đọc như BRANCH (ADR 0013).
  *  - Tài nguyên chưa khai báo ở SysResource: từ chối.
  * BranchCode khi tạo luôn lấy từ Scope, mọi giá trị client gửi bị ghi đè.
  * Kiểu dòng không bắt buộc có BranchCode: bảng SHARED (hồ sơ nhân viên) không có cột này. Lọc nhà máy theo ScopeType ở
@@ -121,6 +143,15 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   /** Cột được phép sắp xếp (danh sách trắng, tránh chèn tên cột từ client). */
   protected readonly sortable: string[] = ['Id'];
   protected readonly defaultSort: string = 'Id:desc';
+  /**
+   * Bảng dùng chung (SHARED) nhưng có cột BranchCode ghi ĐVCS nguồn của dòng. Đọc không lọc ĐVCS (mọi ĐVCS xem được); ghi
+   * như bảng theo ĐVCS: tạo mới thì BranchCode = ĐVCS của phiên (không nhận từ client), sửa, xóa chỉ dòng của ĐVCS đang
+   * làm việc (dòng ĐVCS khác trả 404), ở đơn vị tổng hợp không ghi được. Người ĐVCS khác không đổi được dữ liệu dùng chung
+   * mà ĐVCS khác dựa vào (ví dụ Nhà máy SX của đơn, SL gốc của PO: review 5.9 H1).
+   */
+  protected readonly originBranch: boolean = false;
+  /** Cột mã nhà máy SX của bảng, cho tùy chọn `assignedFactories` (ADR 0013). Không khai báo thì tùy chọn đó bị từ chối. */
+  protected readonly productionFactoryColumn: string | null = null;
 
   // Kysely<any>: mỗi module truyền database riêng; tên bảng chỉ biết lúc chạy qua `table`.
   constructor(
@@ -134,6 +165,18 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 
   grantsFor(scope: Scope, action: DataAction): Grant[] {
     return scope.access.grants.get(`${this.resource}:${action}`) ?? [];
+  }
+
+  async byBranch(scope: Scope): Promise<boolean> {
+    return (await this.info()).scope === 'BRANCH' && !scope.isAggregate;
+  }
+
+  /** Giới hạn theo nhà máy SX được tích cho người dùng (lấy từ quyền của phiên); không được tích nhà máy nào thì không thấy gì. */
+  private assigned<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, alias?: string): Q {
+    if (!this.productionFactoryColumn) throw new Error(`${this.resource} không khai báo cột nhà máy SX (productionFactoryColumn)`);
+    const factories = scope.access.productionFactories;
+    const col = alias ? `${alias}.${this.productionFactoryColumn}` : this.productionFactoryColumn;
+    return factories.length ? qb.where(col, 'in', factories) : qb.where(FALSE);
   }
 
   /** Lớp con dùng hàm này cho truy vấn riêng (thống kê, sinh số chứng từ) thay vì tự viết điều kiện phân quyền. */
@@ -153,7 +196,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   private async limit<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, action: DataAction, alias?: string): Promise<Q> {
     const info = await this.info();
     const col = (c: string) => (alias ? `${alias}.${c}` : c);
-    if (info.scope === 'BRANCH' && !scope.isAggregate) qb = qb.where(col('BranchCode'), '=', scope.branchCode);
+    if (!scope.isAggregate && (info.scope === 'BRANCH' || (this.originBranch && WRITE_ACTIONS.has(action)))) qb = qb.where(col('BranchCode'), '=', scope.branchCode);
 
     const grants = this.grantsFor(scope, action);
     if (grants.length === 0) return qb.where(FALSE);
@@ -189,7 +232,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 
   async assertWritable(scope: Scope) {
     const info = await this.info();
-    if (info.scope === 'BRANCH' && scope.isAggregate) throw Errors.aggregateReadOnly();
+    if ((info.scope === 'BRANCH' || this.originBranch) && scope.isAggregate) throw Errors.aggregateReadOnly();
   }
 
   /** Câu SELECT Id của các dòng trong phạm vi của hành động. */
@@ -252,6 +295,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 
   private async filtered(qb: any, scope: Scope, opts: ListOptions, action: DataAction) {
     qb = await this.limit(qb, scope, action);
+    if (opts.assignedFactories) qb = this.assigned(qb, scope);
     const like = opts.q?.trim() ? `%${opts.q.trim().replace(/[%_[]/g, (c) => `[${c}]`)}%` : null;
     const columns = this.searchColumns.filter((c) => !opts.searchExclude?.some((x) => x.toLowerCase() === c.toLowerCase()));
     if (like && columns.length) qb = qb.where((eb: any) => eb.or(columns.map((c) => eb(c, 'like', like))));
@@ -280,8 +324,13 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   }
 
   /** Dòng của nhà máy khác, hoặc ngoài phạm vi của hành động, trả 404 như không tồn tại. */
-  async getById(scope: Scope, id: number, action: DataAction = 'view', db: Kysely<any> = this.db): Promise<R> {
-    const qb = await this.limit(db.selectFrom(this.table).selectAll().where('Id', '=', id), scope, action);
+  async getById(scope: Scope, id: number, action: DataAction = 'view', db: Kysely<any> = this.db, opts: GetOptions = {}): Promise<R> {
+    let qb = await this.limit(db.selectFrom(this.table).selectAll().where('Id', '=', id), scope, action);
+    if (opts.assignedFactories) qb = this.assigned(qb, scope);
+    if (opts.sameBranch) {
+      if (!this.originBranch) throw new Error(`sameBranch chỉ dùng cho bảng có ĐVCS nguồn (${this.resource})`);
+      if (!scope.isAggregate) qb = qb.where('BranchCode', '=', scope.branchCode);
+    }
     const row = await qb.executeTakeFirst();
     if (!row) throw Errors.notFound();
     return row as R;
@@ -354,7 +403,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 
   async create(scope: Scope, values: Record<string, unknown>, db: Kysely<any> = this.db): Promise<R> {
     await this.assertWritable(scope);
-    const branch = (await this.info()).scope === 'BRANCH' ? { BranchCode: scope.branchCode } : {};
+    const branch = (await this.info()).scope === 'BRANCH' || this.originBranch ? { BranchCode: scope.branchCode } : {};
     const row = { ...withoutSystemColumns(values), ...branch, CreatedBy: scope.userId };
     await this.assertRowInScope(scope, 'create', row);
     const inserted = await db.insertInto(this.table).values(row).output('inserted.Id').executeTakeFirstOrThrow();
@@ -366,8 +415,8 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
    * của người khác (người chỉ thấy bản ghi của mình vẫn không sinh trùng số).
    */
   async createNumbered(scope: Scope, values: Record<string, unknown>, column: string, prefix: string, db: Kysely<any> = this.db): Promise<R> {
-    // Số theo nhà máy của phiên và câu cập nhật lọc BranchCode: tài nguyên dùng chung (không có cột BranchCode) không dùng được
-    if ((await this.info()).scope !== 'BRANCH') throw new Error(`createNumbered chỉ dùng cho tài nguyên theo nhà máy (${this.resource})`);
+    // Số theo ĐVCS của phiên và câu cập nhật lọc BranchCode: tài nguyên dùng chung không ghi ĐVCS nguồn thì không dùng được
+    if ((await this.info()).scope !== 'BRANCH' && !this.originBranch) throw new Error(`createNumbered chỉ dùng cho tài nguyên có BranchCode (${this.resource})`);
     if (!db.isTransaction) return inTransaction(this.db, (trx) => this.createNumbered(scope, values, column, prefix, trx));
     const temp = `~${randomUUID().replace(/-/g, '').slice(0, 24)}`;
     const row = await this.create(scope, { ...values, [column]: temp }, db);
@@ -408,8 +457,10 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 /**
  * Bảng con theo nhà máy (dòng màu cỡ của PO, dòng dàn chuyền...). Không có quyền riêng: dòng con nằm trong phạm vi
  * khi thỏa một phép gán của hành động, xét chung điều kiện của dòng cha và của chính dòng con trong phép gán đó
- * (ví dụ: dòng dàn chuyền thuộc kế hoạch được xem VÀ nằm ở chuyền được giao). Luôn kèm BranchCode của phiên (khóa
- * ngoại ghép ở DB bảo đảm con cùng nhà máy với cha). Khóa tới cha và BranchCode do repository đặt, không lấy từ client.
+ * (ví dụ: dòng dàn chuyền thuộc kế hoạch được xem VÀ nằm ở chuyền được giao). Lọc ĐVCS theo đúng cách của cha: cha
+ * theo ĐVCS thì kèm BranchCode của phiên; cha dùng chung (đơn hàng, PO, ADR 0013) thì không lọc. BranchCode của dòng mới
+ * chép từ dòng cha (khóa ngoại ghép ở DB bảo đảm con cùng ĐVCS với cha; cha theo ĐVCS thì đó là ĐVCS của phiên). Khóa tới
+ * cha và BranchCode do repository đặt, không lấy từ client.
  */
 export abstract class ChildRepository<R extends { Id: number; BranchCode: string }> implements ScopedParent {
   protected abstract readonly table: string;
@@ -428,13 +479,17 @@ export abstract class ChildRepository<R extends { Id: number; BranchCode: string
     return this.parent.grantsFor(scope, action);
   }
 
+  byBranch(scope: Scope): Promise<boolean> {
+    return this.parent.byBranch(scope);
+  }
+
   private ownConds(g: Grant) {
     return g.conditions.filter((c) => c.dim in this.scopeColumns).map((c) => ({ c, column: this.scopeColumns[c.dim] }));
   }
 
   async idsForGrant(scope: Scope, grant: Grant, db: Kysely<any> = this.db) {
     let qb = db.selectFrom(this.table).select('Id');
-    if (!scope.isAggregate) qb = qb.where('BranchCode', '=', scope.branchCode);
+    if (await this.byBranch(scope)) qb = qb.where('BranchCode', '=', scope.branchCode);
     qb = qb.where(this.parentKey, 'in', await this.parent.idsForGrant(scope, grant, db));
     const conds = this.ownConds(grant);
     if (conds.length) qb = qb.where((eb) => eb.and(conds.map(({ c, column }) => conditionExpr(eb, c, column, scope))));
@@ -443,7 +498,10 @@ export abstract class ChildRepository<R extends { Id: number; BranchCode: string
 
   /** Dòng con thỏa ít nhất một phép gán của hành động. Không có phép gán nào thì không thấy gì. */
   private async base(scope: Scope, action: DataAction, db: Kysely<any>, qb: any) {
-    if (!scope.isAggregate) qb = qb.where('BranchCode', '=', scope.branchCode);
+    const byBranch = await this.byBranch(scope);
+    if (byBranch) qb = qb.where('BranchCode', '=', scope.branchCode);
+    // Cha dùng chung có ĐVCS nguồn: ghi dòng con chỉ khi cha ghi được (cùng ĐVCS với phiên), như sửa chính dòng cha
+    else if (WRITE_ACTIONS.has(action) && !scope.isAggregate) qb = qb.where(this.parentKey, 'in', await this.parent.scopedIds(scope, action, db));
     const grants = this.grantsFor(scope, action);
     if (grants.length === 0) return qb.where(FALSE);
     const subs = await Promise.all([...new Set(grants)].map((g) => this.idsForGrant(scope, g, db)));
@@ -474,15 +532,15 @@ export abstract class ChildRepository<R extends { Id: number; BranchCode: string
     await this.assertWritable(scope);
     const table = sql.table(this.table);
     const parent = sql.ref(this.parentKey);
-    await (scope.isAggregate
-      ? sql`SELECT Id FROM ${table} WITH (UPDLOCK, ROWLOCK) WHERE ${parent} = ${parentId}`
-      : sql`SELECT Id FROM ${table} WITH (UPDLOCK, ROWLOCK) WHERE ${parent} = ${parentId} AND BranchCode = ${scope.branchCode}`
+    await ((await this.byBranch(scope))
+      ? sql`SELECT Id FROM ${table} WITH (UPDLOCK, ROWLOCK) WHERE ${parent} = ${parentId} AND BranchCode = ${scope.branchCode}`
+      : sql`SELECT Id FROM ${table} WITH (UPDLOCK, ROWLOCK) WHERE ${parent} = ${parentId}`
     ).execute(db);
   }
 
-  /** Chỉ lọc nhà máy, bỏ qua phạm vi L3 (như BaseRepository.branchOnly): cho số liệu kiểm ràng buộc, không trả dòng. */
-  protected branchOnly<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope): Q {
-    return scope.isAggregate ? qb : qb.where('BranchCode', '=', scope.branchCode);
+  /** Chỉ lọc ĐVCS, bỏ qua phạm vi L3 (như BaseRepository.branchOnly): cho số liệu kiểm ràng buộc, không trả dòng. */
+  protected async branchOnly<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope): Promise<Q> {
+    return (await this.byBranch(scope)) ? qb.where('BranchCode', '=', scope.branchCode) : qb;
   }
 
   assertWritable(scope: Scope) {
@@ -514,15 +572,23 @@ export abstract class ChildRepository<R extends { Id: number; BranchCode: string
     return this.listByParents(scope, [parentId], action, db);
   }
 
-  private values(scope: Scope, parentId: number, r: Record<string, unknown>) {
-    return { ...withoutSystemColumns(r, [this.parentKey]), [this.parentKey]: parentId, BranchCode: scope.branchCode, CreatedBy: scope.userId };
+  private values(scope: Scope, parentId: number, r: Record<string, unknown>, branchCode: string) {
+    return { ...withoutSystemColumns(r, [this.parentKey]), [this.parentKey]: parentId, BranchCode: branchCode, CreatedBy: scope.userId };
+  }
+
+  /** BranchCode cho dòng con mới: của phiên khi cha theo ĐVCS, của dòng cha (đã đọc trong phạm vi) khi cha dùng chung */
+  private async branchFor(scope: Scope, parentRow: unknown): Promise<string> {
+    if (await this.byBranch(scope)) return scope.branchCode;
+    const code = valueOf(parentRow as Record<string, unknown>, 'BranchCode');
+    if (typeof code !== 'string' || !code) throw new Error(`Dòng cha của ${this.table} không có BranchCode`);
+    return code;
   }
 
   async insert(scope: Scope, parentId: number, rows: Record<string, unknown>[], db: Kysely<any> = this.db): Promise<void> {
     if (rows.length === 0) return;
     await this.assertWritable(scope);
-    await this.parent.getById(scope, parentId, 'update', db);
-    const values = rows.map((r) => this.values(scope, parentId, r));
+    const branch = await this.branchFor(scope, await this.parent.getById(scope, parentId, 'update', db));
+    const values = rows.map((r) => this.values(scope, parentId, r, branch));
     for (const v of values) await this.assertRowInScope(scope, 'update', parentId, v, db);
     // Chia lô: SQL Server giới hạn 2100 tham số mỗi câu
     const per = insertBatch(values);
@@ -532,8 +598,8 @@ export abstract class ChildRepository<R extends { Id: number; BranchCode: string
   /** Thêm một dòng con và trả Id (khi cần Id để tạo tiếp dòng cháu). */
   async insertOne(scope: Scope, parentId: number, row: Record<string, unknown>, db: Kysely<any> = this.db): Promise<number> {
     await this.assertWritable(scope);
-    await this.parent.getById(scope, parentId, 'update', db);
-    const value = this.values(scope, parentId, row);
+    const branch = await this.branchFor(scope, await this.parent.getById(scope, parentId, 'update', db));
+    const value = this.values(scope, parentId, row, branch);
     await this.assertRowInScope(scope, 'update', parentId, value, db);
     const res = await db.insertInto(this.table).values(value).output('inserted.Id').executeTakeFirstOrThrow();
     return (res as { Id: number }).Id;
@@ -559,13 +625,15 @@ export abstract class ChildRepository<R extends { Id: number; BranchCode: string
     if (!db.isTransaction) throw new Error('insertMany() chỉ dùng trong transaction');
     if (rows.length === 0) return;
     await this.assertWritable(scope);
+    // Mỗi dòng cha một BranchCode thì phải đọc từng cha: chưa có màn nào cần với bảng cha dùng chung
+    if (!(await this.byBranch(scope))) throw new Error(`insertMany() chỉ dùng cho bảng con theo ĐVCS (${this.table})`);
     const parents = [...new Set(rows.map((r) => r.parentId))];
     let found = 0;
     for (let i = 0; i < parents.length; i += BATCH) {
       found += ((await (await this.parent.scopedIds(scope, 'update', db)).where('Id', 'in', parents.slice(i, i + BATCH)).execute()) as unknown[]).length;
     }
     if (found !== parents.length) throw Errors.notFound();
-    const values = rows.map((r) => this.values(scope, r.parentId, r.values));
+    const values = rows.map((r) => this.values(scope, r.parentId, r.values, scope.branchCode));
     for (const [i, v] of values.entries()) await this.assertRowInScope(scope, 'update', rows[i].parentId, v, db);
     const per = insertBatch(values);
     for (let i = 0; i < values.length; i += per) await db.insertInto(this.table).values(values.slice(i, i + per)).execute();

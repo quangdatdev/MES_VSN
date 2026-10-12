@@ -12,6 +12,17 @@ describe('Seed chạy lại', () => {
   const core = createDb<CoreDatabase>(env.db.coreName);
   afterAll(() => core.destroy());
 
+  it('máy demo cài theo migrate rồi seed: admin (migrate tạo khi chỉ có A00) được gán các ĐVCS mẫu seed vừa thêm', async () => {
+    const rows = await core
+      .selectFrom('SysUserBranch as ub')
+      .innerJoin('SysUser as u', 'u.Id', 'ub.UserId')
+      .innerJoin('SysBranch as b', 'b.Id', 'ub.BranchId')
+      .select('b.Code')
+      .where('u.Username', '=', 'admin')
+      .execute();
+    expect(rows.map((r) => r.Code)).toEqual(expect.arrayContaining(['A00', 'A01', 'A02', 'A03']));
+  });
+
   it('không gán lại vai trò, nhà máy đã thu hồi của tài khoản mẫu', async () => {
     const user = await core.selectFrom('SysUser').select('Id').where('Username', '=', 'truongchuyen.a').executeTakeFirstOrThrow();
     const roles = await core.selectFrom('SysUserRole').selectAll().where('UserId', '=', user.Id).execute();

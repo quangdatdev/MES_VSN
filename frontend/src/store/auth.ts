@@ -19,6 +19,7 @@ async function fetchAccess(token?: string) {
     user: me.user,
     branch: me.branch,
     roles: me.roles,
+    productionFactories: me.productionFactories ?? [],
     menu,
     permissions: new Set(perms.permissions),
     permissionVersion: perms.version,

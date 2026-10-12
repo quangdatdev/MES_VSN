@@ -400,7 +400,7 @@ export default function PrepPlanPage() {
     branchSeen.current = branch;
     const lost = draftRef.current.size;
     setDraft(new Map());
-    if (lost) toastWarn(`Phiên đã chuyển sang nhà máy khác từ một tab khác. ${fmtNum(lost)} ngày TH vừa nhập ở nhà máy cũ chưa được lưu và đã bỏ.`, 'Đã bỏ phần chưa lưu', true);
+    if (lost) toastWarn(`Phiên đã chuyển sang đơn vị cơ sở khác từ một tab khác. ${fmtNum(lost)} ngày TH vừa nhập ở đơn vị cũ chưa được lưu và đã bỏ.`, 'Đã bỏ phần chưa lưu', true);
   }, [branch]);
   useEffect(() => setDraft((d) => withoutSaved(d, items, inflight.current)), [items]);
   const rowDirty = (id: number) => [...draftRef.current.keys()].some((k) => k.startsWith(`${id}:`));
@@ -491,7 +491,7 @@ export default function PrepPlanPage() {
     const asNum = (v: string | number) => fmtNum(v);
     const asDate = (v: string | number) => fmtDate(String(v));
     const out: SheetColumn<GridRow>[] = [
-      sheetReadonly<GridRow>('Chi nhánh', (g) => branchName(g.src.branchCode), (g) => branchName(g.src.branchCode), { minWidth: 112, headFilter: headFilter('branchCode', 'Chi nhánh', (v) => branchName(String(v))) }),
+      sheetReadonly<GridRow>('ĐVCS', (g) => branchName(g.src.branchCode), (g) => branchName(g.src.branchCode), { minWidth: 112, headFilter: headFilter('branchCode', 'ĐVCS', (v) => branchName(String(v))) }),
     ];
     if (visible('lineCode'))
       out.push(
@@ -573,7 +573,7 @@ export default function PrepPlanPage() {
     () => [
       {
         key: 'branchCode',
-        title: 'Chi nhánh',
+        title: 'ĐVCS',
         field: null,
         filterKey: 'branchCode',
         filterLabel: (v) => branchName(String(v)),
@@ -769,7 +769,7 @@ export default function PrepPlanPage() {
                 onDropdownOpen={() => setBranchesOpen(true)}
                 onDropdownClose={() => setBranchesOpen(false)}
                 nothingFoundMessage={
-                  branchValues.isFetching ? 'Đang tải…' : branchValues.isError ? 'Chưa tải được danh sách nhà máy. Đóng rồi mở lại để thử lại.' : 'Chưa có nhà máy nào có dòng dàn chuyền.'
+                  branchValues.isFetching ? 'Đang tải…' : branchValues.isError ? 'Chưa tải được danh sách đơn vị cơ sở. Đóng rồi mở lại để thử lại.' : 'Chưa có đơn vị cơ sở nào có dòng dàn chuyền.'
                 }
                 value={filter.branch || null}
                 onChange={(v) => set({ branch: v ?? '' })}

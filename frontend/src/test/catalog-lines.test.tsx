@@ -164,10 +164,10 @@ describe('Danh mục chuyền may dạng cây Nhà máy → Xưởng → Chuyề
 
     fireEvent.click(await screen.findByRole('button', { name: 'Sửa A01-L02' }));
     dialog = await screen.findByRole('dialog', { name: 'Sửa chuyền A01-L02' });
-    pick('Xưởng', 'Không thuộc xưởng (thẳng dưới nhà máy)');
+    pick('Xưởng', 'Không thuộc xưởng (thẳng dưới đơn vị cơ sở)');
     expect(within(dialog).getByText(/ai được giao cả xưởng mới sẽ thấy và sửa được dữ liệu của chuyền/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Lưu thay đổi' }));
-    const confirm = await screen.findByRole('dialog', { name: 'Chuyển chuyền A01-L02 ra thẳng dưới nhà máy?' });
+    const confirm = await screen.findByRole('dialog', { name: 'Chuyển chuyền A01-L02 ra thẳng dưới đơn vị cơ sở?' });
     expect(calls).toHaveLength(1);
     fireEvent.click(within(confirm).getByRole('button', { name: 'Chuyển chuyền' }));
     await waitFor(() => expect(calls).toHaveLength(2));
@@ -273,14 +273,14 @@ describe('Ô chọn chuyền ở phạm vi người dùng', () => {
 
   it('xếp theo cây: xưởng theo thứ tự, chuyền thẳng dưới nhà máy sau cùng; tên nhóm kèm mã xưởng; bỏ chuyền đã ngừng', () => {
     expect(scopeLineGroups(units, new Set())).toEqual([
-      { group: 'Nhà máy A01 – Xưởng may (A01-X01)', items: [{ value: '12', label: 'Chuyền 03 (A01-L03)' }] },
-      { group: 'Nhà máy A01 – Xưởng may (A01-X02)', items: [{ value: '11', label: 'Chuyền 02 (A01-L02)' }] },
-      { group: 'Nhà máy A01', items: [{ value: '10', label: 'Chuyền 01 (A01-L01)' }] },
-      { group: 'Nhà máy A02', items: [{ value: '20', label: 'Chuyền 01 (A02-L01)' }] },
+      { group: 'ĐVCS A01 – Xưởng may (A01-X01)', items: [{ value: '12', label: 'Chuyền 03 (A01-L03)' }] },
+      { group: 'ĐVCS A01 – Xưởng may (A01-X02)', items: [{ value: '11', label: 'Chuyền 02 (A01-L02)' }] },
+      { group: 'ĐVCS A01', items: [{ value: '10', label: 'Chuyền 01 (A01-L01)' }] },
+      { group: 'ĐVCS A02', items: [{ value: '20', label: 'Chuyền 01 (A02-L01)' }] },
     ]);
   });
 
   it('đã chọn nhà máy thì chỉ gợi ý chuyền của nhà máy đó', () => {
-    expect(scopeLineGroups(units, new Set(['A02'])).map((g) => g.group)).toEqual(['Nhà máy A02']);
+    expect(scopeLineGroups(units, new Set(['A02'])).map((g) => g.group)).toEqual(['ĐVCS A02']);
   });
 });

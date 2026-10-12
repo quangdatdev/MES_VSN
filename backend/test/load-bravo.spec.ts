@@ -1,6 +1,7 @@
-import { buildCells, duplicateColorNames, orderNumber, type SourceCell } from '../scripts/load-bravo-orders';
+import { buildCells, duplicateColorNames, orderNumber } from '../src/modules/order/bravo-order.mapping';
+import type { SourceCell } from '../src/platform/sync/bravo-order-source';
 
-// Không cần database: các hàm thuần của script nạp đơn hàng BRAVO (scripts/load-bravo-orders.ts)
+// Không cần database: các hàm thuần nạp đơn hàng BRAVO (src/modules/order/bravo-order.mapping.ts)
 const cell = (over: Partial<SourceCell>): SourceCell => ({
   ProductId: 1,
   CustomerPONo: 'PO1',

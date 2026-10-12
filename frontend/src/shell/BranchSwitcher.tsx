@@ -59,9 +59,9 @@ export function BranchSwitcher({ handle }: { handle?: Ref<BranchSwitcherHandle> 
         const stay = path === '/' || flattenLeaves(menu).some((l) => l.path === path);
         navigate(stay ? path : '/', { replace: true, state: { branchSwitch: switchCount } });
       })
-        .then((ok) => ok && toastOk(b.isAggregate ? 'Bạn đang xem tổng hợp mọi nhà máy, chỉ đọc.' : `Bạn đang làm việc ở ${b.name}.`, 'Đã chuyển nhà máy'))
+        .then((ok) => ok && toastOk(b.isAggregate ? 'Bạn đang xem tổng hợp mọi đơn vị cơ sở, chỉ đọc.' : `Bạn đang làm việc ở ${b.name}.`, 'Đã chuyển đơn vị cơ sở'))
         // Phiên đã kết thúc (lý do hiện ở màn đăng nhập) thì không báo thêm câu khác
-        .catch((e) => useSession.getState().status !== 'anonymous' && toastError(e, 'Chưa đổi được nhà máy'))
+        .catch((e) => useSession.getState().status !== 'anonymous' && toastError(e, 'Chưa đổi được đơn vị cơ sở'))
         .finally(() => setBusy(null));
     });
   };
@@ -91,7 +91,7 @@ export function BranchSwitcher({ handle }: { handle?: Ref<BranchSwitcherHandle> 
     );
   };
   const aggregate = list.filter((b) => b.isAggregate);
-  const caption = branch.isAggregate ? 'Tổng hợp, chỉ đọc' : `Chi nhánh SX ${branch.code}`;
+  const caption = branch.isAggregate ? 'Tổng hợp, chỉ đọc' : `Đơn vị cơ sở ${branch.code}`;
   const factories = list.filter((b) => !b.isAggregate);
 
   return (
@@ -101,8 +101,8 @@ export function BranchSwitcher({ handle }: { handle?: Ref<BranchSwitcherHandle> 
         <button
           type="button"
           className="nav-btn nav-branch focus-ring"
-          title="Đổi nhà máy"
-          aria-label={`${caption} ${branch.name}, đổi nhà máy`}
+          title="Đổi đơn vị cơ sở"
+          aria-label={`${caption} ${branch.name}, đổi đơn vị cơ sở`}
           onClick={() => combobox.toggleDropdown()}
           aria-busy={!!busy || undefined}
         >
@@ -114,11 +114,11 @@ export function BranchSwitcher({ handle }: { handle?: Ref<BranchSwitcherHandle> 
           <IconChevronDown size={14} className="nav-branch-caret" aria-hidden />
         </button>
       </Combobox.Target>
-      <Combobox.Dropdown aria-label="Chọn nhà máy">
+      <Combobox.Dropdown aria-label="Chọn đơn vị cơ sở">
         <Combobox.Options>
           {choices.isError ? (
             <Combobox.Empty>
-              <Text size="sm">Chưa tải được danh sách nhà máy. Bấm Thử lại hoặc mở lại danh sách.</Text>
+              <Text size="sm">Chưa tải được danh sách đơn vị cơ sở. Bấm Thử lại hoặc mở lại danh sách.</Text>
               <Button size="xs" variant="default" mt={6} loading={choices.isFetching} onClick={() => void choices.refetch()}>
                 Thử lại
               </Button>
@@ -127,15 +127,15 @@ export function BranchSwitcher({ handle }: { handle?: Ref<BranchSwitcherHandle> 
             <Combobox.Empty>
               <Group gap={8} justify="center">
                 <Loader size="xs" aria-hidden />
-                <Text size="sm">Đang tải danh sách nhà máy…</Text>
+                <Text size="sm">Đang tải danh sách đơn vị cơ sở…</Text>
               </Group>
             </Combobox.Empty>
           ) : list.length === 0 ? (
-            <Combobox.Empty>Tài khoản chưa được gán nhà máy nào.</Combobox.Empty>
+            <Combobox.Empty>Tài khoản chưa được gán đơn vị cơ sở nào.</Combobox.Empty>
           ) : (
             <>
               {aggregate.length > 0 && <Combobox.Group label="Tổng hợp">{aggregate.map(option)}</Combobox.Group>}
-              {factories.length > 0 && <Combobox.Group label="Nhà máy">{factories.map(option)}</Combobox.Group>}
+              {factories.length > 0 && <Combobox.Group label="Đơn vị cơ sở">{factories.map(option)}</Combobox.Group>}
             </>
           )}
         </Combobox.Options>

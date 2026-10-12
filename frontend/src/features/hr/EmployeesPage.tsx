@@ -250,7 +250,7 @@ export default function EmployeesPage() {
   return (
     <WorkPage
       title="Thông tin nhân sự"
-      subtitle="Hồ sơ nhân viên theo sơ đồ tổ chức, dùng chung cho mọi nhà máy. Chọn phòng ban để xem nhân viên của phòng ban đó và các phòng ban con."
+      subtitle="Hồ sơ nhân viên theo sơ đồ tổ chức, dùng chung cho mọi đơn vị cơ sở. Chọn phòng ban để xem nhân viên của phòng ban đó và các phòng ban con."
       aggregateNote={false}
       actions={actions}
     >

@@ -176,7 +176,7 @@ const DeptRow = memo(function DeptRow<T extends TreeDept>({ item, open, hasChild
       </span>
       {!item.isActive && <span className="hr-tree-tag">Đã giải thể</span>}
       {item.branchCode && (
-        <span className="hr-tree-factory" title={`Thuộc nhà máy ${item.branchCode}`}>
+        <span className="hr-tree-factory" title={`Thuộc đơn vị cơ sở ${item.branchCode}`}>
           <IconBuildingFactory2 size={13} stroke={1.7} aria-hidden />
           {item.branchCode}
         </span>

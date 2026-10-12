@@ -16,6 +16,12 @@ const addDays = (d: string, n: number) => {
 };
 const daysBetween = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
 
+/**
+ * Nhà máy SX mẫu của đơn hàng (seed-data productionFactories, ADR 0013): A01 chia hai nhà máy; vài đơn của chi nhánh A02 may ở
+ * nhà máy 1B (thuộc ĐVCS A01) để thấy kế hoạch xuất hàng lập cho đơn hàng của ĐVCS khác
+ */
+const factoryOf = (branch: string, i: number) => ((branch === 'A01' && i % 3 === 2) || (branch === 'A02' && i % 6 === 5) ? 'A01-B' : branch);
+
 export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, createdBy: number | null, plannerName: string) {
   const seed = [...branch].reduce((s, c) => s * 31 + c.charCodeAt(0), 7);
   const rnd = prng(seed);
@@ -60,6 +66,7 @@ export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, crea
         SyncedAt: syncedAt,
         ShipDate: shipDate,
         StatusCode: 'NEW',
+        ProductionFactoryCode: factoryOf(branch, i),
         ...audit,
       } as any)
       .output('inserted.Id')

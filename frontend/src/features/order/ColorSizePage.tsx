@@ -27,7 +27,7 @@ const COLUMNS: Column<Allocation>[] = [
   { key: 'customerName', title: 'Khách hàng', filterKey: 'customerName', minWidth: 160, maxWidth: 240 },
   { key: 'styleCode', title: 'Mã hàng', filterKey: 'styleCode', format: 'code' },
   { key: 'poBuyDate', title: 'PO/Buy date', filterKey: 'poBuyDate' },
-  { key: 'branchCode', title: 'Chi nhánh', filterKey: 'branchCode', field: null },
+  { key: 'branchCode', title: 'ĐVCS', filterKey: 'branchCode', field: null },
   { key: 'lineCode', title: 'Chuyền may', filterKey: 'lineCode', sortKey: 'lineCode', render: (r) => <span title={r.lineCode}>{r.lineName}</span> },
   { key: 'startDate', title: 'Ngày bắt đầu chuyền', filterKey: 'startDate', format: 'date', sortKey: 'startDate' },
   { key: 'avgOutput', title: 'NSBQ chuyền', filterKey: 'avgOutput', format: 'number', sortKey: 'avgOutput' },
@@ -75,7 +75,7 @@ export default function ColorSizePage() {
       title="Phân bổ màu cỡ"
       subtitle={
         branch?.isAggregate
-          ? 'Dàn chuyền của mọi nhà máy bạn được xem'
+          ? 'Dàn chuyền của mọi đơn vị cơ sở bạn được xem'
           : `Chia số lượng theo màu cỡ cho từng chuyền của ${branchName(branch?.code)}. Đúp chuột một dòng để ${canEdit ? 'phân' : 'xem'} màu cỡ.`
       }
       actions={

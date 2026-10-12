@@ -56,6 +56,8 @@ export class UserRolesDto {
 export class UserBranchesDto {
   @IsArray() @ArrayMaxSize(100) @IsInt({ each: true }) branchIds!: number[];
   @IsOptional() @IsInt() defaultBranchId?: number;
+  /** Nhà máy SX được tích (ADR 0013). Không gửi: giữ nguyên danh sách đang có; null bị từ chối (không coi là xóa hết) */
+  @Optional() @IsArray() @ArrayMaxSize(500) @IsInt({ each: true }) productionFactoryIds?: number[];
 }
 
 export class RoleCreateDto {
@@ -77,7 +79,7 @@ export class RolePermissionsDto {
 }
 
 export class BranchCreateDto {
-  @Matches(/^A\d{2}$/, { message: 'Mã nhà máy dạng A01, A02... (A00 dành cho đơn vị tổng hợp).' }) code!: string;
+  @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Mã đơn vị cơ sở gồm chữ hoa không dấu, số (tối đa 10 ký tự); A00 dành cho đơn vị tổng hợp.' }) code!: string;
   @IsString() @MinLength(1) @MaxLength(100) name!: string;
   @IsOptional() @IsString() @MaxLength(300) description?: string;
 }
@@ -145,5 +147,6 @@ export class FieldPolicyQuery {
 }
 
 export class EffectiveQuery {
-  @Matches(/^A\d{2}$/) branchCode!: string;
+  /** Mã ĐVCS như SysBranch.Code (mã chép từ BRAVO không nhất thiết dạng A01) */
+  @Matches(/^[A-Z0-9]{1,10}$/) branchCode!: string;
 }

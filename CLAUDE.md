@@ -13,6 +13,7 @@ Hệ thống MES (Manufacturing Execution System) cho Vietsun. File này là quy
 | `docs/thiet-ke/db-order.md` | Thiết kế bảng `MES_Order` (module Đơn hàng) |
 | `docs/thiet-ke/db-sewing.md` | Thiết kế `MES_Sewing` (module May): danh mục bước chuẩn bị, Kế hoạch chuẩn bị SX chép từ dàn chuyền (ADR 0009) |
 | `docs/thiet-ke/db-hr.md` | Thiết kế `MES_Hr` (module Nhân sự): cây phòng ban, chức danh, hồ sơ nhân viên (ADR 0012) |
+| `docs/adr/0013-don-vi-co-so-nha-may-sx.md` | Đơn vị cơ sở theo BRAVO (thay "nhà máy" của `SysBranch`), danh mục Nhà máy SX, đơn hàng dùng chung toàn công ty |
 | `docs/thiet-ke/db-sync.md` | Thiết kế `MES_Sync`: bảng chép từ BRAVO, nhật ký đồng bộ, thủ tục chép tăng dần (ADR 0007) |
 | `docs/thiet-ke/api-contract.md` | Hợp đồng API Demo (BE và FE làm theo) |
 | `docs/phases/README.md` | **Kế hoạch chia phase và trạng thái hiện tại** – xem đầu tiên mỗi phiên làm việc |
@@ -40,7 +41,7 @@ Khi tài liệu mâu thuẫn nhau: ADR > phương án nền tảng > tổng quan
 | 2 | Frontend Mantine: đăng nhập, chọn nhà máy, layout, menu động, responsive | Đã duyệt |
 | 3 | Phân quyền động: `BaseRepository`, màn Admin, màn PO demo có nhập liệu, test ma trận | Đã duyệt |
 | 4 | Hoàn thiện demo: kịch bản, chạy trên điện thoại, review code Phase 1–4 | Đã duyệt |
-| 5 | Sau demo: nâng phân quyền, đồng bộ, các module nghiệp vụ. 5.1 Nâng phân quyền và 5.3 Module Đơn hàng xong, chờ duyệt; 5.2 Đồng bộ (chép + màn kiểm soát) xong, chờ duyệt; ánh xạ chờ BA; 5.4 Danh mục hệ thống xong, chờ duyệt; 5.5 Module May: Kế hoạch chuẩn bị SX xong, chờ duyệt; 5.6 Lưới xem dữ liệu (kéo cột, 100 dòng theo ngày tạo, lọc theo cột trong DB, ADR 0011) xong, chờ duyệt; 5.7 Tối ưu hiệu năng frontend xong, chờ duyệt; 5.8 Quản trị nhân sự (Sơ đồ tổ chức, Thông tin nhân sự) đang làm: đã migrate, seed, review 2 lượt, test qua; còn người dùng kiểm trên app thật, chốt M4 (`docs/phases/README.md`) | Chờ duyệt 5.1, 5.3, 5.2 (trừ 5.2.8), 5.4, 5.5, 5.6, 5.7 |
+| 5 | Sau demo: nâng phân quyền, đồng bộ, các module nghiệp vụ. 5.1 Nâng phân quyền và 5.3 Module Đơn hàng xong, chờ duyệt; 5.2 Đồng bộ (chép + màn kiểm soát) xong, chờ duyệt; ánh xạ chờ BA; 5.4 Danh mục hệ thống xong, chờ duyệt; 5.5 Module May: Kế hoạch chuẩn bị SX xong, chờ duyệt; 5.6 Lưới xem dữ liệu (kéo cột, 100 dòng theo ngày tạo, lọc theo cột trong DB, ADR 0011) xong, chờ duyệt; 5.7 Tối ưu hiệu năng frontend xong, chờ duyệt; 5.8 Quản trị nhân sự (Sơ đồ tổ chức, Thông tin nhân sự) đang làm: đã migrate, seed, review 2 lượt, test qua; còn người dùng kiểm trên app thật, chốt M4; 5.9 Đơn vị cơ sở, Nhà máy SX, đăng nhập một form, nạp tăng dần đơn hàng BRAVO (ADR 0013) đang làm: code, test xong, database máy chủ đã migrate và nạp đơn hàng; còn deploy code mới lên máy chủ, kiểm trên app (`docs/phases/README.md`) | Chờ duyệt 5.1, 5.3, 5.2 (trừ 5.2.8), 5.4, 5.5, 5.6, 5.7 |
 
 Chi tiết task và checklist review từng phase: `docs/phases/`. Trạng thái hiện tại: `docs/phases/README.md`.
 

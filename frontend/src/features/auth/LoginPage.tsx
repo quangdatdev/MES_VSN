@@ -1,17 +1,15 @@
 import { Alert, Button, Checkbox, Group, PasswordInput, Select, Stack, Text, TextInput, Title, type SelectProps } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDocumentTitle } from '@mantine/hooks';
-import { IconAlertCircle, IconBuildingFactory2, IconEye } from '@tabler/icons-react';
+import { IconAlertCircle, IconBuildingFactory2, IconCircleCheck, IconEye } from '@tabler/icons-react';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, endSession } from '../../lib/api';
+import type { Branch } from '../../lib/types';
 import { lastBranchCode, login, logout, selectBranch } from '../../store/auth';
 import { useSession } from '../../store/session';
 
 const REMEMBER_KEY = 'mes.username';
-
-// Tên vừa gõ ở bước mật khẩu, giữ tới khi vào được ứng dụng: token tạm hết hạn thì không phải gõ lại
-let typedUsername = '';
 
 type Problem = { title: string; text: string };
 
@@ -67,9 +65,6 @@ function ProblemAlert({ problem }: { problem: Problem }) {
 }
 
 export function LoginPage() {
-  // Đã qua bước mật khẩu mà tài khoản làm việc ở nhiều nhà máy: chọn nhà máy ngay trên màn này
-  const picking = useSession((s) => s.status === 'preauth' && s.choices.length > 1);
-
   return (
     <div className="login-shell">
       <div className="login-art">
@@ -80,21 +75,32 @@ export function LoginPage() {
       <main className="login-main">
         <div className="login-panel">
           <img src="/logo-vs.png" alt="Vietsun" className="login-logo" />
-          {picking ? <BranchStep /> : <CredentialsStep />}
+          <LoginForm />
         </div>
       </main>
     </div>
   );
 }
 
-function CredentialsStep() {
+/**
+ * Một form duy nhất: nhập tên, mật khẩu; đúng thì hai ô khóa lại và ô Đơn vị cơ sở mở ra ngay bên dưới (tài khoản nhiều
+ * ĐVCS), không sang trang khác. Một ĐVCS thì vào thẳng. Token tạm hết hạn hay đăng nhập tài khoản khác thì quay về nhập mật khẩu.
+ */
+function LoginForm() {
   useDocumentTitle('Đăng nhập – MES Vietsun');
   const navigate = useNavigate();
   const notice = useSession((s) => s.notice);
+  // Đã qua bước mật khẩu mà tài khoản làm việc ở nhiều ĐVCS: chọn ĐVCS ngay trên form này
+  const picking = useSession((s) => s.status === 'preauth' && s.choices.length > 1);
+  const choices = useSession((s) => s.choices);
+  const name = useSession((s) => s.pendingName);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Problem | null>(null);
   const [remember, setRemember] = useState(() => remembered() !== '');
-  const [initialUsername] = useState(() => typedUsername || remembered());
+  const [initialUsername] = useState(remembered);
+  const [code, setCode] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const chosen = choices.find((b) => b.code === code) ?? null;
 
   const form = useForm({
     initialValues: { username: initialUsername, password: '' },
@@ -104,25 +110,31 @@ function CredentialsStep() {
     },
   });
 
-  async function submit(values: { username: string; password: string }) {
+  async function enter(branch: Branch) {
+    if (await selectBranch(branch)) navigate('/', { replace: true });
+  }
+
+  async function signIn(values: { username: string; password: string }) {
     const username = values.username.trim();
-    typedUsername = username;
     setLoading(true);
     setError(null);
+    setMissing(false);
     try {
       const r = await login(username, values.password);
       rememberUsername(remember ? username : null);
       if (remember) offerToSavePassword(username, values.password, r.user.fullName);
       if (r.branches.length === 0) {
         useSession.getState().reset('anonymous');
-        setError({ title: 'Tài khoản chưa có nhà máy', text: 'Tài khoản này chưa được gán nhà máy nào. Hãy nhờ quản trị viên gán nhà máy.' });
+        setError({ title: 'Tài khoản chưa có đơn vị cơ sở', text: 'Tài khoản này chưa được gán đơn vị cơ sở nào. Hãy nhờ quản trị viên gán.' });
       } else if (r.branches.length === 1) {
-        if (await selectBranch(r.branches[0])) {
-          typedUsername = '';
-          navigate('/', { replace: true });
-        }
+        await enter(r.branches[0]);
+      } else {
+        // Mật khẩu không nằm lại trên form trong lúc chọn ĐVCS (máy dùng chung): ô chỉ hiện dấu che
+        form.setFieldValue('password', '');
+        // Chọn sẵn ĐVCS người này làm việc lần trước trên máy này, nếu vẫn được vào: chỉ cần bấm Vào làm việc
+        const last = lastBranchCode(r.user.id);
+        setCode(r.branches.some((b) => b.code === last) ? last : null);
       }
-      // Nhiều nhà máy: LoginPage chuyển sang bước chọn nhà máy
     } catch (e) {
       setError(describe(e));
     } finally {
@@ -130,57 +142,7 @@ function CredentialsStep() {
     }
   }
 
-  // Mật khẩu trình duyệt tự điền có lúc chưa báo cho React (Chrome giữ lại tới khi người dùng chạm vào trang):
-  // lấy giá trị đang nằm trong ô rồi mới kiểm
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    const data = new FormData(e.currentTarget);
-    form.setValues({ username: String(data.get('username') ?? ''), password: String(data.get('password') ?? '') });
-    form.onSubmit(submit)(e);
-  }
-
-  return (
-    <form onSubmit={onSubmit} noValidate>
-      <Stack gap="md">
-        <Title order={1} fz={28} lh="34px">Đăng nhập</Title>
-
-        {notice && !error && (
-          <Alert color="orange" variant="light" icon={<IconAlertCircle size={18} />} role="alert">
-            {notice}
-          </Alert>
-        )}
-        {error && <ProblemAlert problem={error} />}
-
-        {/* Đã có tên đăng nhập thì con trỏ vào thẳng ô mật khẩu */}
-        <TextInput size="md" name="username" label="Tên đăng nhập" withAsterisk autoComplete="username" autoFocus={!initialUsername} {...form.getInputProps('username')} />
-        <PasswordInput size="md" name="password" label="Mật khẩu" withAsterisk autoComplete="current-password" autoFocus={!!initialUsername} {...form.getInputProps('password')} />
-        <Checkbox label="Nhớ tài khoản và mật khẩu" checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />
-        <Button type="submit" size="md" loading={loading} fullWidth mt={4}>
-          Đăng nhập
-        </Button>
-      </Stack>
-    </form>
-  );
-}
-
-function BranchStep() {
-  useDocumentTitle('Chọn nhà máy – MES Vietsun');
-  const navigate = useNavigate();
-  const choices = useSession((s) => s.choices);
-  const name = useSession((s) => s.pendingName);
-  const userId = useSession((s) => s.pendingUserId);
-  // Chọn sẵn nhà máy người này làm việc lần trước nếu vẫn được vào: chỉ cần bấm Vào làm việc
-  const [initial] = useState(() => {
-    const last = userId === null ? null : lastBranchCode(userId);
-    return choices.some((b) => b.code === last) ? last : null;
-  });
-  const [code, setCode] = useState(initial);
-  const [missing, setMissing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Problem | null>(null);
-  const chosen = choices.find((b) => b.code === code) ?? null;
-
-  async function enter(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function choose() {
     if (!chosen) {
       setMissing(true);
       return;
@@ -188,12 +150,9 @@ function BranchStep() {
     setLoading(true);
     setError(null);
     try {
-      if (await selectBranch(chosen)) {
-        typedUsername = '';
-        navigate('/', { replace: true });
-      }
+      await enter(chosen);
     } catch (err) {
-      // Token tạm hết hạn (sống vài phút), mật khẩu vừa đổi, tài khoản bị khóa: về bước mật khẩu
+      // Token tạm hết hạn (sống vài phút), mật khẩu vừa đổi, tài khoản bị khóa: về nhập mật khẩu, tên vẫn giữ trên form
       if (err instanceof ApiError && err.status === 401) {
         endSession(err.code === 'TOKEN_EXPIRED' ? 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.' : err.message);
         return;
@@ -204,6 +163,28 @@ function BranchStep() {
     }
   }
 
+  // Mật khẩu trình duyệt tự điền có lúc chưa báo cho React (Chrome giữ lại tới khi người dùng chạm vào trang):
+  // lấy giá trị đang nằm trong ô rồi mới kiểm
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    if (picking) {
+      e.preventDefault();
+      void choose();
+      return;
+    }
+    const data = new FormData(e.currentTarget);
+    form.setValues({ username: String(data.get('username') ?? ''), password: String(data.get('password') ?? '') });
+    form.onSubmit(signIn)(e);
+  }
+
+  function otherAccount() {
+    form.setValues({ username: '', password: '' });
+    setCode(null);
+    setError(null);
+    setMissing(false);
+    // Đăng xuất hẳn (thu hồi cookie nếu máy chủ đã cấp), không chỉ xóa phía trình duyệt: máy dùng chung
+    void logout();
+  }
+
   const renderOption: SelectProps['renderOption'] = ({ option, checked }) => {
     const aggregate = choices.find((b) => b.code === option.value)?.isAggregate;
     return (
@@ -211,61 +192,91 @@ function BranchStep() {
         {aggregate ? <IconEye size={16} stroke={1.7} /> : <IconBuildingFactory2 size={16} stroke={1.7} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" fw={checked ? 700 : 400} truncate="end">{option.label}</Text>
-          {aggregate && <Text size="xs" c="dimmed">Xem mọi nhà máy, chỉ đọc</Text>}
+          {aggregate && <Text size="xs" c="dimmed">Xem mọi đơn vị, chỉ đọc</Text>}
         </div>
         <Text size="xs" c="dimmed" className="mono">{option.value}</Text>
       </Group>
     );
   };
 
+  // Ô đã kiểm xong: khóa lại, dấu tích báo mật khẩu đúng
+  const verified = picking ? <IconCircleCheck size={18} stroke={1.8} color="var(--mantine-color-teal-6)" aria-hidden /> : undefined;
+
   return (
-    <form onSubmit={enter} noValidate>
+    <form onSubmit={onSubmit} noValidate>
       <Stack gap="md">
         <div>
-          <Title order={1} fz={28} lh="34px">Chọn nhà máy</Title>
-          {name && <Text c="dimmed" size="md" mt={4}>Xin chào, {name}.</Text>}
+          <Title order={1} fz={28} lh="34px">Đăng nhập</Title>
+          {picking && name && <Text c="dimmed" size="md" mt={4}>Xin chào, {name}. Chọn đơn vị cơ sở để vào làm việc.</Text>}
         </div>
 
+        {notice && !error && !picking && (
+          <Alert color="orange" variant="light" icon={<IconAlertCircle size={18} />} role="alert">
+            {notice}
+          </Alert>
+        )}
         {error && <ProblemAlert problem={error} />}
 
-        <Select
+        {/* Đã có tên đăng nhập thì con trỏ vào thẳng ô mật khẩu */}
+        <TextInput
           size="md"
-          label="Nhà máy"
-          placeholder="Chọn nhà máy làm việc"
+          name="username"
+          label="Tên đăng nhập"
           withAsterisk
-          autoFocus={initial === null}
-          data={choices.map((b) => ({ value: b.code, label: b.name }))}
-          value={code}
-          onChange={(v) => {
-            setCode(v);
-            setMissing(false);
-          }}
-          allowDeselect={false}
-          searchable={choices.length > 6}
-          openOnFocus={false}
-          nothingFoundMessage="Không có nhà máy khớp"
-          renderOption={renderOption}
-          leftSection={chosen?.isAggregate ? <IconEye size={18} stroke={1.7} /> : <IconBuildingFactory2 size={18} stroke={1.7} />}
-          description={chosen?.isAggregate ? 'Xem số liệu mọi nhà máy, không nhập hay sửa được.' : undefined}
-          error={missing ? 'Chọn nhà máy để vào làm việc' : undefined}
+          autoComplete="username"
+          autoFocus={!initialUsername}
+          readOnly={picking}
+          rightSection={verified}
+          {...form.getInputProps('username')}
         />
-        <Button type="submit" size="md" loading={loading} fullWidth autoFocus={initial !== null}>
-          Vào làm việc
-        </Button>
-        <Button
-          variant="subtle"
-          color="gray"
+        <PasswordInput
           size="md"
-          fullWidth
-          disabled={loading}
-          onClick={() => {
-            typedUsername = '';
-            // Đăng xuất hẳn (thu hồi cookie nếu máy chủ đã cấp), không chỉ xóa phía trình duyệt: máy dùng chung
-            void logout();
-          }}
-        >
-          Đăng nhập tài khoản khác
+          name="password"
+          label="Mật khẩu"
+          withAsterisk
+          autoComplete="current-password"
+          autoFocus={!!initialUsername}
+          readOnly={picking}
+          placeholder={picking ? '••••••••' : undefined}
+          visibilityToggleButtonProps={picking ? { disabled: true } : undefined}
+          {...form.getInputProps('password')}
+        />
+
+        {picking && (
+          <div className="login-reveal">
+            <Select
+              size="md"
+              label="Đơn vị cơ sở"
+              placeholder="Chọn đơn vị làm việc"
+              withAsterisk
+              autoFocus={code === null}
+              data={choices.map((b) => ({ value: b.code, label: b.name }))}
+              value={code}
+              onChange={(v) => {
+                setCode(v);
+                setMissing(false);
+              }}
+              allowDeselect={false}
+              searchable={choices.length > 6}
+              openOnFocus={false}
+              nothingFoundMessage="Không có đơn vị khớp"
+              renderOption={renderOption}
+              leftSection={chosen?.isAggregate ? <IconEye size={18} stroke={1.7} /> : <IconBuildingFactory2 size={18} stroke={1.7} />}
+              description={chosen?.isAggregate ? 'Xem số liệu mọi đơn vị cơ sở, không nhập hay sửa được.' : undefined}
+              error={missing ? 'Chọn đơn vị cơ sở để vào làm việc' : undefined}
+            />
+          </div>
+        )}
+
+        {!picking && <Checkbox label="Nhớ tài khoản và mật khẩu" checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />}
+        <Button type="submit" size="md" loading={loading} fullWidth mt={4} autoFocus={picking && code !== null}>
+          {picking ? 'Vào làm việc' : 'Đăng nhập'}
         </Button>
+        {picking && (
+          <Button variant="subtle" color="gray" size="md" fullWidth disabled={loading} onClick={otherAccount}>
+            Đăng nhập tài khoản khác
+          </Button>
+        )}
       </Stack>
     </form>
   );

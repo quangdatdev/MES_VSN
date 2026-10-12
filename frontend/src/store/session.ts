@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AccessLevel, Branch, MenuNode, RoleInfo, UserInfo } from '../lib/types';
+import type { AccessLevel, Branch, MenuNode, ProductionFactory, RoleInfo, UserInfo } from '../lib/types';
 
 /**
  * Trạng thái phiên chỉ nằm trong bộ nhớ (không lưu localStorage).
@@ -21,6 +21,8 @@ interface SessionState {
   user: UserInfo | null;
   branch: Branch | null;
   roles: RoleInfo[];
+  /** Nhà máy SX được tích: popup Chọn mã hàng của kế hoạch xuất hàng chỉ có đơn hàng của các nhà máy này (máy chủ lọc) */
+  productionFactories: ProductionFactory[];
   permissions: Set<string>;
   permissionVersion: number | null;
   /** Dấu phiên bản quyền (version + mốc hết hạn), so với header X-Permission-Version để biết khi nào tải lại */
@@ -47,6 +49,7 @@ const empty = {
   user: null,
   branch: null,
   roles: [] as RoleInfo[],
+  productionFactories: [] as ProductionFactory[],
   permissions: new Set<string>(),
   permissionVersion: null,
   permissionStamp: null,

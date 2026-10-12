@@ -34,6 +34,12 @@ export class BranchService {
     return value;
   }
 
+  /** Mã các ĐVCS đang dùng, trừ đơn vị tổng hợp (không gắn dữ liệu), theo thứ tự hiển thị */
+  async activeCodes(): Promise<string[]> {
+    const rows = await this.db.selectFrom('SysBranch').select('Code').where('IsActive', '=', true).where('IsAggregate', '=', false).orderBy('SortOrder').orderBy('Code').execute();
+    return rows.map((r) => r.Code);
+  }
+
   async listForUser(userId: number): Promise<BranchInfo[]> {
     const rows = await this.db
       .selectFrom('SysUserBranch as ub')

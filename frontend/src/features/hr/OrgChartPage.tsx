@@ -233,7 +233,7 @@ export default function OrgChartPage() {
   return (
     <WorkPage
       title="Sơ đồ tổ chức"
-      subtitle="Cây phòng ban của công ty, dùng chung cho mọi nhà máy. Chuột phải hoặc nút ba chấm trên một phòng ban để thêm phòng ban con, cùng cấp."
+      subtitle="Cây phòng ban của công ty, dùng chung cho mọi đơn vị cơ sở. Chuột phải hoặc nút ba chấm trên một phòng ban để thêm phòng ban con, cùng cấp."
       aggregateNote={false}
       actions={addButton}
     >

@@ -47,8 +47,14 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
   const setRolePolicy = (role: string, resource: string, field: string, level: string | null) =>
     api().put(`/api/v1/admin/roles/${roleId(role)}/field-policies`).set(auth(admin)).send({ resourceId: resId(resource), policies: [{ fieldCode: field, accessLevel: level }] }).expect(200);
 
-  /** Tài khoản thử: tạo (hoặc bật lại), gán vai trò, nhà máy, phạm vi. Trả Id; dọn bằng dropUser. */
-  async function tempUser(username: string, roleCodes: string[], branchCodes: string[], scopes: Record<string, { dimension: string; mode: string; orgUnitId?: number }[]> = {}) {
+  /** Tài khoản thử: tạo (hoặc bật lại), gán vai trò, ĐVCS, phạm vi, nhà máy SX. Trả Id; dọn bằng dropUser. */
+  async function tempUser(
+    username: string,
+    roleCodes: string[],
+    branchCodes: string[],
+    scopes: Record<string, { dimension: string; mode: string; orgUnitId?: number }[]> = {},
+    productionFactoryIds: number[] = [],
+  ) {
     const created = await api().post('/api/v1/admin/users').set(auth(admin)).send({ username, fullName: `${username} (test)`, initialPassword: TEST_PASSWORD });
     const id = created.status === 201 ? (created.body.id as number) : await userId(username);
     if (created.status !== 201) {
@@ -57,7 +63,11 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
     }
     await api().put(`/api/v1/admin/users/${id}/roles`).set(auth(admin)).send({ roleIds: [] }).expect(200);
     await api().put(`/api/v1/admin/users/${id}/roles`).set(auth(admin)).send({ roleIds: roleCodes.map(roleId) }).expect(200);
-    await api().put(`/api/v1/admin/users/${id}/branches`).set(auth(admin)).send({ branchIds: branches.filter((b) => branchCodes.includes(b.code)).map((b) => b.id) }).expect(200);
+    await api()
+      .put(`/api/v1/admin/users/${id}/branches`)
+      .set(auth(admin))
+      .send({ branchIds: branches.filter((b) => branchCodes.includes(b.code)).map((b) => b.id), productionFactoryIds })
+      .expect(200);
     for (const [role, rows] of Object.entries(scopes)) {
       await api().put(`/api/v1/admin/users/${id}/roles/${roleId(role)}/scope`).set(auth(admin)).send({ scopes: rows }).expect(200);
     }
@@ -76,7 +86,11 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
    * và chuyền 5 (đang may). Còn 200 sp mỗi màu cỡ của PO 1 để lập thêm.
    */
   const FIXTURE_STYLE = 'TEST-P5-FIXTURE';
-  const fixture = { orderId: 0, planId: 0, confirmedPoId: 0 };
+  /** Nhà máy SX của đơn hàng test, thuộc ĐVCS A02 (khác Chi nhánh FOB A01 của đơn): lập kế hoạch cho đơn của ĐVCS khác (ADR 0013) */
+  const FIXTURE_FACTORY = 'TEST-P5-F';
+  const fixture = { orderId: 0, planId: 0, confirmedPoId: 0, factoryId: 0 };
+  /** Nhà máy SX được tích của kehoach.a trước khi test thêm nhà máy của đơn hàng test, để trả lại khi xong */
+  let plannerAccess: { id: number; branchIds: number[]; defaultBranchId: number | null; productionFactoryIds: number[] } | null = null;
   const COLORS = ['Đen', 'Trắng'];
   const SIZES = ['S', 'M', 'L'];
   const grid = <T>(f: (color: string, size: string, i: number) => T) => COLORS.flatMap((c, ci) => SIZES.map((s, si) => f(c, s, ci * SIZES.length + si)));
@@ -101,7 +115,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
     const own = { BranchCode: 'A01', CreatedBy: await userId('kehoach.a') };
     const head = { CustomerName: 'KHÁCH TEST P5', StyleCode: FIXTURE_STYLE };
     const id = async (table: string, values: object) => ((await order.insertInto(table as any).values(values as any).output('inserted.Id' as any).executeTakeFirstOrThrow()) as { Id: number }).Id;
-    fixture.orderId = await id('SalesOrder', { ...head, OrderNo: 'TEST-P5', ProductName: 'Áo test', Qty: 3000, UnitName: 'Chiếc', UnitPrice: 8, CmPrice: 2.5, ShipDate: '2027-06-30', StatusCode: 'PLANNING', ...own });
+    fixture.orderId = await id('SalesOrder', { ...head, OrderNo: 'TEST-P5', ProductName: 'Áo test', Qty: 3000, UnitName: 'Chiếc', UnitPrice: 8, CmPrice: 2.5, ShipDate: '2027-06-30', StatusCode: 'PLANNING', ProductionFactoryCode: FIXTURE_FACTORY, ...own });
     const poId = await id('SalesOrderPo', { ...head, SalesOrderId: fixture.orderId, PoCode: 'TEST-P5', PoNumber: 'TEST-P5', Qty: 3000, ShipDate: '2027-06-30', StatusCode: 'DRAFT', ...own });
     await order.insertInto('SalesOrderPoColorSize').values(grid((c, s, i) => ({ SalesOrderPoId: poId, ColorName: c, SizeName: s, Qty: 500, SortOrder: i, ...own })) as any).execute();
     fixture.confirmedPoId = await id('SalesOrderPo', { ...head, SalesOrderId: fixture.orderId, PoCode: 'TEST-P5-C', PoNumber: 'TEST-P5-C', Qty: 200, ShipDate: '2027-06-30', StatusCode: 'CONFIRMED', ConfirmedAt: new Date(), ConfirmedBy: own.CreatedBy, ...own });
@@ -137,11 +151,32 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
     resources = matrix.modules.flatMap((m: any) => m.resources);
     permissions = resources.flatMap((r: any) => r.permissions);
     orgUnits = (await api().get('/api/v1/admin/scope-catalog').set(auth(admin))).body.orgUnits;
+    // Nhà máy SX của đơn hàng test (tạo hoặc bật lại), tích cho kehoach.a để popup Chọn mã hàng thấy đơn đó
+    const factories = (await api().get(`/api/v1/admin/catalogs/factories?q=${FIXTURE_FACTORY}`).set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+    const existing = factories.find((f) => f.code === FIXTURE_FACTORY);
+    if (existing) {
+      fixture.factoryId = existing.id;
+      await api().put(`/api/v1/admin/catalogs/factories/${existing.id}`).set(auth(admin)).send({ isActive: true, branchCode: 'A02' }).expect(200);
+    } else {
+      fixture.factoryId = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: FIXTURE_FACTORY, name: 'Nhà máy test P5', branchCode: 'A02' }).expect(201)).body.id;
+    }
+    const kh = (await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a');
+    plannerAccess = { id: kh.id, branchIds: kh.branchIds, defaultBranchId: kh.defaultBranchId, productionFactoryIds: kh.productionFactoryIds };
+    await api()
+      .put(`/api/v1/admin/users/${kh.id}/branches`)
+      .set(auth(admin))
+      .send({ branchIds: kh.branchIds, defaultBranchId: kh.defaultBranchId ?? undefined, productionFactoryIds: [...new Set([...kh.productionFactoryIds, fixture.factoryId])] })
+      .expect(200);
     await createFixture(app.get<OrderDb>(ORDER_DB));
   });
 
   afterAll(async () => {
     await dropFixture(app.get<OrderDb>(ORDER_DB));
+    if (plannerAccess) {
+      const { id, branchIds, defaultBranchId, productionFactoryIds } = plannerAccess;
+      await api().put(`/api/v1/admin/users/${id}/branches`).set(auth(admin)).send({ branchIds, defaultBranchId: defaultBranchId ?? undefined, productionFactoryIds }).expect(200);
+    }
+    if (fixture.factoryId) await api().put(`/api/v1/admin/catalogs/factories/${fixture.factoryId}`).set(auth(admin)).send({ isActive: false }).expect(200);
     await app.close();
   });
 
@@ -290,15 +325,19 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Kế toán (phạm vi nhà máy A01, A02): ở A00 chỉ đọc hai nhà máy này, ở A03 không có quyền', async () => {
+    it('Kế toán (phạm vi ĐVCS A01, A02): ở A00 chỉ đọc kế hoạch của hai ĐVCS này, ở A03 không có quyền; đơn hàng dùng chung thì thấy hết', async () => {
       const a00 = await tokenFor('ketoan', 'A00');
-      const list = (await api().get('/api/v1/order/sales-orders?pageSize=200').set(auth(a00)).expect(200)).body;
+      const PLANS = '/api/v1/order/shipment-plans';
+      const list = (await api().get(`${PLANS}?pageSize=200`).set(auth(a00)).expect(200)).body;
       expect(list.items.every((i: any) => ['A01', 'A02'].includes(i.branchCode))).toBe(true);
-      const total = async (branch: string) => (await api().get('/api/v1/order/sales-orders?pageSize=1').set(auth(await tokenFor('admin', branch))).expect(200)).body.total as number;
+      const total = async (branch: string) => (await api().get(`${PLANS}?pageSize=1`).set(auth(await tokenFor('admin', branch))).expect(200)).body.total as number;
       expect(list.total).toBe((await total('A01')) + (await total('A02')));
       const gdToken = await tokenFor('giamdoc', 'A00');
-      const director = (await api().get('/api/v1/order/sales-orders?pageSize=1').set(auth(gdToken))).body;
+      const director = (await api().get(`${PLANS}?pageSize=1`).set(auth(gdToken))).body;
       expect(director.total).toBeGreaterThan(list.total);
+      // Thông tin đơn hàng không lọc theo ĐVCS (ADR 0013): phạm vi ĐVCS của kế toán không giới hạn đơn hàng
+      const orders = async (t: string) => (await api().get('/api/v1/order/sales-orders?pageSize=1').set(auth(t)).expect(200)).body.total as number;
+      expect(await orders(a00)).toBe(await orders(gdToken));
       const a03 = await tokenFor('ketoan', 'A03');
       expect(await perms(a03)).toEqual([]);
       await api().get('/api/v1/order/sales-orders').set(auth(a03)).expect(403);
@@ -363,13 +402,13 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Allow ở A00 khi không có vai trò nào: có quyền nhưng không đọc được dữ liệu nhà máy nào (đóng an toàn)', async () => {
+    it('Allow ở A00 khi không có vai trò nào: có quyền nhưng không đọc được dữ liệu ĐVCS nào (đóng an toàn)', async () => {
       const id = await tempUser('test.allow', [], ['A00']);
       try {
-        await api().post(`/api/v1/admin/users/${id}/overrides`).set(auth(admin)).send({ permissionId: permId('order.allocation:view'), effect: 'ALLOW', reason: 'Thử Allow ở A00 (test)' }).expect(200);
+        await api().post(`/api/v1/admin/users/${id}/overrides`).set(auth(admin)).send({ permissionId: permId('order.shipment:view'), effect: 'ALLOW', reason: 'Thử Allow ở A00 (test)' }).expect(200);
         const t = await tokenFor('test.allow', 'A00', TEST_PASSWORD);
-        expect(await perms(t)).toContain('order.allocation:view');
-        expect((await api().get('/api/v1/order/sales-orders').set(auth(t)).expect(200)).body.total).toBe(0);
+        expect(await perms(t)).toContain('order.shipment:view');
+        expect((await api().get('/api/v1/order/shipment-plans').set(auth(t)).expect(200)).body.total).toBe(0);
       } finally {
         await dropUser(id);
       }
@@ -585,6 +624,86 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       const draft = (await api().get(`/api/v1/order/shipment-plans/draft?salesOrderId=${c.salesOrderId}&poIds=${poIds.join(',')}`).set(auth(t)).expect(200)).body;
       return { c, poIds, line: draft.find((d: any) => d.remainingQty > min) };
     }
+
+    it('Chọn mã hàng chỉ có đơn của nhà máy SX được tích; đơn ngoài danh sách: PO, lưới màu cỡ, tạo kế hoạch đều 404 (ADR 0013)', async () => {
+      const id = await tempUser('test.p59', ['PLANNER'], ['A01']);
+      try {
+        const t = await tokenFor('test.p59', 'A01', TEST_PASSWORD);
+        expect((await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body).toEqual([]);
+        await api().get(`/api/v1/order/shipment-plans/candidates/${fixture.orderId}/pos`).set(auth(t)).expect(404);
+        await api().get(`/api/v1/order/shipment-plans/draft?salesOrderId=${fixture.orderId}&poIds=${fixture.confirmedPoId}`).set(auth(t)).expect(404);
+        const body = { salesOrderId: fixture.orderId, poIds: [fixture.confirmedPoId], poBuyDate: 'P59', lines: [{ colorName: 'Xanh', sizeName: 'S', planQty: 1 }] };
+        await api().post('/api/v1/order/shipment-plans').set(auth(t)).send(body).expect(404);
+        // Vẫn xem được đơn hàng ở Thông tin đơn hàng: dữ liệu dùng chung, chỉ popup lập kế hoạch lọc theo nhà máy SX
+        await api().get(`/api/v1/order/sales-orders/${fixture.orderId}`).set(auth(t)).expect(200);
+        expect((await api().get('/api/v1/me').set(auth(t)).expect(200)).body.productionFactories).toEqual([]);
+      } finally {
+        await dropUser(id);
+      }
+    });
+
+    it('đơn hàng, PO dùng chung: ĐVCS khác xem được nhưng không sửa, xóa, đổi Nhà máy SX, thêm PO, sửa màu cỡ (404) (review 5.9 H1)', async () => {
+      const id = await tempUser('test.p59w', ['PLANNER'], ['A02'], {}, [fixture.factoryId]);
+      try {
+        const t = await tokenFor('test.p59w', 'A02', TEST_PASSWORD);
+        const ORDER = `/api/v1/order/sales-orders/${fixture.orderId}`;
+        expect((await api().get(ORDER).set(auth(t)).expect(200)).body.branchCode).toBe('A01');
+        await api().put(ORDER).set(auth(t)).send({ productionFactoryCode: null }).expect(404);
+        await api().put(ORDER).set(auth(t)).send({ qty: 1 }).expect(404);
+        await api().delete(ORDER).set(auth(t)).expect(404);
+        // PO chỉ thêm ở ĐVCS của đơn; màu cỡ, xác nhận tỷ lệ cắt chỉ sửa ở ĐVCS của PO
+        await api()
+          .post('/api/v1/order/cut-ratio/pos')
+          .set(auth(t))
+          .send({ salesOrderId: fixture.orderId, poNumber: 'P59W', shipDate: '2027-06-30', lines: [{ colorName: 'Đỏ', sizeName: 'M', qty: 1 }] })
+          .expect(404);
+        await api().put(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/color-sizes`).set(auth(t)).send({ lines: [{ colorName: 'Xanh', sizeName: 'S', qty: 1 }] }).expect(404);
+        await api().post(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/unconfirm`).set(auth(t)).expect(404);
+        await api().post(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/confirm`).set(auth(t)).expect(404);
+        await api().delete(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}`).set(auth(t)).expect(404);
+        // Đơn vẫn nguyên
+        const after = (await api().get(ORDER).set(auth(t)).expect(200)).body;
+        expect(after).toMatchObject({ qty: 3000, productionFactoryCode: FIXTURE_FACTORY });
+      } finally {
+        await dropUser(id);
+      }
+    });
+
+    it('lập kế hoạch ở ĐVCS của phiên cho đơn hàng của ĐVCS khác; SL đã lập tính chung mọi ĐVCS', async () => {
+      const id = await tempUser('test.p59x', ['PLANNER'], ['A02'], {}, [fixture.factoryId]);
+      try {
+        const t = await tokenFor('test.p59x', 'A02', TEST_PASSWORD);
+        const me = (await api().get('/api/v1/me').set(auth(t)).expect(200)).body;
+        expect(me.productionFactories.map((f: any) => f.code)).toEqual([FIXTURE_FACTORY]);
+        const { c, poIds, line } = await candidate(t, 10);
+        expect(c).toMatchObject({ branchCode: 'A01', productionFactoryCode: FIXTURE_FACTORY });
+        const created = (await api()
+          .post('/api/v1/order/shipment-plans')
+          .set(auth(t))
+          .send({ salesOrderId: c.salesOrderId, poIds, poBuyDate: 'P59X', lines: [{ colorName: line.colorName, sizeName: line.sizeName, planQty: 5 }] })
+          .expect(201)).body;
+        try {
+          expect(created.branchCode).toBe('A02');
+          expect(created.planNo).toMatch(/^KH-A02-\d{6}$/);
+          // Sửa SL kế hoạch của đơn ĐVCS khác: khóa đơn theo Id, lưới màu cỡ theo kế hoạch đang sửa
+          const edited = (await api()
+            .put(`/api/v1/order/shipment-plans/${created.id}`)
+            .set(auth(t))
+            .send({ lines: [{ colorName: line.colorName, sizeName: line.sizeName, planQty: 6 }] })
+            .expect(200)).body;
+          expect(edited.planQty).toBe(6);
+          const kh = await tokenFor('kehoach.a', 'A01');
+          const seen = (await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(kh))).body.find((x: any) => x.salesOrderId === c.salesOrderId);
+          expect(seen.plannedQty).toBe(c.plannedQty + 6);
+          // Kế hoạch theo ĐVCS: phiên A01 không thấy kế hoạch vừa lập ở A02
+          await api().get(`/api/v1/order/shipment-plans/${created.id}`).set(auth(kh)).expect(404);
+        } finally {
+          await api().delete(`/api/v1/order/shipment-plans/${created.id}`).set(auth(t)).expect(204);
+        }
+      } finally {
+        await dropUser(id);
+      }
+    });
 
     it('Kế hoạch xuất hàng: vượt còn lại, màu cỡ lặp => 422; tạo được, đã lập tăng; xóa được', async () => {
       const t = await tokenFor('kehoach.a', 'A01');

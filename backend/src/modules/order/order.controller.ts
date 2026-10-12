@@ -125,7 +125,7 @@ export class ShipmentController {
   candidatePos(@CurrentUser() u: AuthUser, @id() soId: number) { return this.service.candidatePos(u, soId); }
 
   @Get('draft') @RequirePermission('order.shipment:view')
-  draft(@CurrentUser() u: AuthUser, @Query() q: DraftQuery) { return this.service.draft(u, q.salesOrderId, q.poIds.split(',').map(Number), q.excludePlanId); }
+  draft(@CurrentUser() u: AuthUser, @Query() q: DraftQuery) { return this.service.draftFor(u, q.salesOrderId, q.poIds.split(',').map(Number), q.excludePlanId); }
 
   @Get(':id') @RequirePermission('order.shipment:view')
   get(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.get(u, pid); }

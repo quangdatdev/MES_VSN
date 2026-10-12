@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { sql } from 'kysely';
 import request from 'supertest';
+import { importBravoBranches } from '../src/platform/admin/branch-import';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.factory';
 import { env } from '../src/config/env';
@@ -48,6 +49,10 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await order.deleteFrom('SalesOrderPo').where('SalesOrderId', 'in', orders).execute();
     await order.deleteFrom('SalesOrder').where('StyleCode', '=', 'TEST-P54-FIXTURE').execute();
     await core.deleteFrom('SysCatalogItem').where('Code', 'like', 'TEST-P54%').execute();
+    // Nhà máy SX thử: gỡ gán của người dùng trước (khóa ngoại)
+    const testFactories = core.selectFrom('SysProductionFactory').select('Id').where('Code', 'like', 'TEST-P54%');
+    await core.deleteFrom('SysUserProductionFactory').where('ProductionFactoryId', 'in', testFactories).execute();
+    await core.deleteFrom('SysProductionFactory').where('Code', 'like', 'TEST-P54%').execute();
     await core.deleteFrom('SysShift').where('Code', 'like', 'T54-%').execute();
     // Tài khoản Trưởng chuyền thử (leaderWith) của lần chạy bị ngắt: còn ngoại lệ ALLOW quyền quản trị và mật khẩu nằm trong
     // file test, nên gỡ hết và khóa lại trước khi chạy (DB demo mở được qua LAN)
@@ -148,7 +153,8 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await api().post('/api/v1/admin/catalogs/items/UNIT').set(auth(planner)).send({ code: 'TEST-P54', name: 'x' }).expect(403);
     await api().get('/api/v1/admin/catalogs/external/BRAVO.DM_Size/rows').set(auth(planner)).expect(403);
     const o = (await api().get('/api/v1/admin/catalogs').set(auth(admin)).expect(200)).body;
-    expect(o.mes.map((c: any) => c.code)).toEqual(['LINE', 'UNIT', 'ORDER_TYPE', 'PROD_FACTORY', 'SHIFT']);
+    expect(o.mes.map((c: any) => c.code)).toEqual(['LINE', 'PROD_FACTORY', 'UNIT', 'ORDER_TYPE', 'SHIFT']);
+    expect(o.mes.find((c: any) => c.code === 'PROD_FACTORY').kind).toBe('factory');
     if (externalReady) expect(o.external.every((c: any) => c.code.startsWith('BRAVO.DM_'))).toBe(true);
   });
 
@@ -182,24 +188,95 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     expect(o.orderTypeNames.SXXK).toBe('Sản xuất xuất khẩu');
   });
 
-  it('Nhà máy SX của đơn hàng chọn từ danh mục Nhà máy sản xuất: mã lạ hoặc nhà máy đã ngừng => 422, đơn cũ giữ nhà máy đã ngừng; theo chính sách cột', async () => {
-    type Factory = { code: string; name: string; isActive: boolean };
+  it('chép ĐVCS từ BRAVO: bỏ qua mã sai dạng, mã trống, trùng đơn vị tổng hợp; chạy lại không đổi gì (ADR 0013)', async () => {
+    const r = await importBravoBranches(core, [
+      { BranchCode: 'A00', TenChiNhanh: 'Không được đè tổng hợp', TenDayDu: null },
+      { BranchCode: 'sai mã!', TenChiNhanh: 'x', TenDayDu: null },
+      { BranchCode: null, TenChiNhanh: 'x', TenDayDu: null },
+    ], null);
+    expect(r.added).toEqual([]);
+    expect(r.updated).toEqual([]);
+    expect(r.skipped).toEqual(expect.arrayContaining(['A00', 'sai mã!', '(trống)']));
+    expect((await core.selectFrom('SysBranch').select('Name').where('Code', '=', 'A00').executeTakeFirstOrThrow()).Name).not.toBe('Không được đè tổng hợp');
+    if (!externalReady) return;
+    // Có MES_Sync: lần đầu chép theo BRAVO, lần sau không còn gì để thêm hay đổi; mỗi ĐVCS chép về có nút gốc trong cây tổ chức
+    await api().post('/api/v1/admin/branches/import').set(auth(planner)).expect(403);
+    const first = (await api().post('/api/v1/admin/branches/import').set(auth(admin)).expect(200)).body;
+    expect(first.rows).toBeGreaterThan(0);
+    const again = (await api().post('/api/v1/admin/branches/import').set(auth(admin)).expect(200)).body;
+    expect(again).toMatchObject({ added: [], updated: [] });
+    const list = (await api().get('/api/v1/admin/branches').set(auth(admin)).expect(200)).body as any[];
+    const bravo = list.filter((b) => b.inBravo === true);
+    expect(bravo.length).toBe(first.rows - first.skipped.length);
+    const nodes = await core.selectFrom('SysOrgUnit').select('Code').where('OrgType', '=', 'FACTORY').execute();
+    for (const b of bravo) expect(nodes.map((n) => n.Code)).toContain(b.code);
+    // Tên ĐVCS theo BRAVO không sửa ở MES
+    expect((await api().put(`/api/v1/admin/branches/${bravo[0].id}`).set(auth(admin)).send({ name: 'Đổi tên thử' }).expect(409)).body.error.message).toContain('BRAVO');
+  });
+
+  it('danh mục Nhà máy SX: mỗi nhà máy thuộc một ĐVCS (không phải đơn vị tổng hợp), mã không sửa được; có nhật ký (ADR 0013)', async () => {
+    await api().post('/api/v1/admin/catalogs/factories').set(auth(planner)).send({ code: 'TEST-P54-G', name: 'x', branchCode: 'A01' }).expect(403);
+    await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Tổng hợp', branchCode: 'A00' }).expect(422);
+    await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Không có ĐVCS', branchCode: 'Z99' }).expect(422);
+    await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST P54!', name: 'Sai mã', branchCode: 'A01' }).expect(422);
+    const created = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: ' test-p54-g ', name: 'Nhà máy thử', branchCode: 'A01' }).expect(201)).body;
+    await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Trùng', branchCode: 'A01' }).expect(409);
+    const list = (await api().get('/api/v1/admin/catalogs/factories?q=TEST-P54-G').set(auth(admin)).expect(200)).body;
+    expect(list.find((f: any) => f.id === created.id)).toMatchObject({ code: 'TEST-P54-G', name: 'Nhà máy thử', branchCode: 'A01', isActive: true });
+    expect((await api().put(`/api/v1/admin/catalogs/factories/${created.id}`).set(auth(admin)).send({ code: 'TEST-P54-H' }).expect(422)).body.error.code).toBe('CODE_IMMUTABLE');
+    await api().put(`/api/v1/admin/catalogs/factories/${created.id}`).set(auth(admin)).send({ branchCode: 'A00' }).expect(422);
+    await api().put(`/api/v1/admin/catalogs/factories/${created.id}`).set(auth(admin)).send({ branchCode: 'A02', name: 'Nhà máy thử 2' }).expect(200);
+    // ĐVCS hiện các nhà máy SX của nó ở Quản trị › Đơn vị cơ sở
+    const branches = (await api().get('/api/v1/admin/branches').set(auth(admin)).expect(200)).body as any[];
+    expect(branches.find((b) => b.code === 'A02').factories.map((f: any) => f.code)).toContain('TEST-P54-G');
+    const audit = (await api().get('/api/v1/admin/audit?entityType=SysProductionFactory&pageSize=5').set(auth(admin)).expect(200)).body.items;
+    expect(audit.map((a: any) => a.actionCode)).toEqual(expect.arrayContaining(['FACTORY_CREATE', 'FACTORY_UPDATE']));
+  });
+
+  it('nhà máy SX được tích cho người dùng lưu cùng ĐVCS; nhà máy lạ hoặc đã ngừng => 422; ngừng nhà máy thì người được tích mất nhà máy đó', async () => {
+    const f = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-U', name: 'Nhà máy gán thử', branchCode: 'A02' }).expect(201)).body;
+    const kh = (await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a');
+    const put = (productionFactoryIds?: number[]) =>
+      api().put(`/api/v1/admin/users/${kh.id}/branches`).set(auth(admin)).send({ branchIds: kh.branchIds, defaultBranchId: kh.defaultBranchId ?? undefined, productionFactoryIds });
+    try {
+      await put([f.id]).expect(200);
+      const after = (await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a');
+      expect(after.productionFactoryIds).toEqual([f.id]);
+      // Không gửi danh sách nhà máy: giữ nguyên
+      await put(undefined).expect(200);
+      expect((await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a').productionFactoryIds).toEqual([f.id]);
+      await put([999_999]).expect(422);
+      const codes = async () => ((await api().get('/api/v1/me').set(auth(planner)).expect(200)).body.productionFactories as any[]).map((x) => x.code);
+      expect(await codes()).toEqual(['TEST-P54-U']);
+      await api().put(`/api/v1/admin/catalogs/factories/${f.id}`).set(auth(admin)).send({ isActive: false }).expect(200);
+      expect(await codes()).toEqual([]);
+      await put([f.id]).expect(422);
+      const audit = (await api().get('/api/v1/admin/audit?entityType=SysUser&pageSize=10').set(auth(admin)).expect(200)).body.items;
+      const last = audit.find((a: any) => a.actionCode === 'USER_BRANCHES');
+      expect(JSON.parse(last.newValue).productionFactories).toBeDefined();
+    } finally {
+      await put(kh.productionFactoryIds).expect(200);
+    }
+  });
+
+  it('Nhà máy SX của đơn hàng chọn từ danh mục Nhà máy SX: mã lạ hoặc nhà máy đã ngừng => 422, đơn cũ giữ nhà máy đã ngừng; theo chính sách cột', async () => {
+    type Factory = { code: string; name: string; isActive: boolean; branchCode: string | null };
     const options = async () => (await api().get('/api/v1/order/sales-orders/options').set(auth(planner)).expect(200)).body.factories as Factory[];
-    // Seed lấy mục ban đầu theo các nhà máy
-    expect((await options()).map((f) => f.code)).toEqual(expect.arrayContaining(['A01', 'A02', 'A03']));
-    const factory = (await api().post('/api/v1/admin/catalogs/items/PROD_FACTORY').set(auth(admin)).send({ code: 'TEST-P54-F', name: 'Xưởng gia công thử' }).expect(201)).body;
+    // Nhà máy SX ban đầu: chép từ danh mục cũ hoặc nhà máy mẫu của seed, cùng mã với ĐVCS
+    expect((await options()).map((f) => f.code)).toEqual(expect.arrayContaining(['A01', 'A02']));
+    const factory = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-F', name: 'Xưởng gia công thử', branchCode: 'A01' }).expect(201)).body;
 
     const base = { customerName: 'Khách thử P54', styleCode: 'TEST-P54-FIXTURE', productName: 'Áo thử', qty: 10, shipDate: '2026-12-01' };
     const so = (await api().post('/api/v1/order/sales-orders').set(auth(planner)).send({ ...base, productionFactoryCode: ' test-p54-f ' }).expect(201)).body;
     expect(so).toMatchObject({ branchCode: 'A01', productionFactoryCode: 'TEST-P54-F' });
     expect((await api().post('/api/v1/order/sales-orders').set(auth(planner)).send({ ...base, productionFactoryCode: 'KHONG-CO' }).expect(422)).body.error.message).toContain('Nhà máy SX');
     await api().post('/api/v1/order/sales-orders').set(auth(planner)).send({ ...base, productionFactoryCode: 'A01; DROP' }).expect(422);
-    // Mã đơn vị chuyền (SysOrgUnit) không phải mục danh mục
+    // Mã đơn vị chuyền (SysOrgUnit) không phải nhà máy SX
     await api().put(`/api/v1/order/sales-orders/${so.id}`).set(auth(planner)).send({ productionFactoryCode: 'A01-L01' }).expect(422);
 
     // Ngừng dùng: không chọn mới được; đơn đã chọn vẫn giữ, sửa trường khác được; gợi ý vẫn có tên để lưới hiện đúng
-    await api().put(`/api/v1/admin/catalogs/items/PROD_FACTORY/${factory.id}`).set(auth(admin)).send({ isActive: false }).expect(200);
-    expect((await options()).find((f) => f.code === 'TEST-P54-F')).toMatchObject({ name: 'Xưởng gia công thử', isActive: false });
+    await api().put(`/api/v1/admin/catalogs/factories/${factory.id}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    expect((await options()).find((f) => f.code === 'TEST-P54-F')).toMatchObject({ name: 'Xưởng gia công thử', isActive: false, branchCode: 'A01' });
     await api().post('/api/v1/order/sales-orders').set(auth(planner)).send({ ...base, productionFactoryCode: 'TEST-P54-F' }).expect(422);
     expect((await api().put(`/api/v1/order/sales-orders/${so.id}`).set(auth(planner)).send({ qty: 12 }).expect(200)).body).toMatchObject({ qty: 12, productionFactoryCode: 'TEST-P54-F' });
     // Client gửi đủ mọi trường (kể cả nhà máy hiện tại đã ngừng) vẫn lưu được

@@ -97,7 +97,7 @@ describe('Chính sách cột: lưu nhiều vai trò, một vai trò lỗi', () =
 });
 
 describe('Người dùng: khóa tài khoản phải xác nhận', () => {
-  const user = { id: 2, username: 'dat.le', fullName: 'Lê Đạt', email: null, isActive: true, isLocked: false, lastLoginAt: null, roleIds: [], branchIds: [], defaultBranchId: null };
+  const user = { id: 2, username: 'dat.le', fullName: 'Lê Đạt', email: null, isActive: true, isLocked: false, lastLoginAt: null, roleIds: [], branchIds: [], defaultBranchId: null, productionFactoryIds: [] };
 
   it('tắt Cho phép đăng nhập rồi Lưu: hỏi trước, chỉ gửi khi bấm Khóa tài khoản', async () => {
     signIn(['admin.user:update']);

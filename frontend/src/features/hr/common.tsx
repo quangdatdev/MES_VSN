@@ -1,6 +1,6 @@
-import { Alert, Anchor, Badge, Button, Group, Select, Text, type ComboboxItem, type OptionsFilter, type SelectProps } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, Select, Text, Tooltip, type ComboboxItem, type OptionsFilter, type SelectProps } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import { cloneElement, useCallback, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type RefObject } from 'react';
 import { ApiError } from '../../lib/api';
 import { fmtDate } from '../../lib/format';
 import { deptChoices, fold, type FlatDept } from './tree';
@@ -172,6 +172,25 @@ export function DepartmentSelect({ departments, value, onChange, skip, ...rest }
         );
       }}
     />
+  );
+}
+
+// ---------- Ô của form thêm, sửa ----------
+
+const HINT_STYLES = { tooltip: { maxWidth: 'min(300px, calc(100vw - 32px))', lineHeight: 1.45 } };
+
+/**
+ * Một ô trong lưới form. Chú thích của ô (quy tắc nhập, lý do bị khóa) không nằm dưới nhãn: dòng chú thích đẩy ô đó thấp hơn
+ * các ô cùng hàng. Rê chuột, Tab tới hoặc chạm vào ô thì hiện; nhãn có dấu ⓘ để biết ô có chú thích. Chú thích vẫn gắn vào ô
+ * làm `description` (CSS ẩn khỏi mắt) nên trình đọc màn hình đọc được: không truyền `description` riêng cho ô con.
+ */
+export function FieldCell({ hint, wide, children }: { hint?: string; wide?: boolean; children: ReactElement<{ description?: ReactNode }> }) {
+  return (
+    <Tooltip label={hint} disabled={!hint} multiline position="top-start" withArrow openDelay={250} events={{ hover: true, focus: true, touch: true }} styles={HINT_STYLES}>
+      <div className={wide ? 'hr-cell hr-span-2' : 'hr-cell'} data-hint={hint ? true : undefined}>
+        {cloneElement(children, { description: hint })}
+      </div>
+    </Tooltip>
   );
 }
 

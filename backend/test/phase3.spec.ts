@@ -13,7 +13,8 @@ import type { OrderDb } from '../src/modules/order/order.types';
 import { PermissionService } from '../src/platform/permission/permission.service';
 
 // Kịch bản 1-4, 7, 8, 10, 11, 14-17 trong docs/thiet-ke/seed-demo.md mục 7 (5, 6, 9, 12, 13, 18 nằm ở auth.spec.ts).
-// Từ Phase 5.3 chạy trên màn Thông tin đơn hàng của module Đơn hàng (thay PO demo).
+// Từ Phase 5.3 chạy trên module Đơn hàng (thay PO demo). Từ Phase 5.9 (ADR 0013) Thông tin đơn hàng dùng chung toàn công ty:
+// lọc theo đơn vị cơ sở (ĐVCS) kiểm trên Kế hoạch xuất hàng; đơn hàng kiểm việc không lọc và đóng dấu ĐVCS khi tạo.
 describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core + MES_Order đã migrate + seed)', () => {
   let app: INestApplication;
   const api = () => request(app.getHttpServer());
@@ -52,32 +53,34 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
   });
 
   const ORDERS = '/api/v1/order/sales-orders';
+  const PLANS = '/api/v1/order/shipment-plans';
   const listPo = (t: string, qs = 'pageSize=200') => api().get(`${ORDERS}?${qs}`).set(auth(t));
+  const listPlans = (t: string, qs = 'pageSize=200') => api().get(`${PLANS}?${qs}`).set(auth(t));
   const newOrder = (style: string, extra: Record<string, unknown> = {}) => ({ customerName: 'Khách thử', styleCode: style, productName: 'Áo thử', qty: 10, shipDate: '2026-12-01', ...extra });
   const roleId = (code: string) => roles.find((r) => r.code === code)!.id;
 
-  describe('Lọc theo nhà máy', () => {
-    it('1. kehoach.a ở A01 chỉ thấy dòng của A01', async () => {
-      const r = await listPo(planner).expect(200);
-      expect(r.body.total).toBeGreaterThanOrEqual(10);
+  describe('Lọc theo đơn vị cơ sở', () => {
+    it('1. kehoach.a ở A01 chỉ thấy kế hoạch xuất hàng của A01', async () => {
+      const r = await listPlans(planner).expect(200);
+      expect(r.body.total).toBeGreaterThan(0);
       expect(r.body.items.every((i: any) => i.branchCode === 'A01')).toBe(true);
     });
 
-    it('2. gọi theo Id của dòng nhà máy khác => 404', async () => {
+    it('2. gọi theo Id của kế hoạch ĐVCS khác => 404', async () => {
       const a02 = await tokenFor('admin', 'A02');
-      const other = (await listPo(a02)).body.items[0];
+      const other = (await listPlans(a02)).body.items[0];
       expect(other.branchCode).toBe('A02');
-      const r = await api().get(`${ORDERS}/${other.id}`).set(auth(planner)).expect(404);
+      const r = await api().get(`${PLANS}/${other.id}`).set(auth(planner)).expect(404);
       expect(r.body.error.code).toBe('NOT_FOUND');
-      // sửa/xóa dòng nhà máy khác cũng như không tồn tại
-      await api().put(`${ORDERS}/${other.id}`).set(auth(planner)).send({ qty: 1 }).expect(404);
-      await api().delete(`${ORDERS}/${other.id}`).set(auth(planner)).expect(404);
+      // sửa/xóa dòng ĐVCS khác cũng như không tồn tại
+      await api().put(`${PLANS}/${other.id}`).set(auth(planner)).send({ poBuyDate: 'X' }).expect(404);
+      await api().delete(`${PLANS}/${other.id}`).set(auth(planner)).expect(404);
       // và dòng đó vẫn còn nguyên
-      await api().get(`${ORDERS}/${other.id}`).set(auth(a02)).expect(200);
+      await api().get(`${PLANS}/${other.id}`).set(auth(a02)).expect(200);
     });
 
     it('3. branchCode do client gửi (query, body) bị bỏ qua', async () => {
-      const r = await listPo(planner, 'pageSize=100&branchCode=A02').expect(200);
+      const r = await listPlans(planner, 'pageSize=100&branchCode=A02').expect(200);
       expect(r.body.items.every((i: any) => i.branchCode === 'A01')).toBe(true);
       const c = await api()
         .post(ORDERS)
@@ -88,7 +91,7 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
       await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(204);
     });
 
-    it('4. PO tạo mới mang BranchCode từ token; nhà máy khác không thấy', async () => {
+    it('4. đơn hàng dùng chung (ADR 0013): tạo mới mang ĐVCS của phiên làm Chi nhánh FOB, ĐVCS khác cũng thấy', async () => {
       const c = await api()
         .post(ORDERS)
         .set(auth(planner))
@@ -96,15 +99,15 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
         .expect(201);
       expect(c.body.branchCode).toBe('A01');
       expect(c.body.orderNo).toMatch(/^DH-A01-\d{6}$/);
-
-      const a02 = await tokenFor('admin', 'A02');
-      const seen = (await listPo(a02, `pageSize=100&q=${c.body.orderNo}`)).body.items;
-      expect(seen).toHaveLength(0);
-      const a01 = await tokenFor('admin', 'A01');
-      expect((await listPo(a01, `pageSize=100&q=${c.body.orderNo}`)).body.items).toHaveLength(1);
-
-      await api().put(`${ORDERS}/${c.body.id}`).set(auth(planner)).send({ qty: 30, statusCode: 'PLANNING' }).expect(200);
-      await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(204);
+      try {
+        const a02 = await tokenFor('admin', 'A02');
+        expect((await listPo(a02, `pageSize=100&q=${c.body.orderNo}`)).body.items).toHaveLength(1);
+        const a01 = await tokenFor('admin', 'A01');
+        expect((await listPo(a01, 'pageSize=1')).body.total).toBe((await listPo(a02, 'pageSize=1')).body.total);
+        await api().put(`${ORDERS}/${c.body.id}`).set(auth(planner)).send({ qty: 30, statusCode: 'PLANNING' }).expect(200);
+      } finally {
+        await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(204);
+      }
     });
 
     it('dữ liệu sai bị từ chối 422 (qty âm, ngày sai)', async () => {
@@ -127,12 +130,13 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
   });
 
   describe('Đơn vị tổng hợp A00', () => {
-    it('7. giamdoc ở A00 thấy mọi nhà máy', async () => {
+    it('7. giamdoc ở A00 thấy kế hoạch của mọi ĐVCS', async () => {
       const director = await tokenFor('giamdoc', 'A00');
-      const all = (await listPo(director)).body;
+      const all = (await listPlans(director)).body;
       const totals: number[] = [];
-      for (const code of ['A01', 'A02', 'A03']) {
-        totals.push((await listPo(await tokenFor('admin', code))).body.total);
+      for (const b of branches.filter((x) => !x.code.startsWith('A00'))) {
+        const t = await tokenFor('admin', b.code);
+        if (t) totals.push((await listPlans(t)).body.total);
       }
       expect(all.total).toBe(totals.reduce((a, b) => a + b, 0));
       // Đếm theo nhà máy, không theo trang đầu: thứ tự trang phụ thuộc dữ liệu đang có (seed hay BRAVO)
@@ -245,9 +249,15 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
       expect(r3.body.error.code).toBe('SELF_ELEVATION_FORBIDDEN');
     });
 
-    it('16. đổi tên nhà máy được, đổi mã bị từ chối CODE_IMMUTABLE', async () => {
-      const a03 = branches.find((b) => b.code === 'A03')!;
+    it('16. đổi tên ĐVCS không có trong BRAVO được (ĐVCS theo BRAVO thì 409), đổi mã bị từ chối CODE_IMMUTABLE', async () => {
+      const a03 = (await api().get('/api/v1/admin/branches').set(auth(admin))).body.find((b: any) => b.code === 'A03');
       const newName = 'Nhà máy Ba (thử)';
+      if (a03.inBravo) {
+        const r = await api().put(`/api/v1/admin/branches/${a03.id}`).set(auth(admin)).send({ name: newName }).expect(409);
+        expect(r.body.error.message).toContain('BRAVO');
+        expect((await api().put(`/api/v1/admin/branches/${a03.id}`).set(auth(admin)).send({ code: 'A09' }).expect(422)).body.error.code).toBe('CODE_IMMUTABLE');
+        return;
+      }
       try {
         await api().put(`/api/v1/admin/branches/${a03.id}`).set(auth(admin)).send({ name: newName }).expect(200);
         const list = (await api().get('/api/v1/admin/branches').set(auth(admin))).body as any[];
@@ -262,7 +272,7 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
       }
     });
 
-    it('không tạo được nhà máy A00 hoặc vô hiệu hóa đơn vị tổng hợp', async () => {
+    it('không tạo được ĐVCS A00 hoặc vô hiệu hóa đơn vị tổng hợp', async () => {
       await api().post('/api/v1/admin/branches').set(auth(admin)).send({ code: 'A00', name: 'Giả' }).expect(409);
       const a00 = branches.find((b) => b.code === 'A00')!;
       await api().put(`/api/v1/admin/branches/${a00.id}`).set(auth(admin)).send({ isActive: false }).expect(409);

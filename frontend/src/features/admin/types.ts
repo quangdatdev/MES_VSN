@@ -9,6 +9,8 @@ export interface AdminUser {
   roleIds: number[];
   branchIds: number[];
   defaultBranchId: number | null;
+  /** Nhà máy SX được tích (ADR 0013): lập kế hoạch xuất hàng chỉ thấy đơn hàng của các nhà máy này */
+  productionFactoryIds: number[];
 }
 
 export interface AdminRole {
@@ -22,14 +24,39 @@ export interface AdminRole {
   userCount: number;
 }
 
+/** Đơn vị cơ sở (SysBranch, ADR 0013) */
 export interface AdminBranch {
   id: number;
   code: string;
   name: string;
+  /** Tên đầy đủ theo BRAVO */
   description: string | null;
   isAggregate: boolean;
   isActive: boolean;
   isSystem: boolean;
+  /** Có trong danh mục chi nhánh BRAVO không; null: đơn vị tổng hợp hoặc chưa đọc được MES_Sync */
+  inBravo: boolean | null;
+  factories: { code: string; name: string; isActive: boolean }[];
+}
+
+export interface BranchImportResult {
+  rows: number;
+  added: { code: string; name: string }[];
+  updated: { code: string }[];
+  missing: string[];
+  skipped: string[];
+}
+
+/** Nhà máy SX (Quản trị › Danh mục hệ thống) */
+export interface AdminFactory {
+  id: number;
+  code: string;
+  name: string;
+  branchCode: string | null;
+  branchName: string | null;
+  description: string | null;
+  sortOrder: number;
+  isActive: boolean;
 }
 
 export interface PermissionMatrix {
@@ -169,8 +196,8 @@ export interface SyncRunRow extends SyncRunInfo {
 
 export interface MesCatalog {
   code: string;
-  /** line: chuyền may (SysOrgUnit); item: danh mục mã, tên (SysCatalog); shift: ca làm việc */
-  kind: 'line' | 'item' | 'shift';
+  /** line: chuyền may (SysOrgUnit); factory: nhà máy SX (SysProductionFactory); item: danh mục mã, tên (SysCatalog); shift: ca làm việc */
+  kind: 'line' | 'factory' | 'item' | 'shift';
   name: string;
   description: string | null;
   total: number;

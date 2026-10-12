@@ -32,11 +32,13 @@ import {
   shifts,
   users,
   prepSteps,
+  productionFactories,
   WORKSHOPS,
   workshopCode,
   workshopName,
   workshopOfLine,
 } from './seed-data';
+import { syncBranchesFromBravo } from './bravo-branches';
 import { seedHrIfReady } from './hr-data';
 import { seedOrders } from './seed-order';
 import { hasSewingDb } from './sewing-data';
@@ -63,20 +65,33 @@ export async function runSeed({
   const bump = (k: string, n = 1) => (stats[k] = (stats[k] ?? 0) + n);
 
   try {
-    // 1. Nhà máy
-    const branchId = new Map<string, number>();
-    for (const b of branches) {
-      let row = await db.selectFrom('SysBranch').select('Id').where('Code', '=', b.code).executeTakeFirst();
+    // 1. Đơn vị cơ sở (ADR 0013): đơn vị tổng hợp luôn có; ĐVCS mẫu chỉ khi có dữ liệu mẫu; rồi chép theo danh mục chi nhánh
+    // BRAVO nếu MES_Sync đã đồng bộ (thêm mã còn thiếu, tên theo BRAVO)
+    // ĐVCS, nhà máy SX tạo trong lần chạy này: chưa ai thu hồi được, gán cho cả tài khoản mẫu đã có (bước 10)
+    const createdBranches = new Set<string>();
+    const createdFactories = new Set<string>();
+    /** Phép gán thêm cho tài khoản đã có, ghi vào nhật ký SEED (thay đổi phân quyền phải có nhật ký, CLAUDE.md mục 4.8) */
+    const newGrants: { username: string; branches: string[]; productionFactories: string[] }[] = [];
+    for (const b of branches.filter((x) => x.isAggregate || sampleData)) {
+      const row = await db.selectFrom('SysBranch').select('Id').where('Code', '=', b.code).executeTakeFirst();
       if (!row) {
-        row = await db
-          .insertInto('SysBranch')
-          .values({ Code: b.code, Name: b.name, IsAggregate: b.isAggregate, SortOrder: b.sort, IsActive: true, IsSystem: true } as any)
-          .output('inserted.Id')
-          .executeTakeFirstOrThrow();
-        bump('nhà máy');
+        await db.insertInto('SysBranch').values({ Code: b.code, Name: b.name, IsAggregate: b.isAggregate, SortOrder: b.sort, IsActive: true, IsSystem: true } as any).execute();
+        bump('đơn vị cơ sở');
+        createdBranches.add(b.code);
       }
-      branchId.set(b.code, row.Id);
     }
+    try {
+      const imported = await syncBranchesFromBravo(db);
+      if (!imported) console.warn('Chưa có danh mục chi nhánh BRAVO trong MES_Sync: đơn vị cơ sở chưa chép từ BRAVO (đồng bộ xong sẽ tự chép).');
+      else {
+        for (const b of imported.added) createdBranches.add(b.code);
+        if (imported.added.length) bump('đơn vị cơ sở từ BRAVO', imported.added.length);
+        if (imported.updated.length) bump('đổi tên đơn vị cơ sở theo BRAVO', imported.updated.length);
+      }
+    } catch (e) {
+      console.warn(`Không chép được đơn vị cơ sở từ BRAVO: ${(e as Error).message}`);
+    }
+    const branchId = new Map((await db.selectFrom('SysBranch').select(['Id', 'Code']).execute()).map((b) => [b.Code, b.Id]));
 
     // 2. Vai trò
     const roleId = new Map<string, number>();
@@ -223,7 +238,8 @@ export async function runSeed({
       await db.insertInto('SysOrgUnit').values(values as any).execute();
       return db.selectFrom('SysOrgUnit').select(['Id', 'Path']).where('Code', '=', values.Code as string).executeTakeFirstOrThrow();
     };
-    for (const b of branches.filter((x) => !x.isAggregate)) {
+    // Chỉ ĐVCS đang có (máy không dữ liệu mẫu chỉ có ĐVCS chép từ BRAVO): SysOrgUnit.BranchCode có khóa ngoại tới SysBranch
+    for (const b of branches.filter((x) => !x.isAggregate && branchId.has(x.code))) {
       let f = await db.selectFrom('SysOrgUnit').select('Id').where('Code', '=', b.code).executeTakeFirst();
       if (!f) {
         f = await addNode({ Code: b.code, Name: b.name, OrgType: 'FACTORY', ParentId: null, ParentOrgType: null, BranchCode: b.code, Path: `/${b.code}/`, SortOrder: b.sort, IsActive: true, IsSystem: true });
@@ -295,9 +311,7 @@ export async function runSeed({
       }
     }
 
-    // 6b. Danh mục hệ thống: loại danh mục, mục và ca làm việc còn thiếu (không ghi đè thay đổi ở màn Danh mục hệ thống).
-    // Danh mục theo nhà máy lấy tên nhà máy hiện tại trong DB (tên có thể đã đổi ở màn Nhà máy)
-    const factories = await db.selectFrom('SysBranch').select(['Code as code', 'Name as name']).where('IsAggregate', '=', false).where('IsActive', '=', true).orderBy('SortOrder').orderBy('Code').execute();
+    // 6b. Danh mục hệ thống: loại danh mục, mục và ca làm việc còn thiếu (không ghi đè thay đổi ở màn Danh mục hệ thống)
     for (const [i, c] of catalogs.entries()) {
       let cat = await db.selectFrom('SysCatalog').select('Id').where('Code', '=', c.code).executeTakeFirst();
       if (!cat) {
@@ -308,7 +322,7 @@ export async function runSeed({
           .executeTakeFirstOrThrow();
         bump('danh mục');
       }
-      for (const [j, [code, name]] of catalogSeedItems(c, factories).entries()) {
+      for (const [j, [code, name]] of catalogSeedItems(c).entries()) {
         const has = await db.selectFrom('SysCatalogItem').select('Id').where('CatalogId', '=', cat.Id).where('Code', '=', code).executeTakeFirst();
         if (has) continue;
         await db.insertInto('SysCatalogItem').values({ CatalogId: cat.Id, Code: code, Name: name, SortOrder: (j + 1) * 10, IsActive: true, IsSystem: false } as any).execute();
@@ -321,6 +335,19 @@ export async function runSeed({
       await db.insertInto('SysShift').values({ Code: code, Name: name, StartTime: start, EndTime: end, BreakMinutes: breakMinutes, SortOrder: (i + 1) * 10, IsActive: true, IsSystem: false } as any).execute();
       bump('ca làm việc');
     }
+
+    // 6c. Nhà máy SX mẫu (ADR 0013): chỉ khi có dữ liệu mẫu, chỉ thêm mã còn thiếu, ĐVCS của nhà máy phải đang có
+    if (sampleData) {
+      for (const [i, f] of productionFactories.entries()) {
+        if (!branchId.has(f.branch)) continue;
+        const has = await db.selectFrom('SysProductionFactory').select('Id').where('Code', '=', f.code).executeTakeFirst();
+        if (has) continue;
+        await db.insertInto('SysProductionFactory').values({ Code: f.code, Name: f.name, BranchCode: f.branch, SortOrder: (i + 1) * 10, IsActive: true, IsSystem: false }).execute();
+        bump('nhà máy SX');
+        createdFactories.add(f.code);
+      }
+    }
+    const factoryId = new Map((await db.selectFrom('SysProductionFactory').select(['Id', 'Code']).execute()).map((f) => [f.Code, f.Id]));
 
     // 7. Tài nguyên lọc theo chiều nào, qua cột nào. Tài nguyên hệ thống khai báo ở seed-data thì đồng bộ đúng như khai báo:
     // đổi bảng nguồn mà còn liên kết cũ trỏ tới cột không có sẽ làm truy vấn lỗi (review 5.1 #18).
@@ -404,7 +431,25 @@ export async function runSeed({
         bump('đặt lại mật khẩu');
       }
       userId.set(u.username, row.Id);
-      if (!isNew && !syncMatrix) continue;
+      if (!isNew && !syncMatrix) {
+        // Chỉ ĐVCS, nhà máy SX vừa tạo ở lần chạy này (máy demo: migrate tạo admin chỉ có A00, seed sau đó mới thêm ĐVCS mẫu).
+        // Thứ đã có từ trước thì quản trị có thể đã thu hồi: không cấp lại
+        const newBranches = u.branches.filter((bc) => createdBranches.has(bc) && branchId.has(bc));
+        const newFactories = (u.productionFactories ?? []).filter((fc) => createdFactories.has(fc) && factoryId.has(fc));
+        if (newBranches.length || newFactories.length) {
+          const hasDefault = await db.selectFrom('SysUserBranch').select('Id').where('UserId', '=', row.Id).where('IsDefault', '=', true).executeTakeFirst();
+          for (const bc of newBranches) {
+            await db.insertInto('SysUserBranch').values({ UserId: row.Id, BranchId: branchId.get(bc)!, IsDefault: !hasDefault && bc === u.defaultBranch } as any).execute();
+            bump('gán đơn vị cơ sở');
+          }
+          for (const fc of newFactories) {
+            await db.insertInto('SysUserProductionFactory').values({ UserId: row.Id, ProductionFactoryId: factoryId.get(fc)! }).execute();
+            bump('gán nhà máy SX');
+          }
+          newGrants.push({ username: u.username, branches: newBranches, productionFactories: newFactories });
+        }
+        continue;
+      }
       // Tra đủ phạm vi trước khi gán vai trò: thiếu đơn vị thì không gán (vai trò không kèm phạm vi là không giới hạn)
       const scopes = (u.scopes ?? []).map((s) => ({ ...s, oid: s.org ? orgId.get(s.org) : null }));
       const missing = scopes.filter((s) => s.oid === undefined || !dims.has(s.dimension)).map((s) => s.org ?? s.dimension);
@@ -421,11 +466,23 @@ export async function runSeed({
           ur = await trx.insertInto('SysUserRole').values({ UserId: row.Id, RoleId: roleId.get(u.role)! } as any).output('inserted.Id').executeTakeFirstOrThrow();
           bump('gán vai trò');
         }
+        // ĐVCS mẫu chưa có (máy không dữ liệu mẫu, BRAVO chưa đồng bộ) thì bỏ qua: gán sau ở màn Người dùng
         for (const bc of u.branches) {
-          const has = await trx.selectFrom('SysUserBranch').select('Id').where('UserId', '=', row.Id).where('BranchId', '=', branchId.get(bc)!).executeTakeFirst();
+          const bid = branchId.get(bc);
+          if (bid === undefined) continue;
+          const has = await trx.selectFrom('SysUserBranch').select('Id').where('UserId', '=', row.Id).where('BranchId', '=', bid).executeTakeFirst();
           if (!has) {
-            await trx.insertInto('SysUserBranch').values({ UserId: row.Id, BranchId: branchId.get(bc)!, IsDefault: bc === u.defaultBranch } as any).execute();
-            bump('gán nhà máy');
+            await trx.insertInto('SysUserBranch').values({ UserId: row.Id, BranchId: bid, IsDefault: bc === u.defaultBranch } as any).execute();
+            bump('gán đơn vị cơ sở');
+          }
+        }
+        for (const fc of u.productionFactories ?? []) {
+          const fid = factoryId.get(fc);
+          if (fid === undefined) continue;
+          const has = await trx.selectFrom('SysUserProductionFactory').select('Id').where('UserId', '=', row.Id).where('ProductionFactoryId', '=', fid).executeTakeFirst();
+          if (!has) {
+            await trx.insertInto('SysUserProductionFactory').values({ UserId: row.Id, ProductionFactoryId: fid }).execute();
+            bump('gán nhà máy SX');
           }
         }
         for (const s of scopes) {
@@ -520,7 +577,7 @@ export async function runSeed({
     if (Object.keys(stats).length) {
       await db
         .insertInto('SysAuditLog')
-        .values({ EntityType: 'System', ActionCode: 'SEED', NewValue: JSON.stringify({ by, syncMatrix, resetPasswords, sampleData: !coreOnly && sampleData, stats, ...(scopeChanges.length ? { scopeChanges } : {}) }) } as any)
+        .values({ EntityType: 'System', ActionCode: 'SEED', NewValue: JSON.stringify({ by, syncMatrix, resetPasswords, sampleData: !coreOnly && sampleData, stats, ...(scopeChanges.length ? { scopeChanges } : {}), ...(newGrants.length ? { newGrants } : {}) }) } as any)
         .execute();
     }
     console.log('Seed xong:', Object.keys(stats).length ? stats : 'không có gì mới');

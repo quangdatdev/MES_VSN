@@ -178,9 +178,9 @@ export function AppLayout() {
                   <Text size="xs" c="dimmed">{roles.map((r) => r.name).join(', ')}</Text>
                 </Menu.Label>
                 <Menu.Divider />
-                {/* Menu đóng xong (trả focus về nút tài khoản) mới mở danh sách nhà máy */}
+                {/* Menu đóng xong (trả focus về nút tài khoản) mới mở danh sách đơn vị cơ sở */}
                 <Menu.Item leftSection={<IconSwitchHorizontal size={15} />} onClick={() => requestAnimationFrame(() => switcher.current?.open())}>
-                  Đổi nhà máy
+                  Đổi đơn vị cơ sở
                 </Menu.Item>
                 <Menu.Item
                   color="red"
@@ -224,7 +224,7 @@ export function AppLayout() {
           <PageErrorBoundary resetKey={`${pathname}|${shown}`}>
             {reopening ? (
               <Center py="xl">
-                <Loader color="brand" role="status" aria-label="Đang mở lại màn theo nhà máy mới" />
+                <Loader color="brand" role="status" aria-label="Đang mở lại màn theo đơn vị cơ sở mới" />
               </Center>
             ) : (
               <Outlet key={shown} />

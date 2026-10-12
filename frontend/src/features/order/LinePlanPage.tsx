@@ -31,7 +31,7 @@ const COLUMNS: Column<LinePlan>[] = [
   { key: 'customerName', title: 'Khách hàng', filterKey: 'customerName', sortKey: 'customerName', minWidth: 160, maxWidth: 240 },
   { key: 'styleCode', title: 'Mã hàng', filterKey: 'styleCode', format: 'code', sortKey: 'styleCode' },
   { key: 'orderType', title: 'Loại đơn hàng', filterKey: 'orderType' },
-  { key: 'branchCode', title: 'Chi nhánh', filterKey: 'branchCode', field: null },
+  { key: 'branchCode', title: 'ĐVCS', filterKey: 'branchCode', field: null },
   { key: 'planQty', title: 'SL kế hoạch', filterKey: 'planQty', format: 'number', sortKey: 'planQty' },
   { key: 'scheduledQty', title: 'SL đã xếp chuyền', filterKey: 'scheduledQty', format: 'number' },
   { key: 'remainingQty', title: 'SL còn lại', format: 'number' },
@@ -81,7 +81,7 @@ export default function LinePlanPage() {
   return (
     <WorkPage
       title="Xếp chuyền"
-      subtitle={branch?.isAggregate ? 'Kế hoạch của mọi nhà máy bạn được xem' : `Dàn chuyền cho kế hoạch xuất hàng của ${branchName(branch?.code)}. Đúp chuột một dòng để xếp chuyền.`}
+      subtitle={branch?.isAggregate ? 'Kế hoạch của mọi đơn vị cơ sở bạn được xem' : `Dàn chuyền cho kế hoạch xuất hàng của ${branchName(branch?.code)}. Đúp chuột một dòng để xếp chuyền.`}
       actions={
         <>
           <PolicyHint policy={policy} names={NAMES} />
@@ -226,7 +226,7 @@ function BoardArea({ filter, board, bars, focusPlanId, renderActions }: {
   if (board.data.lines.length === 0) {
     return (
       <Text size="sm" c="dimmed" ta="center" py="xl">
-        Nhà máy chưa có chuyền nào. Thêm chuyền ở Quản trị › Danh mục hệ thống.
+        Đơn vị cơ sở chưa có chuyền nào. Thêm chuyền ở Quản trị › Danh mục hệ thống.
       </Text>
     );
   }

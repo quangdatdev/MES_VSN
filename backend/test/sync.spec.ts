@@ -244,6 +244,44 @@ describe('Phase 5.2: đồng bộ dữ liệu qua database trung gian', () => {
       const rows = (await sql<{ P: number | null; C: string; Qty: number }>`SELECT P, C, Qty FROM bravo.TestSyncPart ORDER BY P, C`.execute(syncDb)).rows;
       expect(rows).toEqual([{ P: 1, C: 'a', Qty: 1 }, { P: 2, C: 'a', Qty: 5 }, { P: 2, C: 'b', Qty: 2 }]);
     });
+
+    it('việc sau đồng bộ (onQueueDrained, ví dụ nạp đơn hàng) chạy một lần khi hàng đợi chạy hết, chỉ khi nguồn liên quan chép thành công', async () => {
+      let calls = 0;
+      sync.onQueueDrained(['TEST.TestSyncKey'], async () => {
+        calls++;
+      });
+      await runAndWait(keyId);
+      expect(calls).toBe(1);
+      // Nguồn không liên quan: không chạy
+      await runAndWait(partId);
+      expect(calls).toBe(1);
+      // Hai nguồn trong một lần bấm: một lần, sau khi cả hai đã chép
+      const r = await api().post('/api/v1/admin/sync/start').set(auth(admin)).send({ sourceIds: [keyId, partId] }).expect(202);
+      expect(r.body.queued).toBe(2);
+      await sync.idle();
+      expect(calls).toBe(2);
+      // Nguồn liên quan chép lỗi: không chạy
+      await sql.raw(`CREATE TRIGGER bravo.trg_TestSyncKey_Fail2 ON bravo.TestSyncKey AFTER INSERT, UPDATE, DELETE AS THROW 50099, N'Lỗi thử', 1;`).execute(syncDb);
+      try {
+        await sql`UPDATE dbo.SrcTestSyncKey SET Name = N'lỗi', ModifiedAt = ${at('2026-02-01T08:00:00')} WHERE K = 1`.execute(syncDb);
+        expect(await runAndWait(keyId)).toMatchObject({ status: 'FAILED' });
+        expect(calls).toBe(2);
+      } finally {
+        await sql.raw('DROP TRIGGER bravo.trg_TestSyncKey_Fail2').execute(syncDb);
+      }
+    });
+
+    it('việc sau đồng bộ lỗi thì giữ cờ chờ: đợt đồng bộ sau (kể cả chỉ chép nguồn khác) chạy lại', async () => {
+      const work = jest.fn().mockRejectedValueOnce(new Error('Lỗi thử của việc sau đồng bộ')).mockResolvedValue(undefined);
+      sync.onQueueDrained(['TEST.TestSyncKey'], work);
+      expect(await runAndWait(keyId)).toMatchObject({ status: 'SUCCEEDED' });
+      expect(work).toHaveBeenCalledTimes(1);
+      await runAndWait(partId);
+      expect(work).toHaveBeenCalledTimes(2);
+      // Đã chạy được thì hết chờ
+      await runAndWait(partId);
+      expect(work).toHaveBeenCalledTimes(2);
+    });
   });
 
   // ---------- Dữ liệu thật của database trung gian ----------

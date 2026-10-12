@@ -13,7 +13,7 @@ import { fmtDate } from '../../lib/format';
 import { toastError, toastOk } from '../../lib/notify';
 import { useCan } from '../../shell/permissions';
 import { HR_KEYS, useEmployee } from './api';
-import { DepartmentSelect, Fact, LoadError } from './common';
+import { DepartmentSelect, Fact, FieldCell, LoadError } from './common';
 import { initialOf } from './EmployeeList';
 import type { EmployeeDetail, EmployeeField, EmployeeFieldGroup, EmployeeOptions, JobTitleOption, PickDepartment } from './types';
 
@@ -334,6 +334,17 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
     return { ...p, value: form.values[key] || null, onChange: (v: string | null) => form.setFieldValue(key, v ?? '') };
   };
 
+  // Chú thích của ô (FieldCell): lý do ô bị khóa trước, quy tắc nhập sau
+  const hintOf = (f: EmployeeField): string | undefined => {
+    if (form.values[f.key] === MASK) return 'Bị che theo phân quyền của bạn.';
+    if (f.key === 'endDate' && status !== '2') return 'Chỉ nhập khi tình trạng là Nghỉ việc.';
+    if (f.type === 'jobTitle' && deptId == null) return 'Chọn phòng ban trước.';
+    if (f.type === 'jobTitle' && titles.length === 0) return 'Phòng ban này và các phòng ban cha chưa có chức danh nào.';
+    if (!policy.editable(f.key)) return 'Chỉ xem theo phân quyền của bạn.';
+    if (f.key === 'code' && !creating) return 'Sửa được; không trùng với nhân viên khác.';
+    return undefined;
+  };
+
   const input = (f: EmployeeField) => {
     const editable = policy.editable(f.key);
     const masked = form.values[f.key] === MASK;
@@ -341,21 +352,18 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
       label: f.label,
       withAsterisk: f.required && editable,
       readOnly: !editable || masked,
-      className: [!editable || masked ? 'field-readonly' : f.required ? 'field-required' : undefined, WIDE.has(f.key) ? 'hr-span-2' : undefined].filter(Boolean).join(' ') || undefined,
-      description: masked ? 'Bị che theo phân quyền của bạn.' : !editable ? 'Chỉ xem theo phân quyền của bạn.' : undefined,
+      className: !editable || masked ? 'field-readonly' : f.required ? 'field-required' : undefined,
     };
     // Ô bị Che: hiện *** dạng chữ (ô ngày, ô chọn không hiểu giá trị này)
-    if (masked) return <TextInput key={f.key} {...common} value={MASK} />;
+    if (masked) return <TextInput {...common} value={MASK} />;
     switch (f.type) {
       case 'date': {
         const endLocked = f.key === 'endDate' && status !== '2';
         return (
           <DateField
-            key={f.key}
             {...common}
             readOnly={common.readOnly || endLocked}
             className={endLocked ? 'field-readonly' : common.className}
-            description={endLocked ? 'Chỉ nhập khi tình trạng là Nghỉ việc.' : common.description}
             value={form.values[f.key]}
             onChange={(v) => form.setFieldValue(f.key, v)}
             error={form.errors[f.key]}
@@ -363,13 +371,12 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
         );
       }
       case 'bool':
-        return <Select key={f.key} {...common} data={BOOL} clearable placeholder="Chưa rõ" {...selectProps(f.key)} />;
+        return <Select {...common} data={BOOL} clearable placeholder="Chưa rõ" {...selectProps(f.key)} />;
       case 'gender':
-        return <Select key={f.key} {...common} data={options.genders.map((g) => ({ value: String(g.value), label: g.label }))} allowDeselect={false} {...selectProps(f.key)} />;
+        return <Select {...common} data={options.genders.map((g) => ({ value: String(g.value), label: g.label }))} allowDeselect={false} {...selectProps(f.key)} />;
       case 'status':
         return (
           <Select
-            key={f.key}
             {...common}
             data={options.statuses.map((s) => ({ value: String(s.value), label: s.label }))}
             allowDeselect={false}
@@ -384,7 +391,6 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
       case 'department':
         return (
           <DepartmentSelect
-            key={f.key}
             {...common}
             departments={options.departments}
             value={deptId}
@@ -402,14 +408,12 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
         const noDept = deptId == null;
         return (
           <Select
-            key={f.key}
             {...common}
             readOnly={common.readOnly || noDept}
             className={noDept ? 'field-readonly' : common.className}
             searchable
             data={titles.map((t) => ({ value: String(t.id), label: t.isActive ? t.name : `${t.name} (ngừng dùng)` }))}
             placeholder={noDept ? 'Chọn phòng ban trước' : undefined}
-            description={noDept ? 'Chọn phòng ban trước.' : titles.length === 0 ? 'Phòng ban này và các phòng ban cha chưa có chức danh nào.' : common.description}
             nothingFoundMessage="Không có chức danh khớp."
             {...selectProps(f.key)}
           />
@@ -418,11 +422,9 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
       default:
         return (
           <TextInput
-            key={f.key}
             {...common}
             maxLength={f.max ?? undefined}
             placeholder={f.key === 'timekeepingCode' ? 'Bỏ trống: lấy theo mã nhân viên' : undefined}
-            description={common.description ?? (f.key === 'code' && !creating ? 'Sửa được; không trùng với nhân viên khác.' : undefined)}
             {...form.getInputProps(f.key)}
             onChange={f.type === 'code' ? (e) => form.setFieldValue(f.key, e.currentTarget.value.toUpperCase()) : form.getInputProps(f.key).onChange}
           />
@@ -456,7 +458,13 @@ function EmployeeForm({ detail, departmentId, options, policy, onCancel, onDirty
         return (
           <section key={g} className="hr-group" aria-labelledby={`hr-fg-${g}`}>
             <h3 id={`hr-fg-${g}`} className="hr-group-title">{options.groups[g]}</h3>
-            <div className="hr-form-grid">{list.map(input)}</div>
+            <div className="hr-form-grid">
+              {list.map((f) => (
+                <FieldCell key={f.key} hint={hintOf(f)} wide={WIDE.has(f.key)}>
+                  {input(f)}
+                </FieldCell>
+              ))}
+            </div>
           </section>
         );
       })}

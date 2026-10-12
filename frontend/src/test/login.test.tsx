@@ -14,15 +14,15 @@ vi.mock('../lib/api', async (importOriginal) => {
 });
 
 const A00: Branch = { code: 'A00', name: 'Toàn công ty', isAggregate: true };
-const A01: Branch = { code: 'A01', name: 'Nhà máy 1', isAggregate: false };
-const A02: Branch = { code: 'A02', name: 'Nhà máy 2', isAggregate: false };
+const A01: Branch = { code: 'A01', name: 'VSN', isAggregate: false };
+const A02: Branch = { code: 'A02', name: 'VDC', isAggregate: false };
 
 interface Server {
   /** Lỗi của lần gọi /auth/login */
   loginError?: Error;
   /** Lỗi của từng lần gọi /auth/select-branch theo thứ tự (null: thành công) */
   selectErrors?: (Error | null)[];
-  /** /me lỗi mạng sau khi chọn nhà máy thành công */
+  /** /me lỗi mạng sau khi chọn đơn vị cơ sở thành công */
   meFails?: boolean;
 }
 
@@ -67,6 +67,8 @@ function renderLogin() {
 
 const usernameBox = () => screen.getByLabelText(/Tên đăng nhập/) as HTMLInputElement;
 const passwordBox = () => screen.getByLabelText(/Mật khẩu/) as HTMLInputElement;
+/** Đúng mật khẩu, tài khoản nhiều ĐVCS: ô Đơn vị cơ sở mở ra ngay trên form, nút đổi thành Vào làm việc */
+const branchStep = () => screen.findByRole('button', { name: 'Vào làm việc' });
 
 function signIn(username = 'an', password = 'mat-khau') {
   fireEvent.change(usernameBox(), { target: { value: username } });
@@ -115,16 +117,16 @@ describe('Màn đăng nhập', () => {
     expect(sentBody('/auth/login')).toEqual({ username: 'an', password: 'tu-dien' });
   });
 
-  it('tài khoản chưa được gán nhà máy: báo, không giữ token tạm', async () => {
+  it('tài khoản chưa được gán đơn vị cơ sở: báo, không giữ token tạm', async () => {
     serve([]);
     renderLogin();
     signIn();
-    expect(await screen.findByText('Tài khoản chưa có nhà máy')).toBeInTheDocument();
+    expect(await screen.findByText('Tài khoản chưa có đơn vị cơ sở')).toBeInTheDocument();
     expect(useSession.getState().status).toBe('anonymous');
     expect(useSession.getState().preAuthToken).toBeNull();
   });
 
-  it('tài khoản một nhà máy: vào thẳng ứng dụng, không hỏi nhà máy', async () => {
+  it('tài khoản một đơn vị cơ sở: vào thẳng ứng dụng, không hỏi đơn vị', async () => {
     serve([A01]);
     renderLogin();
     signIn();
@@ -132,49 +134,58 @@ describe('Màn đăng nhập', () => {
     expect(sentBody('/auth/select-branch')?.branchCode).toBe('A01');
   });
 
-  it('nhiều nhà máy: chọn trong ô Nhà máy, chọn sẵn nhà máy lần trước của chính người đó', async () => {
+  it('nhiều đơn vị cơ sở: ô Đơn vị cơ sở hiện ngay trên form đăng nhập (không sang trang khác), chọn sẵn đơn vị lần trước của chính người đó', async () => {
     localStorage.setItem('mes.branch.1', 'A02');
     serve([A00, A01, A02]);
     renderLogin();
     signIn();
-    expect(await screen.findByRole('heading', { name: 'Chọn nhà máy' })).toBeInTheDocument();
-    expect(document.title).toBe('Chọn nhà máy – MES Vietsun');
-    expect(screen.getByText('Xin chào, Nguyễn Văn An.')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Nhà máy 2')).toBeInTheDocument();
+    await branchStep();
+    // Vẫn là form đăng nhập: tên, mật khẩu còn đó nhưng khóa lại; không còn ô nhớ
+    expect(screen.getByRole('heading', { name: 'Đăng nhập' })).toBeInTheDocument();
+    expect(document.title).toBe('Đăng nhập – MES Vietsun');
+    expect(usernameBox()).toHaveValue('an');
+    expect(usernameBox()).toHaveAttribute('readonly');
+    expect(passwordBox()).toHaveAttribute('readonly');
+    // Mật khẩu không nằm lại trên form trong lúc chọn ĐVCS
+    expect(passwordBox()).toHaveValue('');
+    expect(screen.queryByLabelText('Nhớ tài khoản và mật khẩu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Đăng nhập' })).not.toBeInTheDocument();
+    expect(screen.getByText('Xin chào, Nguyễn Văn An. Chọn đơn vị cơ sở để vào làm việc.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('VDC')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Vào làm việc' }));
     expect(await screen.findByText('trang chủ')).toBeInTheDocument();
     expect(sentBody('/auth/select-branch')?.branchCode).toBe('A02');
     expect(localStorage.getItem('mes.branch.1')).toBe('A02');
   });
 
-  it('không chọn sẵn nhà máy của người khác hay nhà máy không còn được vào; chưa chọn thì không gửi', async () => {
+  it('không chọn sẵn đơn vị của người khác hay đơn vị không còn được vào; chưa chọn thì không gửi', async () => {
     localStorage.setItem('mes.branch.2', 'A02');
     serve([A01, A02]);
     const first = renderLogin();
     signIn();
-    await screen.findByRole('heading', { name: 'Chọn nhà máy' });
-    expect(screen.queryByDisplayValue('Nhà máy 2')).not.toBeInTheDocument();
+    await branchStep();
+    expect(screen.queryByDisplayValue('VDC')).not.toBeInTheDocument();
     first.unmount();
 
     useSession.getState().reset('anonymous');
     localStorage.setItem('mes.branch.1', 'A09');
     renderLogin();
     signIn();
-    await screen.findByRole('heading', { name: 'Chọn nhà máy' });
+    await branchStep();
     fireEvent.click(screen.getByRole('button', { name: 'Vào làm việc' }));
-    expect(await screen.findByText('Chọn nhà máy để vào làm việc')).toBeInTheDocument();
+    expect(await screen.findByText('Chọn đơn vị cơ sở để vào làm việc')).toBeInTheDocument();
     expect(callsTo('/auth/select-branch')).toHaveLength(0);
   });
 
-  it('chọn nhà máy lỗi (không phải 401): ở lại bước chọn, báo lỗi, bấm lại được', async () => {
+  it('chọn đơn vị lỗi (không phải 401): ở lại bước chọn, báo lỗi, bấm lại được', async () => {
     localStorage.setItem('mes.branch.1', 'A02');
-    serve([A01, A02], { selectErrors: [new ApiError(403, 'BRANCH_NOT_ALLOWED', 'Bạn không được làm việc ở nhà máy này.')] });
+    serve([A01, A02], { selectErrors: [new ApiError(403, 'BRANCH_NOT_ALLOWED', 'Bạn không được phép chọn đơn vị cơ sở này.')] });
     renderLogin();
     signIn();
-    await screen.findByRole('heading', { name: 'Chọn nhà máy' });
+    await branchStep();
     fireEvent.click(screen.getByRole('button', { name: 'Vào làm việc' }));
-    expect(await screen.findByText('Bạn không được làm việc ở nhà máy này.')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Chọn nhà máy' })).toBeInTheDocument();
+    expect(await screen.findByText('Bạn không được phép chọn đơn vị cơ sở này.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vào làm việc' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Vào làm việc' }));
     expect(await screen.findByText('trang chủ')).toBeInTheDocument();
   });
@@ -184,22 +195,24 @@ describe('Màn đăng nhập', () => {
     serve([A01, A02], { meFails: true });
     renderLogin();
     signIn();
-    await screen.findByRole('heading', { name: 'Chọn nhà máy' });
+    await branchStep();
     fireEvent.click(screen.getByRole('button', { name: 'Vào làm việc' }));
     expect(await screen.findByText('Không kết nối được máy chủ')).toBeInTheDocument();
     expect(callsTo('/auth/logout')).toHaveLength(1);
   });
 
-  it('token tạm hết hạn: về bước mật khẩu, báo đăng nhập lại, giữ tên vừa gõ', async () => {
+  it('token tạm hết hạn: mở lại ô tên, mật khẩu, báo đăng nhập lại, giữ tên vừa gõ', async () => {
     localStorage.setItem('mes.branch.1', 'A01');
     serve([A01, A02], { selectErrors: [new ApiError(401, 'TOKEN_EXPIRED', 'Phiên đăng nhập đã hết hạn.')] });
     renderLogin();
     signIn('an');
-    await screen.findByRole('heading', { name: 'Chọn nhà máy' });
+    await branchStep();
     fireEvent.click(screen.getByRole('button', { name: 'Vào làm việc' }));
     expect(await screen.findByText('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Đăng nhập' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Đăng nhập' })).toBeInTheDocument();
     expect(usernameBox()).toHaveValue('an');
+    expect(usernameBox()).not.toHaveAttribute('readonly');
+    expect(passwordBox()).toHaveValue('');
   });
 
   it('401 vì lý do khác (mật khẩu vừa đổi): báo đúng lý do máy chủ trả', async () => {
@@ -207,7 +220,7 @@ describe('Màn đăng nhập', () => {
     serve([A01, A02], { selectErrors: [new ApiError(401, 'UNAUTHENTICATED', 'Mật khẩu đã được đổi. Hãy đăng nhập lại.')] });
     renderLogin();
     signIn();
-    await screen.findByRole('heading', { name: 'Chọn nhà máy' });
+    await branchStep();
     fireEvent.click(screen.getByRole('button', { name: 'Vào làm việc' }));
     expect(await screen.findByText('Mật khẩu đã được đổi. Hãy đăng nhập lại.')).toBeInTheDocument();
   });
@@ -216,9 +229,9 @@ describe('Màn đăng nhập', () => {
     serve([A01, A02]);
     renderLogin();
     signIn('an');
-    await screen.findByRole('heading', { name: 'Chọn nhà máy' });
+    await branchStep();
     fireEvent.click(screen.getByRole('button', { name: 'Đăng nhập tài khoản khác' }));
-    expect(await screen.findByRole('heading', { name: 'Đăng nhập' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Đăng nhập' })).toBeInTheDocument();
     expect(callsTo('/auth/logout')).toHaveLength(1);
     expect(useSession.getState().status).toBe('anonymous');
     expect(useSession.getState().preAuthToken).toBeNull();
