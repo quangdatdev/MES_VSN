@@ -37,8 +37,8 @@ export interface UserAccess {
   /** Quyền của từng vai trò đang hiệu lực: chính sách cột chỉ tính vai trò có quyền xem tài nguyên. */
   rolePermissions: Map<number, Set<string>>;
   /**
-   * Mã nhà máy SX (đang dùng) được tích cho người này (SysUserProductionFactory, ADR 0013), không theo ĐVCS của phiên:
-   * BaseRepository lọc theo danh sách này khi bên gọi yêu cầu (popup chọn mã hàng lúc lập kế hoạch xuất hàng).
+   * Mã nhà máy SX (đang dùng) thuộc ĐVCS của phiên theo danh mục Nhà máy SX (ADR 0013 mục 11); đơn vị tổng hợp: mọi nhà máy
+   * đã gắn ĐVCS. BaseRepository lọc theo danh sách này khi bên gọi yêu cầu (popup chọn mã hàng lúc lập kế hoạch xuất hàng).
    */
   productionFactories: string[];
   version: string;
@@ -221,13 +221,10 @@ export class PermissionService {
     const rolePermissions = new Map<number, Set<string>>();
     for (const p of rolePerms) rolePermissions.set(p.RoleId, (rolePermissions.get(p.RoleId) ?? new Set()).add(p.Code));
 
-    const factories = await this.db
-      .selectFrom('SysUserProductionFactory as uf')
-      .innerJoin('SysProductionFactory as f', 'f.Id', 'uf.ProductionFactoryId')
-      .select('f.Code')
-      .where('uf.UserId', '=', userId)
-      .where('f.IsActive', '=', true)
-      .orderBy('f.Code')
+    // Danh mục đổi ĐVCS của nhà máy, bật, tắt nhà máy thì tăng phiên bản quyền (CatalogService)
+    const factoryQuery = this.db.selectFrom('SysProductionFactory').select('Code').where('IsActive', '=', true);
+    const factories = await (branch.isAggregate ? factoryQuery.where('BranchCode', 'is not', null) : factoryQuery.where('BranchCode', '=', branch.code))
+      .orderBy('Code')
       .execute();
 
     return {

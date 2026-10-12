@@ -47,7 +47,6 @@ export class AdminUsersService {
     const ids = rows.map((r) => r.Id);
     const roles = ids.length ? await this.db.selectFrom('SysUserRole').select(['UserId', 'RoleId']).where('UserId', 'in', ids).execute() : [];
     const branches = ids.length ? await this.db.selectFrom('SysUserBranch').select(['UserId', 'BranchId', 'IsDefault']).where('UserId', 'in', ids).execute() : [];
-    const factories = ids.length ? await this.db.selectFrom('SysUserProductionFactory').select(['UserId', 'ProductionFactoryId']).where('UserId', 'in', ids).execute() : [];
     const now = Date.now();
     return {
       total: Number(total.n),
@@ -64,33 +63,8 @@ export class AdminUsersService {
         roleIds: roles.filter((x) => x.UserId === r.Id).map((x) => x.RoleId),
         branchIds: branches.filter((x) => x.UserId === r.Id).map((x) => x.BranchId),
         defaultBranchId: branches.find((x) => x.UserId === r.Id && x.IsDefault)?.BranchId ?? null,
-        productionFactoryIds: factories.filter((x) => x.UserId === r.Id).map((x) => x.ProductionFactoryId),
       })),
     };
-  }
-
-  /**
-   * Nhà máy SX (kể cả đã ngừng, để hiện đúng tên nhà máy đang tích) cho màn Người dùng: theo quyền của màn này, không bắt
-   * quyền xem Danh mục hệ thống (review 5.9 L8).
-   */
-  async productionFactories() {
-    const rows = await this.db
-      .selectFrom('SysProductionFactory as f')
-      .leftJoin('SysBranch as b', 'b.Code', 'f.BranchCode')
-      .select(['f.Id', 'f.Code', 'f.Name', 'f.BranchCode', 'b.Name as BranchName', 'f.Description', 'f.SortOrder', 'f.IsActive'])
-      .orderBy('f.SortOrder')
-      .orderBy('f.Code')
-      .execute();
-    return rows.map((r) => ({
-      id: r.Id,
-      code: r.Code,
-      name: r.Name,
-      branchCode: r.BranchCode,
-      branchName: r.BranchName,
-      description: r.Description,
-      sortOrder: r.SortOrder,
-      isActive: !!r.IsActive,
-    }));
   }
 
   async create(actor: AuthUser, dto: UserCreateDto) {
@@ -211,11 +185,11 @@ export class AdminUsersService {
   }
 
   /**
-   * Đơn vị cơ sở được chọn khi đăng nhập (SysUserBranch) và nhà máy SX được tích (SysUserProductionFactory, ADR 0013), lưu
-   * cùng một lần. Nhà máy SX không cần thuộc ĐVCS được gán: người dùng lập kế hoạch xuất hàng cho mọi nhà máy được tích.
+   * Đơn vị cơ sở được chọn khi đăng nhập (SysUserBranch). Nhà máy SX lập kế hoạch xuất hàng được theo ĐVCS đăng nhập (danh
+   * mục Nhà máy SX), không tích theo người (ADR 0013 mục 11).
    */
   async setBranches(actor: AuthUser, id: number, dto: UserBranchesDto) {
-    if (id === actor.userId) throw Errors.selfElevation('Bạn không được tự thay đổi đơn vị cơ sở, nhà máy SX của chính mình.');
+    if (id === actor.userId) throw Errors.selfElevation('Bạn không được tự thay đổi đơn vị cơ sở của chính mình.');
     await this.assertUser(id);
     await this.assertCanManage(actor, id);
     const branchIds = [...new Set(dto.branchIds)];
@@ -224,11 +198,6 @@ export class AdminUsersService {
       : [];
     if (valid.length !== branchIds.length) throw new AppException('VALIDATION_FAILED', 'Có đơn vị cơ sở không tồn tại hoặc đã bị vô hiệu.', 422);
     const defaultId = dto.defaultBranchId && branchIds.includes(dto.defaultBranchId) ? dto.defaultBranchId : valid[0]?.Id;
-    const factoryIds = dto.productionFactoryIds === undefined ? null : [...new Set(dto.productionFactoryIds)];
-    const factories = factoryIds?.length
-      ? await this.db.selectFrom('SysProductionFactory').select(['Id', 'Code']).where('Id', 'in', factoryIds).where('IsActive', '=', true).execute()
-      : [];
-    if (factoryIds && factories.length !== factoryIds.length) throw new AppException('VALIDATION_FAILED', 'Có nhà máy SX không tồn tại hoặc đã ngừng dùng.', 422);
 
     const current = await this.db
       .selectFrom('SysUserBranch as ub')
@@ -236,23 +205,8 @@ export class AdminUsersService {
       .select('b.Code')
       .where('ub.UserId', '=', id)
       .execute();
-    const currentFactories = await this.db
-      .selectFrom('SysUserProductionFactory as uf')
-      .innerJoin('SysProductionFactory as f', 'f.Id', 'uf.ProductionFactoryId')
-      .select('f.Code')
-      .where('uf.UserId', '=', id)
-      .execute();
     await this.db.transaction().execute(async (trx) => {
       await trx.deleteFrom('SysUserBranch').where('UserId', '=', id).execute();
-      if (factoryIds) {
-        await trx.deleteFrom('SysUserProductionFactory').where('UserId', '=', id).execute();
-        if (factories.length) {
-          await trx
-            .insertInto('SysUserProductionFactory')
-            .values(factories.map((f) => ({ UserId: id, ProductionFactoryId: f.Id, CreatedBy: actor.userId })))
-            .execute();
-        }
-      }
       if (valid.length) {
         await trx
           .insertInto('SysUserBranch')
@@ -265,8 +219,8 @@ export class AdminUsersService {
         actor,
         id,
         'USER_BRANCHES',
-        { branches: current.map((c) => c.Code), productionFactories: currentFactories.map((f) => f.Code) },
-        { branches: valid.map((b) => b.Code), productionFactories: factoryIds ? factories.map((f) => f.Code) : currentFactories.map((f) => f.Code) },
+        { branches: current.map((c) => c.Code) },
+        { branches: valid.map((b) => b.Code) },
       );
     });
     this.permissions.clearCache();

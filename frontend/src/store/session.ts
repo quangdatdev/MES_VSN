@@ -21,7 +21,7 @@ interface SessionState {
   user: UserInfo | null;
   branch: Branch | null;
   roles: RoleInfo[];
-  /** Nhà máy SX được tích: popup Chọn mã hàng của kế hoạch xuất hàng chỉ có đơn hàng của các nhà máy này (máy chủ lọc) */
+  /** Nhà máy SX thuộc ĐVCS của phiên: popup Chọn mã hàng của kế hoạch xuất hàng chỉ có đơn hàng của các nhà máy này (máy chủ lọc) */
   productionFactories: ProductionFactory[];
   permissions: Set<string>;
   permissionVersion: number | null;

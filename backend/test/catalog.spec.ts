@@ -51,7 +51,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await order.deleteFrom('SalesOrderPo').where('SalesOrderId', 'in', orders).execute();
     await order.deleteFrom('SalesOrder').where('StyleCode', '=', 'TEST-P54-FIXTURE').execute();
     await core.deleteFrom('SysCatalogItem').where('Code', 'like', 'TEST-P54%').execute();
-    // Nhà máy SX thử: gỡ gán của người dùng trước (khóa ngoại)
+    // Nhà máy SX thử: gỡ gán của người dùng trước (khóa ngoại; bảng gán theo người không còn dùng nhưng còn dữ liệu cũ)
     const testFactories = core.selectFrom('SysProductionFactory').select('Id').where('Code', 'like', 'TEST-P54%');
     await core.deleteFrom('SysUserProductionFactory').where('ProductionFactoryId', 'in', testFactories).execute();
     await core.deleteFrom('SysProductionFactory').where('Code', 'like', 'TEST-P54%').execute();
@@ -236,30 +236,26 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     expect(audit.map((a: any) => a.actionCode)).toEqual(expect.arrayContaining(['FACTORY_CREATE', 'FACTORY_UPDATE']));
   });
 
-  it('nhà máy SX được tích cho người dùng lưu cùng ĐVCS; nhà máy lạ hoặc đã ngừng => 422; ngừng nhà máy thì người được tích mất nhà máy đó', async () => {
-    const f = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-U', name: 'Nhà máy gán thử', branchCode: 'A02' }).expect(201)).body;
+  it('nhà máy SX trong quyền của phiên theo ĐVCS đăng nhập: thêm, đổi ĐVCS, ngừng nhà máy có hiệu lực ngay; không còn tích theo người (ADR 0013 mục 11)', async () => {
+    const codes = async () => ((await api().get('/api/v1/me').set(auth(planner)).expect(200)).body.productionFactories as any[]).map((x) => x.code);
+    expect(await codes()).not.toContain('TEST-P54-U');
+    const f = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-U', name: 'Nhà máy gán thử', branchCode: 'A01' }).expect(201)).body;
+    expect(await codes()).toContain('TEST-P54-U');
+    await api().put(`/api/v1/admin/catalogs/factories/${f.id}`).set(auth(admin)).send({ branchCode: 'A02' }).expect(200);
+    expect(await codes()).not.toContain('TEST-P54-U');
+    await api().put(`/api/v1/admin/catalogs/factories/${f.id}`).set(auth(admin)).send({ branchCode: 'A01' }).expect(200);
+    expect(await codes()).toContain('TEST-P54-U');
+    await api().put(`/api/v1/admin/catalogs/factories/${f.id}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    expect(await codes()).not.toContain('TEST-P54-U');
+    // Ở ĐVCS khác thì không có nhà máy của A01
+    const a02 = await tokenFor('admin', 'A02');
+    expect(((await api().get('/api/v1/me').set(auth(a02)).expect(200)).body.productionFactories as any[]).map((x) => x.code)).not.toContain('A01');
+    // Màn Người dùng không còn gán nhà máy theo người: danh sách không còn trường này, gửi lên thì bỏ qua
     const kh = (await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a');
-    const put = (productionFactoryIds?: number[]) =>
-      api().put(`/api/v1/admin/users/${kh.id}/branches`).set(auth(admin)).send({ branchIds: kh.branchIds, defaultBranchId: kh.defaultBranchId ?? undefined, productionFactoryIds });
-    try {
-      await put([f.id]).expect(200);
-      const after = (await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a');
-      expect(after.productionFactoryIds).toEqual([f.id]);
-      // Không gửi danh sách nhà máy: giữ nguyên
-      await put(undefined).expect(200);
-      expect((await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a').productionFactoryIds).toEqual([f.id]);
-      await put([999_999]).expect(422);
-      const codes = async () => ((await api().get('/api/v1/me').set(auth(planner)).expect(200)).body.productionFactories as any[]).map((x) => x.code);
-      expect(await codes()).toEqual(['TEST-P54-U']);
-      await api().put(`/api/v1/admin/catalogs/factories/${f.id}`).set(auth(admin)).send({ isActive: false }).expect(200);
-      expect(await codes()).toEqual([]);
-      await put([f.id]).expect(422);
-      const audit = (await api().get('/api/v1/admin/audit?entityType=SysUser&pageSize=10').set(auth(admin)).expect(200)).body.items;
-      const last = audit.find((a: any) => a.actionCode === 'USER_BRANCHES');
-      expect(JSON.parse(last.newValue).productionFactories).toBeDefined();
-    } finally {
-      await put(kh.productionFactoryIds).expect(200);
-    }
+    expect(kh.productionFactoryIds).toBeUndefined();
+    await api().put(`/api/v1/admin/users/${kh.id}/branches`).set(auth(admin)).send({ branchIds: kh.branchIds, defaultBranchId: kh.defaultBranchId ?? undefined, productionFactoryIds: [f.id] }).expect(200);
+    expect(await core.selectFrom('SysUserProductionFactory').select('Id').where('ProductionFactoryId', '=', f.id).executeTakeFirst()).toBeUndefined();
+    await api().get('/api/v1/admin/users/production-factories').set(auth(admin)).expect(404);
   });
 
   it('Nhà máy SX của đơn hàng chọn từ danh mục Nhà máy SX: mã lạ hoặc nhà máy đã ngừng => 422, đơn cũ giữ nhà máy đã ngừng; theo chính sách cột', async () => {
@@ -603,6 +599,38 @@ describe('Phase 5.4: danh mục hệ thống', () => {
       await newLine('A01-T54N', ws);
       await planOnLines('TEST-P54-W2', ['A01-T54N']);
       expect(await seen()).toEqual(['A01-T54G', 'A01-T54N']);
+    } finally {
+      await leader.done();
+    }
+  });
+
+  it('nhà máy SX: chỉ quyền sửa danh mục thì sửa được tên, không thêm, đổi ĐVCS, bật/tắt được (cần quyền sửa phân quyền, review 5.9.13 M2)', async () => {
+    const f = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-S', name: 'Nhà máy phạm vi thử', branchCode: 'A01' }).expect(201)).body;
+    const matrix = (await api().get('/api/v1/admin/permissions').set(auth(admin)).expect(200)).body;
+    const permissions = matrix.modules.flatMap((m: any) => m.resources).flatMap((r: any) => r.permissions) as { id: number; code: string }[];
+    const permId = (code: string) => permissions.find((p) => p.code === code)!.id;
+    const leader = await leaderWith('test.p54f', (orgId) => [{ dimension: 'FACTORY', mode: 'LIST', orgUnitId: orgId('A01') }]);
+    try {
+      const allow = (code: string) =>
+        api().post(`/api/v1/admin/users/${leader.id}/overrides`).set(auth(admin)).send({ permissionId: permId(code), effect: 'ALLOW', reason: 'Thử phạm vi nhà máy (test)' }).expect(200);
+      const put = (body: object) => api().put(`/api/v1/admin/catalogs/factories/${f.id}`).set(auth(leader.token)).send(body);
+      await allow('admin.catalog:view');
+      await allow('admin.catalog:create');
+      await allow('admin.catalog:update');
+      await put({ name: 'Nhà máy phạm vi thử 2' }).expect(200);
+      // Gửi lại đúng ĐVCS đang có: không đổi gì nên không cần quyền sửa phân quyền
+      await put({ branchCode: 'A01' }).expect(200);
+      for (const body of [{ branchCode: 'A02' }, { isActive: false }]) {
+        const e = (await put(body).expect(403)).body.error;
+        expect(e.code).toBe('SELF_ELEVATION_FORBIDDEN');
+        expect(e.message).toContain('Thiếu quyền: admin.permission:update');
+      }
+      await api().post('/api/v1/admin/catalogs/factories').set(auth(leader.token)).send({ code: 'TEST-P54-S2', name: 'x', branchCode: 'A01' }).expect(403);
+      const row = await core.selectFrom('SysProductionFactory').select(['Name', 'BranchCode', 'IsActive']).where('Id', '=', f.id).executeTakeFirstOrThrow();
+      expect(row).toEqual({ Name: 'Nhà máy phạm vi thử 2', BranchCode: 'A01', IsActive: true });
+      await allow('admin.permission:view');
+      await allow('admin.permission:update');
+      await put({ branchCode: 'A02' }).expect(200);
     } finally {
       await leader.done();
     }

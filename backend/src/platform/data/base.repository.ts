@@ -34,8 +34,8 @@ export interface ListOptions {
   /** Cột không tìm theo q: cột người dùng không được xem nguyên giá trị (tìm được là đoán được giá trị). */
   searchExclude?: string[];
   /**
-   * Chỉ dòng của các nhà máy SX được tích cho người dùng (ADR 0013), theo cột `productionFactoryColumn` của repository (danh
-   * sách mã cách nhau dấu phẩy: chỉ cần một mã được tích). Danh sách nhà máy lấy từ quyền của phiên, không từ client.
+   * Chỉ dòng của các nhà máy SX thuộc ĐVCS của phiên (ADR 0013 mục 11), theo cột `productionFactoryColumn` của repository
+   * (danh sách mã cách nhau dấu phẩy: chỉ cần một mã thuộc ĐVCS). Danh sách nhà máy lấy từ quyền của phiên, không từ client.
    */
   assignedFactories?: boolean;
 }
@@ -44,11 +44,6 @@ export interface ListOptions {
 export interface GetOptions {
   /** Như ListOptions.assignedFactories */
   assignedFactories?: boolean;
-  /**
-   * Bảng dùng chung có ĐVCS nguồn (`originBranch`): chỉ dòng của ĐVCS đang làm việc, khi đọc để ghi vào dòng con (ví dụ
-   * thêm PO cho đơn hàng: PO cùng ĐVCS với đơn). Đơn vị tổng hợp không ghi nên không áp.
-   */
-  sameBranch?: boolean;
 }
 
 const WRITE_ACTIONS: ReadonlySet<DataAction> = new Set(['create', 'update', 'delete']);
@@ -128,8 +123,8 @@ function rowSatisfies(row: Record<string, unknown>, conds: { c: Condition; colum
  *  - Phạm vi L3: điều kiện sinh từ phạm vi của quyền đang dùng (view khi đọc; create, update, delete khi ghi),
  *    theo SysResourceScopeBinding. Không có quyền thì không thấy gì.
  *  - SHARED: không lọc nhà máy. Bảng dùng chung có cột BranchCode ghi ĐVCS nguồn (`originBranch`, ví dụ đơn hàng: Chi
- *    nhánh FOB): đọc không lọc, nhưng tạo thì đóng dấu ĐVCS của phiên, sửa, xóa chỉ dòng của ĐVCS đang làm việc, đơn vị
- *    tổng hợp chỉ đọc như BRANCH (ADR 0013).
+ *    nhánh FOB): đọc không lọc, nhưng tạo thì đóng dấu ĐVCS của phiên, sửa, xóa chỉ dòng của ĐVCS đang làm việc (hoặc ĐVCS
+ *    đang dùng dòng, `usedBy`), đơn vị tổng hợp chỉ đọc như BRANCH (ADR 0013).
  *  - Tài nguyên chưa khai báo ở SysResource: từ chối.
  * BranchCode khi tạo luôn lấy từ Scope, mọi giá trị client gửi bị ghi đè.
  * Kiểu dòng không bắt buộc có BranchCode: bảng SHARED (hồ sơ nhân viên) không có cột này. Lọc nhà máy theo ScopeType ở
@@ -147,9 +142,16 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
    * Bảng dùng chung (SHARED) nhưng có cột BranchCode ghi ĐVCS nguồn của dòng. Đọc không lọc ĐVCS (mọi ĐVCS xem được); ghi
    * như bảng theo ĐVCS: tạo mới thì BranchCode = ĐVCS của phiên (không nhận từ client), sửa, xóa chỉ dòng của ĐVCS đang
    * làm việc (dòng ĐVCS khác trả 404), ở đơn vị tổng hợp không ghi được. Người ĐVCS khác không đổi được dữ liệu dùng chung
-   * mà ĐVCS khác dựa vào (ví dụ Nhà máy SX của đơn, SL gốc của PO: review 5.9 H1).
+   * mà ĐVCS khác dựa vào (ví dụ Nhà máy SX của đơn: review 5.9 H1), trừ ĐVCS đang dùng dòng (`usedBy`, ví dụ SL gốc của PO
+   * nằm trong kế hoạch xuất hàng của ĐVCS đó).
    */
   protected readonly originBranch: boolean = false;
+  /**
+   * Bảng có ĐVCS nguồn mà ĐVCS khác dùng dòng của nó: bảng theo ĐVCS (cùng database, có cột BranchCode) trỏ tới dòng qua
+   * cột `column`. ĐVCS có dòng trỏ tới (ví dụ PO nằm trong kế hoạch xuất hàng của ĐVCS đó: ShipmentPlanPo.SalesOrderPoId)
+   * sửa, xóa được dòng như ĐVCS nguồn; `inUseHere` lọc màn hình theo cùng điều kiện (ADR 0013 mục 11).
+   */
+  protected readonly usedBy: { table: string; column: string } | null = null;
   /** Cột mã nhà máy SX của bảng, cho tùy chọn `assignedFactories` (ADR 0013). Không khai báo thì tùy chọn đó bị từ chối. */
   protected readonly productionFactoryColumn: string | null = null;
 
@@ -172,8 +174,8 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   }
 
   /**
-   * Giới hạn theo nhà máy SX được tích cho người dùng (lấy từ quyền của phiên); không được tích nhà máy nào thì không thấy gì.
-   * Cột nhà máy là danh sách mã cách nhau dấu phẩy (ADR 0013 mục 9, theo OSM): dòng hiện ra khi có ít nhất một mã được tích.
+   * Giới hạn theo nhà máy SX thuộc ĐVCS của phiên (lấy từ quyền của phiên); ĐVCS chưa có nhà máy nào thì không thấy gì.
+   * Cột nhà máy là danh sách mã cách nhau dấu phẩy (ADR 0013 mục 9, theo OSM): dòng hiện ra khi có ít nhất một mã thuộc ĐVCS.
    */
   private assigned<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, alias?: string): Q {
     if (!this.productionFactoryColumn) throw new Error(`${this.resource} không khai báo cột nhà máy SX (productionFactoryColumn)`);
@@ -181,6 +183,30 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
     const col = alias ? `${alias}.${this.productionFactoryColumn}` : this.productionFactoryColumn;
     if (!factories.length) return qb.where(FALSE);
     return qb.where(sql<SqlBool>`EXISTS (SELECT 1 FROM STRING_SPLIT(${sql.ref(col)}, ',') f WHERE f.value IN (${sql.join(factories)}))`);
+  }
+
+  /** Dòng có trong bảng `usedBy` của ĐVCS phiên (đơn vị tổng hợp: của bất kỳ ĐVCS nào). */
+  private usedExpr(scope: Scope, alias?: string) {
+    if (!this.usedBy) throw new Error(`${this.resource} không khai báo bảng dùng dòng (usedBy)`);
+    const link = sql`${sql.ref(`usedby.${this.usedBy.column}`)} = ${sql.ref(`${alias ?? this.table}.Id`)}`;
+    const from = sql`SELECT 1 FROM ${sql.table(this.usedBy.table)} usedby WHERE ${link}`;
+    return scope.isAggregate ? sql<SqlBool>`EXISTS (${from})` : sql<SqlBool>`EXISTS (${from} AND usedby.BranchCode = ${scope.branchCode})`;
+  }
+
+  /**
+   * Lọc của màn hình làm việc trên dòng dùng chung (ADR 0013 mục 11): dòng ĐVCS của phiên đang dùng (`usedBy`), hoặc dòng
+   * người dùng nhập tay ở ĐVCS này (CreatedBy có giá trị; dòng nạp từ hệ thống nguồn để trống CreatedBy). Đơn vị tổng hợp:
+   * của mọi ĐVCS. Không phải phân quyền (dòng vẫn đọc được ở màn khác); ghép vào `where` của danh sách. Cả hai loại dòng này
+   * ĐVCS của phiên đều sửa được.
+   */
+  inUseHere(scope: Scope): <Q extends { where: (...a: any[]) => Q }>(qb: Q) => Q {
+    if (!this.originBranch) throw new Error(`inUseHere chỉ dùng cho bảng có ĐVCS nguồn (${this.resource})`);
+    const used = this.usedExpr(scope);
+    const createdBy = sql.ref(`${this.table}.CreatedBy`);
+    const entered = scope.isAggregate
+      ? sql<SqlBool>`${createdBy} IS NOT NULL`
+      : sql<SqlBool>`(${createdBy} IS NOT NULL AND ${sql.ref(`${this.table}.BranchCode`)} = ${scope.branchCode})`;
+    return (qb) => qb.where(sql<SqlBool>`(${used} OR ${entered})`);
   }
 
   /** Lớp con dùng hàm này cho truy vấn riêng (thống kê, sinh số chứng từ) thay vì tự viết điều kiện phân quyền. */
@@ -200,7 +226,14 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   private async limit<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, action: DataAction, alias?: string): Promise<Q> {
     const info = await this.info();
     const col = (c: string) => (alias ? `${alias}.${c}` : c);
-    if (!scope.isAggregate && (info.scope === 'BRANCH' || (this.originBranch && WRITE_ACTIONS.has(action)))) qb = qb.where(col('BranchCode'), '=', scope.branchCode);
+    if (!scope.isAggregate && info.scope === 'BRANCH') qb = qb.where(col('BranchCode'), '=', scope.branchCode);
+    else if (!scope.isAggregate && this.originBranch && WRITE_ACTIONS.has(action)) {
+      // Ghi dòng dùng chung: ĐVCS nguồn, hoặc ĐVCS đang dùng dòng (usedBy)
+      const usedBy = this.usedBy ? this.usedExpr(scope, alias) : null;
+      qb = usedBy
+        ? qb.where((eb: ExpressionBuilder<any, any>) => eb.or([eb(col('BranchCode'), '=', scope.branchCode), usedBy]))
+        : qb.where(col('BranchCode'), '=', scope.branchCode);
+    }
 
     const grants = this.grantsFor(scope, action);
     if (grants.length === 0) return qb.where(FALSE);
@@ -331,10 +364,6 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   async getById(scope: Scope, id: number, action: DataAction = 'view', db: Kysely<any> = this.db, opts: GetOptions = {}): Promise<R> {
     let qb = await this.limit(db.selectFrom(this.table).selectAll().where('Id', '=', id), scope, action);
     if (opts.assignedFactories) qb = this.assigned(qb, scope);
-    if (opts.sameBranch) {
-      if (!this.originBranch) throw new Error(`sameBranch chỉ dùng cho bảng có ĐVCS nguồn (${this.resource})`);
-      if (!scope.isAggregate) qb = qb.where('BranchCode', '=', scope.branchCode);
-    }
     const row = await qb.executeTakeFirst();
     if (!row) throw Errors.notFound();
     return row as R;
@@ -504,7 +533,7 @@ export abstract class ChildRepository<R extends { Id: number; BranchCode: string
   private async base(scope: Scope, action: DataAction, db: Kysely<any>, qb: any) {
     const byBranch = await this.byBranch(scope);
     if (byBranch) qb = qb.where('BranchCode', '=', scope.branchCode);
-    // Cha dùng chung có ĐVCS nguồn: ghi dòng con chỉ khi cha ghi được (cùng ĐVCS với phiên), như sửa chính dòng cha
+    // Cha dùng chung có ĐVCS nguồn: ghi dòng con chỉ khi cha ghi được (cùng ĐVCS với phiên hoặc ĐVCS đang dùng cha), như sửa chính dòng cha
     else if (WRITE_ACTIONS.has(action) && !scope.isAggregate) qb = qb.where(this.parentKey, 'in', await this.parent.scopedIds(scope, action, db));
     const grants = this.grantsFor(scope, action);
     if (grants.length === 0) return qb.where(FALSE);

@@ -56,8 +56,6 @@ export class UserRolesDto {
 export class UserBranchesDto {
   @IsArray() @ArrayMaxSize(100) @IsInt({ each: true }) branchIds!: number[];
   @IsOptional() @IsInt() defaultBranchId?: number;
-  /** Nhà máy SX được tích (ADR 0013). Không gửi: giữ nguyên danh sách đang có; null bị từ chối (không coi là xóa hết) */
-  @Optional() @IsArray() @ArrayMaxSize(500) @IsInt({ each: true }) productionFactoryIds?: number[];
 }
 
 export class RoleCreateDto {

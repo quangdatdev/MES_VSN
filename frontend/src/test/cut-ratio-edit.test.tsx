@@ -82,3 +82,40 @@ describe('Cập nhật tỷ lệ cắt: đang sửa màu cỡ', () => {
     expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).not.toHaveAttribute('aria-disabled');
   });
 });
+
+describe('Cập nhật tỷ lệ cắt: PO trong kế hoạch của đơn vị (ADR 0013 mục 11)', () => {
+  it('PO của đơn ĐVCS khác đã vào kế hoạch ở đây: sửa, xác nhận được; xóa bị khóa có lý do', async () => {
+    useSession.getState().reset('anonymous');
+    useSession.getState().set({
+      status: 'ready',
+      user: { id: 1, username: 'kehoach', fullName: 'Kế hoạch' },
+      branch: { code: 'A01', name: 'Nhà máy 1', isAggregate: false },
+      roles: [],
+      permissions: new Set(['order.po:view', 'order.po:update', 'order.po:delete']),
+    });
+    const style = { salesOrderId: 5, customerName: 'KHÁCH THỬ', styleCode: 'MA-05', branchCode: 'A02', poCount: 1, confirmedCount: 0, qty: 100, shipDate: '2026-11-15', statusCode: 'DRAFT' };
+    const planned = { ...po(9, '4500009'), branchCode: 'A02', inPlan: true };
+    vi.mocked(api).mockImplementation((async (path: string) => {
+      if (path.startsWith('/order/cut-ratio/styles')) return { items: [style], total: 1, page: 1, pageSize: 100 };
+      if (/^\/order\/cut-ratio\/pos\/9\/color-sizes/.test(path)) return { po: { ...po(9, '4500009'), branchCode: 'A02' }, lines: [{ id: 1, colorName: 'Đen', sizeName: 'M', qty: 100 }] };
+      if (path.startsWith('/order/cut-ratio/pos')) return { items: [planned], total: 1, page: 1, pageSize: 100 };
+      return [];
+    }) as unknown as typeof api);
+
+    render(
+      <MantineProvider theme={theme} env="test">
+        <ModalsProvider>
+          <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+            <MemoryRouter initialEntries={['/order/cut-ratio?so=5&po=9']}>
+              <CutRatioPage />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </ModalsProvider>
+      </MantineProvider>,
+    );
+    await within(screen.getByRole('table', { name: 'Chi tiết màu cỡ' })).findByText('Đen');
+    expect(screen.getByRole('button', { name: 'Sửa tỷ lệ' })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Xác nhận' })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Xóa PO' })).toHaveAttribute('aria-disabled', 'true');
+  });
+});

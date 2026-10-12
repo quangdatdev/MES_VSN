@@ -99,7 +99,7 @@ export default function SalesOrderPage() {
   return (
     <WorkPage
       title="Thông tin đơn hàng"
-      subtitle="Đơn hàng của toàn công ty lấy từ BRAVO, không lọc theo đơn vị cơ sở. Chọn Nhà máy SX cho từng đơn: người được tích nhà máy đó mới lập kế hoạch xuất hàng cho đơn."
+      subtitle="Đơn hàng của toàn công ty lấy từ BRAVO, không lọc theo đơn vị cơ sở. Chọn Nhà máy SX cho từng đơn: đơn vị cơ sở có nhà máy đó mới lập kế hoạch xuất hàng cho đơn."
       actions={
         <>
           <PolicyHint policy={policy} names={NAMES} />

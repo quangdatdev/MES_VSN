@@ -9,8 +9,6 @@ export interface AdminUser {
   roleIds: number[];
   branchIds: number[];
   defaultBranchId: number | null;
-  /** Nhà máy SX được tích (ADR 0013): lập kế hoạch xuất hàng chỉ thấy đơn hàng của các nhà máy này */
-  productionFactoryIds: number[];
 }
 
 export interface AdminRole {

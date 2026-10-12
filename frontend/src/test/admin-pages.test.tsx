@@ -97,7 +97,7 @@ describe('Chính sách cột: lưu nhiều vai trò, một vai trò lỗi', () =
 });
 
 describe('Người dùng: khóa tài khoản phải xác nhận', () => {
-  const user = { id: 2, username: 'dat.le', fullName: 'Lê Đạt', email: null, isActive: true, isLocked: false, lastLoginAt: null, roleIds: [], branchIds: [], defaultBranchId: null, productionFactoryIds: [] };
+  const user = { id: 2, username: 'dat.le', fullName: 'Lê Đạt', email: null, isActive: true, isLocked: false, lastLoginAt: null, roleIds: [], branchIds: [], defaultBranchId: null };
 
   it('tắt Cho phép đăng nhập rồi Lưu: hỏi trước, chỉ gửi khi bấm Khóa tài khoản', async () => {
     signIn(['admin.user:update']);
@@ -117,6 +117,28 @@ describe('Người dùng: khóa tài khoản phải xác nhận', () => {
     expect(calls).toEqual([]);
     fireEvent.click(confirm);
     await waitFor(() => expect(calls).toEqual([{ path: '/admin/users/2', method: 'PUT', body: { fullName: 'Lê Đạt', email: null, isActive: false } }]));
+  });
+
+  it('gán đơn vị cơ sở: mỗi đơn vị ghi nhà máy SX của nó, không còn tích nhà máy theo người (ADR 0013 mục 11)', async () => {
+    signIn(['admin.permission:update']);
+    const branches = [
+      { id: 11, code: 'A01', name: 'VSN', description: null, isAggregate: false, isActive: true, isSystem: false, inBravo: true, factories: [{ code: 'VSN-DN', name: 'VSN-DN', isActive: true }, { code: 'A01', name: 'Nhà máy cũ', isActive: false }] },
+      { id: 12, code: 'A02', name: 'VĐC', description: null, isAggregate: false, isActive: true, isSystem: false, inBravo: true, factories: [] },
+    ];
+    serve((path, method) => {
+      if (path.startsWith('/admin/users?')) return { items: [user], total: 1, page: 1, pageSize: 20 };
+      if (path === '/admin/roles') return [];
+      if (path === '/admin/branches') return branches;
+      if (path === '/admin/users/2/branches' && method === 'PUT') return {};
+      throw new Error(`Chưa giả: ${path}`);
+    });
+    renderPage(<UsersPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Gán đơn vị cơ sở' }));
+    expect(await screen.findByText('Nhà máy SX: VSN-DN')).toBeInTheDocument();
+    expect(screen.getByText('Chưa có nhà máy SX')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /A01 – VSN/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(calls).toEqual([{ path: '/admin/users/2/branches', method: 'PUT', body: { branchIds: [11], defaultBranchId: undefined } }]));
   });
 
   it('thao tác với chính mình không ẩn đi mà bị khóa, có lý do', async () => {

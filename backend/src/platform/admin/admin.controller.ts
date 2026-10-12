@@ -43,10 +43,6 @@ export class AdminController {
   @Get('users') @RequirePermission('admin.user:view')
   listUsers(@Query() q: PageQuery) { return this.users.list(q); }
 
-  /** Nhà máy SX để tích cho người dùng (ADR 0013) */
-  @Get('users/production-factories') @RequirePermission('admin.user:view')
-  userFactories() { return this.users.productionFactories(); }
-
   @Post('users') @RequirePermission('admin.user:create')
   createUser(@CurrentUser() a: AuthUser, @Body() dto: UserCreateDto) { return this.users.create(a, dto); }
 

@@ -24,7 +24,7 @@ import type { Paged } from '../../lib/types';
 import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
 import { emptyFilter, type CutStyle, type Po, type PoColorSize, type SalesOrder } from './api';
-import { EmptyState, ExportButton, filterParams, IssueList, loadError, OrderFilters, PO_STATUS, readable, StatusBadge, useCanWrite, useCustomers, useOriginLock, useUrlFilter } from './common';
+import { EmptyState, ExportButton, filterParams, IssueList, loadError, OrderFilters, PO_STATUS, readable, StatusBadge, useCanWrite, useCustomers, useUrlFilter } from './common';
 import { pageOf, useClampPage, useUrlParams } from '../../lib/useUrlParams';
 import { useColumnFilters, valuesLoader } from '../../lib/columnFilter';
 import { blank, checkColorSize, signature, SIZE_RULE, type ColorSizeCheck, type EditRow } from './cutRatioRules';
@@ -172,7 +172,6 @@ export default function CutRatioPage() {
   // Thêm PO cần đọc khách hàng, mã hàng từ Thông tin đơn hàng
   const canViewOrders = useCan('order.allocation:view');
   const canCreate = canAddPo && canViewOrders;
-  const originLock = useOriginLock('PO');
   const p = filterParams(filter);
   // Lưới mã hàng (trang page, lọc theo cột cf) và lưới PO (trang ppage, lọc theo cột pcf) phân trang, lọc riêng
   const styleCols = useColumnFilters(url, patch);
@@ -269,7 +268,7 @@ export default function CutRatioPage() {
     [statusCode],
   );
   const styleColumns = useMemo(
-    // PO của mọi ĐVCS (dùng chung, ADR 0013): luôn hiện Chi nhánh FOB để biết dòng nào sửa được
+    // Chi nhánh FOB của đơn hàng: đơn của ĐVCS khác vẫn sửa được tỷ lệ khi PO đã vào kế hoạch của đơn vị này (ADR 0013 mục 11)
     () => withBranchNames(STYLE_COLS, branchName),
     [branchName],
   );
@@ -279,13 +278,11 @@ export default function CutRatioPage() {
     const rows = lines.map((l) => ({ key: nextKey++, colorName: l.colorName, sizeName: l.sizeName, qty: typeof l.qty === 'number' ? l.qty : null }));
     setEdit({ po: currentPo, rows });
   };
-  // PO của ĐVCS khác: xem được, không sửa, xác nhận, xóa được
-  const poLock = currentPo ? originLock(currentPo.branchCode) : null;
+  // Mọi PO trên màn đều sửa được ở đơn vị này (trong kế hoạch của đơn vị, hoặc nhập tay ở đây); PO đã vào kế hoạch thì không xóa
+  const inPlan = !!(currentPo && poItems.find((x) => x.id === currentPo.id)?.inPlan);
   const editBlocked = !currentPo
     ? PICK_PO
-    : poLock
-      ? poLock
-      : !policy.editable('qty')
+    : !policy.editable('qty')
       ? 'Bạn chỉ được xem cột Số lượng nên không sửa được tỷ lệ'
       : confirmed
         ? 'PO đã xác nhận, hủy xác nhận trước khi sửa'
@@ -296,9 +293,7 @@ export default function CutRatioPage() {
             : null;
   const confirmBlocked = !currentPo
     ? PICK_PO
-    : poLock
-      ? poLock
-      : confirmed
+    : confirmed
       ? 'PO đã xác nhận'
       : detail.isLoading
         ? 'Đang tải màu cỡ…'
@@ -311,7 +306,11 @@ export default function CutRatioPage() {
   return (
     <WorkPage
       title="Cập nhật tỷ lệ cắt"
-      subtitle="Chọn mã hàng, chọn PO rồi sửa số lượng theo màu cỡ. PO đã xác nhận bị khóa để khâu cắt dùng."
+      subtitle={
+        branch?.isAggregate
+          ? 'Có PO đã đưa vào kế hoạch xuất hàng của mọi đơn vị cơ sở và PO nhập tay. Chế độ tổng hợp chỉ xem; sửa tỷ lệ ở đơn vị đã lập kế hoạch.'
+          : `Chỉ có PO đã đưa vào kế hoạch xuất hàng của ${branchName(branch?.code)} và PO nhập tay ở đây. Chọn mã hàng, chọn PO rồi sửa số lượng theo màu cỡ; PO đã xác nhận bị khóa để khâu cắt dùng.`
+      }
       actions={
         <>
           <PolicyHint policy={policy} names={NAMES} />
@@ -366,7 +365,7 @@ export default function CutRatioPage() {
             loadValues={loadStyleValues}
             selectedKey={style?.salesOrderId}
             onRowClick={pickStyle}
-            empty={<EmptyState filtered={filtered || mine || styleCols.active} what="mã hàng" onClear={clearAll} hint="Chưa có mã hàng nào có PO." />}
+            empty={<EmptyState filtered={filtered || mine || styleCols.active} what="mã hàng" onClear={clearAll} hint="Chưa có PO nào trong kế hoạch xuất hàng của đơn vị này. Lập kế hoạch ở Kế hoạch xuất hàng, PO đã chọn sẽ hiện ở đây." />}
             footer={styles.data && <Pager page={page} pageSize={PAGE_SIZE} total={styles.data.total} onPage={(n) => patch({ page: n > 1 ? n : null })} />}
           />
         </div>
@@ -377,7 +376,7 @@ export default function CutRatioPage() {
                 Danh sách PO {style && <Text span size="xs" c="dimmed" fw={400}>của {style.styleCode}</Text>}
               </span>
               {canCreate && style && (
-                <ActionButton size="xs" variant="default" leftSection={<IconPlus size={14} />} blockedReason={originLock(style.branchCode)} onClick={() => setAdding(true)}>
+                <ActionButton size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => setAdding(true)}>
                   Thêm PO
                 </ActionButton>
               )}
@@ -457,7 +456,7 @@ export default function CutRatioPage() {
                       variant="default"
                       color="red"
                       leftSection={<IconTrash size={15} />}
-                      blockedReason={!currentPo ? PICK_PO : poLock ?? (confirmed ? 'PO đã xác nhận, hủy xác nhận trước khi xóa' : null)}
+                      blockedReason={!currentPo ? PICK_PO : inPlan ? 'PO đã nằm trong kế hoạch xuất hàng (có thể của đơn vị khác) nên không xóa được' : confirmed ? 'PO đã xác nhận, hủy xác nhận trước khi xóa' : null}
                       loading={busy('delete')}
                       onClick={() =>
                         currentPo &&
@@ -477,7 +476,7 @@ export default function CutRatioPage() {
                       <ActionButton
                         variant="default"
                         leftSection={<IconLockOpen size={15} />}
-                        blockedReason={!currentPo ? PICK_PO : poLock ?? (!confirmed ? 'PO chưa xác nhận' : null)}
+                        blockedReason={!currentPo ? PICK_PO : !confirmed ? 'PO chưa xác nhận' : null}
                         loading={busy('unconfirm')}
                         onClick={() =>
                           currentPo &&

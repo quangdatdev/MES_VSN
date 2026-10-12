@@ -8,7 +8,7 @@ import { ExportService } from '../../platform/export/export.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { ORDER_DB } from './order.db';
 import { ColorSizeLinesDto, CutRatioStyleQuery, CutRatioStyleValuesQuery, OrderListQuery, OrderValuesQuery, PoCreateDto } from './order.dto';
-import { PoColorSizeRepository, SalesOrderPoRepository, SalesOrderRepository, type PoColorSizeRow, type SalesOrderPoRow } from './order.repositories';
+import { PoColorSizeRepository, poInPlanExpr, poOrderBranchExpr, SalesOrderPoRepository, SalesOrderRepository, type PoColorSizeRow, type SalesOrderPoRow } from './order.repositories';
 import type { OrderDb } from './order.types';
 import { businessFilter, conflict, csKey, day, escapeLike, invalid, isReferenceError, readableQuery, sortOf } from './order.util';
 
@@ -32,7 +32,7 @@ const PO_FILTER: FilterSpec = {
 const STYLE_FILTER: FilterSpec = {
   customerName: { expr: 'CustomerName', kind: 'text' },
   styleCode: { expr: 'StyleCode', kind: 'text' },
-  branchCode: { expr: 'BranchCode', kind: 'text' },
+  branchCode: { expr: poOrderBranchExpr, kind: 'text' },
 };
 
 export function presentPo(r: SalesOrderPoRow) {
@@ -98,10 +98,14 @@ export class CutRatioService {
     return sortOf(SORT, await this.fields.safeSort(user, RESOURCE, sort, DEFAULT_SORT), DEFAULT_SORT);
   }
 
-  /** Điều kiện trên dòng PO của danh sách mã hàng: dải lọc, "PO do tôi lập", lọc theo cột. */
+  /**
+   * Điều kiện trên dòng PO của danh sách mã hàng: chỉ PO ĐVCS của phiên đang dùng (nằm trong kế hoạch xuất hàng của ĐVCS này,
+   * hoặc PO nhập tay ở đây; ADR 0013 mục 11), dải lọc, "PO do tôi lập", lọc theo cột.
+   */
   private async styleWhere(user: AuthUser, q: CutRatioStyleQuery, except?: string) {
     const filters = await readableColumnFilters(this.fields, user, RESOURCE, q.cf, STYLE_FILTER);
     return allOf(
+      this.pos.inUseHere(scopeOf(user)),
       <Q extends { where: (...a: any[]) => Q }>(qb: Q): Q => {
         if (q.shipFrom) qb = qb.where('ShipDate', '>=', q.shipFrom);
         if (q.shipTo) qb = qb.where('ShipDate', '<=', q.shipTo);
@@ -114,10 +118,11 @@ export class CutRatioService {
     );
   }
 
-  /** Điều kiện của lưới PO (của một mã hàng hoặc tất cả); `except`: cột đang mở popup lọc. */
+  /** Điều kiện của lưới PO (của một mã hàng hoặc tất cả), cùng tập PO với danh sách mã hàng; `except`: cột đang mở popup lọc. */
   private async poWhere(user: AuthUser, salesOrderId: number | undefined, q: OrderListQuery, except?: string) {
     const filters = await readableColumnFilters(this.fields, user, RESOURCE, q.cf, PO_FILTER);
     return allOf(
+      this.pos.inUseHere(scopeOf(user)),
       businessFilter(q),
       salesOrderId ? <Q extends { where: (...a: any[]) => Q }>(qb: Q): Q => qb.where('SalesOrderId', '=', salesOrderId) : null,
       columnFilterWhere(filters, PO_FILTER, except),
@@ -167,8 +172,10 @@ export class CutRatioService {
       searchExclude: q.searchExclude,
       sort: await this.sort(user, q.sort),
       where: await this.poWhere(user, salesOrderId, q),
+      select: () => [poInPlanExpr.as('InPlan')],
     });
-    return { ...page, items: page.items.map(presentPo) };
+    // Nút Xóa PO khóa sẵn với PO đã vào kế hoạch (máy chủ vẫn kiểm khi xóa)
+    return { ...page, items: page.items.map((r) => ({ ...presentPo(r), inPlan: !!(r as SalesOrderPoRow & { InPlan?: number }).InPlan })) };
   }
 
   async colorSizeList(user: AuthUser, poId: number) {
@@ -178,75 +185,105 @@ export class CutRatioService {
     return { po: presentPo(po), lines: lines.map(presentColorSize) };
   }
 
-  /** "Thêm PO": dữ liệu PO chưa đồng bộ được từ BRAVO nên cho nhập tay, kèm màu cỡ. */
+  /**
+   * "Thêm PO": PO BRAVO chưa có nên cho nhập tay, kèm màu cỡ. Chỉ thêm cho mã hàng đang có trên màn ở ĐVCS của phiên (có PO
+   * trong kế hoạch xuất hàng của ĐVCS này hoặc PO nhập tay ở đây); PO mới mang ĐVCS của phiên (ADR 0013 mục 11).
+   */
   async create(user: AuthUser, dto: PoCreateDto) {
     const scope = scopeOf(user);
-    // Lấy khách hàng, mã hàng từ đơn hàng: cần quyền xem Thông tin đơn hàng. Đơn hàng dùng chung nhưng PO chỉ thêm ở ĐVCS
-    // của đơn (PO đóng dấu ĐVCS của phiên, khóa ngoại ghép PO – đơn hàng giữ cùng ĐVCS; review 5.9 M2)
-    const order = await this.orders.getById(scope, dto.salesOrderId, 'view', undefined, { sameBranch: true });
+    // Lấy khách hàng, mã hàng từ đơn hàng: cần quyền xem Thông tin đơn hàng
+    const order = await this.orders.getById(scope, dto.salesOrderId, 'view');
+    await this.pos.assertWritable(scope);
+    const here = await this.pos.list(scope, { page: 1, pageSize: 1, where: allOf(this.pos.inUseHere(scope), (qb) => qb.where('SalesOrderId', '=', order.Id)) });
+    if (!here.total) throw invalid('Mã hàng này chưa có PO trong kế hoạch xuất hàng của đơn vị cơ sở đang làm việc. Lập kế hoạch xuất hàng trước rồi mới thêm PO.');
     const lines = cleanLines(dto.lines);
-    const po = await inTransaction(this.db, async (trx) => {
-      const row = await this.pos.createNumbered(
-        scope,
-        {
-          SalesOrderId: order.Id,
-          PoNumber: dto.poNumber.toUpperCase(),
-          CustomerName: order.CustomerName,
-          StyleCode: order.StyleCode,
-          Qty: lines.reduce((s, l) => s + l.Qty, 0),
-          Destination: dto.destination || null,
-          PackingListCode: dto.packingListCode || null,
-          CustomsDeclarationNo: dto.customsDeclarationNo || null,
-          ShipDate: dto.shipDate,
-          StatusCode: 'DRAFT',
-        },
-        'PoCode',
-        'PO',
-        trx,
-      );
-      await this.colorSizes.insert(scope, row.Id, lines, trx);
-      return row;
-    });
+    let po: SalesOrderPoRow;
+    try {
+      po = await inTransaction(this.db, async (trx) => {
+        const row = await this.pos.createNumbered(
+          scope,
+          {
+            SalesOrderId: order.Id,
+            PoNumber: dto.poNumber.toUpperCase(),
+            CustomerName: order.CustomerName,
+            StyleCode: order.StyleCode,
+            Qty: lines.reduce((s, l) => s + l.Qty, 0),
+            Destination: dto.destination || null,
+            PackingListCode: dto.packingListCode || null,
+            CustomsDeclarationNo: dto.customsDeclarationNo || null,
+            ShipDate: dto.shipDate,
+            StatusCode: 'DRAFT',
+          },
+          'PoCode',
+          'PO',
+          trx,
+        );
+        await this.colorSizes.insert(scope, row.Id, lines, trx);
+        return row;
+      });
+    } catch (e) {
+      // Đơn hàng vừa bị xóa, hoặc database chưa chạy MES_Order/0008 (PO tay khác ĐVCS của đơn vướng khóa ngoại ghép cũ)
+      if (isReferenceError(e)) throw conflict('Không thêm được PO cho mã hàng này. Tải lại trang rồi thử lại; vẫn lỗi thì báo quản trị hệ thống.');
+      throw e;
+    }
     const out = presentPo(po);
     await this.log(user, po.Id, 'CREATE', undefined, { ...out, lines: dto.lines });
     return out;
   }
 
-  /** "Cập nhật": thay toàn bộ màu cỡ của PO và tính lại tổng số lượng. PO đã xác nhận thì phải hủy xác nhận trước. */
+  /**
+   * "Cập nhật": thay toàn bộ màu cỡ của PO và tính lại tổng số lượng. PO đã xác nhận thì phải hủy xác nhận trước. Khóa PO tới
+   * hết transaction rồi mới đọc trạng thái: ĐVCS nguồn và các ĐVCS có PO trong kế hoạch cùng ghi được một PO (ADR 0013 mục
+   * 11), người xác nhận cùng lúc phải chờ (review 5.9.13 M1).
+   */
   async updateColorSizes(user: AuthUser, poId: number, dto: ColorSizeLinesDto) {
     const scope = scopeOf(user);
     const lines = cleanLines(dto.lines);
-    const before = await this.colorSizeList(user, poId);
-    const po = await inTransaction(this.db, async (trx) => {
+    const { po, before } = await inTransaction(this.db, async (trx) => {
+      await this.pos.lock(scope, poId, 'update', trx);
       const current = await this.pos.getById(scope, poId, 'update', trx);
       if (current.StatusCode === 'CONFIRMED') throw conflict('PO đã xác nhận tỷ lệ cắt. Bấm "Hủy xác nhận" trước khi sửa.');
+      const old = await this.colorSizes.listByParent(scope, poId, 'view', trx);
       await this.colorSizes.removeWhere(scope, { parentId: poId }, trx);
       await this.colorSizes.insert(scope, poId, lines, trx);
-      return this.pos.update(scope, poId, { Qty: lines.reduce((s, l) => s + l.Qty, 0) }, trx);
+      return { po: await this.pos.update(scope, poId, { Qty: lines.reduce((s, l) => s + l.Qty, 0) }, trx), before: old.map(presentColorSize) };
     });
-    await this.log(user, poId, 'CUT_RATIO_UPDATE', before.lines, dto.lines);
+    await this.log(user, poId, 'CUT_RATIO_UPDATE', before, dto.lines);
     return { po: presentPo(po), lines: (await this.colorSizes.listByParent(scope, poId)).map(presentColorSize) };
   }
 
+  /** Xác nhận, hủy xác nhận: khóa PO rồi đọc lại trạng thái, như sửa màu cỡ (review 5.9.13 M1). */
   async setConfirmed(user: AuthUser, poId: number, confirmed: boolean) {
     const scope = scopeOf(user);
-    const current = await this.pos.getById(scope, poId, 'update');
-    if ((current.StatusCode === 'CONFIRMED') === confirmed) throw conflict(confirmed ? 'PO đã được xác nhận.' : 'PO chưa xác nhận.');
-    if (confirmed && current.Qty <= 0) throw conflict('PO chưa có số lượng màu cỡ, không xác nhận được.');
-    const row = await this.pos.update(scope, poId, confirmed ? { StatusCode: 'CONFIRMED', ConfirmedAt: new Date(), ConfirmedBy: user.userId } : { StatusCode: 'DRAFT', ConfirmedAt: null, ConfirmedBy: null });
+    const row = await inTransaction(this.db, async (trx) => {
+      await this.pos.lock(scope, poId, 'update', trx);
+      const current = await this.pos.getById(scope, poId, 'update', trx);
+      if ((current.StatusCode === 'CONFIRMED') === confirmed) throw conflict(confirmed ? 'PO đã được xác nhận.' : 'PO chưa xác nhận.');
+      if (confirmed && current.Qty <= 0) throw conflict('PO chưa có số lượng màu cỡ, không xác nhận được.');
+      return this.pos.update(
+        scope,
+        poId,
+        confirmed ? { StatusCode: 'CONFIRMED', ConfirmedAt: new Date(), ConfirmedBy: user.userId } : { StatusCode: 'DRAFT', ConfirmedAt: null, ConfirmedBy: null },
+        trx,
+      );
+    });
     await this.log(user, poId, confirmed ? 'CUT_RATIO_CONFIRM' : 'CUT_RATIO_UNCONFIRM');
     return presentPo(row);
   }
 
+  /** Khóa PO rồi mới kiểm trạng thái, xóa màu cỡ, xóa PO: cùng thứ tự khóa với sửa màu cỡ (review 5.9.13 lượt 9) */
   async remove(user: AuthUser, poId: number) {
     const scope = scopeOf(user);
-    const current = await this.pos.getById(scope, poId, 'delete');
-    if (current.StatusCode === 'CONFIRMED') throw conflict('PO đã xác nhận tỷ lệ cắt nên không xóa được. Hủy xác nhận trước.');
-    if (await this.pos.usedInPlans(scope, poId)) throw conflict('PO đã nằm trong kế hoạch xuất hàng nên không xóa được.');
+    let current: SalesOrderPoRow;
     try {
-      await inTransaction(this.db, async (trx) => {
+      current = await inTransaction(this.db, async (trx) => {
+        await this.pos.lock(scope, poId, 'delete', trx);
+        const row = await this.pos.getById(scope, poId, 'delete', trx);
+        if (row.StatusCode === 'CONFIRMED') throw conflict('PO đã xác nhận tỷ lệ cắt nên không xóa được. Hủy xác nhận trước.');
+        if (await this.pos.usedInPlans(scope, poId, trx)) throw conflict('PO đã nằm trong kế hoạch xuất hàng nên không xóa được.');
         await this.colorSizes.removeWhere(scope, { parentId: poId }, trx, 'delete');
         await this.pos.remove(scope, poId, trx);
+        return row;
       });
     } catch (e) {
       // Có người vừa đưa PO vào kế hoạch giữa lúc kiểm và lúc xóa

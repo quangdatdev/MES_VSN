@@ -280,7 +280,7 @@ export interface SysProductionFactoryTable extends Audit {
   IsSystem: boolean;
 }
 
-/** Nhà máy SX được tích cho người dùng: lập kế hoạch xuất hàng chỉ chọn được đơn hàng của các nhà máy này */
+/** Nhà máy SX từng được tích cho người dùng. Không còn dùng từ ADR 0013 mục 11 (lọc theo nhà máy của ĐVCS); giữ bảng, chờ xóa */
 export interface SysUserProductionFactoryTable {
   Id: Id;
   UserId: number;

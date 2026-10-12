@@ -335,8 +335,6 @@ export interface UserDef {
   role: string;
   branches: string[];
   defaultBranch: string;
-  /** Nhà máy SX được tích (ADR 0013): lập kế hoạch xuất hàng chỉ thấy đơn hàng của các nhà máy này */
-  productionFactories?: string[];
   /** Phạm vi của phép gán vai trò (L3) */
   scopes?: { dimension: string; mode: 'ALL' | 'ORG_SUBTREE' | 'LIST' | 'OWN'; org?: string; value?: string }[];
   /** Ngoại lệ theo người (L5) */
@@ -349,7 +347,7 @@ export interface UserDef {
 export const users: UserDef[] = [
   { username: 'admin', fullName: 'Quản trị hệ thống', role: 'ADMIN', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00' },
   { username: 'giamdoc', fullName: 'Phạm Quốc Hưng', role: 'DIRECTOR', branches: ['A00', 'A01'], defaultBranch: 'A00' },
-  { username: 'kehoach.a', fullName: 'Lê Thị Mai', role: 'PLANNER', branches: ['A01'], defaultBranch: 'A01', productionFactories: ['A01', 'A01-B'] },
+  { username: 'kehoach.a', fullName: 'Lê Thị Mai', role: 'PLANNER', branches: ['A01'], defaultBranch: 'A01' },
   {
     username: 'truongchuyen.a',
     fullName: 'Nguyễn Văn Tâm',

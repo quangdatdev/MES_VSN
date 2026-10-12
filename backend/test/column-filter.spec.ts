@@ -74,6 +74,7 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
     const orders = order.selectFrom('SalesOrder').select('Id').where('StyleCode', '=', STYLE);
     const plans = order.selectFrom('ShipmentPlan').select('Id').where('SalesOrderId', 'in', orders);
     await order.deleteFrom('ShipmentPlanLine').where('ShipmentPlanId', 'in', plans).execute();
+    await order.deleteFrom('ShipmentPlanPo').where('ShipmentPlanId', 'in', plans).execute();
     await order.deleteFrom('ShipmentPlan').where('SalesOrderId', 'in', orders).execute();
     await order.deleteFrom('SalesOrderPo').where('SalesOrderId', 'in', orders).execute();
     await order.deleteFrom('SalesOrder').where('StyleCode', '=', STYLE).execute();
@@ -95,7 +96,9 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
     // Kế hoạch xuất hàng vẫn theo ĐVCS: kế hoạch của A02 để kiểm phạm vi ĐVCS của popup giá trị
     await id('ShipmentPlan', { PlanNo: 'TEST-CF-P2', SalesOrderId: other, CustomerName: CUST.other, StyleCode: STYLE, ProductName: 'Áo test', PoBuyDate: 'TEST-CF', PlanQty: 100, ShipDate: '2027-12-31', PlannerName: 'Test', StatusCode: 'PLANNED', BranchCode: 'A02' });
     await id('ShipmentPlanLine', { ShipmentPlanId: planId, LineCode: 'A01-L03', Qty: 100, AvgOutput: 100, StartDate: '2027-11-02', ProductionDays: 1, OffDays: 0, EndDate: '2027-11-02', StatusCode: 'PLANNED', SortOrder: 0, BranchCode: 'A01' });
-    await id('SalesOrderPo', { SalesOrderId: first, PoCode: 'TEST-CF-PO', PoNumber: 'TEST-CF-PO', CustomerName: CUST.a, StyleCode: STYLE, Qty: 100, ShipDate: '2027-12-31', StatusCode: 'DRAFT', BranchCode: 'A01', CreatedAt: new Date('2099-01-05T00:00:00Z') });
+    const poId = await id('SalesOrderPo', { SalesOrderId: first, PoCode: 'TEST-CF-PO', PoNumber: 'TEST-CF-PO', CustomerName: CUST.a, StyleCode: STYLE, Qty: 100, ShipDate: '2027-12-31', StatusCode: 'DRAFT', BranchCode: 'A01', CreatedAt: new Date('2099-01-05T00:00:00Z') });
+    // Màn Tỷ lệ cắt chỉ có PO nằm trong kế hoạch xuất hàng của ĐVCS đang làm việc (ADR 0013 mục 11)
+    await id('ShipmentPlanPo', { ShipmentPlanId: planId, SalesOrderPoId: poId, BranchCode: 'A01' });
   }
 
   beforeAll(async () => {

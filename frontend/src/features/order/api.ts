@@ -157,6 +157,8 @@ export interface Po {
   shipDate: string;
   statusCode: 'DRAFT' | 'CONFIRMED';
   branchCode: string;
+  /** Có trong lưới PO của màn Tỷ lệ cắt: PO đã nằm trong kế hoạch xuất hàng nào đó (không xóa được) */
+  inPlan?: boolean;
 }
 
 export interface PoColorSize {

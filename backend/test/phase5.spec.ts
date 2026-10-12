@@ -47,13 +47,12 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
   const setRolePolicy = (role: string, resource: string, field: string, level: string | null) =>
     api().put(`/api/v1/admin/roles/${roleId(role)}/field-policies`).set(auth(admin)).send({ resourceId: resId(resource), policies: [{ fieldCode: field, accessLevel: level }] }).expect(200);
 
-  /** Tài khoản thử: tạo (hoặc bật lại), gán vai trò, ĐVCS, phạm vi, nhà máy SX. Trả Id; dọn bằng dropUser. */
+  /** Tài khoản thử: tạo (hoặc bật lại), gán vai trò, ĐVCS, phạm vi. Trả Id; dọn bằng dropUser. */
   async function tempUser(
     username: string,
     roleCodes: string[],
     branchCodes: string[],
     scopes: Record<string, { dimension: string; mode: string; orgUnitId?: number }[]> = {},
-    productionFactoryIds: number[] = [],
   ) {
     const created = await api().post('/api/v1/admin/users').set(auth(admin)).send({ username, fullName: `${username} (test)`, initialPassword: TEST_PASSWORD });
     const id = created.status === 201 ? (created.body.id as number) : await userId(username);
@@ -66,7 +65,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
     await api()
       .put(`/api/v1/admin/users/${id}/branches`)
       .set(auth(admin))
-      .send({ branchIds: branches.filter((b) => branchCodes.includes(b.code)).map((b) => b.id), productionFactoryIds })
+      .send({ branchIds: branches.filter((b) => branchCodes.includes(b.code)).map((b) => b.id) })
       .expect(200);
     for (const [role, rows] of Object.entries(scopes)) {
       await api().put(`/api/v1/admin/users/${id}/roles/${roleId(role)}/scope`).set(auth(admin)).send({ scopes: rows }).expect(200);
@@ -86,11 +85,14 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
    * và chuyền 5 (đang may). Còn 200 sp mỗi màu cỡ của PO 1 để lập thêm.
    */
   const FIXTURE_STYLE = 'TEST-P5-FIXTURE';
-  /** Nhà máy SX của đơn hàng test, thuộc ĐVCS A02 (khác Chi nhánh FOB A01 của đơn): lập kế hoạch cho đơn của ĐVCS khác (ADR 0013) */
+  /**
+   * Nhà máy SX của đơn hàng test (danh sách như OSM): nhà máy F thuộc ĐVCS A01, nhà máy G thuộc A02 (khác Chi nhánh FOB A01 của
+   * đơn). Lập kế hoạch được ở cả A01 và A02 (ADR 0013 mục 11)
+   */
   const FIXTURE_FACTORY = 'TEST-P5-F';
-  const fixture = { orderId: 0, planId: 0, confirmedPoId: 0, factoryId: 0 };
-  /** Nhà máy SX được tích của kehoach.a trước khi test thêm nhà máy của đơn hàng test, để trả lại khi xong */
-  let plannerAccess: { id: number; branchIds: number[]; defaultBranchId: number | null; productionFactoryIds: number[] } | null = null;
+  const FIXTURE_FACTORY_B = 'TEST-P5-G';
+  const FIXTURE_FACTORIES = `${FIXTURE_FACTORY},${FIXTURE_FACTORY_B}`;
+  const fixture = { orderId: 0, planId: 0, poId: 0, confirmedPoId: 0, factoryIds: [] as number[] };
   const COLORS = ['Đen', 'Trắng'];
   const SIZES = ['S', 'M', 'L'];
   const grid = <T>(f: (color: string, size: string, i: number) => T) => COLORS.flatMap((c, ci) => SIZES.map((s, si) => f(c, s, ci * SIZES.length + si)));
@@ -115,8 +117,9 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
     const own = { BranchCode: 'A01', CreatedBy: await userId('kehoach.a') };
     const head = { CustomerName: 'KHÁCH TEST P5', StyleCode: FIXTURE_STYLE };
     const id = async (table: string, values: object) => ((await order.insertInto(table as any).values(values as any).output('inserted.Id' as any).executeTakeFirstOrThrow()) as { Id: number }).Id;
-    fixture.orderId = await id('SalesOrder', { ...head, OrderNo: 'TEST-P5', ProductName: 'Áo test', Qty: 3000, UnitName: 'Chiếc', UnitPrice: 8, CmPrice: 2.5, ShipDate: '2027-06-30', StatusCode: 'PLANNING', ProductionFactoryCode: FIXTURE_FACTORY, ...own });
+    fixture.orderId = await id('SalesOrder', { ...head, OrderNo: 'TEST-P5', ProductName: 'Áo test', Qty: 3000, UnitName: 'Chiếc', UnitPrice: 8, CmPrice: 2.5, ShipDate: '2027-06-30', StatusCode: 'PLANNING', ProductionFactoryCode: FIXTURE_FACTORIES, ...own });
     const poId = await id('SalesOrderPo', { ...head, SalesOrderId: fixture.orderId, PoCode: 'TEST-P5', PoNumber: 'TEST-P5', Qty: 3000, ShipDate: '2027-06-30', StatusCode: 'DRAFT', ...own });
+    fixture.poId = poId;
     await order.insertInto('SalesOrderPoColorSize').values(grid((c, s, i) => ({ SalesOrderPoId: poId, ColorName: c, SizeName: s, Qty: 500, SortOrder: i, ...own })) as any).execute();
     fixture.confirmedPoId = await id('SalesOrderPo', { ...head, SalesOrderId: fixture.orderId, PoCode: 'TEST-P5-C', PoNumber: 'TEST-P5-C', Qty: 200, ShipDate: '2027-06-30', StatusCode: 'CONFIRMED', ConfirmedAt: new Date(), ConfirmedBy: own.CreatedBy, ...own });
     await order
@@ -151,32 +154,23 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
     resources = matrix.modules.flatMap((m: any) => m.resources);
     permissions = resources.flatMap((r: any) => r.permissions);
     orgUnits = (await api().get('/api/v1/admin/scope-catalog').set(auth(admin))).body.orgUnits;
-    // Nhà máy SX của đơn hàng test (tạo hoặc bật lại), tích cho kehoach.a để popup Chọn mã hàng thấy đơn đó
-    const factories = (await api().get(`/api/v1/admin/catalogs/factories?q=${FIXTURE_FACTORY}`).set(auth(admin)).expect(200)).body as { id: number; code: string }[];
-    const existing = factories.find((f) => f.code === FIXTURE_FACTORY);
-    if (existing) {
-      fixture.factoryId = existing.id;
-      await api().put(`/api/v1/admin/catalogs/factories/${existing.id}`).set(auth(admin)).send({ isActive: true, branchCode: 'A02' }).expect(200);
-    } else {
-      fixture.factoryId = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: FIXTURE_FACTORY, name: 'Nhà máy test P5', branchCode: 'A02' }).expect(201)).body.id;
+    // Nhà máy SX của đơn hàng test (tạo hoặc bật lại, gắn đúng ĐVCS): popup Chọn mã hàng ở A01 và A02 thấy đơn đó
+    for (const [code, branchCode] of [[FIXTURE_FACTORY, 'A01'], [FIXTURE_FACTORY_B, 'A02']]) {
+      const factories = (await api().get(`/api/v1/admin/catalogs/factories?q=${code}`).set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+      const existing = factories.find((f) => f.code === code);
+      if (existing) {
+        fixture.factoryIds.push(existing.id);
+        await api().put(`/api/v1/admin/catalogs/factories/${existing.id}`).set(auth(admin)).send({ isActive: true, branchCode }).expect(200);
+      } else {
+        fixture.factoryIds.push((await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code, name: `Nhà máy test P5 ${branchCode}`, branchCode }).expect(201)).body.id);
+      }
     }
-    const kh = (await api().get('/api/v1/admin/users?q=kehoach.a').set(auth(admin))).body.items.find((u: any) => u.username === 'kehoach.a');
-    plannerAccess = { id: kh.id, branchIds: kh.branchIds, defaultBranchId: kh.defaultBranchId, productionFactoryIds: kh.productionFactoryIds };
-    await api()
-      .put(`/api/v1/admin/users/${kh.id}/branches`)
-      .set(auth(admin))
-      .send({ branchIds: kh.branchIds, defaultBranchId: kh.defaultBranchId ?? undefined, productionFactoryIds: [...new Set([...kh.productionFactoryIds, fixture.factoryId])] })
-      .expect(200);
     await createFixture(app.get<OrderDb>(ORDER_DB));
   });
 
   afterAll(async () => {
     await dropFixture(app.get<OrderDb>(ORDER_DB));
-    if (plannerAccess) {
-      const { id, branchIds, defaultBranchId, productionFactoryIds } = plannerAccess;
-      await api().put(`/api/v1/admin/users/${id}/branches`).set(auth(admin)).send({ branchIds, defaultBranchId: defaultBranchId ?? undefined, productionFactoryIds }).expect(200);
-    }
-    if (fixture.factoryId) await api().put(`/api/v1/admin/catalogs/factories/${fixture.factoryId}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    for (const id of fixture.factoryIds) await api().put(`/api/v1/admin/catalogs/factories/${id}`).set(auth(admin)).send({ isActive: false }).expect(200);
     await app.close();
   });
 
@@ -625,24 +619,35 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       return { c, poIds, line: draft.find((d: any) => d.remainingQty > min) };
     }
 
-    it('Chọn mã hàng chỉ có đơn của nhà máy SX được tích; đơn ngoài danh sách: PO, lưới màu cỡ, tạo kế hoạch đều 404 (ADR 0013)', async () => {
-      const id = await tempUser('test.p59', ['PLANNER'], ['A01']);
+    it('Chọn mã hàng chỉ có đơn có nhà máy SX thuộc ĐVCS đăng nhập; ĐVCS khác: PO, lưới màu cỡ, tạo kế hoạch đều 404; gắn nhà máy vào ĐVCS thì thấy ngay (ADR 0013 mục 11)', async () => {
+      const id = await tempUser('test.p59', ['PLANNER'], ['A03']);
       try {
-        const t = await tokenFor('test.p59', 'A01', TEST_PASSWORD);
-        expect((await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body).toEqual([]);
+        const t = await tokenFor('test.p59', 'A03', TEST_PASSWORD);
+        const seen = async () => (await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.some((x: any) => x.salesOrderId === fixture.orderId);
+        expect(await seen()).toBe(false);
         await api().get(`/api/v1/order/shipment-plans/candidates/${fixture.orderId}/pos`).set(auth(t)).expect(404);
         await api().get(`/api/v1/order/shipment-plans/draft?salesOrderId=${fixture.orderId}&poIds=${fixture.confirmedPoId}`).set(auth(t)).expect(404);
         const body = { salesOrderId: fixture.orderId, poIds: [fixture.confirmedPoId], poBuyDate: 'P59', lines: [{ colorName: 'Xanh', sizeName: 'S', planQty: 1 }] };
         await api().post('/api/v1/order/shipment-plans').set(auth(t)).send(body).expect(404);
         // Vẫn xem được đơn hàng ở Thông tin đơn hàng: dữ liệu dùng chung, chỉ popup lập kế hoạch lọc theo nhà máy SX
         await api().get(`/api/v1/order/sales-orders/${fixture.orderId}`).set(auth(t)).expect(200);
-        expect((await api().get('/api/v1/me').set(auth(t)).expect(200)).body.productionFactories).toEqual([]);
+        const codes = ((await api().get('/api/v1/me').set(auth(t)).expect(200)).body.productionFactories as any[]).map((f) => f.code);
+        expect(codes).not.toContain(FIXTURE_FACTORY);
+        expect(codes).not.toContain(FIXTURE_FACTORY_B);
+        // Gắn một nhà máy của đơn vào A03: thấy ngay, không cần đăng nhập lại (danh mục tăng phiên bản quyền)
+        await api().put(`/api/v1/admin/catalogs/factories/${fixture.factoryIds[1]}`).set(auth(admin)).send({ branchCode: 'A03' }).expect(200);
+        try {
+          expect(await seen()).toBe(true);
+        } finally {
+          await api().put(`/api/v1/admin/catalogs/factories/${fixture.factoryIds[1]}`).set(auth(admin)).send({ branchCode: 'A02' }).expect(200);
+        }
+        expect(await seen()).toBe(false);
       } finally {
         await dropUser(id);
       }
     });
 
-    it('Nhà máy SX theo OSM là danh sách: được tích một nhà máy trong danh sách thì thấy đơn ở Chọn mã hàng; không sửa tay được (409) (ADR 0013 mục 9)', async () => {
+    it('Nhà máy SX theo OSM là danh sách: một nhà máy trong danh sách thuộc ĐVCS thì thấy đơn ở Chọn mã hàng; không sửa tay được (409) (ADR 0013 mục 9)', async () => {
       const db = app.get<OrderDb>(ORDER_DB);
       const ORDER = `/api/v1/order/sales-orders/${fixture.orderId}`;
       await db.updateTable('SalesOrder').set({ ProductionFactoryCode: `KHÁC NHÀ MÁY,${FIXTURE_FACTORY}`, IsFactoryFromOsm: true }).where('Id', '=', fixture.orderId).execute();
@@ -661,16 +666,16 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         expect((await api().put(ORDER).set(auth(kh)).send({ productionFactoryCode: FIXTURE_FACTORY }).expect(409)).body.error.message).toMatch(/OSM/);
         // Lưu cả form gửi lại đúng giá trị đang có: không báo lỗi
         await api().put(ORDER).set(auth(kh)).send({ productionFactoryCode: `KHÁC NHÀ MÁY,${FIXTURE_FACTORY}`, qty: 3000 }).expect(200);
-        // Danh sách không có nhà máy nào được tích: không thấy
+        // Danh sách không có nhà máy nào thuộc ĐVCS: không thấy
         await db.updateTable('SalesOrder').set({ ProductionFactoryCode: 'KHÁC NHÀ MÁY,NHÀ MÁY KHÁC 2' }).where('Id', '=', fixture.orderId).execute();
         expect((await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(kh)).expect(200)).body.some((x: any) => x.salesOrderId === fixture.orderId)).toBe(false);
       } finally {
-        await db.updateTable('SalesOrder').set({ ProductionFactoryCode: FIXTURE_FACTORY, IsFactoryFromOsm: false }).where('Id', '=', fixture.orderId).execute();
+        await db.updateTable('SalesOrder').set({ ProductionFactoryCode: FIXTURE_FACTORIES, IsFactoryFromOsm: false }).where('Id', '=', fixture.orderId).execute();
       }
     });
 
-    it('đơn hàng, PO dùng chung: ĐVCS khác xem được nhưng không sửa, xóa, đổi Nhà máy SX, thêm PO, sửa màu cỡ (404) (review 5.9 H1)', async () => {
-      const id = await tempUser('test.p59w', ['PLANNER'], ['A02'], {}, [fixture.factoryId]);
+    it('đơn hàng, PO dùng chung: ĐVCS khác xem được nhưng không sửa, xóa, đổi Nhà máy SX; PO chưa vào kế hoạch của ĐVCS đó thì không thêm PO (422), sửa màu cỡ (404) (review 5.9 H1, ADR 0013 mục 11)', async () => {
+      const id = await tempUser('test.p59w', ['PLANNER'], ['A02']);
       try {
         const t = await tokenFor('test.p59w', 'A02', TEST_PASSWORD);
         const ORDER = `/api/v1/order/sales-orders/${fixture.orderId}`;
@@ -678,32 +683,40 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         await api().put(ORDER).set(auth(t)).send({ productionFactoryCode: null }).expect(404);
         await api().put(ORDER).set(auth(t)).send({ qty: 1 }).expect(404);
         await api().delete(ORDER).set(auth(t)).expect(404);
-        // PO chỉ thêm ở ĐVCS của đơn; màu cỡ, xác nhận tỷ lệ cắt chỉ sửa ở ĐVCS của PO
+        // Đơn chưa có PO trong kế hoạch của A02: không thêm PO; màu cỡ, xác nhận tỷ lệ cắt chỉ sửa ở ĐVCS của PO
         await api()
           .post('/api/v1/order/cut-ratio/pos')
           .set(auth(t))
           .send({ salesOrderId: fixture.orderId, poNumber: 'P59W', shipDate: '2027-06-30', lines: [{ colorName: 'Đỏ', sizeName: 'M', qty: 1 }] })
-          .expect(404);
+          .expect(422);
+        // Màn Tỷ lệ cắt của A02 không có PO của đơn
+        expect((await api().get(`/api/v1/order/cut-ratio/styles?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items).toEqual([]);
         await api().put(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/color-sizes`).set(auth(t)).send({ lines: [{ colorName: 'Xanh', sizeName: 'S', qty: 1 }] }).expect(404);
         await api().post(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/unconfirm`).set(auth(t)).expect(404);
         await api().post(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/confirm`).set(auth(t)).expect(404);
         await api().delete(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}`).set(auth(t)).expect(404);
+        // PO nằm trong kế hoạch của A01, không phải của A02: A02 không sửa, không xác nhận được
+        await api().put(`/api/v1/order/cut-ratio/pos/${fixture.poId}/color-sizes`).set(auth(t)).send({ lines: [{ colorName: 'Đen', sizeName: 'S', qty: 1 }] }).expect(404);
+        await api().post(`/api/v1/order/cut-ratio/pos/${fixture.poId}/confirm`).set(auth(t)).expect(404);
         // Đơn vẫn nguyên
         const after = (await api().get(ORDER).set(auth(t)).expect(200)).body;
-        expect(after).toMatchObject({ qty: 3000, productionFactoryCode: FIXTURE_FACTORY });
+        expect(after).toMatchObject({ qty: 3000, productionFactoryCode: FIXTURE_FACTORIES });
       } finally {
         await dropUser(id);
       }
     });
 
-    it('lập kế hoạch ở ĐVCS của phiên cho đơn hàng của ĐVCS khác; SL đã lập tính chung mọi ĐVCS', async () => {
-      const id = await tempUser('test.p59x', ['PLANNER'], ['A02'], {}, [fixture.factoryId]);
+    it('lập kế hoạch ở ĐVCS của phiên cho đơn hàng của ĐVCS khác; SL đã lập tính chung mọi ĐVCS; ĐVCS đó sửa được tỷ lệ cắt của PO trong kế hoạch (ADR 0013 mục 11)', async () => {
+      const id = await tempUser('test.p59x', ['PLANNER'], ['A02']);
       try {
         const t = await tokenFor('test.p59x', 'A02', TEST_PASSWORD);
+        const kh = await tokenFor('kehoach.a', 'A01');
         const me = (await api().get('/api/v1/me').set(auth(t)).expect(200)).body;
-        expect(me.productionFactories.map((f: any) => f.code)).toEqual([FIXTURE_FACTORY]);
+        const codes = me.productionFactories.map((f: any) => f.code);
+        expect(codes).toContain(FIXTURE_FACTORY_B);
+        expect(codes).not.toContain(FIXTURE_FACTORY);
         const { c, poIds, line } = await candidate(t, 10);
-        expect(c).toMatchObject({ branchCode: 'A01', productionFactoryCode: FIXTURE_FACTORY });
+        expect(c).toMatchObject({ branchCode: 'A01', productionFactoryCode: FIXTURE_FACTORIES });
         const created = (await api()
           .post('/api/v1/order/shipment-plans')
           .set(auth(t))
@@ -719,15 +732,98 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
             .send({ lines: [{ colorName: line.colorName, sizeName: line.sizeName, planQty: 6 }] })
             .expect(200)).body;
           expect(edited.planQty).toBe(6);
-          const kh = await tokenFor('kehoach.a', 'A01');
           const seen = (await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(kh))).body.find((x: any) => x.salesOrderId === c.salesOrderId);
           expect(seen.plannedQty).toBe(c.plannedQty + 6);
           // Kế hoạch theo ĐVCS: phiên A01 không thấy kế hoạch vừa lập ở A02
           await api().get(`/api/v1/order/shipment-plans/${created.id}`).set(auth(kh)).expect(404);
+
+          // Tỷ lệ cắt ở A02: đúng các PO trong kế hoạch của A02, một dòng mã hàng, Chi nhánh FOB của đơn
+          const styles = (await api().get(`/api/v1/order/cut-ratio/styles?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items.filter((s: any) => s.salesOrderId === c.salesOrderId);
+          expect(styles).toHaveLength(1);
+          expect(styles[0].branchCode).toBe('A01');
+          const pos = (await api().get(`/api/v1/order/cut-ratio/pos?salesOrderId=${c.salesOrderId}&pageSize=200`).set(auth(t)).expect(200)).body.items;
+          expect(pos.map((p: any) => p.id).sort()).toEqual([...poIds].sort());
+          expect(pos.every((p: any) => p.inPlan === true)).toBe(true);
+          // PO của đơn A01 trong kế hoạch A02: A02 hủy xác nhận, sửa màu cỡ, xác nhận lại được; đang trong kế hoạch nên không xóa
+          await api().post(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/unconfirm`).set(auth(t)).expect(200);
+          const before = (await api().get(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/color-sizes`).set(auth(t)).expect(200)).body.lines.map((l: any) => ({ colorName: l.colorName, sizeName: l.sizeName, qty: l.qty }));
+          await api().put(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/color-sizes`).set(auth(t)).send({ lines: before }).expect(200);
+          await api().post(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/confirm`).set(auth(t)).expect(200);
+          const draftPo = pos.find((p: any) => p.statusCode === 'DRAFT');
+          expect((await api().delete(`/api/v1/order/cut-ratio/pos/${draftPo.id}`).set(auth(t)).expect(409)).body.error.message).toMatch(/kế hoạch/);
+          // Thêm PO tay ở A02 cho đơn của A01: PO mang ĐVCS A02, A02 sửa được, A01 không thấy, không sửa; mã hàng vẫn một dòng
+          const added = (await api()
+            .post('/api/v1/order/cut-ratio/pos')
+            .set(auth(t))
+            .send({ salesOrderId: c.salesOrderId, poNumber: 'P59X-TAY', shipDate: '2027-06-30', lines: [{ colorName: 'Đỏ', sizeName: 'M', qty: 3 }] })
+            .expect(201)).body;
+          try {
+            expect(added.branchCode).toBe('A02');
+            expect((await api().get(`/api/v1/order/cut-ratio/styles?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items.filter((s: any) => s.salesOrderId === c.salesOrderId)).toHaveLength(1);
+            await api().put(`/api/v1/order/cut-ratio/pos/${added.id}/color-sizes`).set(auth(t)).send({ lines: [{ colorName: 'Đỏ', sizeName: 'M', qty: 4 }] }).expect(200);
+            const a01 = (await api().get(`/api/v1/order/cut-ratio/pos?salesOrderId=${c.salesOrderId}&pageSize=200`).set(auth(kh)).expect(200)).body.items.map((p: any) => p.id);
+            expect(a01).not.toContain(added.id);
+            await api().put(`/api/v1/order/cut-ratio/pos/${added.id}/color-sizes`).set(auth(kh)).send({ lines: [{ colorName: 'Đỏ', sizeName: 'M', qty: 5 }] }).expect(404);
+          } finally {
+            await api().delete(`/api/v1/order/cut-ratio/pos/${added.id}`).set(auth(t)).expect(204);
+          }
         } finally {
           await api().delete(`/api/v1/order/shipment-plans/${created.id}`).set(auth(t)).expect(204);
         }
+        // Bỏ kế hoạch: A02 không còn thấy, không sửa được PO của đơn A01
+        expect((await api().get(`/api/v1/order/cut-ratio/styles?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items).toEqual([]);
+        await api().post(`/api/v1/order/cut-ratio/pos/${fixture.confirmedPoId}/unconfirm`).set(auth(t)).expect(404);
       } finally {
+        await dropUser(id);
+      }
+    });
+
+    it('Tỷ lệ cắt ở đơn vị tổng hợp: thấy PO trong kế hoạch của mọi ĐVCS và PO nhập tay; ghi bị từ chối (ADR 0013 mục 11)', async () => {
+      const id = await tempUser('test.p59a', ['PLANNER'], ['A00']);
+      try {
+        const t = await tokenFor('test.p59a', 'A00', TEST_PASSWORD);
+        const pos = (await api().get(`/api/v1/order/cut-ratio/pos?salesOrderId=${fixture.orderId}&pageSize=200`).set(auth(t)).expect(200)).body.items.map((p: any) => p.id);
+        // PO trong kế hoạch của A01 và PO nhập tay (không vào kế hoạch nào)
+        expect(pos).toEqual(expect.arrayContaining([fixture.poId, fixture.confirmedPoId]));
+        const r = await api().put(`/api/v1/order/cut-ratio/pos/${fixture.poId}/color-sizes`).set(auth(t)).send({ lines: [{ colorName: 'Đen', sizeName: 'S', qty: 1 }] }).expect(403);
+        expect(r.body.error.code).toBe('AGGREGATE_READ_ONLY');
+        expect((await api().post(`/api/v1/order/cut-ratio/pos/${fixture.poId}/confirm`).set(auth(t)).expect(403)).body.error.code).toBe('AGGREGATE_READ_ONLY');
+      } finally {
+        await dropUser(id);
+      }
+    });
+
+    it('Thêm PO cho mã hàng có PO nhập tay ở ĐVCS dù chưa có kế hoạch; PO tay của ĐVCS mình sửa được (ADR 0013 mục 11)', async () => {
+      const id = await tempUser('test.p59m', ['PLANNER'], ['A02']);
+      const db = app.get<OrderDb>(ORDER_DB);
+      const created: number[] = [];
+      try {
+        const t = await tokenFor('test.p59m', 'A02', TEST_PASSWORD);
+        const add = (poNumber: string) =>
+          api().post('/api/v1/order/cut-ratio/pos').set(auth(t)).send({ salesOrderId: fixture.orderId, poNumber, shipDate: '2027-06-30', lines: [{ colorName: 'Đỏ', sizeName: 'M', qty: 2 }] });
+        await add('P59M-1').expect(422);
+        // PO tay A02 nhập trước đây (ví dụ khi đơn còn trong kế hoạch của A02): mã hàng hiện ở màn, thêm PO được
+        const head = (await db.selectFrom('SalesOrder').select(['CustomerName', 'StyleCode']).where('Id', '=', fixture.orderId).executeTakeFirstOrThrow());
+        const old = await db
+          .insertInto('SalesOrderPo')
+          .values({ ...head, SalesOrderId: fixture.orderId, PoCode: 'TEST-P59M', PoNumber: 'P59M-0', Qty: 0, ShipDate: '2027-06-30', StatusCode: 'DRAFT', BranchCode: 'A02', CreatedBy: id } as any)
+          .output('inserted.Id')
+          .executeTakeFirstOrThrow();
+        created.push(old.Id);
+        const styles = (await api().get(`/api/v1/order/cut-ratio/styles?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items;
+        expect(styles.map((s: any) => s.salesOrderId)).toEqual([fixture.orderId]);
+        const added = (await add('P59M-1').expect(201)).body;
+        created.push(added.id);
+        expect(added.branchCode).toBe('A02');
+        await api().put(`/api/v1/order/cut-ratio/pos/${old.Id}/color-sizes`).set(auth(t)).send({ lines: [{ colorName: 'Đỏ', sizeName: 'L', qty: 3 }] }).expect(200);
+        // Lưới PO của A02 chỉ có hai PO tay của A02, không có PO của A01
+        const pos = (await api().get(`/api/v1/order/cut-ratio/pos?salesOrderId=${fixture.orderId}&pageSize=200`).set(auth(t)).expect(200)).body.items.map((p: any) => p.id);
+        expect(pos.sort()).toEqual([...created].sort());
+      } finally {
+        for (const poId of created) {
+          await db.deleteFrom('SalesOrderPoColorSize').where('SalesOrderPoId', '=', poId).execute();
+          await db.deleteFrom('SalesOrderPo').where('Id', '=', poId).execute();
+        }
         await dropUser(id);
       }
     });

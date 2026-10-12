@@ -70,7 +70,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
   ) {}
 
   onModuleInit() {
-    // Tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX (ADR 0013 mục 9): quản trị gắn ĐVCS, tích cho người dùng
+    // Tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX (ADR 0013 mục 9): quản trị gắn ĐVCS
     this.sync.onSucceeded(OSM_FACTORY_SOURCE, () => this.importOsmFactories());
   }
 
@@ -136,7 +136,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
           code: 'PROD_FACTORY',
           kind: 'factory',
           name: 'Nhà máy SX',
-          description: 'Nơi sản xuất thực tế của đơn hàng (cột Nhà máy SX), mỗi nhà máy thuộc một đơn vị cơ sở. Người dùng được tích nhà máy SX ở màn Người dùng để lập kế hoạch xuất hàng cho đơn hàng của nhà máy đó.',
+          description: 'Nơi sản xuất thực tế của đơn hàng (cột Nhà máy SX), mỗi nhà máy thuộc một đơn vị cơ sở. Đăng nhập đơn vị cơ sở nào thì lập kế hoạch xuất hàng được cho đơn hàng của các nhà máy thuộc đơn vị đó.',
           ...count(factories),
         },
         ...catalogs.map((c) => ({ code: c.Code, kind: 'item', name: c.Name, description: c.Description, nameMax: NAME_MAX[c.Code] ?? 100, ...count(c) })),
@@ -515,6 +515,15 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     }));
   }
 
+  /**
+   * ĐVCS của nhà máy quyết định đơn hàng nào lập kế hoạch xuất hàng được ở ĐVCS đó, và qua kế hoạch, ai sửa được tỷ lệ cắt của
+   * PO (ADR 0013 mục 11): thêm nhà máy, đổi ĐVCS, bật, tắt nhà máy đòi thêm quyền sửa phân quyền (review 5.9.13 M2), như chuyển
+   * chuyền sang xưởng khác.
+   */
+  private assertCanScope(actor: AuthUser) {
+    return this.permissions.assertAdminCeiling(actor, ['admin.permission:update'], 'Nhà máy SX gắn đơn vị cơ sở quyết định đơn hàng nào lập kế hoạch được ở đơn vị đó.');
+  }
+
   /** ĐVCS gắn nhà máy: phải có, không phải đơn vị tổng hợp; đang tắt thì chỉ giữ được khi không đổi */
   private async factoryBranch(code: string, current?: string | null) {
     const b = await this.db.selectFrom('SysBranch').select(['Code', 'IsAggregate', 'IsActive']).where('Code', '=', code).executeTakeFirst();
@@ -525,6 +534,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
   }
 
   async createFactory(actor: AuthUser, dto: FactoryCreateDto) {
+    await this.assertCanScope(actor);
     const branchCode = await this.factoryBranch(dto.branchCode);
     const max = await this.db.selectFrom('SysProductionFactory').select((eb) => eb.fn.max('SortOrder').as('m')).executeTakeFirst();
     const message = `Mã nhà máy SX ${dto.code} đã được dùng.`;
@@ -537,18 +547,21 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
             .values({ Code: dto.code, Name: dto.name, BranchCode: branchCode, Description: dto.description || null, SortOrder: dto.sortOrder ?? (max?.m ?? 0) + 10, IsActive: true, IsSystem: false, CreatedBy: actor.userId })
             .output('inserted.Id')
             .executeTakeFirstOrThrow();
+          // Nhà máy mới thuộc ĐVCS: đổi danh sách nhà máy SX trong quyền của phiên ở ĐVCS đó (lọc popup Chọn mã hàng)
+          await this.permissions.bumpVersion(trx);
           await this.audit.logStrict(this.entry(actor, 'SysProductionFactory', row.Id, 'FACTORY_CREATE', undefined, { code: dto.code, name: dto.name, branchCode }), trx);
           return row.Id;
         }),
       message,
     );
     this.lookup.invalidateFactories();
+    this.permissions.clearCache();
     return { id };
   }
 
   /**
-   * Sửa tên, ĐVCS, mô tả, thứ tự, bật/tắt; mã không sửa được. Bật/tắt đổi danh sách nhà máy SX trong quyền của người được
-   * tích (lọc popup Chọn mã hàng) nên tăng phiên bản quyền.
+   * Sửa tên, ĐVCS, mô tả, thứ tự, bật/tắt; mã không sửa được. Đổi ĐVCS, bật/tắt đổi danh sách nhà máy SX trong quyền của
+   * phiên ở ĐVCS đó (lọc popup Chọn mã hàng) nên tăng phiên bản quyền.
    */
   async updateFactory(actor: AuthUser, id: number, dto: FactoryUpdateDto) {
     const before = await this.db.selectFrom('SysProductionFactory').select(['Code', 'Name', 'BranchCode', 'Description', 'SortOrder', 'IsActive']).where('Id', '=', id).executeTakeFirst();
@@ -559,16 +572,18 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     if (dto.branchCode !== undefined && dto.branchCode !== before.BranchCode) set.BranchCode = await this.factoryBranch(dto.branchCode, before.BranchCode);
     if (dto.description !== undefined) set.Description = dto.description || null;
     if (dto.sortOrder !== undefined) set.SortOrder = dto.sortOrder;
-    if (dto.isActive !== undefined) set.IsActive = dto.isActive;
+    // Chỉ ghi khi khác giá trị đang có: gửi lại đúng giá trị cũ (đọc trước khi người khác vừa đổi) không bật, tắt lại mà bỏ qua kiểm quyền
+    if (dto.isActive !== undefined && dto.isActive !== !!before.IsActive) set.IsActive = dto.isActive;
     if (!Object.keys(set).length) return;
-    const activeChanged = dto.isActive !== undefined && dto.isActive !== !!before.IsActive;
+    const accessChanged = set.IsActive !== undefined || set.BranchCode !== undefined;
+    if (accessChanged) await this.assertCanScope(actor);
     await this.db.transaction().execute(async (trx) => {
       await trx.updateTable('SysProductionFactory').set({ ...set, ModifiedAt: new Date(), ModifiedBy: actor.userId }).where('Id', '=', id).execute();
-      if (activeChanged) await this.permissions.bumpVersion(trx);
+      if (accessChanged) await this.permissions.bumpVersion(trx);
       await this.audit.logStrict(this.entry(actor, 'SysProductionFactory', id, 'FACTORY_UPDATE', before, set), trx);
     });
     this.lookup.invalidateFactories();
-    if (activeChanged) this.permissions.clearCache();
+    if (accessChanged) this.permissions.clearCache();
   }
 
   /**
@@ -582,7 +597,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     if (!lists) return { added: [] };
     const names = [...new Map(lists.flatMap((l) => splitFactories(l)).map((n) => [n.toUpperCase(), n])).values()];
     const tooLong = names.filter((n) => n.length > FACTORY_CODE_MAX);
-    if (tooLong.length) this.logger.warn(`Tên nhà máy OSM dài quá ${FACTORY_CODE_MAX} ký tự, không thêm vào danh mục (đơn hàng mang tên này không ai tích được): ${tooLong.join(' | ')}`);
+    if (tooLong.length) this.logger.warn(`Tên nhà máy OSM dài quá ${FACTORY_CODE_MAX} ký tự, không thêm vào danh mục (đơn hàng mang tên này không lập kế hoạch được ở đơn vị nào): ${tooLong.join(' | ')}`);
     const max = await this.db.selectFrom('SysProductionFactory').select((eb) => eb.fn.max('SortOrder').as('m')).executeTakeFirst();
     let sort = max?.m ?? 0;
     const added: string[] = [];

@@ -39,7 +39,7 @@ export type AllocationListRow = PlanLineRow & {
 
 /**
  * Đơn hàng lấy hết từ BRAVO, dùng chung toàn công ty (SHARED, ADR 0013): BranchCode là Chi nhánh FOB, đơn nhập tay đóng dấu
- * ĐVCS của phiên. Popup Chọn mã hàng của kế hoạch xuất hàng lọc theo nhà máy SX được tích (cột ProductionFactoryCode).
+ * ĐVCS của phiên. Popup Chọn mã hàng của kế hoạch xuất hàng lọc theo nhà máy SX thuộc ĐVCS của phiên (cột ProductionFactoryCode).
  */
 @Injectable()
 export class SalesOrderRepository extends BaseRepository<SalesOrderRow> {
@@ -64,12 +64,21 @@ export class SalesOrderRepository extends BaseRepository<SalesOrderRow> {
 
 // ---------- Cập nhật tỷ lệ cắt (order.po) ----------
 
-/** PO của đơn hàng: dùng chung như đơn hàng (ADR 0013); PO nhập tay đóng dấu ĐVCS của phiên */
+/** Chi nhánh FOB (ĐVCS nguồn) của đơn hàng chứa PO: PO nhập tay mang ĐVCS của người nhập, có thể khác ĐVCS của đơn */
+export const poOrderBranchExpr = sql<string>`(SELECT o.BranchCode FROM dbo.SalesOrder o WHERE o.Id = SalesOrderPo.SalesOrderId)`;
+/** 1 khi PO nằm trong kế hoạch xuất hàng nào đó (mọi ĐVCS): không xóa được */
+export const poInPlanExpr = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM dbo.ShipmentPlanPo spp WHERE spp.SalesOrderPoId = SalesOrderPo.Id) THEN 1 ELSE 0 END`;
+
+/**
+ * PO của đơn hàng: dùng chung như đơn hàng (ADR 0013); PO nhập tay đóng dấu ĐVCS của phiên. ĐVCS đưa PO vào kế hoạch xuất
+ * hàng của mình thì sửa được tỷ lệ cắt của PO đó như ĐVCS nguồn (ADR 0013 mục 11).
+ */
 @Injectable()
 export class SalesOrderPoRepository extends BaseRepository<SalesOrderPoRow> {
   protected readonly table = 'SalesOrderPo';
   protected readonly resource = 'order.po';
   protected readonly originBranch = true;
+  protected readonly usedBy = { table: 'ShipmentPlanPo', column: 'SalesOrderPoId' };
   protected readonly searchColumns = ['PoCode', 'PoNumber', 'StyleCode', 'CustomerName'];
   protected readonly sortable = ['Id', 'PoCode', 'PoNumber', 'Qty', 'ShipDate', 'SyncedAt', 'StatusCode', 'CreatedAt'];
   protected readonly defaultSort = 'CreatedAt:desc';
@@ -79,24 +88,25 @@ export class SalesOrderPoRepository extends BaseRepository<SalesOrderPoRow> {
   }
 
   /**
-   * Danh sách mã hàng của màn tỷ lệ cắt: gom PO theo đơn hàng, trong phạm vi người dùng, có phân trang. Mã có PO mới
-   * tạo gần nhất lên đầu. `where` là điều kiện trên dòng PO (trước khi gom), do service dựng.
+   * Danh sách mã hàng của màn tỷ lệ cắt: gom PO theo đơn hàng (một dòng mỗi đơn, kể cả khi PO nhập tay mang ĐVCS khác ĐVCS
+   * của đơn), trong phạm vi người dùng, có phân trang. Mã có PO mới tạo gần nhất lên đầu. `where` là điều kiện trên dòng PO
+   * (trước khi gom), do service dựng. Chi nhánh là Chi nhánh FOB của đơn hàng.
    */
   async styles(scope: Scope, opts: { page: number; pageSize: number; where: NonNullable<ListOptions['where']> }) {
     let qb: any = this.db
       .selectFrom('SalesOrderPo')
       .select([
         'SalesOrderId',
-        'CustomerName',
-        'StyleCode',
-        'BranchCode',
+        sql<string>`MAX(CustomerName)`.as('CustomerName'),
+        sql<string>`MAX(StyleCode)`.as('StyleCode'),
+        poOrderBranchExpr.as('BranchCode'),
         sql<number>`COUNT(*)`.as('PoCount'),
         sql<number>`SUM(CASE WHEN StatusCode = 'CONFIRMED' THEN 1 ELSE 0 END)`.as('ConfirmedCount'),
         sql<number>`SUM(Qty)`.as('Qty'),
         sql<Date>`MIN(ShipDate)`.as('ShipDate'),
         sql<Date>`MAX(CreatedAt)`.as('CreatedAt'),
       ])
-      .groupBy(['SalesOrderId', 'CustomerName', 'StyleCode', 'BranchCode']);
+      .groupBy('SalesOrderId');
     qb = opts.where(await this.scoped(qb, scope));
     const total = await this.db.selectFrom(qb.as('g')).select(sql<number>`COUNT(*)`.as('n')).executeTakeFirstOrThrow();
     const pageSize = Math.min(Math.max(1, Math.trunc(opts.pageSize) || 1), 200);
@@ -121,8 +131,8 @@ export class SalesOrderPoRepository extends BaseRepository<SalesOrderPoRow> {
   }
 
   /** PO đã nằm trong kế hoạch xuất hàng thì không xóa được (khóa ngoại cũng chặn, đây để báo lỗi dễ hiểu). */
-  async usedInPlans(scope: Scope, poId: number): Promise<boolean> {
-    const qb = await this.scoped(this.db.selectFrom('SalesOrderPo').select('Id').where('Id', '=', poId), scope, 'delete');
+  async usedInPlans(scope: Scope, poId: number, db: Kysely<any> = this.db): Promise<boolean> {
+    const qb = await this.scoped(db.selectFrom('SalesOrderPo').select('Id').where('Id', '=', poId), scope, 'delete');
     const row = await qb
       .where(sql<boolean>`EXISTS (SELECT 1 FROM dbo.ShipmentPlanPo spp WHERE spp.SalesOrderPoId = SalesOrderPo.Id)`)
       .executeTakeFirst();

@@ -127,6 +127,9 @@ export class BravoOrderImportRepository implements OnApplicationShutdown {
       // SQL Server không cho EXISTS đứng trong danh sách cột
       .select(sql<number>`CASE WHEN EXISTS (SELECT 1 FROM dbo.ShipmentPlanPo x WHERE x.SalesOrderPoId = p.Id) THEN 1 ELSE 0 END`.as('InPlan'))
       .where('o.SourceProductId', 'is not', null)
+      // PO tay của ĐVCS khác ĐVCS của đơn (ADR 0013 mục 11) không ghép với PO BRAVO cùng số: PO BRAVO thuộc ĐVCS nhận đơn,
+      // BRAVO có PO đó thì thêm PO mới, PO tay giữ nguyên (review 5.9.13 L4)
+      .where((eb) => eb.or([eb('p.CreatedBy', 'is', null), eb('p.BranchCode', '=', eb.ref('o.BranchCode'))]))
       .execute();
     const cells = await trx
       .selectFrom('SalesOrderPoColorSize as c')

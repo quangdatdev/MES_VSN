@@ -167,8 +167,8 @@ export class ShipmentService {
   }
 
   /**
-   * Popup "Chọn mã hàng": đơn hàng kèm số lượng đã lập kế hoạch và còn lại. Chỉ đơn hàng của các nhà máy SX được tích cho
-   * người dùng (ở mọi ĐVCS, ADR 0013); đơn chưa chọn nhà máy SX không hiện. Dữ liệu đọc từ Thông tin đơn hàng nên đi qua
+   * Popup "Chọn mã hàng": đơn hàng kèm số lượng đã lập kế hoạch và còn lại. Chỉ đơn hàng có nhà máy SX thuộc ĐVCS của phiên
+   * theo danh mục Nhà máy SX (ADR 0013 mục 11), đơn hàng có Chi nhánh FOB nào cũng được; đơn chưa chọn nhà máy SX không hiện. Dữ liệu đọc từ Thông tin đơn hàng nên đi qua
    * chính sách cột của tài nguyên đó (review 5.1 #4); SL còn lại suy ra được SL đơn hàng nên theo cùng mức.
    */
   async candidates(user: AuthUser, query: CandidateQuery) {
@@ -206,7 +206,7 @@ export class ShipmentService {
     });
   }
 
-  /** Đơn hàng phải thuộc nhà máy SX được tích cho người dùng mới lập kế hoạch mới được (cùng điều kiện với popup Chọn mã hàng) */
+  /** Đơn hàng phải có nhà máy SX thuộc ĐVCS của phiên mới lập kế hoạch mới được (cùng điều kiện với popup Chọn mã hàng) */
   private assignedOrder(scope: Scope, salesOrderId: number, db?: OrderDb) {
     return this.orders.getById(scope, salesOrderId, 'view', db, { assignedFactories: true });
   }
@@ -249,8 +249,8 @@ export class ShipmentService {
   }
 
   /**
-   * Lưới màu cỡ cho popup (GET draft): lập mới thì đơn hàng phải thuộc nhà máy SX được tích; sửa kế hoạch (`excludePlanId`)
-   * thì kế hoạch phải xem được và đúng đơn hàng đó (đổi nhà máy được tích không khóa việc sửa kế hoạch đã lập).
+   * Lưới màu cỡ cho popup (GET draft): lập mới thì đơn hàng phải có nhà máy SX thuộc ĐVCS của phiên; sửa kế hoạch
+   * (`excludePlanId`) thì kế hoạch phải xem được và đúng đơn hàng đó (đơn đổi nhà máy SX không khóa việc sửa kế hoạch đã lập).
    */
   async draftFor(user: AuthUser, salesOrderId: number, poIds: number[], excludePlanId?: number) {
     const scope = scopeOf(user);

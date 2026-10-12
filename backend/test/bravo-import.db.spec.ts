@@ -174,6 +174,26 @@ describe('Nạp tăng dần đơn hàng BRAVO vào MES_Order', () => {
     expect((await orderOf(2)).StatusCode).toBe('CANCELLED');
   });
 
+  it('PO tay của ĐVCS khác ĐVCS của đơn trùng số PO BRAVO mới: không ghép, BRAVO thêm PO riêng, PO tay giữ nguyên (review 5.9.13 L4)', async () => {
+    await run({ orders: [order(1)], pos: [po(1)], cells: [cell(1)] });
+    const o = await orderOf(1);
+    // ĐVCS A02 lập kế hoạch cho đơn của A01 và thêm PO tay (ADR 0013 mục 11) trước khi BRAVO có PO đó
+    const manual = await db
+      .insertInto('SalesOrderPo')
+      .values({ SalesOrderId: o.Id, PoCode: `TEST-M-${BASE}`, PoNumber: 'T1-P2', CustomerName: o.CustomerName, StyleCode: o.StyleCode, Qty: 5, ShipDate: '2026-12-15', StatusCode: 'DRAFT', BranchCode: 'A02', CreatedBy: 1 } as any)
+      .output('inserted.Id')
+      .executeTakeFirstOrThrow();
+    const r = await run({ orders: [order(1)], pos: [po(1), po(1, 'P2')], cells: [cell(1), cell(1, 'P2')] });
+    expect(r.applied).toMatchObject({ newPos: 1 });
+    const pos = await posOf(1);
+    expect(pos.map((p) => [p.PoNumber, p.BranchCode, p.CreatedBy])).toEqual([
+      ['T1-P1', 'A01', null],
+      ['T1-P2', 'A02', 1],
+      ['T1-P2', 'A01', null],
+    ]);
+    expect(pos.find((p) => p.Id === manual.Id)).toMatchObject({ Qty: 5, Destination: null });
+  });
+
   it('người dùng sửa đơn, xác nhận PO đúng lúc bước nạp đang so: câu ghi kiểm lại, không đè phần vừa sửa', async () => {
     const src: BravoOrderSource = { orders: [order(1), order(2)], pos: [po(1), po(2)], cells: [cell(1), cell(2)] };
     await run(src);

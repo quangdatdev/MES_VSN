@@ -445,8 +445,8 @@ const CANDIDATE_PO_COLS: Column<CandidatePo>[] = [
 ];
 
 /**
- * Popup B3 "Chọn mã hàng": chọn đơn hàng còn số lượng, chọn PO, nhập PO/Buy date. Chỉ có đơn hàng của các nhà máy SX được
- * tích cho người dùng, ở mọi đơn vị cơ sở (máy chủ lọc, ADR 0013); kế hoạch lập ra thuộc đơn vị cơ sở đang làm việc.
+ * Popup B3 "Chọn mã hàng": chọn đơn hàng còn số lượng, chọn PO, nhập PO/Buy date. Chỉ có đơn hàng của các nhà máy SX thuộc
+ * đơn vị cơ sở đang làm việc theo danh mục Nhà máy SX (máy chủ lọc, ADR 0013 mục 11); kế hoạch lập ra thuộc đơn vị đó.
  */
 function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (p: Picked) => void }) {
   const branch = useSession((s) => s.branch);
@@ -497,10 +497,10 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
         <OrderFilters policy={orderPolicy} value={filter} onChange={setFilter} customers={customers} />
         {factories.length === 0 ? (
           <Alert color="orange" variant="light" py={8}>
-            Bạn chưa được tích nhà máy SX nào nên chưa có mã hàng để lập kế hoạch. Nhờ quản trị viên tích nhà máy SX cho bạn ở Quản trị › Người dùng.
+            {branchName(branch?.code)} chưa có nhà máy SX nào nên chưa có mã hàng để lập kế hoạch. Nhờ quản trị viên gắn nhà máy cho đơn vị này ở Quản trị › Danh mục hệ thống › Nhà máy SX.
           </Alert>
         ) : (
-          <Text size="xs" c="dimmed">Chỉ hiện đơn hàng có Nhà máy SX bạn được giao: {factories.map((f) => f.name).join(', ')}. Kế hoạch lập ra thuộc {branchName(branch?.code)}.</Text>
+          <Text size="xs" c="dimmed">Chỉ hiện đơn hàng có Nhà máy SX thuộc {branchName(branch?.code)}: {factories.map((f) => f.name).join(', ')}. Kế hoạch lập ra thuộc đơn vị này.</Text>
         )}
         <div style={{ height: 'min(34vh, 300px)', display: 'flex', flexDirection: 'column' }}>
           <DataGrid
@@ -519,7 +519,7 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
               setChosenId(c.salesOrderId);
               setPoIds([]);
             }}
-            empty={<EmptyState filtered={Object.values(filter).some(Boolean)} what="mã hàng" onClear={() => setFilter(emptyFilter)} hint="Không có mã hàng nào của nhà máy SX bạn được giao còn số lượng để lập kế hoạch. Đơn chưa chọn Nhà máy SX ở Thông tin đơn hàng cũng không hiện ở đây." />}
+            empty={<EmptyState filtered={Object.values(filter).some(Boolean)} what="mã hàng" onClear={() => setFilter(emptyFilter)} hint="Không có mã hàng nào của nhà máy SX thuộc đơn vị này còn số lượng để lập kế hoạch. Đơn chưa chọn Nhà máy SX ở Thông tin đơn hàng cũng không hiện ở đây." />}
           />
         </div>
         {/* Máy chủ trả tối đa 200 đơn theo ngày xuất */}

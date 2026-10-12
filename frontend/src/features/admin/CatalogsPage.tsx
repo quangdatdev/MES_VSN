@@ -185,9 +185,8 @@ function useSave(onDone?: () => void) {
       void qc.invalidateQueries({ queryKey: ORDER_OPTIONS_KEY });
       // Ô chọn chuyền ở màn phạm vi người dùng gom theo xưởng
       void qc.invalidateQueries({ queryKey: ['admin', 'scope-catalog'] });
-      // Nhà máy SX hiện ở màn Đơn vị cơ sở và popup gán của màn Người dùng
+      // Nhà máy SX hiện ở màn Đơn vị cơ sở và popup gán đơn vị của màn Người dùng
       void qc.invalidateQueries({ queryKey: ['admin', 'branches'] });
-      void qc.invalidateQueries({ queryKey: ['admin', 'user-factories'] });
       // Ô chọn loại phòng ban, cây phòng ban (tên loại, thứ tự theo cấp) ở Sơ đồ tổ chức
       void qc.invalidateQueries({ queryKey: HR_KEYS.departments });
       onDone?.();
@@ -807,12 +806,17 @@ function ItemDialog({ catalog, item, onClose }: { catalog: MesCatalog; item: Cat
 
 // ---------------- Nhà máy SX (ADR 0013) ----------------
 
-const STOP_FACTORY = 'Không còn trong ô chọn Nhà máy SX của đơn hàng. Người được tích nhà máy này không chọn được đơn hàng của nó khi lập kế hoạch xuất hàng. Đơn hàng đã chọn nhà máy này giữ nguyên.';
+const STOP_FACTORY = 'Không còn trong ô chọn Nhà máy SX của đơn hàng. Đơn hàng của nhà máy này không còn hiện ở popup Chọn mã hàng khi lập kế hoạch xuất hàng. Đơn hàng đã chọn nhà máy này giữ nguyên.';
 
-/** Nhà máy SX: mỗi nhà máy thuộc một đơn vị cơ sở. Đơn hàng lưu mã ở cột Nhà máy SX; người dùng được tích nhà máy ở màn Người dùng. */
+/** Không có quyền sửa phân quyền: không thêm, không đổi ĐVCS, không bật/tắt nhà máy (máy chủ cũng chặn) */
+const SCOPE_LOCKED = 'Nhà máy SX gắn đơn vị cơ sở quyết định đơn hàng nào lập kế hoạch được ở đơn vị đó, nên cần thêm quyền sửa phân quyền.';
+
+/** Nhà máy SX: mỗi nhà máy thuộc một đơn vị cơ sở. Đơn hàng lưu mã ở cột Nhà máy SX; đăng nhập ĐVCS nào thì lập kế hoạch cho nhà máy của ĐVCS đó. */
 function FactoriesPane({ info }: { info: MesCatalog }) {
   const canCreate = useCan('admin.catalog:create');
   const canEdit = useCan('admin.catalog:update');
+  // Thêm, đổi ĐVCS, bật/tắt nhà máy đổi phạm vi lập kế hoạch: máy chủ đòi quyền sửa phân quyền (ADR 0013 mục 11)
+  const canScope = useCan('admin.permission:update');
   const [search, setSearch] = useState('');
   const [branch, setBranch] = useState<string | null>(null);
   const debounced = search.trim();
@@ -832,7 +836,11 @@ function FactoriesPane({ info }: { info: MesCatalog }) {
 
   return (
     <>
-      <PaneHead title={info.name} description={info.description} actions={canCreate && <Button leftSection={<IconPlus size={15} />} onClick={() => setDialog('create')}>Thêm nhà máy</Button>}>
+      <PaneHead
+        title={info.name}
+        description={info.description}
+        actions={canCreate && <ActionButton leftSection={<IconPlus size={15} />} blockedReason={canScope ? null : SCOPE_LOCKED} onClick={() => setDialog('create')}>Thêm nhà máy</ActionButton>}
+      >
         <Group gap="xs" wrap="wrap">
           <SearchBox value={search} onChange={setSearch} placeholder="Tìm mã, tên nhà máy" />
           <Select
@@ -874,6 +882,7 @@ function FactoriesPane({ info }: { info: MesCatalog }) {
                     canEdit={canEdit}
                     busy={save.isPending}
                     label={f.code}
+                    blockedReason={canScope ? null : SCOPE_LOCKED}
                     onChange={(on) =>
                       confirmStop(on, `${f.name} (${f.code})`, STOP_FACTORY, () =>
                         save.mutate({ method: 'PUT', path: `/admin/catalogs/factories/${f.id}`, body: { isActive: on }, done: `Đã ${on ? 'dùng lại' : 'ngừng dùng'} ${f.name} (${f.code}).` }),
@@ -894,12 +903,12 @@ function FactoriesPane({ info }: { info: MesCatalog }) {
           </tbody>
         </table>
       </div>
-      {dialog && <FactoryDialog factory={dialog === 'create' ? null : dialog} branches={branches} branchesLoading={lines.isPending} defaultBranch={branch && branch !== '-' ? branch : undefined} onClose={() => setDialog(null)} />}
+      {dialog && <FactoryDialog factory={dialog === 'create' ? null : dialog} canScope={canScope} branches={branches} branchesLoading={lines.isPending} defaultBranch={branch && branch !== '-' ? branch : undefined} onClose={() => setDialog(null)} />}
     </>
   );
 }
 
-function FactoryDialog({ factory, branches, branchesLoading, defaultBranch, onClose }: { factory: AdminFactory | null; branches: CatalogLines['branches']; branchesLoading: boolean; defaultBranch?: string; onClose: () => void }) {
+function FactoryDialog({ factory, canScope, branches, branchesLoading, defaultBranch, onClose }: { factory: AdminFactory | null; canScope: boolean; branches: CatalogLines['branches']; branchesLoading: boolean; defaultBranch?: string; onClose: () => void }) {
   const form = useForm({
     initialValues: {
       code: factory?.code ?? '',
@@ -913,14 +922,15 @@ function FactoryDialog({ factory, branches, branchesLoading, defaultBranch, onCl
       // Mã là tên nhà máy theo OSM (ADR 0013 mục 9): có dấu, khoảng trắng; đơn hàng lưu danh sách mã cách nhau dấu phẩy
       code: (v) => (factory || /^[^,\p{C}]{1,100}$/u.test(v.trim()) ? null : 'Nhập mã, tối đa 100 ký tự, không có dấu phẩy'),
       name: (v) => (v.trim() ? null : 'Nhập tên nhà máy'),
-      branchCode: (v) => (v ? null : 'Chọn đơn vị cơ sở'),
+      branchCode: (v) => (v || !canScope ? null : 'Chọn đơn vị cơ sở'),
     },
   });
   const save = useSave(onClose);
   // ĐVCS đang tắt chỉ còn trong ô chọn khi là ĐVCS hiện tại của nhà máy
   const options = branches.filter((b) => b.isActive || b.code === factory?.branchCode).map((b) => ({ value: b.code, label: `${b.name} (${b.code})${b.isActive ? '' : ' – ngừng dùng'}` }));
   const submit = (v: typeof form.values) => {
-    const body = { name: v.name.trim(), branchCode: v.branchCode, description: v.description.trim() || null, sortOrder: v.sortOrder === '' ? undefined : v.sortOrder };
+    // Không có quyền sửa phân quyền thì không gửi ĐVCS (giữ nguyên), vẫn sửa được tên, mô tả, thứ tự
+    const body = { name: v.name.trim(), branchCode: canScope ? v.branchCode : undefined, description: v.description.trim() || null, sortOrder: v.sortOrder === '' ? undefined : v.sortOrder };
     const code = v.code.trim().toUpperCase();
     if (factory) save.mutate({ method: 'PUT', path: `/admin/catalogs/factories/${factory.id}`, body, done: `Đã lưu ${factory.code} – ${body.name}.` });
     else save.mutate({ method: 'POST', path: '/admin/catalogs/factories', body: { ...body, code }, done: `Đã thêm nhà máy SX ${code} – ${body.name}.` });
@@ -944,13 +954,23 @@ function FactoryDialog({ factory, branches, branchesLoading, defaultBranch, onCl
           <TextInput label="Tên nhà máy" withAsterisk maxLength={100} data-autofocus={factory ? true : undefined} {...form.getInputProps('name')} />
           <Select
             label="Đơn vị cơ sở"
-            withAsterisk
-            placeholder="Chọn đơn vị quản lý nhà máy"
+            withAsterisk={canScope}
+            placeholder={canScope ? 'Chọn đơn vị quản lý nhà máy' : 'Chưa gắn'}
             data={options}
             searchable={options.length > 6}
             allowDeselect={false}
             nothingFoundMessage="Không có đơn vị khớp"
-            description={branchesLoading ? 'Đang tải danh sách đơn vị cơ sở…' : options.length === 0 ? 'Chưa tải được danh sách đơn vị cơ sở. Đóng popup, tải lại trang rồi thử lại.' : undefined}
+            readOnly={!canScope}
+            className={canScope ? undefined : 'field-readonly'}
+            description={
+              !canScope
+                ? SCOPE_LOCKED
+                : branchesLoading
+                  ? 'Đang tải danh sách đơn vị cơ sở…'
+                  : options.length === 0
+                    ? 'Chưa tải được danh sách đơn vị cơ sở. Đóng popup, tải lại trang rồi thử lại.'
+                    : 'Người đăng nhập đơn vị này lập kế hoạch xuất hàng được cho đơn hàng của nhà máy.'
+            }
             {...form.getInputProps('branchCode')}
           />
           <Textarea label="Mô tả" autosize minRows={2} maxLength={300} {...form.getInputProps('description')} />

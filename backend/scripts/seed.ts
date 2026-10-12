@@ -67,11 +67,10 @@ export async function runSeed({
   try {
     // 1. Đơn vị cơ sở (ADR 0013): đơn vị tổng hợp luôn có; ĐVCS mẫu chỉ khi có dữ liệu mẫu; rồi chép theo danh mục chi nhánh
     // BRAVO nếu MES_Sync đã đồng bộ (thêm mã còn thiếu, tên theo BRAVO)
-    // ĐVCS, nhà máy SX tạo trong lần chạy này: chưa ai thu hồi được, gán cho cả tài khoản mẫu đã có (bước 10)
+    // ĐVCS tạo trong lần chạy này: chưa ai thu hồi được, gán cho cả tài khoản mẫu đã có (bước 10)
     const createdBranches = new Set<string>();
-    const createdFactories = new Set<string>();
     /** Phép gán thêm cho tài khoản đã có, ghi vào nhật ký SEED (thay đổi phân quyền phải có nhật ký, CLAUDE.md mục 4.8) */
-    const newGrants: { username: string; branches: string[]; productionFactories: string[] }[] = [];
+    const newGrants: { username: string; branches: string[] }[] = [];
     for (const b of branches.filter((x) => x.isAggregate || sampleData)) {
       const row = await db.selectFrom('SysBranch').select('Id').where('Code', '=', b.code).executeTakeFirst();
       if (!row) {
@@ -346,10 +345,8 @@ export async function runSeed({
         if (has) continue;
         await db.insertInto('SysProductionFactory').values({ Code: f.code, Name: f.name, BranchCode: f.branch, SortOrder: (i + 1) * 10, IsActive: true, IsSystem: false }).execute();
         bump('nhà máy SX');
-        createdFactories.add(f.code);
       }
     }
-    const factoryId = new Map((await db.selectFrom('SysProductionFactory').select(['Id', 'Code']).execute()).map((f) => [f.Code, f.Id]));
 
     // 7. Tài nguyên lọc theo chiều nào, qua cột nào. Tài nguyên hệ thống khai báo ở seed-data thì đồng bộ đúng như khai báo:
     // đổi bảng nguồn mà còn liên kết cũ trỏ tới cột không có sẽ làm truy vấn lỗi (review 5.1 #18).
@@ -434,21 +431,16 @@ export async function runSeed({
       }
       userId.set(u.username, row.Id);
       if (!isNew && !syncMatrix) {
-        // Chỉ ĐVCS, nhà máy SX vừa tạo ở lần chạy này (máy demo: migrate tạo admin chỉ có A00, seed sau đó mới thêm ĐVCS mẫu).
+        // Chỉ ĐVCS vừa tạo ở lần chạy này (máy demo: migrate tạo admin chỉ có A00, seed sau đó mới thêm ĐVCS mẫu).
         // Thứ đã có từ trước thì quản trị có thể đã thu hồi: không cấp lại
         const newBranches = u.branches.filter((bc) => createdBranches.has(bc) && branchId.has(bc));
-        const newFactories = (u.productionFactories ?? []).filter((fc) => createdFactories.has(fc) && factoryId.has(fc));
-        if (newBranches.length || newFactories.length) {
+        if (newBranches.length) {
           const hasDefault = await db.selectFrom('SysUserBranch').select('Id').where('UserId', '=', row.Id).where('IsDefault', '=', true).executeTakeFirst();
           for (const bc of newBranches) {
             await db.insertInto('SysUserBranch').values({ UserId: row.Id, BranchId: branchId.get(bc)!, IsDefault: !hasDefault && bc === u.defaultBranch } as any).execute();
             bump('gán đơn vị cơ sở');
           }
-          for (const fc of newFactories) {
-            await db.insertInto('SysUserProductionFactory').values({ UserId: row.Id, ProductionFactoryId: factoryId.get(fc)! }).execute();
-            bump('gán nhà máy SX');
-          }
-          newGrants.push({ username: u.username, branches: newBranches, productionFactories: newFactories });
+          newGrants.push({ username: u.username, branches: newBranches });
         }
         continue;
       }
@@ -476,15 +468,6 @@ export async function runSeed({
           if (!has) {
             await trx.insertInto('SysUserBranch').values({ UserId: row.Id, BranchId: bid, IsDefault: bc === u.defaultBranch } as any).execute();
             bump('gán đơn vị cơ sở');
-          }
-        }
-        for (const fc of u.productionFactories ?? []) {
-          const fid = factoryId.get(fc);
-          if (fid === undefined) continue;
-          const has = await trx.selectFrom('SysUserProductionFactory').select('Id').where('UserId', '=', row.Id).where('ProductionFactoryId', '=', fid).executeTakeFirst();
-          if (!has) {
-            await trx.insertInto('SysUserProductionFactory').values({ UserId: row.Id, ProductionFactoryId: fid }).execute();
-            bump('gán nhà máy SX');
           }
         }
         for (const s of scopes) {
