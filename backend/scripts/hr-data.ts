@@ -76,6 +76,7 @@ export async function seedHr(db: HrDb, { sample = true }: { sample?: boolean } =
         DissolvedDate: d.dissolved ?? null,
         SortOrder: (i + 1) * 10,
         IsActive: !d.dissolved,
+        IsProductionWorkshop: !!d.productionWorkshop,
         CreatedBy: null,
       })
       .execute();

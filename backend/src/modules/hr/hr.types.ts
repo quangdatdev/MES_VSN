@@ -38,6 +38,8 @@ export interface DepartmentTable extends Audit {
   DissolvedDate: NullableDateCol;
   SortOrder: number;
   IsActive: boolean;
+  /** Tích "Xưởng sản xuất": bộ phận là một chuyền may trong ô chọn Chuyền may (phase 5.10); bắt buộc có BranchCode */
+  IsProductionWorkshop: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
 /** Chức danh. DepartmentId NULL: dùng chung; có giá trị: dùng cho phòng ban đó và cả nhánh con. */

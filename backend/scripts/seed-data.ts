@@ -507,8 +507,26 @@ export const hrDepartmentTypes = [
   ['BO_PHAN', 'Bộ phận', 4, true],
 ] as const;
 
+type HrDepartmentSeed = { code: string; name: string; nameEn?: string; type: string; parent?: string; branch?: string; established?: string; dissolved?: string; productionWorkshop?: boolean };
+
+/** Phòng ban cha của xưởng, chuyền mẫu theo ĐVCS */
+const HR_LINE_PARENT: Record<string, string> = { A01: 'NM1', A02: 'NM2', A03: 'NM3' };
+
+/**
+ * Xưởng, chuyền mẫu (phase 5.10): chuyền là bộ phận tích "Xưởng sản xuất", mã như chuyền mẫu cũ (A01-L01…) để đơn hàng,
+ * dàn chuyền, chuẩn bị SX mẫu (sinh mã theo lineCode) có chuyền; xưởng mẫu là phòng ban cha, A03 không chia xưởng.
+ */
+const hrLineDepartments: HrDepartmentSeed[] = Object.entries(LINE_COUNT).flatMap(([branch, count]) => [
+  ...(WORKSHOPS[branch] ?? []).map((_, i) => ({ code: workshopCode(branch, i + 1), name: workshopName(i + 1), type: 'PHONG', parent: HR_LINE_PARENT[branch], branch, established: '2012-09-01' })),
+  ...Array.from({ length: count }, (_, i) => {
+    const n = i + 1;
+    const w = workshopOfLine(branch, n);
+    return { code: lineCode(branch, n), name: `Chuyền ${String(n).padStart(2, '0')}`, type: 'BO_PHAN', parent: w ? workshopCode(branch, w) : HR_LINE_PARENT[branch], branch, established: '2012-09-01', productionWorkshop: true };
+  }),
+]);
+
 /** Phòng ban theo thứ tự cha trước con. dissolved: phòng ban đã giải thể (để thử ô "Hiện phòng ban giải thể") */
-export const hrDepartments: { code: string; name: string; nameEn?: string; type: string; parent?: string; branch?: string; established?: string; dissolved?: string }[] = [
+export const hrDepartments: HrDepartmentSeed[] = [
   { code: 'VSN', name: 'Công ty Vietsun', nameEn: 'Vietsun Corporation', type: 'CONG_TY', established: '2005-03-15' },
   { code: 'VP', name: 'Khối văn phòng', nameEn: 'Head Office', type: 'KHOI', parent: 'VSN', established: '2005-03-15' },
   { code: 'HCNS', name: 'Phòng Hành chính nhân sự', nameEn: 'HR & Administration', type: 'PHONG', parent: 'VP', established: '2005-03-15' },
@@ -521,6 +539,8 @@ export const hrDepartments: { code: string; name: string; nameEn?: string; type:
   { code: 'NM2', name: 'Nhà máy 2', nameEn: 'Factory 2', type: 'NHA_MAY', parent: 'VSN', branch: 'A02', established: '2012-09-01' },
   { code: 'NM2-MAY', name: 'Bộ phận may', nameEn: 'Sewing', type: 'BO_PHAN', parent: 'NM2', branch: 'A02', established: '2012-09-01' },
   { code: 'NM2-HT', name: 'Bộ phận hoàn thiện (cũ)', nameEn: 'Finishing (old)', type: 'BO_PHAN', parent: 'NM2', branch: 'A02', established: '2012-09-01', dissolved: '2025-12-31' },
+  { code: 'NM3', name: 'Nhà máy 3', nameEn: 'Factory 3', type: 'NHA_MAY', parent: 'VSN', branch: 'A03', established: '2015-04-01' },
+  ...hrLineDepartments,
 ];
 
 /** Chức danh: [mã, tên, phòng ban (bỏ trống: dùng chung)] */
