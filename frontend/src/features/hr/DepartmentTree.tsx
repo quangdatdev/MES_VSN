@@ -1,9 +1,10 @@
 import { ActionIcon, Menu, Tree, useTree, type RenderTreeNodePayload, type TreeNodeData } from '@mantine/core';
 import { IconBuildingFactory2, IconChevronRight, IconDots } from '@tabler/icons-react';
 import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { WorkshopBadge } from './common';
 import { buildTree, filterTree, type DeptTreeNode, type FlatDept } from './tree';
 
-export type TreeDept = FlatDept & { activeEmployees?: number; branchCode?: string | null; isFinalLevel?: boolean };
+export type TreeDept = FlatDept & { activeEmployees?: number; branchCode?: string | null; isFinalLevel?: boolean; isProductionWorkshop?: boolean };
 
 interface Props<T extends TreeDept> {
   items: T[];
@@ -128,7 +129,7 @@ interface RowProps<T extends TreeDept> {
   onMenu: (value: string, open: boolean) => void;
 }
 
-/** Một dòng của cây: mũi tên mở/thu, tên, nhà máy (nếu gắn), số người đang làm, nút ⋯ */
+/** Một dòng của cây: mũi tên mở/thu, tên, dấu Xưởng sản xuất, nhà máy (nếu gắn), số người đang làm, nút ⋯ */
 const DeptRow = memo(function DeptRow<T extends TreeDept>({ item, open, hasChildren, selected, elementClass, style, onToggle, onPick, menu, menuOpen, onMenu }: RowProps<T>) {
   const count = item.activeEmployees;
   const value = String(item.id);
@@ -174,6 +175,7 @@ const DeptRow = memo(function DeptRow<T extends TreeDept>({ item, open, hasChild
       <span className="hr-tree-name" title={`${item.name} (${item.code})`}>
         {item.name}
       </span>
+      {item.isProductionWorkshop && <WorkshopBadge short branchCode={item.branchCode ?? null} />}
       {!item.isActive && <span className="hr-tree-tag">Đã giải thể</span>}
       {item.branchCode && (
         <span className="hr-tree-factory" title={`Thuộc đơn vị cơ sở ${item.branchCode}`}>

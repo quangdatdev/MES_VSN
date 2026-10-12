@@ -11,6 +11,7 @@ import { isHeaderRow, parseDate } from '../src/modules/hr/employee-import.servic
 import { HR_DB } from '../src/modules/hr/hr.db';
 import type { HrDb } from '../src/modules/hr/hr.types';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
+import { OrgService } from '../src/platform/org/org.service';
 
 // Phase 5.8 – Sơ đồ tổ chức, Thông tin nhân sự (ADR 0012). Cần MES_Core, MES_Hr đã migrate và seed (vai trò Nhân sự, tài khoản nhansu).
 // Test tự tạo phòng ban mã TST-…, chức danh TST-…, nhân viên mã TST…, loại phòng ban mã TST_…; xóa hết khi xong.
@@ -383,5 +384,136 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     const audit = JSON.stringify((await api().get('/api/v1/admin/audit?entityType=DepartmentType&pageSize=50').set(auth(admin)).expect(200)).body);
     expect(audit).toContain('TST_TO');
     expect(audit).toContain('Tổ sản xuất test');
+  });
+
+  // ---------- Chuyền may là bộ phận tích "Xưởng sản xuất" (phase 5.10, task 5.10.6, 5.10.7) ----------
+  // Bộ phận thử: TST-XSX (cha, A01, không tích), TST-L1, TST-L2 (A01, tích), TST-L3 (A02, tích). Dọn cùng tiền tố TST.
+  const line = { parent: 0, l1: 0, l2: 0, l3: 0 };
+  const version = async () => Number((await app.get<CoreDb>(CORE_DB).selectFrom('SysPermissionVersion').select('Version').where('Id', '=', 1).executeTakeFirstOrThrow()).Version);
+  const putDept = (token: string, id: number, body: object) => api().put(`/api/v1/hr/departments/${id}`).set(auth(token)).send(body);
+  const meLines = async (token: string) => (await api().get('/api/v1/me/lines').set(auth(token)).expect(200)).body as { code: string; name: string; branchCode: string; isActive: boolean; workshopCode: string | null; workshopName: string | null }[];
+  const codesOf = (lines: { code: string }[]) => lines.map((l) => l.code).filter((c) => c.startsWith('TST')).sort();
+  /** Người có đủ quyền: admin có vai trò Toàn quyền (hr.orgchart và admin.permission:update), làm việc ở một ĐVCS cụ thể */
+  const fullAccess = () => tokenFor('admin', 'A01');
+
+  it('tích "Xưởng sản xuất": thiếu ĐVCS 422; Nhân sự thiếu quyền phân quyền 403; Toàn quyền làm được, tăng phiên bản quyền', async () => {
+    const t = await hrUser();
+    const admin = await fullAccess();
+    line.parent = (await createDept(t, { code: 'TST-XSX', name: 'Xưởng may thử', departmentTypeId: fx.type, parentId: fx.root, branchCode: 'A01' }).expect(201)).body.id;
+    const plain = (await createDept(t, { code: 'TST-L1', name: 'Chuyền thử 1', departmentTypeId: fx.finalType, parentId: line.parent, branchCode: 'A01' }).expect(201)).body;
+    expect(plain.isProductionWorkshop).toBe(false);
+    line.l1 = plain.id;
+
+    // Vai trò Nhân sự (hr.orgchart đủ, không có admin.permission:update): không tích, không thêm bộ phận đã tích
+    const denied = await putDept(t, line.l1, { isProductionWorkshop: true }).expect(403);
+    expect(denied.body.error.message).toContain('Tích "Xưởng sản xuất"');
+    expect(denied.body.error.message).toContain('admin.permission:update');
+    await createDept(t, { code: 'TST-L9', name: 'Chuyền thử 9', departmentTypeId: fx.finalType, parentId: line.parent, branchCode: 'A01', isProductionWorkshop: true }).expect(403);
+    expect((await api().get(`/api/v1/hr/departments/${line.l1}`).set(auth(t)).expect(200)).body.isProductionWorkshop).toBe(false);
+
+    // Thiếu ĐVCS: 422 nói rõ (database cũng chặn bằng CK_Department_ProductionWorkshopBranch)
+    const noBranch = await createDept(admin, { code: 'TST-L9', name: 'Chuyền thử 9', departmentTypeId: fx.finalType, parentId: line.parent, isProductionWorkshop: true }).expect(422);
+    expect(noBranch.body.error.message).toContain('phải thuộc một đơn vị cơ sở');
+    expect((await putDept(admin, fx.b, { isProductionWorkshop: true }).expect(422)).body.error.message).toContain('phải thuộc một đơn vị cơ sở');
+    await createDept(admin, { code: 'TST-L9', name: 'Chuyền thử 9', departmentTypeId: fx.finalType, isProductionWorkshop: 'có' }).expect(422);
+
+    // Đủ quyền: tích được; phiên bản quyền tăng (phạm vi chiều LINE tính lại); nhật ký có cờ trước, sau
+    let v = await version();
+    expect((await putDept(admin, line.l1, { isProductionWorkshop: true }).expect(200)).body.isProductionWorkshop).toBe(true);
+    expect(await version()).toBe(v + 1);
+    v = await version();
+    line.l2 = (await createDept(admin, { code: 'TST-L2', name: 'Chuyền thử 2', departmentTypeId: fx.finalType, parentId: line.parent, branchCode: 'A01', isProductionWorkshop: true }).expect(201)).body.id;
+    line.l3 = (await createDept(admin, { code: 'TST-L3', name: 'Chuyền thử 3', departmentTypeId: fx.finalType, parentId: fx.root, branchCode: 'A02', isProductionWorkshop: true }).expect(201)).body.id;
+    expect(await version()).toBe(v + 2);
+    // A00 vẫn ghi được dữ liệu nhân sự dùng chung (ADR 0012 mục 5), kể cả cờ, khi đủ quyền
+    const atA00 = await tokenFor('admin', 'A00');
+    await putDept(atA00, line.l3, { isProductionWorkshop: false }).expect(200);
+    await putDept(atA00, line.l3, { isProductionWorkshop: true }).expect(200);
+
+    const audit = (await api().get('/api/v1/admin/audit?entityType=Department&pageSize=100').set(auth(atA00)).expect(200)).body.items as { entityId: string; actionCode: string; oldValue: string | null; newValue: string | null }[];
+    const tick = audit.find((a) => a.entityId === String(line.l1) && a.actionCode === 'UPDATE');
+    expect(JSON.parse(tick!.oldValue!)).toMatchObject({ isProductionWorkshop: false });
+    expect(JSON.parse(tick!.newValue!)).toMatchObject({ IsProductionWorkshop: true });
+  });
+
+  it('/me/lines: chỉ chuyền của ĐVCS phiên, A00 có mọi ĐVCS; gom theo bộ phận cha; bỏ tích, giải thể thì mất ngay', async () => {
+    const planner = await tokenFor('kehoach.a', 'A01');
+    const atA01 = await meLines(planner);
+    expect(atA01.every((l) => l.branchCode === 'A01' && l.isActive)).toBe(true);
+    expect(codesOf(atA01)).toEqual(['TST-L1', 'TST-L2']);
+    expect(atA01.find((l) => l.code === 'TST-L1')).toMatchObject({ name: 'Chuyền thử 1', workshopCode: 'TST-XSX', workshopName: 'Xưởng may thử' });
+    // Bộ phận không tích (xưởng, phòng ban) không phải chuyền
+    expect(atA01.some((l) => l.code === 'TST-XSX' || l.code === 'NM1-MAY')).toBe(false);
+    // A00: mọi ĐVCS (chỉ đọc); chuyền nằm thẳng dưới bộ phận gốc test vẫn có nhóm là bộ phận cha
+    const all = await meLines(await hrUser());
+    expect(codesOf(all)).toEqual(['TST-L1', 'TST-L2', 'TST-L3']);
+    expect(new Set(all.map((l) => l.branchCode))).toEqual(new Set(['A01', 'A02', 'A03']));
+    expect(all.find((l) => l.code === 'TST-L3')).toMatchObject({ branchCode: 'A02', workshopCode: 'TST-ROOT' });
+
+    const admin = await fullAccess();
+    const t = await hrUser();
+    // Bỏ tích: ô chọn mất chuyền ngay (không chờ cache 30 giây)
+    await putDept(admin, line.l2, { isProductionWorkshop: false }).expect(200);
+    expect(codesOf(await meLines(planner))).toEqual(['TST-L1']);
+
+    // Giải thể, khôi phục chuyền: Nhân sự 403; đủ quyền thì được, tăng phiên bản quyền
+    expect((await api().post(`/api/v1/hr/departments/${line.l1}/dissolve`).set(auth(t)).send({}).expect(403)).body.error.message).toContain('Giải thể bộ phận là chuyền may');
+    const v = await version();
+    await api().post(`/api/v1/hr/departments/${line.l1}/dissolve`).set(auth(admin)).send({}).expect(201);
+    expect(await version()).toBe(v + 1);
+    expect(codesOf(await meLines(planner))).toEqual([]);
+    // Chuyền đã giải thể vẫn tra được tên cho dữ liệu cũ (includeInactive), không vào được việc mới
+    const org = app.get(OrgService);
+    expect((await org.lines('A01', false, { includeInactive: true })).find((l) => l.code === 'TST-L1')).toMatchObject({ name: 'Chuyền thử 1', isActive: false });
+    expect((await org.lines('A01', false, { includeInactive: true })).some((l) => l.code === 'TST-L2')).toBe(false);
+    expect(await org.activeLineCodes()).not.toContain('TST-L1');
+    await expect(org.assertLine('A01', 'TST-L1')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await api().post(`/api/v1/hr/departments/${line.l1}/restore`).set(auth(t)).expect(403);
+    await api().post(`/api/v1/hr/departments/${line.l1}/restore`).set(auth(admin)).expect(201);
+    expect(codesOf(await meLines(planner))).toEqual(['TST-L1']);
+    expect(await org.activeLineCodes()).toContain('TST-L1');
+
+    // Bộ phận không tích: Nhân sự giải thể, khôi phục như cũ, phiên bản quyền không đổi
+    const before = await version();
+    await api().post(`/api/v1/hr/departments/${line.l2}/dissolve`).set(auth(t)).send({}).expect(201);
+    await api().post(`/api/v1/hr/departments/${line.l2}/restore`).set(auth(t)).expect(201);
+    expect(await version()).toBe(before);
+  });
+
+  it('chuyền may: Nhân sự đổi tên, đổi cha được (ô chọn thấy ngay, quyền không đổi); đổi ĐVCS cần quyền phân quyền', async () => {
+    const t = await hrUser();
+    const admin = await fullAccess();
+    const planner = await tokenFor('kehoach.a', 'A01');
+
+    const v = await version();
+    await putDept(t, line.l1, { name: 'Chuyền thử một' }).expect(200);
+    await putDept(t, line.parent, { name: 'Xưởng may thử (mới)' }).expect(200);
+    let mine = (await meLines(planner)).find((l) => l.code === 'TST-L1');
+    expect(mine).toMatchObject({ name: 'Chuyền thử một', workshopName: 'Xưởng may thử (mới)' });
+    await putDept(t, line.l1, { parentId: fx.root }).expect(200);
+    mine = (await meLines(planner)).find((l) => l.code === 'TST-L1');
+    expect(mine).toMatchObject({ workshopCode: 'TST-ROOT' });
+    // Đổi ĐVCS của bộ phận không tích: không cần thêm quyền
+    await putDept(t, line.parent, { branchCode: 'A02' }).expect(200);
+    expect(await version()).toBe(v);
+
+    // Đổi ĐVCS (kể cả bỏ trống) của bộ phận đang tích: Nhân sự 403; bỏ trống mà vẫn tích: 422
+    expect((await putDept(t, line.l1, { branchCode: 'A02' }).expect(403)).body.error.message).toContain('Đổi đơn vị cơ sở');
+    await putDept(t, line.l1, { branchCode: null }).expect(403);
+    expect((await putDept(admin, line.l1, { branchCode: null }).expect(422)).body.error.message).toContain('phải thuộc một đơn vị cơ sở');
+    await putDept(admin, line.l1, { branchCode: 'A00' }).expect(422);
+    await putDept(admin, line.l1, { branchCode: 'A02' }).expect(200);
+    expect(await version()).toBe(v + 1);
+    expect(codesOf(await meLines(planner))).toEqual([]);
+    expect(codesOf(await meLines(await tokenFor('nhansu', 'A02')))).toEqual(['TST-L1', 'TST-L3']);
+
+    // Bỏ tích và bỏ ĐVCS cùng lúc: được (database chỉ chặn bộ phận đang tích mà không có ĐVCS)
+    const off = (await putDept(admin, line.l1, { isProductionWorkshop: false, branchCode: null }).expect(200)).body;
+    expect(off).toMatchObject({ isProductionWorkshop: false, branchCode: null });
+    expect(await version()).toBe(v + 2);
+    // Nhân sự sửa tên chuyền đã bỏ tích, bộ phận khác như cũ
+    await putDept(t, line.l1, { name: 'Bộ phận thử' }).expect(200);
+    const row = await hr.selectFrom('Department').select(['IsProductionWorkshop', 'BranchCode']).where('Id', '=', line.l1).executeTakeFirstOrThrow();
+    expect(row).toEqual({ IsProductionWorkshop: false, BranchCode: null });
   });
 });

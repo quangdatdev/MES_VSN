@@ -44,6 +44,8 @@ export class DepartmentCreateDto {
   @IsOptional() @upperCode() @Matches(/^[A-Z0-9_-]{1,10}$/, { message: 'Mã nhà máy không hợp lệ.' }) branchCode?: string | null;
   @IsOptional() @DateOnly() @RealDate() establishedDate?: string | null;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(1_000_000) sortOrder?: number;
+  /** Tích "Xưởng sản xuất": bộ phận là một chuyền may (phase 5.10). Bắt buộc có ĐVCS; tích cần thêm quyền admin.permission:update */
+  @Optional() @IsBoolean() isProductionWorkshop?: boolean;
 }
 
 /** Sửa phòng ban: chỉ gửi phần đã đổi. Mã không sửa được (gửi mã khác thì 422 CODE_IMMUTABLE). */
@@ -57,6 +59,7 @@ export class DepartmentUpdateDto {
   @IsOptional() @upperCode() @Matches(/^[A-Z0-9_-]{1,10}$/, { message: 'Mã nhà máy không hợp lệ.' }) branchCode?: string | null;
   @IsOptional() @DateOnly() @RealDate() establishedDate?: string | null;
   @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(1_000_000) sortOrder?: number;
+  @Optional() @IsBoolean() isProductionWorkshop?: boolean;
 }
 
 export class DepartmentDissolveDto {

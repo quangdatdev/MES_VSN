@@ -1,8 +1,8 @@
-import { Badge, Button, Group, NumberInput, Select, Text, TextInput, Title } from '@mantine/core';
+import { Badge, Button, Checkbox, Group, NumberInput, Select, Text, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconArrowBackUp, IconBuildingFactory2, IconPencil, IconUsers } from '@tabler/icons-react';
+import { IconArrowBackUp, IconBuildingFactory2, IconLock, IconPencil, IconUsers } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ActionButton } from '../../components/ActionButton';
@@ -13,7 +13,7 @@ import { fmtDate, today } from '../../lib/format';
 import { toastError, toastOk } from '../../lib/notify';
 import { useCan } from '../../shell/permissions';
 import { HR_KEYS, useDepartmentOptions, useManagerOptions } from './api';
-import { DepartmentSelect, DissolvedBadge, Fact, FieldCell, Trail } from './common';
+import { DepartmentSelect, DissolvedBadge, Fact, FieldCell, Trail, WorkshopBadge } from './common';
 import { ancestorsOf, subtreeIds, type FlatDept } from './tree';
 import type { Department } from './types';
 
@@ -22,6 +22,19 @@ export type PanelMode = { kind: 'view' } | { kind: 'edit' } | { kind: 'create'; 
 
 const CODE = /^[A-Z0-9-]{1,20}$/;
 const CODE_HINT = 'Chữ hoa không dấu, số, gạch ngang; tối đa 20 ký tự.';
+
+/**
+ * Bộ phận tích "Xưởng sản xuất" là chuyền may (phase 5.10). Tích, bỏ tích, đổi ĐVCS, giải thể, khôi phục chuyền làm đổi chuyền mà
+ * Trưởng chuyền được thấy, nên máy chủ đòi thêm quyền sửa Phân quyền; giao diện chỉ khóa sẵn kèm lý do.
+ */
+const LINE_ADMIN = 'admin.permission:update';
+const WORKSHOP_HINT = 'Hiện trong ô chọn Chuyền may của đơn vị cơ sở đã chọn.';
+const WORKSHOP_NEED_ADMIN = 'Cần thêm quyền sửa Phân quyền: danh sách chuyền may quyết định Trưởng chuyền thấy dữ liệu nào.';
+const WORKSHOP_NEED_BRANCH = 'Chọn đơn vị cơ sở trước: chuyền may phải thuộc một đơn vị cơ sở.';
+const lineLock = (action: string) => `Bộ phận là chuyền may: ${action} cần thêm quyền sửa Phân quyền.`;
+const LOCK_ICON = { verticalAlign: -2 } as const;
+/** Ô lưới form co được (như .hr-cell) mà không mang luật ẩn mô tả của .hr-cell */
+const GRID_CELL = { minWidth: 0 } as const;
 
 interface Props {
   /** Phòng ban đang xem (null khi thêm phòng ban gốc mà chưa chọn gì) */
@@ -39,11 +52,14 @@ interface Props {
 /** Khung bên phải của Sơ đồ tổ chức: xem thông tin phòng ban, sửa, thêm mới, giải thể, khôi phục */
 export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, onSaved }: Props) {
   const canUpdate = useCan('hr.orgchart:update');
+  const canChangeLines = useCan(LINE_ADMIN);
   const canViewEmployees = useCan('hr.employee:view');
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const qc = useQueryClient();
 
   const refresh = async (saved: Department) => {
+    // Ô chọn Chuyền may (Xếp chuyền, Chuẩn bị SX) đọc /me/lines: đổi tên, cờ, ĐVCS, cha của bộ phận đều có thể đổi danh sách đó
+    void qc.invalidateQueries({ queryKey: ['me', 'lines'] });
     await Promise.all([qc.invalidateQueries({ queryKey: HR_KEYS.departments }), qc.invalidateQueries({ queryKey: HR_KEYS.employeeOptions })]);
     onSaved(saved);
   };
@@ -65,7 +81,18 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
   });
 
   if (mode.kind === 'create' || (mode.kind === 'edit' && dept)) {
-    return <DepartmentForm key={mode.kind === 'edit' ? `e${dept!.id}` : `c${mode.seq}`} dept={mode.kind === 'edit' ? dept : null} mode={mode} items={items} onCancel={() => onMode({ kind: 'view' })} onDirty={onDirty} onSaved={refresh} />;
+    return (
+      <DepartmentForm
+        key={mode.kind === 'edit' ? `e${dept!.id}` : `c${mode.seq}`}
+        dept={mode.kind === 'edit' ? dept : null}
+        mode={mode}
+        items={items}
+        canChangeLines={canChangeLines}
+        onCancel={() => onMode({ kind: 'view' })}
+        onDirty={onDirty}
+        onSaved={refresh}
+      />
+    );
   }
   if (!dept) {
     return (
@@ -81,11 +108,14 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
   const trail = ancestorsOf(byId, dept.id);
   const activeChildren = items.filter((i) => i.parentId === dept.id && i.isActive).length;
   const parent = dept.parentId == null ? null : byId.get(dept.parentId);
+  const lineLocked = dept.isProductionWorkshop && !canChangeLines;
   const dissolveBlocked =
     activeChildren || dept.activeEmployees
       ? `Còn ${[activeChildren ? `${activeChildren} phòng ban con đang dùng` : null, dept.activeEmployees ? `${dept.activeEmployees} nhân viên đang làm việc` : null].filter(Boolean).join(' và ')}. Chuyển hoặc giải thể trước.`
-      : null;
-  const restoreBlocked = parent && !parent.isActive ? `Phòng ban cha ${parent.name} đã giải thể: khôi phục phòng ban cha trước.` : null;
+      : lineLocked
+        ? lineLock('giải thể')
+        : null;
+  const restoreBlocked = parent && !parent.isActive ? `Phòng ban cha ${parent.name} đã giải thể: khôi phục phòng ban cha trước.` : lineLocked ? lineLock('khôi phục') : null;
   const askDissolve = () =>
     confirmAction({
       title: `Giải thể ${dept.name}?`,
@@ -110,6 +140,7 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
                 Đơn vị cơ sở {dept.branchCode}
               </Badge>
             )}
+            {dept.isProductionWorkshop && <WorkshopBadge branchCode={dept.branchCode} />}
             {!dept.isActive && <DissolvedBadge date={dept.dissolvedDate} />}
           </Group>
         </div>
@@ -160,13 +191,15 @@ interface FormProps {
   dept: Department | null;
   mode: Extract<PanelMode, { kind: 'edit' | 'create' }>;
   items: Department[];
+  /** Có quyền sửa Phân quyền: tích, bỏ tích "Xưởng sản xuất", đổi ĐVCS của chuyền may */
+  canChangeLines: boolean;
   onCancel: () => void;
   onDirty: (dirty: boolean) => void;
   onSaved: (dept: Department) => Promise<void>;
 }
 
 /** Form thêm, sửa phòng ban (thay khung xem ngay tại chỗ) */
-function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormProps) {
+function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, onSaved }: FormProps) {
   const options = useDepartmentOptions();
   const creating = mode.kind === 'create';
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -181,12 +214,14 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
       branchCode: dept?.branchCode ?? (mode.kind === 'create' && mode.parentId ? (byId.get(mode.parentId)?.branchCode ?? null) : null),
       establishedDate: dept?.establishedDate ?? '',
       sortOrder: (dept?.sortOrder ?? '') as number | '',
+      isProductionWorkshop: dept?.isProductionWorkshop ?? false,
     },
     validateInputOnBlur: true,
     validate: {
       code: (v) => (!creating || CODE.test(v.trim().toUpperCase()) ? null : CODE_HINT),
       name: (v) => (v.trim() ? null : 'Nhập tên phòng ban.'),
       departmentTypeId: (v) => (v ? null : 'Chọn loại phòng ban.'),
+      branchCode: (v, values) => (values.isProductionWorkshop && !v ? 'Bộ phận tích "Xưởng sản xuất" phải có đơn vị cơ sở.' : null),
     },
   });
   const dirty = form.isDirty();
@@ -212,6 +247,7 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
         branchCode: v.branchCode,
         establishedDate: v.establishedDate || null,
         ...(v.sortOrder === '' ? {} : { sortOrder: v.sortOrder }),
+        isProductionWorkshop: v.isProductionWorkshop,
       };
       if (creating) return api<Department>('/hr/departments', { method: 'POST', body: { code: v.code.trim().toUpperCase(), ...body } });
       // Chỉ gửi phần đã đổi: máy chủ không phải kiểm lại cha, người quản lý khi không đụng tới
@@ -224,6 +260,7 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
         branchCode: dept!.branchCode,
         establishedDate: dept!.establishedDate,
         sortOrder: dept!.sortOrder,
+        isProductionWorkshop: dept!.isProductionWorkshop,
       };
       const changed = Object.fromEntries(Object.entries(body).filter(([k, x]) => x !== before[k]));
       return api<Department>(`/hr/departments/${dept!.id}`, { method: 'PUT', body: changed });
@@ -242,6 +279,11 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
   const parentPath = form.values.parentId == null ? [] : [...ancestorsOf(byId, form.values.parentId), byId.get(form.values.parentId)].filter(Boolean);
   const factories = options.data?.factories ?? [];
   const cancel = () => confirmDiscard(dirty, onCancel);
+  // Chuyền may: ĐVCS của bộ phận đang tích chỉ người có quyền sửa Phân quyền đổi được; ô tích khóa khi thiếu quyền, hoặc khi
+  // chưa tích mà chưa chọn ĐVCS (đang tích mà xóa ĐVCS thì vẫn bỏ tích được)
+  const branchLocked = !!dept?.isProductionWorkshop && !canChangeLines;
+  const workshop = form.values.isProductionWorkshop;
+  const workshopLock = !canChangeLines ? WORKSHOP_NEED_ADMIN : !workshop && !form.values.branchCode ? WORKSHOP_NEED_BRANCH : null;
 
   return (
     <form className="hr-panel" aria-labelledby="hr-dept-form-title" onSubmit={form.onSubmit((v) => (typeError ? undefined : save.mutate(v)))}>
@@ -306,11 +348,13 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
           />
         </FieldCell>
         <ManagerSelect value={form.values.managerEmployeeId} current={dept} onChange={(id) => form.setFieldValue('managerEmployeeId', id)} />
-        <FieldCell hint="Phòng ban của một đơn vị cơ sở (bộ phận cắt, may...).">
+        <FieldCell hint={branchLocked ? lineLock('đổi đơn vị cơ sở') : 'Phòng ban của một đơn vị cơ sở (bộ phận cắt, may...).'}>
           <Select
             label="Đơn vị cơ sở"
             placeholder="Không thuộc đơn vị cơ sở nào"
-            clearable
+            clearable={!branchLocked}
+            readOnly={branchLocked}
+            className={branchLocked ? 'field-readonly' : undefined}
             data={factories.map((f) => ({ value: f.code, label: `${f.code} – ${f.name}` }))}
             {...form.getInputProps('branchCode')}
           />
@@ -321,6 +365,31 @@ function DepartmentForm({ dept, mode, items, onCancel, onDirty, onSaved }: FormP
         <FieldCell hint="Số nhỏ đứng trước.">
           <NumberInput label="Thứ tự trong cùng cấp" min={0} max={1_000_000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
         </FieldCell>
+        {/* Ô tích có mô tả hiện sẵn (không qua FieldCell, nơi mô tả bị ẩn chỉ để trình đọc màn hình đọc): lý do khóa phải đọc
+            được ngay, kể cả trên điện thoại */}
+        <div className="hr-span-2" style={GRID_CELL}>
+          <Checkbox
+            label="Xưởng sản xuất"
+            description={
+              <>
+                {WORKSHOP_HINT}
+                {workshopLock && (
+                  <>
+                    <br />
+                    <IconLock size={13} stroke={1.8} aria-hidden style={LOCK_ICON} /> {workshopLock}
+                  </>
+                )}
+              </>
+            }
+            checked={workshop}
+            disabled={!!workshopLock}
+            onChange={(e) => {
+              const on = e.currentTarget.checked;
+              form.setFieldValue('isProductionWorkshop', on);
+              if (!on) form.clearFieldError('branchCode');
+            }}
+          />
+        </div>
       </div>
       {!creating && dept && !dept.isActive && (
         <Text size="sm" c="dimmed" mt="sm">

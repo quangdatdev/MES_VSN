@@ -17,7 +17,7 @@ import { confirmDiscard } from '../../lib/confirm';
 import { MASK, useFieldPolicy } from '../../lib/fieldPolicy';
 import { addDays, fmtDate, fmtMoney, fmtNum, qs, sumOf, today } from '../../lib/format';
 import { useLeaveGuard } from '../../lib/leaveGuard';
-import { LINE_EMPTY, LINE_NOT_FOUND, lineOptions } from '../../lib/lines';
+import { LINE_EMPTY, LINE_NOT_FOUND, lineNameLabel, lineOptions } from '../../lib/lines';
 import { toastError, toastOk } from '../../lib/notify';
 import { useStableByKey } from '../../lib/useStable';
 import { useSession } from '../../store/session';
@@ -401,8 +401,8 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
   // Lưới nhập kiểu bảng tính: dán nhiều dòng (chuyền, số lượng, năng suất, ngày) từ Excel; dòng ngoài phạm vi sửa tô xám,
   // dòng đang may hoặc đã xong không đổi chuyền, không xóa được
   const sheetCols = useMemo<SheetColumn<EditLine>[]>(() => {
-    // Danh sách mở ra là cây xưởng › chuyền thu gọn được; ô đóng chỉ hiện tên chuyền và số chuyền
-    const options = lineOptions(lines, (l) => `${l.name} (${l.code.split('-').pop()})`);
+    // Danh sách mở ra là cây bộ phận cha › chuyền thu gọn được; ô đóng chỉ hiện tên chuyền (trùng tên thì kèm mã)
+    const options = lineOptions(lines, lineNameLabel(lines));
     const grouped = options.some((o) => o.groups);
     // Dòng đã xếp vào chuyền nay đã ngừng dùng: vẫn hiện chuyền đó (không chọn lại được cho dòng khác) để ô không bị trống
     const optionsFor = (r: EditLine) =>

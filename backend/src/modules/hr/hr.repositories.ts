@@ -119,7 +119,7 @@ export class DepartmentRepository extends BaseRepository<DepartmentRow> {
   async updateNode(
     scope: Scope,
     id: number,
-    set: Pick<Updateable<DepartmentTable>, 'Name' | 'NameEn' | 'DepartmentTypeId' | 'ManagerEmployeeId' | 'BranchCode' | 'EstablishedDate' | 'DissolvedDate' | 'SortOrder' | 'IsActive'>,
+    set: Pick<Updateable<DepartmentTable>, 'Name' | 'NameEn' | 'DepartmentTypeId' | 'ManagerEmployeeId' | 'BranchCode' | 'EstablishedDate' | 'DissolvedDate' | 'SortOrder' | 'IsActive' | 'IsProductionWorkshop'>,
     db: HrDb,
   ): Promise<void> {
     await this.assertWritable(scope);

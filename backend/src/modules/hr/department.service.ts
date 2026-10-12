@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AppException, Errors } from '../../common/app.exception';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import type { AuthUser } from '../../platform/auth/auth.types';
@@ -6,7 +6,9 @@ import { AuditService } from '../../platform/audit/audit.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
 import { scopeOf } from '../../platform/data/base.repository';
 import { inTransaction } from '../../platform/data/transaction';
+import { OrgService } from '../../platform/org/org.service';
 import { BranchService } from '../../platform/permission/branch.service';
+import { PermissionService } from '../../platform/permission/permission.service';
 import { HR_DB } from './hr.db';
 import type { DepartmentCreateDto, DepartmentDissolveDto, DepartmentUpdateDto } from './hr.dto';
 import { DepartmentRepository, EmployeeRepository, HrCatalogRepository, type DepartmentNodeRow, type DepartmentTypeRow } from './hr.repositories';
@@ -18,6 +20,9 @@ const day = (d: Date | string | null | undefined): string | null => (d == null ?
 const todayVN = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
 const MAX_PATH = 400;
 const isDuplicate = (e: unknown) => sqlErrorNumbers(e).some((n) => n === 2601 || n === 2627);
+/** Ô chọn Chuyền may lọc theo ĐVCS đăng nhập nên chuyền phải có ĐVCS (database cũng chặn: CK_Department_ProductionWorkshopBranch) */
+const NEED_BRANCH = 'Bộ phận tích "Xưởng sản xuất" phải thuộc một đơn vị cơ sở: chọn đơn vị cơ sở trước.';
+const logger = new Logger('Department');
 
 export function presentDepartment(r: DepartmentNodeRow) {
   return {
@@ -40,6 +45,7 @@ export function presentDepartment(r: DepartmentNodeRow) {
     dissolvedDate: day(r.DissolvedDate),
     sortOrder: r.SortOrder,
     isActive: !!r.IsActive,
+    isProductionWorkshop: !!r.IsProductionWorkshop,
     activeEmployees: Number(r.ActiveEmployees ?? 0),
     createdAt: r.CreatedAt,
     modifiedAt: r.ModifiedAt,
@@ -62,6 +68,10 @@ const label = (d: { Name: string; Code: string }) => `${d.Name} (${d.Code})`;
  * Sơ đồ tổ chức (ADR 0012 mục 3). Quy tắc kiểm ở máy chủ, sửa các lỗi của bản Support-Web (KE-HOACH-MES-VSN.md mục 2.4):
  * mã không sửa được; cha mới không nằm trong nhánh con; giải thể bị chặn khi còn phòng ban con đang dùng hoặc nhân viên đang
  * làm; loại cấp cuối không có phòng ban con. Mọi thay đổi ghi nhật ký.
+ *
+ * Bộ phận tích "Xưởng sản xuất" là chuyền may (phase 5.10): phạm vi chiều LINE của Trưởng chuyền chỉ có tác dụng với chuyền đang
+ * dùng, nên tích, bỏ tích, đổi ĐVCS, giải thể, khôi phục chuyền là đổi phạm vi dữ liệu mà không qua màn Phân quyền. Các thao tác
+ * này đòi thêm admin.permission:update (như chuyển chuyền cũ giữa xưởng, mục 6.5) và tăng phiên bản quyền.
  */
 @Injectable()
 export class DepartmentService {
@@ -73,10 +83,35 @@ export class DepartmentService {
     private readonly branches: BranchService,
     private readonly lookup: CatalogLookupService,
     private readonly audit: AuditService,
+    private readonly permissions: PermissionService,
+    private readonly org: OrgService,
   ) {}
 
   private log(user: AuthUser, id: number, action: string, oldValue?: unknown, newValue?: unknown) {
     return this.audit.log({ userId: user.userId, username: user.username, branchCode: user.branchCode, entityType: 'Department', entityId: id, actionCode: action, oldValue, newValue, ip: user.ip });
+  }
+
+  /** Thao tác làm đổi tập chuyền may: người làm phải có cả quyền sửa phân quyền (quyền Sơ đồ tổ chức đã kiểm ở controller) */
+  private assertCanChangeLines(user: AuthUser, action: string) {
+    return this.permissions.assertAdminCeiling(user, ['admin.permission:update'], `${action} làm đổi phạm vi dữ liệu theo chuyền may, cần thêm quyền sửa phân quyền.`);
+  }
+
+  /**
+   * Gọi sau khi transaction MES_Hr đã commit. Xóa cache chuyền ở mọi lần ghi (đổi tên, cha, thứ tự của bộ phận cha cũng đổi tên
+   * nhóm, thứ tự trong ô chọn chuyền), trước khi tăng phiên bản quyền để quyền tính lại đọc tập chuyền mới.
+   * Phiên bản quyền ở MES_Core, không chung transaction với MES_Hr: tăng sau khi commit (tăng trước thì một request chen giữa có thể
+   * tính quyền theo tập chuyền cũ rồi giữ trong cache dưới phiên bản mới). Tăng lỗi thì vẫn xóa cache quyền của tiến trình này và
+   * ghi log, không báo lỗi cho người dùng vì dữ liệu đã lưu.
+   */
+  private async afterWrite(linesChanged: boolean) {
+    this.org.invalidate();
+    if (!linesChanged) return;
+    try {
+      await this.permissions.bumpVersion();
+    } catch (e) {
+      this.permissions.clearCache();
+      logger.error(`Đã đổi chuyền may nhưng không tăng được phiên bản quyền: ${(e as Error).message}`);
+    }
   }
 
   async tree(user: AuthUser, includeDissolved: boolean) {
@@ -137,6 +172,9 @@ export class DepartmentService {
 
   async create(user: AuthUser, dto: DepartmentCreateDto) {
     const scope = scopeOf(user);
+    const line = dto.isProductionWorkshop === true;
+    if (line) await this.assertCanChangeLines(user, 'Thêm bộ phận tích "Xưởng sản xuất"');
+    if (line && !dto.branchCode) throw invalid(NEED_BRANCH);
     if (dto.branchCode) await this.assertBranch(dto.branchCode);
     try {
       const id = await inTransaction(this.db, async (trx) => {
@@ -162,10 +200,12 @@ export class DepartmentService {
             DissolvedDate: null,
             SortOrder: dto.sortOrder ?? 0,
             IsActive: true,
+            IsProductionWorkshop: line,
           },
           trx,
         );
       });
+      await this.afterWrite(line);
       const out = await this.detail(user, id);
       await this.log(user, id, 'CREATE', undefined, out);
       return out;
@@ -185,9 +225,19 @@ export class DepartmentService {
       await this.repo.lockTree(trx);
       const before = await this.repo.node(scope, id, 'update', trx);
       if (dto.code !== undefined && dto.code !== before.Code) throw Errors.codeImmutable();
-      // Chỉ kiểm nhà máy khi đổi: phòng ban của nhà máy đã tắt vẫn sửa được tên (review 5.8 L9)
-      if (dto.branchCode && dto.branchCode !== before.BranchCode) await this.assertBranch(dto.branchCode);
+      // Chuyền may: đổi cờ (cả hai chiều) hay đổi ĐVCS của bộ phận đang tích là đổi tập chuyền; đổi tên, cha thì không
+      const lineBefore = !!before.IsProductionWorkshop;
+      const lineAfter = dto.isProductionWorkshop ?? lineBefore;
+      const branchAfter = dto.branchCode === undefined ? before.BranchCode : (dto.branchCode ?? null);
+      const branchChanged = branchAfter !== before.BranchCode;
+      if (lineAfter !== lineBefore) await this.assertCanChangeLines(user, lineAfter ? 'Tích "Xưởng sản xuất"' : 'Bỏ tích "Xưởng sản xuất"');
+      else if (lineBefore && branchChanged) await this.assertCanChangeLines(user, 'Đổi đơn vị cơ sở của bộ phận là chuyền may');
+      if (lineAfter && !branchAfter) throw invalid(NEED_BRANCH);
+      // Chỉ kiểm nhà máy khi đổi: phòng ban của nhà máy đã tắt vẫn sửa được tên (review 5.8 L9). Vừa tích thì ĐVCS giữ nguyên
+      // cũng phải đang dùng: chuyền của ĐVCS đã tắt không chọn được ở đâu
+      if (branchAfter && (branchChanged || (lineAfter && !lineBefore))) await this.assertBranch(branchAfter);
       const set: Parameters<DepartmentRepository['updateNode']>[2] = {};
+      if (lineAfter !== lineBefore) set.IsProductionWorkshop = lineAfter;
       if (dto.name !== undefined && dto.name !== before.Name) set.Name = dto.name;
       if (dto.nameEn !== undefined && (dto.nameEn ?? null) !== before.NameEn) set.NameEn = dto.nameEn ?? null;
       if (dto.sortOrder !== undefined && dto.sortOrder !== before.SortOrder) set.SortOrder = dto.sortOrder;
@@ -223,8 +273,9 @@ export class DepartmentService {
         moved = { from: before.Path, to: newPath, nodes };
       }
       if (Object.keys(set).length) await this.repo.updateNode(scope, id, set, trx);
-      return { before, set, moved };
+      return { before, set, moved, linesChanged: lineAfter !== lineBefore || (lineBefore && branchChanged) };
     });
+    if (Object.keys(result.set).length || result.moved) await this.afterWrite(result.linesChanged);
     const out = await this.detail(user, id);
     if (Object.keys(result.set).length || result.moved) {
       const old = presentDepartment(result.before);
@@ -244,6 +295,7 @@ export class DepartmentService {
       await this.repo.lockTree(trx);
       const d = await this.repo.node(scope, id, 'update', trx);
       if (!d.IsActive) throw Errors.conflict(`${label(d)} đã giải thể.`);
+      if (d.IsProductionWorkshop) await this.assertCanChangeLines(user, 'Giải thể bộ phận là chuyền may');
       const established = day(d.EstablishedDate);
       if (established && date < established) throw invalid('Ngày giải thể không được trước ngày thành lập.');
       const children = await this.repo.activeChildren(id, trx);
@@ -256,7 +308,9 @@ export class DepartmentService {
       await this.repo.updateNode(scope, id, { IsActive: false, DissolvedDate: date }, trx);
       return d;
     });
-    await this.log(user, id, 'DISSOLVE', { IsActive: true }, { IsActive: false, DissolvedDate: date, Code: before.Code });
+    const line = !!before.IsProductionWorkshop;
+    await this.afterWrite(line);
+    await this.log(user, id, 'DISSOLVE', { IsActive: true, IsProductionWorkshop: line }, { IsActive: false, DissolvedDate: date, Code: before.Code, IsProductionWorkshop: line });
     return this.detail(user, id);
   }
 
@@ -267,6 +321,7 @@ export class DepartmentService {
       await this.repo.lockTree(trx);
       const d = await this.repo.node(scope, id, 'update', trx);
       if (d.IsActive) throw Errors.conflict(`${label(d)} đang dùng.`);
+      if (d.IsProductionWorkshop) await this.assertCanChangeLines(user, 'Khôi phục bộ phận là chuyền may');
       if (d.ParentId) {
         const p = await this.repo.node(scope, d.ParentId, 'view', trx);
         if (!p.IsActive) throw invalid(`Phòng ban cha ${label(p)} đã giải thể: khôi phục phòng ban cha trước.`);
@@ -274,7 +329,9 @@ export class DepartmentService {
       await this.repo.updateNode(scope, id, { IsActive: true, DissolvedDate: null }, trx);
       return d;
     });
-    await this.log(user, id, 'RESTORE', { IsActive: false, DissolvedDate: day(before.DissolvedDate) }, { IsActive: true, Code: before.Code });
+    const line = !!before.IsProductionWorkshop;
+    await this.afterWrite(line);
+    await this.log(user, id, 'RESTORE', { IsActive: false, DissolvedDate: day(before.DissolvedDate), IsProductionWorkshop: line }, { IsActive: true, Code: before.Code, IsProductionWorkshop: line });
     return this.detail(user, id);
   }
 }
