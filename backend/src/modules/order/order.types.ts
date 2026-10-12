@@ -140,7 +140,39 @@ export interface ShipmentPlanLineColorSizeTable extends Audit {
   SortOrder: number;
 }
 
+/**
+ * Phân bổ PO (order.poallocation, migration 0009): mỗi dòng khác nhau của view OSM v_OSMData một dòng, nhận diện bằng RowHash.
+ * Dùng chung, không có BranchCode: ĐVCS suy từ Nhà máy SX theo danh mục. Dòng do bước làm mới của hệ thống tạo (CreatedBy trống).
+ */
+export interface PoAllocationTable {
+  Id: Generated<number>;
+  RowHash: Buffer;
+  Brand: string | null;
+  Season: string | null;
+  PoNo: string | null;
+  SoNo: string | null;
+  ShipMode: string | null;
+  StyleName: string | null;
+  StyleNo: string | null;
+  Color: string | null;
+  EtdActualDate: NullableDateCol;
+  EtdRevisedDate: NullableDateCol;
+  /** FtyName của OSM ở lần làm mới gần nhất */
+  OsmFactoryCode: string | null;
+  /** Nhà máy SX hiện hành: nhập tay (mã MES_Core.SysProductionFactory.Code) hoặc theo OSM (= OsmFactoryCode) */
+  ProductionFactoryCode: string | null;
+  IsFactoryManual: ColumnType<boolean, boolean | undefined, boolean>;
+  /** false: OSM không còn dòng nào cùng khóa SO, PO, Style No, Màu; chỉ dòng nhập tay được giữ */
+  IsInOsm: ColumnType<boolean, boolean | undefined, boolean>;
+  SyncedAt: Date | null;
+  CreatedAt: ColumnType<Date, Date | undefined, never>;
+  CreatedBy: ColumnType<number | null, number | null | undefined, never>;
+  ModifiedAt: Date | null;
+  ModifiedBy: number | null;
+}
+
 export interface OrderDatabase {
+  PoAllocation: PoAllocationTable;
   SalesOrder: SalesOrderTable;
   SalesOrderPo: SalesOrderPoTable;
   SalesOrderPoColorSize: SalesOrderPoColorSizeTable;
