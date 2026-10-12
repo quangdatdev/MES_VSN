@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { BRAVO_ORDER_SOURCE_CODES, OSM_FACTORY_SOURCE_CODES, type BravoOrderSource } from '../sync/bravo-order-source';
-import type { OsmPoCriteria, OsmPoField, OsmPoSort } from '../sync/osm-po-source';
+import { OSM_PO_SOURCE, type OsmPoSourceRow } from '../sync/osm-po-source';
 import { SyncService } from '../sync/sync.service';
 
 export type { BravoOrderSource, SourceCell, SourceOrder, SourcePo } from '../sync/bravo-order-source';
-export { OSM_PO_EXPORT_MAX, OSM_PO_FIELDS, OSM_PO_FILTER, type OsmPoCriteria, type OsmPoField, type OsmPoRow, type OsmPoSort } from '../sync/osm-po-source';
+export type { OsmPoSourceRow } from '../sync/osm-po-source';
 
 /**
  * Cổng đọc dữ liệu nghiệp vụ chép từ hệ thống ngoài (BRAVO, OSM) cho module nghiệp vụ (ADR 0007: module không đọc MES_Sync,
@@ -35,25 +35,20 @@ export class SourceFeedService {
   }
 
   /**
-   * Phân bổ PO theo nhà máy của OSM (view v_OSMData đã chép, dòng trùng nguyên dòng tính một lần): một trang. Chưa đồng bộ
-   * nguồn này thì trang rỗng, `syncedAt` null. Máy chưa có MES_Sync thì báo SYNC_NOT_READY.
+   * Phân bổ PO theo nhà máy của OSM (view v_OSMData đã chép): mọi dòng khác nhau, cho bước làm mới bảng Phân bổ PO (task 5.10.2).
+   * null khi chưa có bảng chép; máy chưa có MES_Sync thì báo SYNC_NOT_READY.
    */
-  osmPoPage(c: OsmPoCriteria, page: number, pageSize: number, sort: OsmPoSort[]) {
-    return this.sync.osmPoPage(c, page, pageSize, sort);
+  osmPoRows(): Promise<OsmPoSourceRow[] | null> {
+    return this.sync.osmPoSource();
   }
 
-  /** Phân bổ PO theo OSM: giá trị của một trường cho popup lọc theo cột (không lọc theo chính trường đó) */
-  osmPoValues(c: OsmPoCriteria, field: OsmPoField, search: string | undefined, limit: number) {
-    return this.sync.osmPoValues(c, field, search, limit);
+  /** Nguồn Phân bổ PO theo OSM đang bật chưa (máy chủ chưa khai database ứng dụng OSM thì tắt). Chưa có MES_Sync: SYNC_NOT_READY */
+  osmPoSourceActive(): Promise<boolean> {
+    return this.sync.osmPoSourceActive();
   }
 
-  /** Phân bổ PO theo OSM: mọi dòng khớp điều kiện, cho xuất file (quá giới hạn thì 422) */
-  osmPoAll(c: OsmPoCriteria, sort: OsmPoSort[]) {
-    return this.sync.osmPoAll(c, sort);
-  }
-
-  /** Phân bổ PO theo OSM: các Brand, Season đang có, cho ô chọn ở dải lọc */
-  osmPoOptions() {
-    return this.sync.osmPoOptions();
+  /** Chạy `work` một lần sau mỗi đợt đồng bộ có chép lại nguồn Phân bổ PO theo OSM */
+  onOsmPoSynced(work: () => Promise<unknown>) {
+    this.sync.onQueueDrained([OSM_PO_SOURCE], work);
   }
 }

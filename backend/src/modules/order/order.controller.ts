@@ -14,6 +14,7 @@ import {
   DraftQuery,
   OrderListQuery,
   OrderValuesQuery,
+  PoAllocationFactoryDto,
   PoAllocationQuery,
   PoAllocationValuesQuery,
   PoCreateDto,
@@ -64,7 +65,10 @@ export class SalesOrderController {
   async remove(@CurrentUser() u: AuthUser, @id() oid: number) { await this.service.remove(u, oid); }
 }
 
-/** Phân bổ PO (tài nguyên order.poallocation): phân bổ PO theo nhà máy SX lấy từ OSM, chỉ xem (task 5.9.12). */
+/**
+ * Phân bổ PO (tài nguyên order.poallocation): phân bổ PO theo nhà máy SX lấy từ OSM (task 5.9.12); Nhà máy SX sửa tay được, giữ
+ * qua các lần đồng bộ OSM (Phase 5.10).
+ */
 @Controller('order/po-allocations')
 @FieldResource('order.poallocation')
 export class PoAllocationController {
@@ -81,6 +85,10 @@ export class PoAllocationController {
 
   @Get('export') @RequirePermission('order.poallocation:export')
   export(@CurrentUser() u: AuthUser, @Query() q: PoAllocationQuery) { return this.service.export(u, q); }
+
+  // Đổi Nhà máy SX cho mọi dòng cùng SO, PO, Style No, Màu với các dòng đã chọn; dryRun: chỉ hỏi số dòng sẽ bị áp
+  @Put('factory') @RequirePermission('order.poallocation:update')
+  setFactory(@CurrentUser() u: AuthUser, @Body() dto: PoAllocationFactoryDto) { return this.service.setFactory(u, dto); }
 }
 
 /** Cập nhật tỷ lệ cắt (tài nguyên order.po): mã hàng → PO → màu cỡ. */

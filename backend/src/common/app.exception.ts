@@ -30,6 +30,14 @@ export const Errors = {
   codeImmutable: () => new AppException('CODE_IMMUTABLE', 'Mã không được sửa sau khi đã tạo. Chỉ sửa được tên.', 422),
   scopeDenied: () =>
     new AppException('SCOPE_DENIED', 'Dữ liệu này nằm ngoài phạm vi bạn được giao (chuyền, đơn vị cơ sở, nhà máy SX hoặc người tạo).', 403),
+  /** Dòng dùng chung mà ĐVCS giữ dòng suy từ Nhà máy SX (Phân bổ PO, Phase 5.10 Q2): có dòng thuộc nhà máy của ĐVCS khác */
+  factoryOfOtherBranch: (rows: number, total: number) =>
+    new AppException(
+      'FACTORY_OF_OTHER_BRANCH',
+      `Có ${rows.toLocaleString('vi-VN')}/${total.toLocaleString('vi-VN')} dòng (cùng SO, PO, Style No, Màu với dòng đã chọn) đang thuộc nhà máy SX của đơn vị cơ sở khác. Chỉ đơn vị cơ sở quản lý nhà máy đó đổi được; không dòng nào được đổi.`,
+      403,
+      { rows, total },
+    ),
   fieldReadonly: (fields: string[], names: string[] = []) =>
     new AppException('FIELD_READONLY', names.length ? `Bạn không được sửa cột: ${names.join(', ')}.` : 'Bạn không được sửa một số cột trong dữ liệu gửi lên.', 403, { fields }),
   syncNotReady: () =>

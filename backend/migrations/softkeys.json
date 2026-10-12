@@ -100,6 +100,20 @@
       "status": "MES_Order/0001 (Phase 5.3)"
     },
     {
+      "from": "MES_Order.PoAllocation.CreatedBy",
+      "to": "MES_Core.SysUser.Id",
+      "nullable": true,
+      "ownerModule": "order",
+      "status": "MES_Order/0009 (Phase 5.10). Dòng do bước làm mới theo OSM tạo nên thường trống. Không khai ProductionFactoryCode → SysProductionFactory.Code: dòng chưa nhập tay mang FtyName của view v_OSMData, tên này không tự vào danh mục (danh mục chỉ tự thêm tên của vOSMDataFty), khai thì check:softkeys báo mồ côi giả; giá trị nhập tay đã kiểm với danh mục lúc ghi"
+    },
+    {
+      "from": "MES_Order.PoAllocation.ModifiedBy",
+      "to": "MES_Core.SysUser.Id",
+      "nullable": true,
+      "ownerModule": "order",
+      "status": "MES_Order/0009 (Phase 5.10): người nhập tay hoặc bỏ nhập tay Nhà máy SX gần nhất"
+    },
+    {
       "from": "MES_Sync.SyncRun.CreatedBy",
       "to": "MES_Core.SysUser.Id",
       "nullable": true,
