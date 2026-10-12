@@ -31,10 +31,12 @@ export interface SalesOrder {
 }
 
 /**
- * Một dòng phân bổ PO theo nhà máy, lấy từ OSM (màn Phân bổ PO, chỉ xem). Dòng trùng nguyên dòng của OSM chỉ có một. Không có Id:
- * `rowNo` là số thứ tự trong danh sách đang xem. Mọi cột đều theo chính sách cột: vắng mặt khi bị Ẩn, "***" khi bị Che.
+ * Một dòng phân bổ PO theo nhà máy, lấy từ OSM (màn Phân bổ PO). Dòng trùng nguyên dòng của OSM chỉ có một. `id` không đổi khi dòng
+ * OSM không đổi (đổi ETD, nhà máy theo OSM thì là dòng mới); `rowNo` là số thứ tự trong danh sách đang xem. Mọi cột đều theo chính
+ * sách cột: vắng mặt khi bị Ẩn, "***" khi bị Che.
  */
 export interface PoAllocation {
+  id: number;
   rowNo: number;
   brand?: Masked<string | null>;
   season?: Masked<string | null>;
@@ -53,13 +55,37 @@ export interface PoAllocation {
    * chính sách của cột Nhà máy SX (Nhà máy SX bị Ẩn thì không có, bị Che thì bị che)
    */
   branchCode?: Masked<string | null>;
+  /** Nhà máy SX do người dùng nhập tay (đồng bộ OSM lại vẫn giữ). Theo cả chính sách của cột Nhà máy SX, như `branchCode` */
+  isFactoryManual?: Masked<boolean>;
+  /** Nhà máy SX theo OSM ở lần đồng bộ gần nhất (khác `factoryName` khi nhập tay). Theo cả chính sách của cột Nhà máy SX */
+  osmFactoryName?: Masked<string | null>;
+  /** false: OSM không còn dòng nào cùng SO, PO, Style No, Màu; dòng được giữ vì đang nhập tay. Theo cả chính sách của Nhà máy SX */
+  isInOsm?: Masked<boolean>;
 }
 
 export interface PoAllocationPage extends Paged<PoAllocation> {
-  /** Lần chép gần nhất của nguồn OSM này; null: chưa đồng bộ lần nào */
+  /** Lần chép OSM gần nhất có trong dữ liệu; null: chưa đồng bộ lần nào */
   syncedAt: string | null;
   /** Nguồn đồng bộ đang bật; false: máy chủ chưa khai database OSM của nguồn này */
   sourceActive: boolean;
+}
+
+/** Gợi ý của màn Phân bổ PO: Brand, Season ở dải lọc; nhà máy SX đang dùng (popup Đổi nhà máy SX, gom theo ĐVCS) */
+export interface PoAllocationOptions {
+  brands: string[];
+  seasons: string[];
+  factories: { code: string; name: string; branchCode: string | null }[];
+}
+
+/**
+ * Kết quả của PUT /order/po-allocations/factory: số dòng, số nhóm SO/PO/Style No/Màu bị áp (mọi dòng cùng khóa với dòng đã chọn);
+ * `removed`: dòng không còn trong OSM bị bỏ khi chọn "Theo OSM"; `dryRun`: chỉ xem trước, chưa ghi
+ */
+export interface PoAllocationFactoryResult {
+  rows: number;
+  keys: number;
+  removed: number;
+  dryRun: boolean;
 }
 
 /** Nhà máy SX (ô chọn chỉ cho nhà máy đang dùng; nhà máy đã ngừng để hiện tên ở đơn hàng cũ), gom theo đơn vị cơ sở */
