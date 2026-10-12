@@ -36,6 +36,8 @@ export interface PrepRow {
   styleCode?: Masked<string>;
   productName?: Masked<string>;
   lineCode?: Masked<string>;
+  /** Tên chuyền do máy chủ tra, kể cả chuyền đã ngừng; chuyền mồ côi là "<mã> (chuyền cũ)". Không có khi Tổ SX bị Ẩn hoặc Che */
+  lineName?: string;
   lineQty?: Masked<number>;
   startDate?: Masked<string>;
   styleType?: Masked<string | null>;

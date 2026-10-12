@@ -17,7 +17,7 @@ import { confirmDiscard } from '../../lib/confirm';
 import { MASK, useFieldPolicy } from '../../lib/fieldPolicy';
 import { addDays, fmtDate, fmtMoney, fmtNum, qs, sumOf, today } from '../../lib/format';
 import { useLeaveGuard } from '../../lib/leaveGuard';
-import { LINE_EMPTY, LINE_NOT_FOUND, lineNameLabel, lineOptions } from '../../lib/lines';
+import { LINE_EMPTY, LINE_NOT_FOUND, lineNameLabel, lineOptions, ORPHAN_LINE_SUFFIX } from '../../lib/lines';
 import { toastError, toastOk } from '../../lib/notify';
 import { useStableByKey } from '../../lib/useStable';
 import { useSession } from '../../store/session';
@@ -404,11 +404,12 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
     // Danh sách mở ra là cây bộ phận cha › chuyền thu gọn được; ô đóng chỉ hiện tên chuyền (trùng tên thì kèm mã)
     const options = lineOptions(lines, lineNameLabel(lines));
     const grouped = options.some((o) => o.groups);
-    // Dòng đã xếp vào chuyền nay đã ngừng dùng: vẫn hiện chuyền đó (không chọn lại được cho dòng khác) để ô không bị trống
+    // Dòng đã xếp vào chuyền nay đã ngừng dùng: vẫn hiện chuyền đó (không chọn lại được cho dòng khác) để ô không bị trống.
+    // Chuyền mồ côi (mã không còn là bộ phận nào) đã có nhãn "(chuyền cũ)" từ máy chủ, không thêm "(đã ngừng)"
     const optionsFor = (r: EditLine) =>
       !r.lineCode || options.some((o) => o.value === r.lineCode)
         ? options
-        : [...options, { value: r.lineCode, label: `${r.lineName ?? r.lineCode}${linesLoaded ? ' (đã ngừng)' : ''}`, groups: grouped ? ['Đã ngừng dùng'] : undefined }];
+        : [...options, { value: r.lineCode, label: `${r.lineName ?? r.lineCode}${linesLoaded && !r.lineName?.endsWith(ORPHAN_LINE_SUFFIX) ? ' (đã ngừng)' : ''}`, groups: grouped ? ['Đã ngừng dùng'] : undefined }];
     const locked = (r: EditLine) => !mine(r);
     return [
       sheetSelect<EditLine>(

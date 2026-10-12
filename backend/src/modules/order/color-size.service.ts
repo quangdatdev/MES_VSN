@@ -8,7 +8,6 @@ import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColu
 import { ExportService } from '../../platform/export/export.service';
 import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
-import { lineNamer } from './line-plan.service';
 import { ORDER_DB } from './order.db';
 import { AllocationDto, OrderListQuery, OrderValuesQuery } from './order.dto';
 import { assignedExpr, LineAllocationRepository, LineColorSizeRepository, planExpr, withPlanFilter, type AllocationListRow, type LineColorSizeRow } from './order.repositories';
@@ -116,12 +115,12 @@ export class ColorSizeService {
   }
 
   /**
-   * Tên chuyền theo mã, chuyền mồ côi hiện mã kèm "(chuyền cũ)" (lineNamer). Tên chuyền không phải cột đăng ký nên khi mã chuyền
+   * Tên chuyền theo mã, chuyền mồ côi hiện mã kèm "(chuyền cũ)" (OrgService.lineNamer). Tên chuyền không phải cột đăng ký nên khi mã chuyền
    * bị Ẩn hoặc Che thì không trả tên (tên suy ra được mã) – review 5.1 lượt 2 N12.
    */
   private async lineNames(user: AuthUser): Promise<(code: string) => string | null> {
     if ((await this.fields.unreadable(user, RESOURCE, ['lineCode'])).size) return () => null;
-    return lineNamer(await this.org.lines(user.branchCode!, user.isAggregate, { includeInactive: true }));
+    return this.org.lineNamer(user.branchCode!, user.isAggregate);
   }
 
   async list(user: AuthUser, query: OrderListQuery) {

@@ -63,6 +63,15 @@ export class OrgService {
     return isAggregate ? all : all.filter((l) => l.branchCode === branchCode);
   }
 
+  /**
+   * Tên chuyền theo mã cho dữ liệu đã xếp, kể cả chuyền đã ngừng dùng. Mã không còn là bộ phận chuyền nào (chuyền cũ trước phase
+   * 5.10, bộ phận đã bỏ tích "Xưởng sản xuất") là chuyền mồ côi: hiện mã kèm "(chuyền cũ)", không báo lỗi.
+   */
+  async lineNamer(branchCode: string, isAggregate = false): Promise<(code: string) => string> {
+    const names = new Map((await this.lines(branchCode, isAggregate, { includeInactive: true })).map((l) => [l.code, l.name]));
+    return (code) => names.get(code) ?? `${code} (chuyền cũ)`;
+  }
+
   /** Mã các chuyền đang dùng ở mọi ĐVCS: phạm vi chiều LINE chỉ giữ các mã này (mã không còn là chuyền thì không có tác dụng). */
   async activeLineCodes(): Promise<Set<string>> {
     return new Set((await this.all()).filter((l) => l.isActive).map((l) => l.code));

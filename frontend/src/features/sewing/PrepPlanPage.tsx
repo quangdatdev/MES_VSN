@@ -439,7 +439,7 @@ export default function PrepPlanPage() {
               key: cellKey(g.id, s.id),
               value: g[thKey(s.id)] ?? null,
               saved: savedDone(g.src, s.id),
-              label: `${plain(g.src.styleCode) || `Dòng ${g.id}`} (${lineName.get(plain(g.src.lineCode)) ?? plain(g.src.lineCode)}), ${s.name}`,
+              label: `${plain(g.src.styleCode) || `Dòng ${g.id}`} (${g.src.lineName ?? lineName.get(plain(g.src.lineCode)) ?? plain(g.src.lineCode)}), ${s.name}`,
             })),
           ),
         inflight.current,
@@ -495,7 +495,7 @@ export default function PrepPlanPage() {
     ];
     if (visible('lineCode'))
       out.push(
-        sheetReadonly<GridRow>('Tổ SX', (g) => (g.src.lineCode === MASK ? <Masked /> : textCell(lineName.get(plain(g.src.lineCode)) ?? g.src.lineCode)), (g) => lineName.get(plain(g.src.lineCode)) ?? plain(g.src.lineCode), {
+        sheetReadonly<GridRow>('Tổ SX', (g) => (g.src.lineCode === MASK ? <Masked /> : textCell(g.src.lineName ?? lineName.get(plain(g.src.lineCode)) ?? g.src.lineCode)), (g) => g.src.lineName ?? lineName.get(plain(g.src.lineCode)) ?? plain(g.src.lineCode), {
           minWidth: 100,
           headFilter: headFilter('lineCode', 'Tổ SX', (v) => lineName.get(String(v)) ?? String(v)),
         }),
@@ -582,7 +582,7 @@ export default function PrepPlanPage() {
           return name !== r.branchCode ? <span title={r.branchCode}>{name}</span> : name;
         },
       },
-      { key: 'lineCode', title: 'Tổ SX', sortKey: 'lineCode', filterKey: 'lineCode', filterLabel: (v) => lineName.get(String(v)) ?? String(v), minWidth: 100, render: (r) => (typeof r.lineCode === 'string' ? <span title={r.lineCode}>{lineName.get(r.lineCode) ?? r.lineCode}</span> : null) },
+      { key: 'lineCode', title: 'Tổ SX', sortKey: 'lineCode', filterKey: 'lineCode', filterLabel: (v) => lineName.get(String(v)) ?? String(v), minWidth: 100, render: (r) => (typeof r.lineCode === 'string' ? <span title={r.lineCode}>{r.lineName ?? lineName.get(r.lineCode) ?? r.lineCode}</span> : null) },
       { key: 'styleCode', title: 'Mã hàng', sortKey: 'styleCode', filterKey: 'styleCode', format: 'code', maxWidth: 200 },
       { key: 'styleType', title: 'Loại mã', filterKey: 'styleType' },
       { key: 'confirmedQty', title: 'Số lượng chốt UD', format: 'number', filterKey: 'confirmedQty' },
@@ -1065,7 +1065,7 @@ function PrepDialog({ id, canEdit, policy, lineName, onClose, onSaved }: { id: n
       ) : (
         <Stack gap="sm">
           <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }} spacing="xs">
-            <Info label="Tổ SX" value={typeof d.lineCode === 'string' ? (lineName.get(d.lineCode) ?? d.lineCode) : d.lineCode} />
+            <Info label="Tổ SX" value={typeof d.lineCode === 'string' ? (d.lineName ?? lineName.get(d.lineCode) ?? d.lineCode) : d.lineCode} />
             <Info label="Ngày vào chuyền" value={start ? fmtDate(start) : d.startDate} />
             <Info label="Kế hoạch" value={d.planNo} />
             <Info label="Khách hàng" value={d.customerName} />

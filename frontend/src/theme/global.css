@@ -1812,12 +1812,16 @@ a:hover > .home-tile .home-tile-name {
   white-space: nowrap;
   overflow: hidden;
 }
-.board-label b {
-  min-width: 22px;
-  font-size: 14px;
-}
 .board-label span {
+  overflow: hidden;
+  color: var(--app-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+.board-label[data-inactive] span {
   color: var(--app-ink-soft);
+  font-weight: 400;
 }
 .board-track {
   position: relative;
@@ -2146,58 +2150,8 @@ div.board-bar {
   opacity: 0.6;
 }
 
-/* Cây xưởng, chuyền (Danh mục hệ thống › Chuyền may): thụt theo cấp, đường chấm dọc nối các nút cùng nhánh như ô chọn
-   phòng ban dạng cây. Mỗi cấp rộng bằng nút mở/thu gọn (24px); thụt lề và vị trí đường chấm tính ở TreeCell. */
-.dense-table td.tree-cell {
-  position: relative;
-}
-.tree-guide {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-left: 1px dotted var(--app-line-strong);
-  pointer-events: none;
-}
-.tree-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  vertical-align: middle;
-}
-.tree-toggle {
-  display: inline-flex;
-  flex: 0 0 24px;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-}
-/* Chuyền không có nút mở: giữ chỗ ngang cho thẳng hàng với xưởng, không làm dòng cao thêm */
-.tree-toggle:empty {
-  height: auto;
-}
-.tree-icon {
-  display: inline-flex;
-  color: var(--app-ink-soft);
-}
-.tree-name {
-  font-weight: 600;
-}
-.tree-meta {
-  color: var(--app-ink-soft);
-  font-size: 12px;
-  font-weight: 400;
-}
-/* Dòng nhà máy là dòng nhóm: ô biểu tượng 24px nên bớt đệm cho gọn như dòng nhóm khác */
-.dense-table tbody tr.tree-factory td {
-  padding-top: 3px;
-  padding-bottom: 3px;
-  color: var(--app-ink);
-  font-size: 13px;
-}
-
 /* Ô chọn dạng cây (TreeSelect): dòng nhóm có mũi tên mở/thu gọn và số lựa chọn, dòng con thụt theo cấp với đường chấm dọc
-   như bảng cây ở Danh mục. Thụt lề và vị trí đường chấm tính trong TreeSelect (mỗi cấp 18px, mũi tên 16px). */
+   như cây phòng ban. Thụt lề và vị trí đường chấm tính trong TreeSelect (mỗi cấp 18px, mũi tên 16px). */
 .tree-pick {
   min-width: 220px;
 }

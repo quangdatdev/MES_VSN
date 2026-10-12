@@ -383,7 +383,7 @@ export const users: UserDef[] = [
     role: 'LINE_LEADER',
     branches: ['A01'],
     defaultBranch: 'A01',
-    scopes: [{ dimension: 'LINE', mode: 'LIST', org: 'A01-L03' }],
+    scopes: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }],
   },
   {
     username: 'truongchuyen.b',
@@ -391,7 +391,7 @@ export const users: UserDef[] = [
     role: 'LINE_LEADER',
     branches: ['A01'],
     defaultBranch: 'A01',
-    scopes: [{ dimension: 'LINE', mode: 'LIST', org: 'A01-L03' }],
+    scopes: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }],
     overrides: [{ permission: 'order.shipment:view', effect: 'ALLOW', validTo: '2026-12-31T16:59:59.000Z', reason: 'Xem kế hoạch xuất hàng để chuẩn bị nguyên phụ liệu cho chuyền 3' }],
     fieldPolicies: [{ resource: 'order.lineplan', field: 'cmPrice', level: 'READONLY', validTo: '2026-12-31T16:59:59.000Z', reason: 'Theo dõi giá CM của chuyền 3 đến hết năm 2026' }],
   },

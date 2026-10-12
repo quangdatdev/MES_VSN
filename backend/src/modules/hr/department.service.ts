@@ -91,9 +91,14 @@ export class DepartmentService {
     return this.audit.log({ userId: user.userId, username: user.username, branchCode: user.branchCode, entityType: 'Department', entityId: id, actionCode: action, oldValue, newValue, ip: user.ip });
   }
 
-  /** Thao tác làm đổi tập chuyền may: người làm phải có cả quyền sửa phân quyền (quyền Sơ đồ tổ chức đã kiểm ở controller) */
-  private assertCanChangeLines(user: AuthUser, action: string) {
-    return this.permissions.assertAdminCeiling(user, ['admin.permission:update'], `${action} làm đổi phạm vi dữ liệu theo chuyền may, cần thêm quyền sửa phân quyền.`);
+  /**
+   * Thao tác làm đổi tập chuyền may: người làm phải có cả quyền sửa phân quyền (quyền Sơ đồ tổ chức đã kiểm ở controller), và
+   * không được đang giữ phạm vi chuyền theo đúng mã đó (không tự đổi phạm vi của mình, CLAUDE.md mục 4.8).
+   */
+  private async assertCanChangeLines(user: AuthUser, action: string, code: string) {
+    await this.permissions.assertAdminCeiling(user, ['admin.permission:update'], `${action} làm đổi phạm vi dữ liệu theo chuyền may, cần thêm quyền sửa phân quyền.`);
+    if (await this.permissions.holdsLineScope(user.userId, code))
+      throw Errors.selfElevation(`Bạn đang được giao phạm vi chuyền ${code} nên không tự đổi chuyền này (${action.toLowerCase()}). Nhờ quản trị viên khác làm.`);
   }
 
   /**
@@ -173,7 +178,7 @@ export class DepartmentService {
   async create(user: AuthUser, dto: DepartmentCreateDto) {
     const scope = scopeOf(user);
     const line = dto.isProductionWorkshop === true;
-    if (line) await this.assertCanChangeLines(user, 'Thêm bộ phận tích "Xưởng sản xuất"');
+    if (line) await this.assertCanChangeLines(user, 'Thêm bộ phận tích "Xưởng sản xuất"', dto.code);
     if (line && !dto.branchCode) throw invalid(NEED_BRANCH);
     if (dto.branchCode) await this.assertBranch(dto.branchCode);
     try {
@@ -230,8 +235,8 @@ export class DepartmentService {
       const lineAfter = dto.isProductionWorkshop ?? lineBefore;
       const branchAfter = dto.branchCode === undefined ? before.BranchCode : (dto.branchCode ?? null);
       const branchChanged = branchAfter !== before.BranchCode;
-      if (lineAfter !== lineBefore) await this.assertCanChangeLines(user, lineAfter ? 'Tích "Xưởng sản xuất"' : 'Bỏ tích "Xưởng sản xuất"');
-      else if (lineBefore && branchChanged) await this.assertCanChangeLines(user, 'Đổi đơn vị cơ sở của bộ phận là chuyền may');
+      if (lineAfter !== lineBefore) await this.assertCanChangeLines(user, lineAfter ? 'Tích "Xưởng sản xuất"' : 'Bỏ tích "Xưởng sản xuất"', before.Code);
+      else if (lineBefore && branchChanged) await this.assertCanChangeLines(user, 'Đổi đơn vị cơ sở của bộ phận là chuyền may', before.Code);
       if (lineAfter && !branchAfter) throw invalid(NEED_BRANCH);
       // Chỉ kiểm nhà máy khi đổi: phòng ban của nhà máy đã tắt vẫn sửa được tên (review 5.8 L9). Vừa tích thì ĐVCS giữ nguyên
       // cũng phải đang dùng: chuyền của ĐVCS đã tắt không chọn được ở đâu
@@ -295,7 +300,7 @@ export class DepartmentService {
       await this.repo.lockTree(trx);
       const d = await this.repo.node(scope, id, 'update', trx);
       if (!d.IsActive) throw Errors.conflict(`${label(d)} đã giải thể.`);
-      if (d.IsProductionWorkshop) await this.assertCanChangeLines(user, 'Giải thể bộ phận là chuyền may');
+      if (d.IsProductionWorkshop) await this.assertCanChangeLines(user, 'Giải thể bộ phận là chuyền may', d.Code);
       const established = day(d.EstablishedDate);
       if (established && date < established) throw invalid('Ngày giải thể không được trước ngày thành lập.');
       const children = await this.repo.activeChildren(id, trx);
@@ -321,7 +326,7 @@ export class DepartmentService {
       await this.repo.lockTree(trx);
       const d = await this.repo.node(scope, id, 'update', trx);
       if (d.IsActive) throw Errors.conflict(`${label(d)} đang dùng.`);
-      if (d.IsProductionWorkshop) await this.assertCanChangeLines(user, 'Khôi phục bộ phận là chuyền may');
+      if (d.IsProductionWorkshop) await this.assertCanChangeLines(user, 'Khôi phục bộ phận là chuyền may', d.Code);
       if (d.ParentId) {
         const p = await this.repo.node(scope, d.ParentId, 'view', trx);
         if (!p.IsActive) throw invalid(`Phòng ban cha ${label(p)} đã giải thể: khôi phục phòng ban cha trước.`);

@@ -10,6 +10,9 @@ export interface GroupedOption {
   keywords?: string;
 }
 
+/** Đuôi nhãn máy chủ gắn cho chuyền mồ côi (mã không còn là bộ phận nào, OrgService.lineNamer): "<mã> (chuyền cũ)" */
+export const ORPHAN_LINE_SUFFIX = '(chuyền cũ)';
+
 /** Thông báo khi tìm chuyền không ra */
 export const LINE_NOT_FOUND = 'Không có chuyền khớp. Gõ tên, mã chuyền hoặc tên bộ phận.';
 /** Danh sách chuyền rỗng khi chưa gõ gì (đang tải, ĐVCS chưa có bộ phận tích "Xưởng sản xuất") */

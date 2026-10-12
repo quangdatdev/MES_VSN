@@ -54,7 +54,6 @@ function BoardRowView({ line, list, top, from, dayCount, width, focusPlanId, det
   return (
     <div className="board-row" style={{ top, height: ROW_H }}>
       <div className="board-label" style={{ width: LABEL_W }} title={`${line.name} (${line.code})${line.isActive === false ? ', đã ngừng dùng' : ''}`} data-inactive={line.isActive === false || undefined}>
-        <b>{line.code.split('-').pop()?.replace(/^L/, '')}</b>
         <span>{line.name}{line.isActive === false && ' (đã ngừng)'}</span>
       </div>
       <div className="board-track" style={{ width }}>

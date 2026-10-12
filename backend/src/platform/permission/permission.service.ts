@@ -389,6 +389,24 @@ export class PermissionService {
    * Chặn đường vòng "tạo tài khoản phụ rồi gán vai trò quản trị cao hơn", hoặc đặt lại mật khẩu của người quyền cao hơn.
    * Quyền nghiệp vụ không bị giới hạn: cấp quyền nghiệp vụ là việc của người giữ admin.permission:update.
    */
+  /**
+   * Người dùng có phép gán nào mang phạm vi chuyền (chiều LINE) theo đúng mã này không, kể cả phép gán đã hết hạn hay chưa tới
+   * hạn: tích, bỏ tích, giải thể bộ phận chuyền đó là đổi phạm vi của chính họ (CLAUDE.md mục 4.8), như người được giao cả xưởng
+   * không tự chuyển chuyền trước phase 5.10.
+   */
+  async holdsLineScope(userId: number, code: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('SysUserRoleScope as s')
+      .innerJoin('SysUserRole as ur', 'ur.Id', 's.UserRoleId')
+      .innerJoin('SysScopeDimension as d', 'd.Id', 's.DimensionId')
+      .select('s.Id')
+      .where('ur.UserId', '=', userId)
+      .where('d.Code', '=', 'LINE')
+      .where('s.ScopeValue', '=', code)
+      .executeTakeFirst();
+    return !!row;
+  }
+
   async assertAdminCeiling(actor: AuthUser, codes: Iterable<string>, message: string): Promise<void> {
     const own = (await this.accessOf(actor)).permissions;
     const missing = [...new Set(codes)].filter((c) => c.startsWith(ADMIN_PREFIX) && !own.has(c));

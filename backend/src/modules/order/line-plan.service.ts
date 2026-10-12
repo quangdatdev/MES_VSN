@@ -106,16 +106,6 @@ const presentLine = (l: PlanLineRow) => ({
   statusCode: l.StatusCode,
 });
 
-/**
- * Tên chuyền theo mã cho dữ liệu đã xếp: `lines` lấy kèm chuyền đã giải thể (OrgService.lines với includeInactive) để dòng cũ
- * hiện đúng tên. Mã không còn là bộ phận chuyền nào (chuyền cũ trước phase 5.10, bộ phận đã bỏ tích "Xưởng sản xuất") là chuyền
- * mồ côi (Q4 phase 5.10): hiện mã kèm "(chuyền cũ)", không báo lỗi.
- */
-export function lineNamer(lines: { code: string; name: string }[]): (code: string) => string {
-  const names = new Map(lines.map((l) => [l.code, l.name]));
-  return (code) => names.get(code) ?? `${code} (chuyền cũ)`;
-}
-
 const EXPORT_COLUMNS = [
   { key: 'planNo', label: 'Số kế hoạch' },
   { key: 'customerName', label: 'Khách hàng' },
@@ -180,7 +170,7 @@ export class LinePlanService {
     // Phạm vi xem có thể rộng hơn phạm vi sửa (nhiều vai trò): đánh dấu dòng sửa được để giao diện chỉ gửi các dòng đó (review lượt 3 P2)
     const editable = new Set((await this.lines.listByParents(scope, [id], 'update')).map((l) => l.Id));
     // Gồm cả chuyền đã ngừng dùng: dòng đã xếp vào chuyền đó vẫn hiện đúng tên; chuyền mồ côi hiện mã kèm "(chuyền cũ)"
-    const lineName = lineNamer(await this.org.lines(scope.branchCode, scope.isAggregate, { includeInactive: true }));
+    const lineName = await this.org.lineNamer(scope.branchCode, scope.isAggregate);
     return {
       ...presentLinePlan(plan),
       lines: lines.map((l) => ({ ...presentLine(l), lineName: lineName(l.LineCode), editable: editable.has(l.Id) })),

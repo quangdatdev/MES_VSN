@@ -516,4 +516,43 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     const row = await hr.selectFrom('Department').select(['IsProductionWorkshop', 'BranchCode']).where('Id', '=', line.l1).executeTakeFirstOrThrow();
     expect(row).toEqual({ IsProductionWorkshop: false, BranchCode: null });
   });
+
+  it('chuyền may: người đang được giao phạm vi chuyền X không tự tích, bỏ tích, giải thể bộ phận X (CLAUDE.md mục 4.8)', async () => {
+    const admin = await tokenFor('admin', 'A00');
+    const roles = (await api().get('/api/v1/admin/roles').set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+    const branches = (await api().get('/api/v1/admin/branches').set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+    const fullRole = roles.find((r) => r.code === 'FULL_ACCESS')!.id;
+    const username = 'test.hrline';
+    const password = `Hl@${randomBytes(12).toString('base64url')}9`;
+    const created = await api().post('/api/v1/admin/users').set(auth(admin)).send({ username, fullName: 'Chuyền thử (test)', initialPassword: password });
+    const uid = created.status === 201 ? (created.body.id as number) : (await api().get(`/api/v1/admin/users?q=${username}`).set(auth(admin))).body.items.find((u: any) => u.username === username).id;
+    try {
+      if (created.status !== 201) {
+        await api().post(`/api/v1/admin/users/${uid}/reset-password`).set(auth(admin)).send({ newPassword: password }).expect(200);
+        await api().put(`/api/v1/admin/users/${uid}`).set(auth(admin)).send({ isActive: true, unlock: true }).expect(200);
+      }
+      await api().put(`/api/v1/admin/users/${uid}/roles`).set(auth(admin)).send({ roleIds: [fullRole] }).expect(200);
+      await api().put(`/api/v1/admin/users/${uid}/branches`).set(auth(admin)).send({ branchIds: branches.filter((b) => b.code === 'A02').map((b) => b.id) }).expect(200);
+      await api().put(`/api/v1/admin/users/${uid}/roles/${fullRole}/scope`).set(auth(admin)).send({ scopes: [{ dimension: 'LINE', mode: 'LIST', value: 'TST-L3' }] }).expect(200);
+      const l = await api().post('/api/v1/auth/login').send({ username, password });
+      const t = (await api().post('/api/v1/auth/select-branch').set('Authorization', `Bearer ${l.body.preAuthToken}`).send({ branchCode: 'A02' })).body.accessToken as string;
+
+      const v = await version();
+      const denied = await putDept(t, line.l3, { isProductionWorkshop: false }).expect(403);
+      expect(denied.body.error.code).toBe('SELF_ELEVATION_FORBIDDEN');
+      expect(denied.body.error.message).toContain('được giao phạm vi chuyền TST-L3');
+      await api().post(`/api/v1/hr/departments/${line.l3}/dissolve`).set(auth(t)).send({}).expect(403);
+      // Không đổi tập chuyền thì vẫn sửa được; người khác (không giữ phạm vi đó) bỏ tích được
+      await putDept(t, line.l3, { name: 'Chuyền thử 3 (đổi tên)' }).expect(200);
+      expect(await version()).toBe(v);
+      const other = await fullAccess();
+      await putDept(other, line.l3, { isProductionWorkshop: false }).expect(200);
+      // Đã bỏ tích: người giữ phạm vi cũng không tự tích lại được
+      await putDept(t, line.l3, { isProductionWorkshop: true }).expect(403);
+      await putDept(other, line.l3, { isProductionWorkshop: true }).expect(200);
+    } finally {
+      await api().put(`/api/v1/admin/users/${uid}/roles`).set(auth(admin)).send({ roleIds: [] }).expect(200);
+      await api().put(`/api/v1/admin/users/${uid}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    }
+  });
 });

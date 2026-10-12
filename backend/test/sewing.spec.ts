@@ -97,8 +97,8 @@ describe('Phase 5.5: Kế hoạch chuẩn bị SX', () => {
     await api().put(`/api/v1/admin/users/${id}/roles`).set(auth(admin)).send({ roleIds: [roleId] }).expect(200);
     await api().put(`/api/v1/admin/users/${id}/branches`).set(auth(admin)).send({ branchIds: branchCodes.map((c) => branches.find((b) => b.code === c)!.id) }).expect(200);
     if (line) {
-      const units = (await api().get('/api/v1/admin/scope-catalog').set(auth(admin))).body.orgUnits as { id: number; code: string }[];
-      await api().put(`/api/v1/admin/users/${id}/roles/${roleId}/scope`).set(auth(admin)).send({ scopes: [{ dimension: 'LINE', mode: 'LIST', orgUnitId: units.find((u) => u.code === line)!.id }] }).expect(200);
+      // Phạm vi chuyền lưu theo mã bộ phận chuyền (phase 5.10)
+      await api().put(`/api/v1/admin/users/${id}/roles/${roleId}/scope`).set(auth(admin)).send({ scopes: [{ dimension: 'LINE', mode: 'LIST', value: line }] }).expect(200);
     }
     return async (branchCode: string) => {
       const l = await api().post('/api/v1/auth/login').send({ username, password: TEST_PASSWORD });
