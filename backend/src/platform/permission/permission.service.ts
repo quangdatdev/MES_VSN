@@ -4,9 +4,16 @@ import { Errors } from '../../common/app.exception';
 import type { AuthUser } from '../auth/auth.types';
 import { CORE_DB, type CoreDb } from '../database/database.module';
 import type { OrgType, ScopeMode } from '../database/core.types';
+import { OrgService } from '../org/org.service';
 
 /** Quyền nhóm quản trị: chỉ người đang có quyền đó mới cấp hoặc quản lý người có quyền đó (xem ADR 0004). */
 const ADMIN_PREFIX = 'admin.';
+
+/**
+ * Chiều Chuyền (phase 5.10, MES_Core/0009): chiều giá trị, ScopeValue là mã bộ phận tích "Xưởng sản xuất" (MES_Hr), không theo
+ * cây tổ chức. Chỉ dạng ALL hoặc LIST theo giá trị hợp lệ; mã nào không còn là chuyền đang dùng thì không có tác dụng.
+ */
+export const LINE_DIMENSION = 'LINE';
 
 /** Một điều kiện của phạm vi trên một chiều. `none` là đóng an toàn: không khớp bản ghi nào. */
 export type Condition =
@@ -92,8 +99,13 @@ export const accessStamp = (a: Pick<UserAccess, 'version' | 'expiresAt'>) => (a.
 @Injectable()
 export class PermissionService {
   private cache = new Map<string, UserAccess>();
+  /** Phiên bản quyền lúc tập chuyền được tải lại lần cuối (xem lineCodes). */
+  private linesVersion: string | null = null;
 
-  constructor(@Inject(CORE_DB) private readonly db: CoreDb) {}
+  constructor(
+    @Inject(CORE_DB) private readonly db: CoreDb,
+    private readonly org: OrgService,
+  ) {}
 
   async getVersion(): Promise<string> {
     const row = await this.db.selectFrom('SysPermissionVersion').select('Version').where('Id', '=', 1).executeTakeFirstOrThrow();
@@ -161,11 +173,12 @@ export class PermissionService {
 
     const scopes = await this.loadScopes(live.map((a) => a.Id));
     const orgUnits = scopes.some((s) => s.orgUnitId !== null) ? await this.loadOrgUnits() : new Map<number, OrgUnit>();
+    const lineCodes = scopes.some((s) => s.dimCode === LINE_DIMENSION && s.mode === 'LIST') ? await this.lineCodes(version) : new Set<string>();
 
     // Phép gán nào có hiệu lực ở nhà máy này, và phạm vi của nó
     const effective: { roleId: number; grant: Grant }[] = [];
     for (const a of live) {
-      const grant = this.grantOf(scopes.filter((s) => s.userRoleId === a.Id), orgUnits, branch);
+      const grant = this.grantOf(scopes.filter((s) => s.userRoleId === a.Id), orgUnits, lineCodes, branch);
       if (grant) effective.push({ roleId: a.RoleId, grant });
     }
 
@@ -243,7 +256,7 @@ export class PermissionService {
    * Phạm vi của một phép gán tại nhà máy của phiên; null nếu phép gán không có hiệu lực ở nhà máy này.
    * Tổ hợp ngoài danh sách hợp lệ, đơn vị tổ chức hay chiều đã tắt: coi là tập rỗng, không bao giờ là "không giới hạn".
    */
-  private grantOf(rows: ScopeRow[], orgUnits: Map<number, OrgUnit>, branch: BranchRef): Grant | null {
+  private grantOf(rows: ScopeRow[], orgUnits: Map<number, OrgUnit>, lineCodes: Set<string>, branch: BranchRef): Grant | null {
     const conditions: Condition[] = [];
     const byDim = new Map<string, ScopeRow[]>();
     for (const r of rows) byDim.set(r.dimCode, [...(byDim.get(r.dimCode) ?? []), r]);
@@ -256,6 +269,14 @@ export class PermissionService {
         continue;
       }
       if (list.some((r) => r.mode === 'ALL')) continue;
+
+      if (dim === LINE_DIMENSION) {
+        // Chỉ dòng LIST theo giá trị có tác dụng, và chỉ khi mã đang là chuyền đang dùng. Dòng kiểu cũ (theo nút, cả nhánh) hay
+        // database chưa chạy MES_Core/0009 thì không góp mã nào: không còn mã nào là tập rỗng, không bao giờ thành "không giới hạn"
+        const codes = new Set(list.filter((r) => r.mode === 'LIST' && r.orgUnitId === null && r.value && lineCodes.has(r.value)).map((r) => r.value!));
+        conditions.push(codes.size ? { dim, kind: 'in', values: [...codes].sort() } : { dim, kind: 'none' });
+        continue;
+      }
 
       if (first.dimOrgType) {
         const codes = new Set<string>();
@@ -307,6 +328,20 @@ export class PermissionService {
       orgUnitId: r.OrgUnitId,
       value: r.ScopeValue,
     }));
+  }
+
+  /**
+   * Mã chuyền đang dùng (bộ phận tích "Xưởng sản xuất", OrgService). Nơi đổi tập chuyền tăng phiên bản quyền sau khi commit MES_Hr;
+   * OrgService cache 30 giây theo từng tiến trình nên thấy phiên bản mới là tải lại tập chuyền trước khi tính quyền: UserAccess
+   * cache theo phiên bản không giữ tập chuyền cũ hơn phiên bản của nó (kể cả khi tiến trình khác đổi chuyền). Lần đọc chuyền bắt
+   * đầu trước invalidate() không được ghi đè cache (OrgService đếm lượt invalidate, phase 5.10 luồng B1).
+   */
+  private async lineCodes(version: string): Promise<Set<string>> {
+    if (this.linesVersion !== version) {
+      this.org.invalidate();
+      this.linesVersion = version;
+    }
+    return this.org.activeLineCodes();
   }
 
   private async loadOrgUnits(): Promise<Map<number, OrgUnit>> {

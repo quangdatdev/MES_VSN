@@ -4,9 +4,10 @@ import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { ResourceRegistry } from '../data/resource-registry';
 import { CORE_DB, type CoreDb } from '../database/database.module';
+import { OrgService } from '../org/org.service';
 import { BranchService } from '../permission/branch.service';
 import { FieldPolicyService } from '../permission/field-policy.service';
-import { PermissionService, type Condition } from '../permission/permission.service';
+import { LINE_DIMENSION, PermissionService, type Condition } from '../permission/permission.service';
 import { AssignmentScopeDto, OverrideDto, RoleFieldPoliciesDto, UserFieldPolicyDto } from './admin.dto';
 
 const invalid = (msg: string) => new AppException('VALIDATION_FAILED', msg, 422);
@@ -32,6 +33,7 @@ export class AdminGrantsService {
     private readonly fields: FieldPolicyService,
     private readonly registry: ResourceRegistry,
     private readonly branches: BranchService,
+    private readonly org: OrgService,
   ) {}
 
   private logStrict(trx: CoreDb, actor: AuthUser, entityType: string, id: number | string, action: string, oldValue?: unknown, newValue?: unknown) {
@@ -60,18 +62,25 @@ export class AdminGrantsService {
 
   // ---------- Danh mục ----------
 
+  /**
+   * Danh mục cho bộ sửa phạm vi: chiều, nút ĐVCS của cây tổ chức (chiều FACTORY), chuyền may (chiều LINE, phase 5.10): bộ phận tích
+   * "Xưởng sản xuất" của mọi ĐVCS qua OrgService, kể cả đã ngừng để phạm vi cũ còn hiện tên; nhóm là bộ phận cha.
+   */
   async catalog() {
     const dimensions = await this.db.selectFrom('SysScopeDimension').select(['Id', 'Code', 'Name', 'Description', 'OrgType']).where('IsActive', '=', true).orderBy('SortOrder').execute();
     const orgUnits = await this.db
       .selectFrom('SysOrgUnit')
       .select(['Id', 'Code', 'Name', 'OrgType', 'ParentId', 'BranchCode', 'Path', 'IsActive'])
+      .where('OrgType', '=', 'FACTORY')
       .orderBy('BranchCode')
       .orderBy('SortOrder')
       .orderBy('Code')
       .execute();
+    const lines = await this.org.lines('', true, { includeInactive: true });
     return {
       dimensions: dimensions.map((d) => ({ id: d.Id, code: d.Code, name: d.Name, description: d.Description, orgType: d.OrgType })),
       orgUnits: orgUnits.map((o) => ({ id: o.Id, code: o.Code, name: o.Name, orgType: o.OrgType, parentId: o.ParentId, branchCode: o.BranchCode, path: o.Path, isActive: !!o.IsActive })),
+      lines: lines.map((l) => ({ code: l.code, name: l.name, branchCode: l.branchCode, isActive: l.isActive, workshopCode: l.workshopCode, workshopName: l.workshopName })),
     };
   }
 
@@ -133,6 +142,9 @@ export class AdminGrantsService {
       .where('fp.SubjectId', '=', userId)
       .orderBy('r.SortOrder')
       .execute();
+    // Phạm vi chuyền lưu theo mã: kèm tên chuyền và cờ "còn là chuyền đang dùng" để màn hình chỉ ra mã không còn tác dụng
+    const lines = scopes.some((s) => s.Dimension === LINE_DIMENSION && s.ScopeValue) ? await this.org.lines('', true, { includeInactive: true }) : [];
+    const lineOf = new Map(lines.map((l) => [l.code, l]));
     return {
       user: { id: user.Id, username: user.Username, fullName: user.FullName },
       assignments: assignments.map((a) => ({
@@ -145,7 +157,21 @@ export class AdminGrantsService {
         validToAt: a.ValidToAt,
         scopes: scopes
           .filter((s) => s.UserRoleId === a.Id)
-          .map((s) => ({ id: s.Id, dimension: s.Dimension, mode: s.ScopeMode, orgUnitId: s.OrgUnitId, orgUnitCode: s.OrgUnitCode, orgUnitName: s.OrgUnitName, value: s.ScopeValue })),
+          .map((s) => {
+            const line = s.Dimension === LINE_DIMENSION && s.ScopeValue ? lineOf.get(s.ScopeValue) : undefined;
+            return {
+              id: s.Id,
+              dimension: s.Dimension,
+              mode: s.ScopeMode,
+              orgUnitId: s.OrgUnitId,
+              orgUnitCode: s.OrgUnitCode,
+              orgUnitName: s.OrgUnitName,
+              value: s.ScopeValue,
+              // Chiều chuyền: tên chuyền (kể cả đã ngừng) và còn là chuyền đang dùng không; chiều khác: null
+              valueName: line?.name ?? null,
+              valueActive: s.Dimension === LINE_DIMENSION && s.ScopeValue ? !!line?.isActive : null,
+            };
+          }),
       })),
       overrides: overrides.map((o) => ({
         id: o.Id,
@@ -188,6 +214,20 @@ export class AdminGrantsService {
     const dims = await this.db.selectFrom('SysScopeDimension').select(['Id', 'Code', 'OrgType']).where('IsActive', '=', true).execute();
     const orgIds = [...new Set(dto.scopes.map((s) => s.orgUnitId).filter((x): x is number => typeof x === 'number'))];
     const orgs = orgIds.length ? await this.db.selectFrom('SysOrgUnit').select(['Id', 'Code', 'OrgType', 'Path', 'IsActive']).where('Id', 'in', orgIds).execute() : [];
+    const before = await this.db
+      .selectFrom('SysUserRoleScope as s')
+      .innerJoin('SysScopeDimension as d', 'd.Id', 's.DimensionId')
+      .leftJoin('SysOrgUnit as o', 'o.Id', 's.OrgUnitId')
+      .select(['d.Code', 's.ScopeMode', 'o.Code as OrgCode', 's.ScopeValue'])
+      .where('s.UserRoleId', '=', assignment.Id)
+      .execute();
+    // Chiều chuyền (phase 5.10): mã phải là chuyền đang dùng, đọc lại nguồn chuyền (tiến trình khác có thể vừa tích bộ phận).
+    // Mã đã lưu ở phép gán này mà nay không còn là chuyền thì được giữ khi lưu lại: giữ không nới quyền (mã đó không có tác dụng),
+    // còn bắt bỏ thì bộ sửa bỏ dòng cuối cùng của chiều là thành không giới hạn chuyền
+    const lineValues = dto.scopes.some((s) => s.dimension === LINE_DIMENSION && s.mode === 'LIST');
+    if (lineValues) this.org.invalidate();
+    const activeLines = lineValues ? await this.org.activeLineCodes() : new Set<string>();
+    const storedLines = new Set(before.filter((b) => b.Code === LINE_DIMENSION && b.ScopeMode === 'LIST' && !b.OrgCode && b.ScopeValue).map((b) => b.ScopeValue!));
 
     const rows: { DimensionId: number; ScopeMode: string; OrgUnitId: number | null; ScopeValue: string | null; label: string }[] = [];
     for (const s of dto.scopes) {
@@ -195,9 +235,12 @@ export class AdminGrantsService {
       if (!dim) throw invalid(`Chiều phạm vi "${s.dimension}" không tồn tại hoặc đã tắt.`);
       const org = s.orgUnitId != null ? orgs.find((o) => o.Id === s.orgUnitId) : undefined;
       const value = s.value?.trim() || null;
-      // Tổ hợp hợp lệ theo ADR 0005
+      // Tổ hợp hợp lệ theo ADR 0005; chiều chuyền là chiều giá trị từ MES_Core/0009 (xét trước OrgType: database chưa chạy 0009 vẫn đúng luật mới)
       if (s.mode === 'ALL') {
         if (s.orgUnitId != null || value) throw invalid('Phạm vi "Tất cả" không kèm đơn vị hay giá trị.');
+      } else if (dim.Code === LINE_DIMENSION) {
+        if (s.mode !== 'LIST' || s.orgUnitId != null || !value) throw invalid('Chiều Chuyền chỉ nhận Tất cả hoặc Danh sách mã chuyền (không chọn theo cây tổ chức hay cả xưởng).');
+        if (!activeLines.has(value) && !storedLines.has(value)) throw invalid(`Mã ${value} không phải chuyền may đang dùng (bộ phận tích "Xưởng sản xuất" ở Sơ đồ tổ chức).`);
       } else if (dim.OrgType) {
         if (s.mode !== 'ORG_SUBTREE' && s.mode !== 'LIST') throw invalid(`Chiều ${dim.Code} chỉ nhận Tất cả, Cả nhánh hoặc Danh sách đơn vị.`);
         if (!org || !org.IsActive) throw invalid(`Đơn vị tổ chức của chiều ${dim.Code} không tồn tại hoặc đã tắt.`);
@@ -228,13 +271,6 @@ export class AdminGrantsService {
       if (forDim.some((r) => r.ScopeMode === 'ALL') && forDim.length > 1) throw invalid(`Chiều ${d.Code}: "Tất cả" không đi cùng giá trị khác.`);
     }
 
-    const before = await this.db
-      .selectFrom('SysUserRoleScope as s')
-      .innerJoin('SysScopeDimension as d', 'd.Id', 's.DimensionId')
-      .leftJoin('SysOrgUnit as o', 'o.Id', 's.OrgUnitId')
-      .select(['d.Code', 's.ScopeMode', 'o.Code as OrgCode', 's.ScopeValue'])
-      .where('s.UserRoleId', '=', assignment.Id)
-      .execute();
     await this.commit(async (trx) => {
       await trx.deleteFrom('SysUserRoleScope').where('UserRoleId', '=', assignment.Id).execute();
       if (rows.length) {
