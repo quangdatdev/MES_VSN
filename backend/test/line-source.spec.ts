@@ -103,7 +103,7 @@ describe('OrgService: nguồn chuyền đăng ký từ module', () => {
   it('lineNamer tra tên trên mọi ĐVCS, kể cả chuyền đã ngừng; mã không còn là chuyền thì kèm "(chuyền cũ)"', async () => {
     const org = new OrgService();
     org.registerSource(fakeSource([line('L1'), line('L2', 'A01', false), line('L3', 'A02')]).source);
-    const name = await org.lineNamer('A01', false);
+    const name = await org.lineNamer();
     expect(name('L1')).toBe('Chuyền L1');
     expect(name('L2')).toBe('Chuyền L2');
     // Chuyền đã chuyển sang ĐVCS khác: dữ liệu cũ ở A01 vẫn hiện đúng tên

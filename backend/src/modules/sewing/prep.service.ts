@@ -168,8 +168,7 @@ export class PrepService {
    */
   private async lineNames(user: AuthUser): Promise<(code: string) => string | undefined> {
     if ((await this.fields.unreadable(user, RESOURCE, ['lineCode'])).size) return () => undefined;
-    const scope = scopeOf(user);
-    return this.org.lineNamer(scope.branchCode, scope.isAggregate);
+    return this.org.lineNamer();
   }
 
   private async activeSteps() {

@@ -120,7 +120,7 @@ export class ColorSizeService {
    */
   private async lineNames(user: AuthUser): Promise<(code: string) => string | null> {
     if ((await this.fields.unreadable(user, RESOURCE, ['lineCode'])).size) return () => null;
-    return this.org.lineNamer(user.branchCode!, user.isAggregate);
+    return this.org.lineNamer();
   }
 
   async list(user: AuthUser, query: OrderListQuery) {

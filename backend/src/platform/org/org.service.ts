@@ -83,7 +83,7 @@ export class OrgService {
    * là bộ phận chuyền nào (chuyền cũ trước phase 5.10, bộ phận đã bỏ tích "Xưởng sản xuất") là chuyền mồ côi: hiện mã kèm
    * "(chuyền cũ)", không báo lỗi. Hai tham số giữ cho bên gọi cũ, không còn tác dụng.
    */
-  async lineNamer(_branchCode?: string, _isAggregate?: boolean): Promise<(code: string) => string> {
+  async lineNamer(): Promise<(code: string) => string> {
     const names = new Map((await this.all()).map((l) => [l.code, l.name]));
     return (code) => names.get(code) ?? `${code} (chuyền cũ)`;
   }

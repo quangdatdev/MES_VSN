@@ -30,6 +30,7 @@ const ENTITIES = [
   // Danh mục xưởng, chuyền cũ (bỏ ở phase 5.10, chuyền nay là bộ phận ở Sơ đồ tổ chức): giữ để lọc, đọc nhật ký đã ghi
   { value: 'SysOrgUnit', label: 'Danh mục: xưởng, chuyền may (cũ)' },
   { value: 'SysScopeDimension', label: 'Chiều phạm vi' },
+  { value: 'Department', label: 'Phòng ban, chuyền may' },
   { value: 'SysCatalogItem', label: 'Danh mục: đơn vị tính, loại đơn hàng…' },
   { value: 'SysShift', label: 'Danh mục: ca làm việc' },
   { value: 'Auth', label: 'Đăng nhập' },
@@ -80,6 +81,9 @@ const ACTION_TEXT: Record<string, string> = {
   WORKSHOP_UPDATE: 'Sửa xưởng (danh mục cũ)',
   ORG_UNIT_RETIRE: 'Ngừng xưởng, chuyền (danh mục cũ)',
   SCOPE_DIMENSION_UPDATE: 'Đổi chiều phạm vi',
+  LINE_SET_CHANGE: 'Đổi chuyền may (phạm vi)',
+  DISSOLVE: 'Giải thể phòng ban',
+  RESTORE: 'Khôi phục phòng ban',
   CATALOG_ITEM_CREATE: 'Thêm mục danh mục',
   CATALOG_ITEM_UPDATE: 'Sửa mục danh mục',
   SHIFT_CREATE: 'Thêm ca làm việc',

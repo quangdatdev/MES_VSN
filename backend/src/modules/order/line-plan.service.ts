@@ -170,7 +170,7 @@ export class LinePlanService {
     // Phạm vi xem có thể rộng hơn phạm vi sửa (nhiều vai trò): đánh dấu dòng sửa được để giao diện chỉ gửi các dòng đó (review lượt 3 P2)
     const editable = new Set((await this.lines.listByParents(scope, [id], 'update')).map((l) => l.Id));
     // Gồm cả chuyền đã ngừng dùng: dòng đã xếp vào chuyền đó vẫn hiện đúng tên; chuyền mồ côi hiện mã kèm "(chuyền cũ)"
-    const lineName = await this.org.lineNamer(scope.branchCode, scope.isAggregate);
+    const lineName = await this.org.lineNamer();
     return {
       ...presentLinePlan(plan),
       lines: lines.map((l) => ({ ...presentLine(l), lineName: lineName(l.LineCode), editable: editable.has(l.Id) })),
