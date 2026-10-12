@@ -1,18 +1,14 @@
-import { Alert, Anchor, Badge, Button, Group, Modal, NumberInput, Select, SegmentedControl, SimpleGrid, Skeleton, Stack, Switch, Text, TextInput, Textarea, Title, Tooltip, VisuallyHidden } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, Modal, NumberInput, Select, SimpleGrid, Skeleton, Stack, Switch, Text, TextInput, Textarea, Title, Tooltip, VisuallyHidden } from '@mantine/core';
 import { TimePicker } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import {
   IconBuildingFactory2,
-  IconBuildingWarehouse,
   IconChecklist,
-  IconChevronDown,
-  IconChevronRight,
   IconClock,
   IconHierarchy2,
   IconKey,
   IconListDetails,
   IconLock,
-  IconNeedleThread,
   IconPencil,
   IconPlus,
   IconSearch,
@@ -36,12 +32,16 @@ import { HR_KEYS } from '../hr/api';
 import { fold } from '../hr/tree';
 import type { PrepStep } from '../sewing/api';
 import { PREP_STEPS_KEY, PrepStepsPane } from './PrepStepsPane';
-import type { AdminDepartmentType, AdminFactory, CatalogItem, CatalogLine, CatalogLines, CatalogOverview, CatalogShift, CatalogWorkshop, ExternalCatalog, ExternalRows, MesCatalog } from './types';
+import type { AdminDepartmentType, AdminFactory, CatalogItem, CatalogOverview, CatalogShift, ExternalCatalog, ExternalRows, MesCatalog } from './types';
 
 const KEY = ['admin', 'catalogs'] as const;
-/** Cây đầy đủ xưởng, chuyền (khung Chuyền may là khung mặc định) */
-const LINES_QUERY = { queryKey: [...KEY, 'lines'], queryFn: () => api<CatalogLines>('/admin/catalogs/lines') };
-const KIND_ICON = { line: IconNeedleThread, factory: IconBuildingFactory2, shift: IconClock, item: IconListDetails } as const;
+/** Tổng quan danh mục: danh sách danh mục MES, BRAVO và ĐVCS (ô chọn của Nhà máy SX); khung Nhà máy SX dùng lại cùng kết quả */
+const OVERVIEW_QUERY = { queryKey: KEY, queryFn: () => api<CatalogOverview>('/admin/catalogs') };
+/** Khung mở khi chưa chọn danh mục: Nhà máy SX quyết định đơn hàng nào lập kế hoạch được ở ĐVCS nào */
+const DEFAULT_CATALOG = 'PROD_FACTORY';
+/** Mã khung Chuyền may cũ (bỏ ở phase 5.10): liên kết cũ ?c=LINE nói chuyền đã sang Nhân sự */
+const OLD_LINES = 'LINE';
+const KIND_ICON = { factory: IconBuildingFactory2, shift: IconClock, item: IconListDetails } as const;
 
 /** Thời điểm UTC từ API hiện theo giờ máy */
 const when = (iso: string | null) => (iso ? fmtDateTime(iso) : 'chưa chép');
@@ -56,20 +56,17 @@ const DEPT_TYPES_QUERY = { queryKey: [...KEY, 'department-types'], queryFn: () =
 const hours = (minutes: number) => `${Math.floor(minutes / 60)} giờ${minutes % 60 ? ` ${minutes % 60} phút` : ''}`;
 
 export default function CatalogsPage() {
-  const overview = useQuery({ queryKey: KEY, queryFn: () => api<CatalogOverview>('/admin/catalogs') });
+  const overview = useQuery(OVERVIEW_QUERY);
   const prepSteps = useQuery({ queryKey: PREP_STEPS_KEY, queryFn: () => api<PrepStep[]>('/sewing/prep-steps') });
   const deptTypes = useQuery(DEPT_TYPES_QUERY);
   const [params, setParams] = useSearchParams();
   const mes = overview.data?.mes ?? [];
   const external = overview.data?.external ?? [];
-  const selected = params.get('c') ?? 'LINE';
+  const selected = params.get('c') ?? DEFAULT_CATALOG;
   // Đổi danh mục gỡ khung đang sửa (bảng Cấu hình chuẩn bị SX sửa trực tiếp): còn thay đổi chưa lưu thì hỏi lại
   const select = (code: string | null) => code && code !== selected && guardedLeave(() => setParams({ c: code }, { replace: true }));
   const currentMes = mes.find((c) => c.code === selected);
   const currentExt = external.find((c) => c.code === selected);
-  // Khung mặc định (Chuyền may) chỉ vẽ sau khi có tổng quan: tải cây xưởng, chuyền song song với tổng quan (cùng khóa nên
-  // khung dùng lại kết quả, không gọi lần hai)
-  useQuery({ ...LINES_QUERY, enabled: selected === 'LINE' });
 
   return (
     <>
@@ -127,14 +124,13 @@ export default function CatalogsPage() {
         <section className="catalog-pane">
           {overview.isLoading && <Skeleton h={240} />}
           {overview.isError && <LoadError error={overview.error} what="danh mục" onRetry={() => void overview.refetch()} retrying={overview.isFetching} />}
-          {currentMes?.kind === 'line' && <LinesPane info={currentMes} />}
           {currentMes?.kind === 'factory' && <FactoriesPane info={currentMes} />}
           {currentMes?.kind === 'item' && <ItemsPane key={currentMes.code} info={currentMes} />}
           {currentMes?.kind === 'shift' && <ShiftsPane info={currentMes} />}
           {currentExt && <ExternalPane key={currentExt.code} info={currentExt} />}
           {selected === PREP.code && <PrepStepsPane />}
           {selected === DEPT_TYPE.code && <DepartmentTypesPane />}
-          {overview.isSuccess && !currentMes && !currentExt && selected !== PREP.code && selected !== DEPT_TYPE.code && <Text c="dimmed" size="sm">Chọn một danh mục ở cột bên trái.</Text>}
+          {overview.isSuccess && !currentMes && !currentExt && selected !== PREP.code && selected !== DEPT_TYPE.code && (selected === OLD_LINES ? <LinesMoved /> : <Text c="dimmed" size="sm">Chọn một danh mục ở cột bên trái.</Text>)}
         </section>
       </div>
     </>
@@ -180,11 +176,8 @@ function useSave(onDone?: () => void) {
     onSuccess: (_r, v) => {
       toastOk(v.done);
       void qc.invalidateQueries({ queryKey: KEY });
-      void qc.invalidateQueries({ queryKey: ['me', 'lines'] });
       // Gợi ý của các ô Đơn hàng (đơn vị tính, loại đơn hàng, nhà máy SX)
       void qc.invalidateQueries({ queryKey: ORDER_OPTIONS_KEY });
-      // Ô chọn chuyền ở màn phạm vi người dùng gom theo xưởng
-      void qc.invalidateQueries({ queryKey: ['admin', 'scope-catalog'] });
       // Nhà máy SX hiện ở màn Đơn vị cơ sở và popup gán đơn vị của màn Người dùng
       void qc.invalidateQueries({ queryKey: ['admin', 'branches'] });
       // Ô chọn loại phòng ban, cây phòng ban (tên loại, thứ tự theo cấp) ở Sơ đồ tổ chức
@@ -242,449 +235,14 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
   return <DebouncedTextInput leftSection={<IconSearch size={14} />} placeholder={placeholder} aria-label={placeholder} value={value} onChange={onChange} w={260} />;
 }
 
-
-// ---------------- Xưởng, chuyền may (cây Nhà máy → Xưởng → Chuyền) ----------------
-
-/** Ô chọn xưởng: chuyền nằm thẳng dưới nhà máy (không thuộc xưởng nào) */
-const NO_WORKSHOP = 'NONE';
-/** Mỗi cấp của cây thụt vào bằng bề rộng nút mở/thu gọn; đường chấm đi qua giữa nút đó */
-const LEVEL = 24;
-const bySort = <T extends { sortOrder: number; code: string }>(a: T, b: T) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code);
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const activeCount = (n: number) => `${fmtNum(n)} chuyền đang dùng`;
-
-type Branch = CatalogLines['branches'][number];
-type TreeRow =
-  | { kind: 'factory'; key: string; branch: Branch; active: number }
-  | { kind: 'workshop'; key: string; workshop: CatalogWorkshop; open: boolean }
-  | { kind: 'line'; key: string; line: CatalogLine; depth: 1 | 2 };
-
-/**
- * Dòng của bảng cây. `data` đã được máy chủ lọc theo nhà máy và ô tìm (trúng xưởng thì cả xưởng, trúng chuyền thì
- * chuyền kèm xưởng chứa nó); số chuyền đang dùng của nhà máy đếm trên cây đầy đủ `all`.
- */
-function treeRows(data: CatalogLines, all: CatalogLines, collapsed: ReadonlySet<number>): TreeRow[] {
-  const rows: TreeRow[] = [];
-  for (const b of data.branches) {
-    const lines = data.items.filter((l) => l.branchCode === b.code).sort(bySort);
-    const part: TreeRow[] = [];
-    for (const w of data.workshops.filter((x) => x.branchCode === b.code).sort(bySort)) {
-      const open = !collapsed.has(w.id);
-      part.push({ kind: 'workshop', key: `w${w.id}`, workshop: w, open });
-      if (open) for (const l of lines.filter((x) => x.workshopId === w.id)) part.push({ kind: 'line', key: `l${l.id}`, line: l, depth: 2 });
-    }
-    for (const l of lines.filter((x) => x.workshopId === null)) part.push({ kind: 'line', key: `l${l.id}`, line: l, depth: 1 });
-    if (part.length) rows.push({ kind: 'factory', key: `f${b.code}`, branch: b, active: all.items.filter((l) => l.branchCode === b.code && l.isActive).length }, ...part);
-  }
-  return rows;
-}
-
-/** Ô tên của cây: thụt theo cấp, đường chấm dọc của các cấp cha (như ô chọn phòng ban dạng cây) */
-function TreeCell({ depth, toggle, icon, children }: { depth: number; toggle?: ReactNode; icon: ReactNode; children: ReactNode }) {
+/** Liên kết cũ tới khung Chuyền may (?c=LINE): chỉ đường sang Sơ đồ tổ chức thay vì để khung trống */
+function LinesMoved() {
+  const canOpen = useCan('hr.orgchart:view');
   return (
-    <td className="tree-cell" style={{ paddingLeft: 12 + depth * LEVEL }}>
-      {Array.from({ length: depth }, (_, i) => (
-        <span key={i} className="tree-guide" style={{ left: 12 + i * LEVEL + LEVEL / 2 }} aria-hidden />
-      ))}
-      <span className="tree-node">
-        <span className="tree-toggle">{toggle}</span>
-        <span className="tree-icon" aria-hidden>{icon}</span>
-        {children}
-      </span>
-    </td>
-  );
-}
-
-function LinesPane({ info }: { info: MesCatalog }) {
-  const canCreate = useCan('admin.catalog:create');
-  const canEdit = useCan('admin.catalog:update');
-  // Cây đầy đủ cho popup thêm, sửa (ô chọn xưởng, gợi ý mã kế tiếp) và khóa nút; bảng cây khi đang lọc lấy từ máy chủ đã lọc
-  const q = useQuery(LINES_QUERY);
-  const [branch, setBranch] = useState('ALL');
-  // Chữ tìm đã ngừng gõ (ô tìm tự chờ)
-  const [search, setSearch] = useState('');
-  const debounced = search.trim();
-  const filtering = branch !== 'ALL' || debounced !== '';
-  const filteredTree = useQuery({
-    queryKey: [...KEY, 'lines', branch, debounced],
-    queryFn: () => api<CatalogLines>(`/admin/catalogs/lines${qs({ q: debounced || undefined, branch: branch === 'ALL' ? undefined : branch })}`),
-    enabled: filtering,
-    placeholderData: keepPreviousData,
-  });
-  const shownQuery = filtering ? filteredTree : q;
-  const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
-  const [dialog, setDialog] = useState<{ kind: 'line'; line: CatalogLine | null; workshopId?: number } | { kind: 'workshop'; workshop: CatalogWorkshop | null } | null>(null);
-  const save = useSave();
-  const data = q.data;
-  const shown = shownQuery.data;
-  const rows = data && shown ? treeRows(shown, data, collapsed) : [];
-  const workshopById = new Map((data?.workshops ?? []).map((w) => [w.id, w]));
-  const visibleWorkshops = shown?.workshops ?? [];
-  const allCollapsed = visibleWorkshops.length > 0 && visibleWorkshops.every((w) => collapsed.has(w.id));
-  const flip = (id: number) => setCollapsed((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set([...s, id])));
-
-  function toggleLine(l: CatalogLine, on: boolean) {
-    confirmStop(
-      on,
-      `chuyền ${l.name} (${l.code})`,
-      'Chuyền không còn trong ô chọn khi xếp việc mới. Dòng đã xếp vào chuyền này vẫn giữ, vẫn sửa được và vẫn hiện trên bảng dàn chuyền (ghi "đã ngừng"). Ai được giao phạm vi theo chuyền này sẽ không còn thấy dữ liệu của chuyền. Bật lại lúc nào cũng được.',
-      () => save.mutate({ method: 'PUT', path: `/admin/catalogs/lines/${l.id}`, body: { isActive: on }, done: `Đã ${on ? 'dùng lại' : 'ngừng dùng'} chuyền ${l.code}.` }),
-    );
-  }
-  function toggleWorkshop(w: CatalogWorkshop, on: boolean) {
-    confirmStop(
-      on,
-      `${w.name} (${w.code})`,
-      'Xưởng không còn trong ô chọn khi thêm hoặc chuyển chuyền. Ai được giao phạm vi cả xưởng này sẽ không thấy chuyền nào của xưởng cho tới khi bật lại. Bật lại lúc nào cũng được.',
-      () => save.mutate({ method: 'PUT', path: `/admin/catalogs/workshops/${w.id}`, body: { isActive: on }, done: `Đã ${on ? 'dùng lại' : 'ngừng dùng'} ${w.name} (${w.code}).` }),
-    );
-  }
-  /** Chuyền đang dùng phải nằm trong xưởng đang dùng: công tắc khóa kèm lý do thay vì để máy chủ từ chối */
-  const workshopBlocked = (w: CatalogWorkshop) =>
-    w.isActive && w.activeLines > 0 ? `Còn ${w.activeLines} chuyền đang dùng trong xưởng. Chuyển các chuyền sang xưởng khác hoặc ngừng dùng chúng trước.` : null;
-  const lineBlocked = (l: CatalogLine) => {
-    const w = l.workshopId !== null ? workshopById.get(l.workshopId) : undefined;
-    return !l.isActive && w && !w.isActive ? `${w.name} đang ngừng dùng. Bật lại xưởng, hoặc sửa chuyền để chuyển sang xưởng khác, rồi mới dùng lại chuyền.` : null;
-  };
-
-  return (
-    <>
-      <PaneHead
-        title={info.name}
-        description={info.description}
-        actions={
-          canCreate && (
-            <Group gap="xs">
-              <Button variant="default" leftSection={<IconPlus size={15} />} onClick={() => setDialog({ kind: 'workshop', workshop: null })}>Thêm xưởng</Button>
-              <Button leftSection={<IconPlus size={15} />} onClick={() => setDialog({ kind: 'line', line: null })}>Thêm chuyền</Button>
-            </Group>
-          )
-        }
-      >
-        <Group gap="sm" wrap="wrap">
-          <SegmentedControl
-            size="xs"
-            value={branch}
-            onChange={setBranch}
-            data={[{ value: 'ALL', label: 'Tất cả' }, ...(data?.branches ?? []).map((b) => ({ value: b.code, label: b.code }))]}
-            aria-label="Lọc theo đơn vị cơ sở"
-          />
-          {/* Gõ tìm thì mở mọi xưởng, để không giấu mất kết quả */}
-          <SearchBox value={search} onChange={(v) => { setSearch(v); setCollapsed(new Set()); }} placeholder="Tìm mã, tên xưởng hoặc chuyền" />
-          {visibleWorkshops.length > 0 && (
-            <Button
-              size="xs"
-              variant="subtle"
-              color="gray"
-              leftSection={allCollapsed ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-              onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(visibleWorkshops.map((w) => w.id)))}
-            >
-              {allCollapsed ? 'Mở tất cả xưởng' : 'Thu gọn tất cả xưởng'}
-            </Button>
-          )}
-        </Group>
-      </PaneHead>
-      <PaneError query={q} what="danh sách xưởng, chuyền" />
-      {filtering && <PaneError query={filteredTree} what="kết quả tìm xưởng, chuyền" />}
-      <div className="table-frame" data-refreshing={(filtering && filteredTree.isPlaceholderData) || undefined}>
-        <table className="dense-table tree-table">
-          <thead>
-            <tr><th>Xưởng, chuyền</th><th style={{ width: 130 }}>Mã</th><th style={{ width: 80 }}>Thứ tự</th><th style={{ width: 150 }}>Trạng thái</th><th style={{ width: 76 }} aria-label="Thao tác" /></tr>
-          </thead>
-          <tbody>
-            {(q.isPending || shownQuery.isPending) && <SkeletonRows cols={5} />}
-            {rows.map((r) => {
-              if (r.kind === 'factory') {
-                return (
-                  <tr key={r.key} className="table-group tree-factory">
-                    <td colSpan={5}>
-                      <span className="tree-node">
-                        <span className="tree-toggle tree-icon" aria-hidden><IconBuildingFactory2 size={16} stroke={1.7} /></span>
-                        <span className="tree-name">{r.branch.code} – {r.branch.name}</span>
-                        <span className="tree-meta">{r.branch.isActive ? activeCount(r.active) : 'Đơn vị đang tắt'}</span>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              }
-              if (r.kind === 'workshop') {
-                const w = r.workshop;
-                return (
-                  <tr key={r.key} className="tree-workshop" data-inactive={!w.isActive || undefined}>
-                    <TreeCell
-                      depth={1}
-                      icon={<IconBuildingWarehouse size={16} stroke={1.7} />}
-                      toggle={
-                        <IconAction
-                          size={24}
-                          aria-expanded={r.open}
-                          label={`${r.open ? 'Thu gọn' : 'Mở'} ${w.name} (${w.code})`}
-                          icon={r.open ? <IconChevronDown size={15} /> : <IconChevronRight size={15} />}
-                          onClick={() => flip(w.id)}
-                        />
-                      }
-                    >
-                      <span className="tree-name">{w.name}</span>
-                      <span className="tree-meta">{activeCount(w.activeLines)}</span>
-                    </TreeCell>
-                    <td className="mono">{w.code}</td>
-                    <td className="num">{w.sortOrder}</td>
-                    <td><StatusCell active={w.isActive} canEdit={canEdit} busy={save.isPending} label={w.code} blockedReason={workshopBlocked(w)} onChange={(on) => toggleWorkshop(w, on)} /></td>
-                    <td>
-                      <Group gap={2} wrap="nowrap">
-                        {canCreate && (
-                          <IconAction
-                            label={`Thêm chuyền vào ${w.name} (${w.code})`}
-                            icon={<IconPlus size={16} />}
-                            blockedReason={w.isActive ? null : 'Xưởng đang ngừng dùng, bật lại xưởng trước.'}
-                            onClick={() => setDialog({ kind: 'line', line: null, workshopId: w.id })}
-                          />
-                        )}
-                        {canEdit && <EditButton label={`${w.name} (${w.code})`} onClick={() => setDialog({ kind: 'workshop', workshop: w })} />}
-                      </Group>
-                    </td>
-                  </tr>
-                );
-              }
-              const l = r.line;
-              return (
-                <tr key={r.key} data-inactive={!l.isActive || undefined}>
-                  <TreeCell depth={r.depth} icon={<IconNeedleThread size={15} stroke={1.6} />}>
-                    <span>{l.name}</span>
-                  </TreeCell>
-                  <td className="mono" style={{ fontWeight: 600 }}>{l.code}</td>
-                  <td className="num">{l.sortOrder}</td>
-                  <td><StatusCell active={l.isActive} canEdit={canEdit} busy={save.isPending} label={l.code} blockedReason={lineBlocked(l)} onChange={(on) => toggleLine(l, on)} /></td>
-                  <td>{canEdit && <EditButton label={l.code} onClick={() => setDialog({ kind: 'line', line: l })} />}</td>
-                </tr>
-              );
-            })}
-            {q.isSuccess && shownQuery.isSuccess && !shownQuery.isPlaceholderData && rows.length === 0 && (
-              search ? (
-                <EmptyRow colSpan={5} action={clearButton(() => { setSearch(''); setBranch('ALL'); }, 'Xóa bộ lọc')}>Không có xưởng, chuyền nào khớp bộ lọc.</EmptyRow>
-              ) : (
-                <EmptyRow colSpan={5}>
-                  {branch === 'ALL' ? 'Chưa có xưởng, chuyền.' : `Đơn vị cơ sở ${branch} chưa có xưởng, chuyền.`}
-                  {canCreate && ' Bấm “Thêm xưởng” hoặc “Thêm chuyền” để tạo.'}
-                </EmptyRow>
-              )
-            )}
-          </tbody>
-        </table>
-      </div>
-      {data && dialog?.kind === 'line' && (
-        <LineDialog
-          line={dialog.line}
-          data={data}
-          defaultBranch={dialog.workshopId ? workshopById.get(dialog.workshopId)?.branchCode : branch === 'ALL' ? undefined : branch}
-          defaultWorkshop={dialog.workshopId}
-          onClose={() => setDialog(null)}
-        />
-      )}
-      {data && dialog?.kind === 'workshop' && (
-        <WorkshopDialog workshop={dialog.workshop} data={data} defaultBranch={branch === 'ALL' ? undefined : branch} onClose={() => setDialog(null)} />
-      )}
-    </>
-  );
-}
-
-/** Hậu quả của việc chuyển chuyền sang xưởng khác: nói ở ô Xưởng và hỏi lại khi lưu */
-const MOVE_CONSEQUENCE =
-  'Mã chuyền và kế hoạch đã xếp giữ nguyên. Ai được giao phạm vi cả xưởng cũ sẽ không còn thấy chuyền này; ai được giao cả xưởng mới sẽ thấy và sửa được dữ liệu của chuyền.';
-
-/** Gợi ý mã chuyền kế tiếp của nhà máy: A01-L13 khi đã có tới A01-L12 */
-function nextLine(lines: CatalogLine[], branch: string) {
-  const nums = lines.filter((l) => l.branchCode === branch).map((l) => Number(/-L(\d+)$/.exec(l.code)?.[1] ?? 0));
-  const n = Math.max(0, ...nums) + 1;
-  return { code: `${branch}-L${pad2(n)}`, name: `Chuyền ${pad2(n)}` };
-}
-
-/** Gợi ý mã xưởng kế tiếp của nhà máy: A01-X03 khi đã có tới A01-X02 */
-function nextWorkshop(workshops: CatalogWorkshop[], branch: string) {
-  const nums = workshops.filter((w) => w.branchCode === branch).map((w) => Number(/-X(\d+)$/.exec(w.code)?.[1] ?? 0));
-  const n = Math.max(0, ...nums) + 1;
-  return { code: `${branch}-X${pad2(n)}`, name: `Xưởng ${pad2(n)}` };
-}
-
-/** Xưởng chọn được cho chuyền: xưởng đang dùng của nhà máy; xưởng hiện tại đã ngừng vẫn hiện để ô không trống */
-function workshopOptions(data: CatalogLines, branch: string, current: number | null) {
-  const list = data.workshops.filter((w) => w.branchCode === branch && (w.isActive || w.id === current)).sort(bySort);
-  return [
-    { value: NO_WORKSHOP, label: 'Không thuộc xưởng (thẳng dưới đơn vị cơ sở)' },
-    ...list.map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})${w.isActive ? '' : ', đã ngừng'}` })),
-  ];
-}
-
-function LineDialog({ line, data, defaultBranch, defaultWorkshop, onClose }: { line: CatalogLine | null; data: CatalogLines; defaultBranch?: string; defaultWorkshop?: number; onClose: () => void }) {
-  const branches = data.branches.filter((b) => b.isActive);
-  const firstBranch = defaultBranch ?? branches[0]?.code ?? '';
-  const suggest = nextLine(data.items, firstBranch);
-  const initialWorkshop = line ? line.workshopId : (defaultWorkshop ?? null);
-  // Chuyển chuyền sang xưởng khác đổi phạm vi dữ liệu của người được giao cả xưởng: máy chủ đòi quyền sửa phân quyền
-  const canMove = useCan('admin.permission:update');
-  const form = useForm({
-    initialValues: {
-      branchCode: line?.branchCode ?? firstBranch,
-      code: line?.code ?? suggest.code,
-      name: line?.name ?? suggest.name,
-      workshop: initialWorkshop === null ? NO_WORKSHOP : String(initialWorkshop),
-      sortOrder: (line?.sortOrder ?? '') as number | '',
-    },
-    validateInputOnBlur: true,
-    validate: {
-      branchCode: (v) => (v ? null : 'Chọn đơn vị cơ sở'),
-      code: (v, all) => (line || (/^[A-Z0-9-]{1,20}$/.test(v.trim().toUpperCase()) && v.trim().toUpperCase().startsWith(`${all.branchCode}-`)) ? null : `Mã bắt đầu bằng ${all.branchCode}-, gồm chữ không dấu, số, gạch ngang`),
-      name: (v) => (v.trim() ? null : 'Nhập tên chuyền'),
-    },
-  });
-  const save = useSave(onClose);
-  const submit = (v: typeof form.values) => {
-    const sortOrder = v.sortOrder === '' ? undefined : v.sortOrder;
-    const code = v.code.trim().toUpperCase();
-    const workshopId = v.workshop === NO_WORKSHOP ? null : Number(v.workshop);
-    if (line) {
-      // Chỉ gửi xưởng khi đổi: không đổi thì máy chủ không phải kiểm lại xưởng
-      const moved = workshopId !== line.workshopId ? { workshopId } : {};
-      const go = () => save.mutate({ method: 'PUT', path: `/admin/catalogs/lines/${line.id}`, body: { name: v.name.trim(), sortOrder, ...moved }, done: `Đã lưu chuyền ${line.code}.` });
-      if (!('workshopId' in moved)) return go();
-      const target = data.workshops.find((w) => w.id === workshopId);
-      confirmAction({
-        title: `Chuyển chuyền ${line.code} ${target ? `sang ${target.name} (${target.code})` : 'ra thẳng dưới đơn vị cơ sở'}?`,
-        consequence: MOVE_CONSEQUENCE,
-        confirmLabel: 'Chuyển chuyền',
-        onConfirm: go,
-      });
-    } else {
-      save.mutate({ method: 'POST', path: '/admin/catalogs/lines', body: { branchCode: v.branchCode, code, name: v.name.trim(), sortOrder, workshopId }, done: `Đã thêm chuyền ${code}.` });
-    }
-  };
-  useLeaveGuard(form.isDirty());
-  const close = () => confirmDiscard(form.isDirty(), onClose);
-  const moving = !!line && form.values.workshop !== (line.workshopId === null ? NO_WORKSHOP : String(line.workshopId));
-  return (
-    <Modal opened onClose={close} {...escapeToClose(close)} title={line ? `Sửa chuyền ${line.code}` : 'Thêm chuyền'}>
-      <form onSubmit={form.onSubmit(submit)}>
-        <Stack gap="sm">
-          <Select
-            label="Đơn vị cơ sở"
-            withAsterisk={!line}
-            data={branches.map((b) => ({ value: b.code, label: `${b.code} – ${b.name}` }))}
-            readOnly={!!line}
-            className={line ? 'field-readonly' : undefined}
-            description={line ? 'Chuyền không chuyển sang đơn vị cơ sở khác được.' : undefined}
-            allowDeselect={false}
-            {...form.getInputProps('branchCode')}
-            onChange={(v) => {
-              if (!v) return;
-              // Đổi nhà máy thì gợi ý lại mã, tên theo nhà máy mới (khi người dùng chưa tự sửa); xưởng của nhà máy cũ bỏ chọn
-              const before = nextLine(data.items, form.values.branchCode);
-              const after = nextLine(data.items, v);
-              form.setValues({
-                branchCode: v,
-                code: form.values.code === before.code ? after.code : form.values.code,
-                name: form.values.name === before.name ? after.name : form.values.name,
-                workshop: NO_WORKSHOP,
-              });
-            }}
-          />
-          <Select
-            label="Xưởng"
-            data={workshopOptions(data, form.values.branchCode, line?.workshopId ?? null)}
-            allowDeselect={false}
-            readOnly={!!line && !canMove}
-            className={line && !canMove ? 'field-readonly' : undefined}
-            description={
-              line && !canMove
-                ? 'Chuyển chuyền sang xưởng khác làm đổi phạm vi dữ liệu của người được giao cả xưởng, nên cần quyền sửa phân quyền.'
-                : moving
-                  ? MOVE_CONSEQUENCE
-                  : 'Xưởng gom chuyền để ô chọn chuyền, báo cáo dễ nhìn. Chưa chia xưởng thì để “Không thuộc xưởng”.'
-            }
-            {...form.getInputProps('workshop')}
-          />
-          <TextInput
-            label="Mã chuyền"
-            withAsterisk={!line}
-            description={line ? `${CODE_LOCKED} vì đã nằm trong kế hoạch và phân quyền.` : 'Không sửa được sau khi tạo.'}
-            readOnly={!!line}
-            className={line ? 'field-readonly' : undefined}
-            {...form.getInputProps('code')}
-            onChange={upper((v) => form.setFieldValue('code', v))}
-          />
-          <TextInput label="Tên chuyền" withAsterisk data-autofocus {...form.getInputProps('name')} />
-          <NumberInput label="Thứ tự" description="Bỏ trống: xếp cuối danh sách của đơn vị cơ sở." min={0} max={100000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
-          <Group justify="flex-end" mt="xs">
-            <Button variant="default" onClick={close}>Hủy</Button>
-            <Button type="submit" loading={save.isPending}>{line ? 'Lưu thay đổi' : 'Thêm chuyền'}</Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
-  );
-}
-
-function WorkshopDialog({ workshop, data, defaultBranch, onClose }: { workshop: CatalogWorkshop | null; data: CatalogLines; defaultBranch?: string; onClose: () => void }) {
-  const branches = data.branches.filter((b) => b.isActive);
-  const firstBranch = defaultBranch ?? branches[0]?.code ?? '';
-  const suggest = nextWorkshop(data.workshops, firstBranch);
-  const form = useForm({
-    initialValues: { branchCode: workshop?.branchCode ?? firstBranch, code: workshop?.code ?? suggest.code, name: workshop?.name ?? suggest.name, sortOrder: (workshop?.sortOrder ?? '') as number | '' },
-    validateInputOnBlur: true,
-    validate: {
-      branchCode: (v) => (v ? null : 'Chọn đơn vị cơ sở'),
-      code: (v, all) => (workshop || (/^[A-Z0-9-]{1,20}$/.test(v.trim().toUpperCase()) && v.trim().toUpperCase().startsWith(`${all.branchCode}-`)) ? null : `Mã bắt đầu bằng ${all.branchCode}-, gồm chữ không dấu, số, gạch ngang`),
-      name: (v) => (v.trim() ? null : 'Nhập tên xưởng'),
-    },
-  });
-  const save = useSave(onClose);
-  const submit = (v: typeof form.values) => {
-    const sortOrder = v.sortOrder === '' ? undefined : v.sortOrder;
-    const code = v.code.trim().toUpperCase();
-    const name = v.name.trim();
-    if (workshop) save.mutate({ method: 'PUT', path: `/admin/catalogs/workshops/${workshop.id}`, body: { name, sortOrder }, done: `Đã lưu ${name} (${workshop.code}).` });
-    else save.mutate({ method: 'POST', path: '/admin/catalogs/workshops', body: { branchCode: v.branchCode, code, name, sortOrder }, done: `Đã thêm ${name} (${code}).` });
-  };
-  useLeaveGuard(form.isDirty());
-  const close = () => confirmDiscard(form.isDirty(), onClose);
-  return (
-    <Modal opened onClose={close} {...escapeToClose(close)} title={workshop ? `Sửa ${workshop.name} (${workshop.code})` : 'Thêm xưởng'}>
-      <form onSubmit={form.onSubmit(submit)}>
-        <Stack gap="sm">
-          <Select
-            label="Đơn vị cơ sở"
-            withAsterisk={!workshop}
-            data={branches.map((b) => ({ value: b.code, label: `${b.code} – ${b.name}` }))}
-            readOnly={!!workshop}
-            className={workshop ? 'field-readonly' : undefined}
-            description={workshop ? 'Xưởng không chuyển sang đơn vị cơ sở khác được.' : undefined}
-            allowDeselect={false}
-            {...form.getInputProps('branchCode')}
-            onChange={(v) => {
-              if (!v) return;
-              const before = nextWorkshop(data.workshops, form.values.branchCode);
-              const after = nextWorkshop(data.workshops, v);
-              form.setValues({ branchCode: v, code: form.values.code === before.code ? after.code : form.values.code, name: form.values.name === before.name ? after.name : form.values.name });
-            }}
-          />
-          <TextInput
-            label="Mã xưởng"
-            withAsterisk={!workshop}
-            description={workshop ? `${CODE_LOCKED} vì đã nằm trong phân quyền theo cả xưởng.` : 'Không sửa được sau khi tạo.'}
-            readOnly={!!workshop}
-            className={workshop ? 'field-readonly' : undefined}
-            {...form.getInputProps('code')}
-            onChange={upper((v) => form.setFieldValue('code', v))}
-          />
-          <TextInput label="Tên xưởng" withAsterisk data-autofocus {...form.getInputProps('name')} />
-          <NumberInput label="Thứ tự" description="Bỏ trống: xếp cuối các xưởng của đơn vị cơ sở." min={0} max={100000} allowDecimal={false} {...form.getInputProps('sortOrder')} />
-          {!workshop && <Text size="sm" c="dimmed">Thêm xưởng xong, bấm dấu cộng trên dòng xưởng để thêm chuyền, hoặc sửa chuyền có sẵn để chuyển vào xưởng.</Text>}
-          <Group justify="flex-end" mt="xs">
-            <Button variant="default" onClick={close}>Hủy</Button>
-            <Button type="submit" loading={save.isPending}>{workshop ? 'Lưu thay đổi' : 'Thêm xưởng'}</Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
+    <Alert variant="light" color="gray" role="note" maw={640}>
+      Chuyền may không còn ở Danh mục hệ thống. Chuyền là bộ phận được tích “Xưởng sản xuất” ở{' '}
+      {canOpen ? <Anchor component={Link} to="/hr/org-chart" size="sm">Sơ đồ tổ chức</Anchor> : 'Nhân sự › Sơ đồ tổ chức'}.
+    </Alert>
   );
 }
 
@@ -825,9 +383,9 @@ function FactoriesPane({ info }: { info: MesCatalog }) {
     queryFn: () => api<AdminFactory[]>(`/admin/catalogs/factories${qs({ q: debounced || undefined })}`),
     placeholderData: keepPreviousData,
   });
-  // Danh sách ĐVCS (kể cả đang tắt, để hiện đúng tên) lấy cùng nguồn với khung Chuyền may
-  const lines = useQuery(LINES_QUERY);
-  const branches = lines.data?.branches ?? [];
+  // Danh sách ĐVCS (kể cả đang tắt, để hiện đúng tên) đi kèm tổng quan danh mục: cùng khóa nên dùng lại kết quả trang đã tải
+  const overview = useQuery(OVERVIEW_QUERY);
+  const branches = overview.data?.branches ?? [];
   const [dialog, setDialog] = useState<AdminFactory | 'create' | null>(null);
   const save = useSave();
   const all = q.data ?? [];
@@ -855,7 +413,6 @@ function FactoriesPane({ info }: { info: MesCatalog }) {
         </Group>
       </PaneHead>
       <PaneError query={q} what="danh mục nhà máy SX" />
-      <PaneError query={lines} what="danh sách đơn vị cơ sở (ô Đơn vị cơ sở trong popup cần danh sách này)" />
       <div className="table-frame">
         <table className="dense-table">
           <thead>
@@ -903,12 +460,12 @@ function FactoriesPane({ info }: { info: MesCatalog }) {
           </tbody>
         </table>
       </div>
-      {dialog && <FactoryDialog factory={dialog === 'create' ? null : dialog} canScope={canScope} branches={branches} branchesLoading={lines.isPending} defaultBranch={branch && branch !== '-' ? branch : undefined} onClose={() => setDialog(null)} />}
+      {dialog && <FactoryDialog factory={dialog === 'create' ? null : dialog} canScope={canScope} branches={branches} branchesLoading={overview.isPending} defaultBranch={branch && branch !== '-' ? branch : undefined} onClose={() => setDialog(null)} />}
     </>
   );
 }
 
-function FactoryDialog({ factory, canScope, branches, branchesLoading, defaultBranch, onClose }: { factory: AdminFactory | null; canScope: boolean; branches: CatalogLines['branches']; branchesLoading: boolean; defaultBranch?: string; onClose: () => void }) {
+function FactoryDialog({ factory, canScope, branches, branchesLoading, defaultBranch, onClose }: { factory: AdminFactory | null; canScope: boolean; branches: CatalogOverview['branches']; branchesLoading: boolean; defaultBranch?: string; onClose: () => void }) {
   const form = useForm({
     initialValues: {
       code: factory?.code ?? '',

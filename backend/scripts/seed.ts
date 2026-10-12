@@ -19,13 +19,11 @@ import {
   FULL_ACCESS_ROLE,
   fullAccessLetters,
   LETTER,
-  LINE_COUNT,
   ROLE_ORDER,
   branches,
   catalogs,
   catalogSeedItems,
   groups,
-  lineCode,
   resourceFields,
   resources,
   roleFieldPolicies,
@@ -35,10 +33,6 @@ import {
   users,
   prepSteps,
   productionFactories,
-  WORKSHOPS,
-  workshopCode,
-  workshopName,
-  workshopOfLine,
 } from './seed-data';
 import { syncBranchesFromBravo } from './bravo-branches';
 import { seedHrIfReady } from './hr-data';
@@ -242,87 +236,20 @@ export async function runSeed({
       }
     }
 
-    // 6. Cây tổ chức: nút nhà máy, xưởng, chuyền giả (Code cấm sửa; Path = Path cha + Code + '/'; ADR 0010).
-    // Xưởng mẫu chỉ tạo khi nhà máy chưa có xưởng nào (database mới, hoặc seed trước MES_Core/0005): xưởng vừa tạo nhận các chuyền
-    // mẫu của nó đang nằm thẳng dưới nhà máy. Nhà máy đã có xưởng đang dùng (mẫu hay tự chia ở màn Danh mục hệ thống) thì giữ nguyên
-    // cách chia. Chỉ tính xưởng đang dùng: reset-demo ngừng xưởng tạo thêm, nếu xưởng mẫu chưa có thì seed sau đó vẫn tạo được.
+    // 6. Cây tổ chức: chỉ nút gốc FACTORY của mỗi ĐVCS (Code cấm sửa; Path = '/' + Code + '/'; ADR 0010), phạm vi theo ĐVCS
+    // dùng nút này. Chuyền may là bộ phận tích "Xưởng sản xuất" ở MES_Hr (phase 5.10): seedHr nạp xưởng, chuyền mẫu; không tạo
+    // nút Xưởng, Chuyền ở SysOrgUnit nữa (nút cũ trên database đã cài giữ nguyên, MES_Core/0009 ngừng dùng).
     const orgId = new Map<string, number>();
-    // SysOrgUnit có trigger kiểm Path (MES_Core/0006): SQL Server không cho INSERT ... OUTPUT trên bảng có trigger, nên thêm rồi đọc lại theo mã
-    const addNode = async (values: Record<string, unknown>) => {
-      await db.insertInto('SysOrgUnit').values(values as any).execute();
-      return db.selectFrom('SysOrgUnit').select(['Id', 'Path']).where('Code', '=', values.Code as string).executeTakeFirstOrThrow();
-    };
     // Chỉ ĐVCS đang có (máy không dữ liệu mẫu chỉ có ĐVCS chép từ BRAVO): SysOrgUnit.BranchCode có khóa ngoại tới SysBranch
     for (const b of branches.filter((x) => !x.isAggregate && branchId.has(x.code))) {
       let f = await db.selectFrom('SysOrgUnit').select('Id').where('Code', '=', b.code).executeTakeFirst();
       if (!f) {
-        f = await addNode({ Code: b.code, Name: b.name, OrgType: 'FACTORY', ParentId: null, ParentOrgType: null, BranchCode: b.code, Path: `/${b.code}/`, SortOrder: b.sort, IsActive: true, IsSystem: true });
+        // SysOrgUnit có trigger kiểm Path (MES_Core/0006): SQL Server không cho INSERT ... OUTPUT trên bảng có trigger, nên thêm rồi đọc lại theo mã
+        await db.insertInto('SysOrgUnit').values({ Code: b.code, Name: b.name, OrgType: 'FACTORY', ParentId: null, ParentOrgType: null, BranchCode: b.code, Path: `/${b.code}/`, SortOrder: b.sort, IsActive: true, IsSystem: true } as any).execute();
+        f = await db.selectFrom('SysOrgUnit').select('Id').where('Code', '=', b.code).executeTakeFirstOrThrow();
         bump('đơn vị tổ chức');
       }
       orgId.set(b.code, f.Id);
-      const anyWorkshop = await db.selectFrom('SysOrgUnit').select('Id').where('OrgType', '=', 'WORKSHOP').where('BranchCode', '=', b.code).where('IsActive', '=', true).executeTakeFirst();
-      if (!anyWorkshop) {
-        for (const [i, range] of (WORKSHOPS[b.code] ?? []).entries()) {
-          const code = workshopCode(b.code, i + 1);
-          // Xưởng mẫu đã có nhưng đang ngừng, hoặc mã đã bị một chuyền tự tạo dùng mất: bỏ qua xưởng này (chuyền của nó nằm
-          // thẳng dưới nhà máy)
-          const taken = await db.selectFrom('SysOrgUnit').select('OrgType').where('Code', '=', code).executeTakeFirst();
-          if (taken) {
-            console.warn(
-              taken.OrgType === 'WORKSHOP'
-                ? `Bỏ qua xưởng mẫu ${code}: xưởng đang ngừng dùng (bật lại ở Danh mục hệ thống › Chuyền may nếu cần).`
-                : `Bỏ qua xưởng mẫu ${code}: mã đã dùng cho một đơn vị loại ${taken.OrgType}.`,
-            );
-            continue;
-          }
-          const created = await addNode({ Code: code, Name: workshopName(i + 1), OrgType: 'WORKSHOP', ParentId: f.Id, ParentOrgType: 'FACTORY', BranchCode: b.code, Path: `/${b.code}/${code}/`, SortOrder: i + 1, IsActive: true, IsSystem: true });
-          bump('đơn vị tổ chức');
-          for (let n = range.from; n <= range.to; n++) {
-            const lc = lineCode(b.code, n);
-            const moved = await db
-              .updateTable('SysOrgUnit')
-              .set({ ParentId: created.Id, ParentOrgType: 'WORKSHOP', Path: `${created.Path}${lc}/`, ModifiedAt: new Date() })
-              .where('Code', '=', lc)
-              .where('OrgType', '=', 'LINE')
-              .where('ParentId', '=', f.Id)
-              .executeTakeFirst();
-            if (Number(moved.numUpdatedRows)) bump('chuyển chuyền vào xưởng mẫu', Number(moved.numUpdatedRows));
-          }
-        }
-      }
-      // Chuyền mẫu còn thiếu vào xưởng mẫu của nó khi xưởng đó có và đang dùng (chuyền đang dùng phải ở xưởng đang dùng)
-      const workshops = new Map(
-        (await db.selectFrom('SysOrgUnit').select(['Id', 'Code', 'Path']).where('OrgType', '=', 'WORKSHOP').where('BranchCode', '=', b.code).where('IsActive', '=', true).execute()).map((w) => [w.Code, w]),
-      );
-      for (const w of workshops.values()) orgId.set(w.Code, w.Id);
-      for (let n = 1; n <= (LINE_COUNT[b.code] ?? 0); n++) {
-        const code = lineCode(b.code, n);
-        const taken = await db.selectFrom('SysOrgUnit').select(['Id', 'OrgType']).where('Code', '=', code).executeTakeFirst();
-        // Mã chuyền mẫu đã bị một xưởng tự tạo dùng mất (API chỉ kiểm tiền tố nhà máy): bỏ qua, không lấy Id xưởng làm chuyền
-        if (taken && taken.OrgType !== 'LINE') {
-          console.warn(`Bỏ qua chuyền mẫu ${code}: mã đã dùng cho một đơn vị loại ${taken.OrgType}.`);
-          continue;
-        }
-        let l: { Id: number } | undefined = taken;
-        if (!l) {
-          const k = workshopOfLine(b.code, n);
-          const w = k ? workshops.get(workshopCode(b.code, k)) : undefined;
-          l = await addNode({
-            Code: code,
-            Name: `Chuyền ${String(n).padStart(2, '0')}`,
-            OrgType: 'LINE',
-            ParentId: w ? w.Id : f.Id,
-            ParentOrgType: w ? 'WORKSHOP' : 'FACTORY',
-            BranchCode: b.code,
-            Path: w ? `${w.Path}${code}/` : `/${b.code}/${code}/`,
-            SortOrder: n,
-            IsActive: true,
-            IsSystem: true,
-          });
-          bump('đơn vị tổ chức');
-        }
-        orgId.set(code, l.Id);
-      }
     }
 
     // 6b. Danh mục hệ thống: loại danh mục, mục và ca làm việc còn thiếu (không ghi đè thay đổi ở màn Danh mục hệ thống)

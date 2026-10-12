@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { sql, type Kysely, type Transaction } from 'kysely';
 import { bootstrapFullAccess, runSeed } from '../scripts/seed';
+import { LINE_COUNT, lineCode } from '../scripts/seed-data';
 import { env } from '../src/config/env';
 import type { CoreDatabase } from '../src/platform/database/core.types';
 import { createDb } from '../src/platform/database/db';
@@ -34,6 +35,25 @@ describe('Seed chạy lại', () => {
     const group = await core.selectFrom('SysMenu').select('Id').where('Code', '=', 'menu.order').executeTakeFirstOrThrow();
     const leaves = await core.selectFrom('SysMenu').select('Path').where('ParentId', '=', group.Id).orderBy('SortOrder').orderBy('Id').execute();
     expect(leaves.slice(0, 3).map((m) => m.Path)).toEqual(['/order/info', '/order/po-allocation', '/order/shipment']);
+  });
+
+  it('cây tổ chức chỉ còn nút gốc FACTORY của ĐVCS: seed không tạo nút Xưởng, Chuyền (chuyền may là bộ phận ở MES_Hr, phase 5.10)', async () => {
+    const oldNodes = async () => Number((await core.selectFrom('SysOrgUnit').select(sql<number>`COUNT(*)`.as('n')).where('OrgType', 'in', ['WORKSHOP', 'LINE']).executeTakeFirstOrThrow()).n);
+    // Như database đã cài trước 5.10 mà thiếu một chuyền mẫu: seed cũ tạo lại chuyền mẫu còn thiếu, seed mới thì không. Chuyền mẫu
+    // cuối của A03 nằm thẳng dưới nhà máy (không là cha); còn phạm vi trỏ tới thì để nguyên
+    const probe = lineCode('A03', LINE_COUNT.A03);
+    const node = await core.selectFrom('SysOrgUnit').select('Id').where('Code', '=', probe).where('OrgType', '=', 'LINE').executeTakeFirst();
+    const held = node && (await core.selectFrom('SysUserRoleScope').select('Id').where('OrgUnitId', '=', node.Id).executeTakeFirst());
+    if (node && !held) await core.deleteFrom('SysOrgUnit').where('Id', '=', node.Id).execute();
+    const before = await oldNodes();
+
+    await runSeed({ coreOnly: true });
+
+    expect(await oldNodes()).toBe(before);
+    if (!held) expect(await core.selectFrom('SysOrgUnit').select('Id').where('Code', '=', probe).executeTakeFirst()).toBeUndefined();
+    // Nút gốc của ĐVCS mẫu còn: phạm vi theo ĐVCS (chiều FACTORY) dùng các nút này
+    const factories = await core.selectFrom('SysOrgUnit').select(['Code', 'Path', 'ParentId', 'BranchCode', 'IsActive']).where('OrgType', '=', 'FACTORY').where('Code', 'in', ['A01', 'A02', 'A03']).orderBy('Code').execute();
+    expect(factories).toEqual(['A01', 'A02', 'A03'].map((c) => ({ Code: c, Path: `/${c}/`, ParentId: null, BranchCode: c, IsActive: true })));
   });
 
   describe('vai trò Toàn quyền (ADR 0014)', () => {

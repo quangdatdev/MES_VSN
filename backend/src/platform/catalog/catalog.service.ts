@@ -1,12 +1,11 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
-import { sql, type Insertable, type Updateable } from 'kysely';
+import { sql, type Updateable } from 'kysely';
 import { AppException, Errors } from '../../common/app.exception';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
-import type { SysCatalogItemTable, SysOrgUnitTable, SysProductionFactoryTable, SysShiftTable } from '../database/core.types';
+import type { SysCatalogItemTable, SysProductionFactoryTable, SysShiftTable } from '../database/core.types';
 import { CORE_DB, type CoreDb } from '../database/database.module';
-import { OrgService } from '../org/org.service';
 import { PermissionService } from '../permission/permission.service';
 import { OSM_FACTORY_SOURCE } from '../sync/bravo-order-source';
 import { SyncService } from '../sync/sync.service';
@@ -17,19 +16,14 @@ import {
   CatalogItemUpdateDto,
   FactoryCreateDto,
   FactoryUpdateDto,
-  LineCreateDto,
-  LineUpdateDto,
   ShiftCreateDto,
   ShiftUpdateDto,
-  WorkshopCreateDto,
-  WorkshopUpdateDto,
 } from './catalog.dto';
 
 /** Mẫu LIKE "chứa chuỗi": thoát %, _, [ để người dùng gõ ký tự này vẫn tìm đúng chữ. */
 const containsLike = (s: string) => `%${s.replace(/[%_[]/g, (c) => `[${c}]`)}%`;
 
 const invalid = (msg: string) => new AppException('VALIDATION_FAILED', msg, 422);
-const TREE_LOCK = 'MES_Core.SysOrgUnit';
 /** Trùng chỉ mục duy nhất: hai người tạo cùng mã cùng lúc (lần kiểm trước khi ghi không chặn được) */
 const isDuplicate = (e: unknown) => sqlErrorNumbers(e).some((n) => n === 2601 || n === 2627);
 async function unique<T>(work: () => Promise<T>, message: string): Promise<T> {
@@ -52,9 +46,10 @@ const shiftMinutes = (start: string, end: string) => (minutesOf(end) - minutesOf
 const NAME_MAX: Record<string, number> = { UNIT: 20 };
 
 /**
- * Danh mục hệ thống (Phase 5.4). Danh mục MES (chuyền may, ca làm việc, danh mục mã-tên trong SysCatalog) thêm, sửa,
+ * Danh mục hệ thống (Phase 5.4). Danh mục MES (nhà máy SX, ca làm việc, danh mục mã-tên trong SysCatalog) thêm, sửa,
  * ngừng dùng được; không xóa vật lý, mã không sửa được. Danh mục chép từ BRAVO chỉ xem, đọc qua lớp đồng bộ (ADR 0007).
  * Dùng chung toàn công ty, không theo nhà máy, không đi qua BaseRepository (như các bảng Sys* khác).
+ * Chuyền may không còn ở đây (phase 5.10): chuyền là bộ phận tích "Xưởng sản xuất" của module Nhân sự.
  */
 @Injectable()
 export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
@@ -64,7 +59,6 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     @Inject(CORE_DB) private readonly db: CoreDb,
     private readonly audit: AuditService,
     private readonly permissions: PermissionService,
-    private readonly org: OrgService,
     private readonly sync: SyncService,
     private readonly lookup: CatalogLookupService,
   ) {}
@@ -89,7 +83,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
   // ---------------- Tổng quan ----------------
 
   async overview() {
-    const [catalogs, lines, shifts, factories] = await Promise.all([
+    const [catalogs, shifts, factories, branches] = await Promise.all([
       this.db
         .selectFrom('SysCatalog as c')
         .leftJoin('SysCatalogItem as i', 'i.CatalogId', 'c.Id')
@@ -100,11 +94,6 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
         .orderBy('c.Code')
         .execute(),
       this.db
-        .selectFrom('SysOrgUnit')
-        .select([sql<number>`COUNT(*)`.as('Total'), sql<number>`SUM(CASE WHEN IsActive = 1 THEN 1 ELSE 0 END)`.as('Active')])
-        .where('OrgType', '=', 'LINE')
-        .executeTakeFirstOrThrow(),
-      this.db
         .selectFrom('SysShift')
         .select([sql<number>`COUNT(*)`.as('Total'), sql<number>`SUM(CASE WHEN IsActive = 1 THEN 1 ELSE 0 END)`.as('Active')])
         .executeTakeFirstOrThrow(),
@@ -112,6 +101,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
         .selectFrom('SysProductionFactory')
         .select([sql<number>`COUNT(*)`.as('Total'), sql<number>`SUM(CASE WHEN IsActive = 1 THEN 1 ELSE 0 END)`.as('Active')])
         .executeTakeFirstOrThrow(),
+      this.db.selectFrom('SysBranch').select(['Code', 'Name', 'IsActive']).where('IsAggregate', '=', false).orderBy('SortOrder').orderBy('Code').execute(),
     ]);
     const count = (r: { Total: number; Active: number | null }) => ({ total: Number(r.Total), active: Number(r.Active ?? 0) });
     // Danh mục BRAVO đọc qua MES_Sync: chưa có database đồng bộ thì vẫn trả danh mục MES, kèm lý do
@@ -126,13 +116,6 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     return {
       mes: [
         {
-          code: 'LINE',
-          kind: 'line',
-          name: 'Chuyền may',
-          description: 'Xưởng và chuyền của từng đơn vị cơ sở. Chuyền dùng ở Xếp chuyền, Phân bổ màu cỡ và phạm vi phân quyền; xưởng gom chuyền để ô chọn, báo cáo dễ nhìn.',
-          ...count(lines),
-        },
-        {
           code: 'PROD_FACTORY',
           kind: 'factory',
           name: 'Nhà máy SX',
@@ -144,278 +127,10 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
       ],
       external,
       externalError,
-    };
-  }
-
-  // ---------------- Xưởng, chuyền may (cây SysOrgUnit: Nhà máy → Xưởng → Chuyền, ADR 0010) ----------------
-
-  /**
-   * Cây xưởng, chuyền. Có `q` hoặc `branch` thì lọc trên máy chủ: chỉ nhà máy đó; tìm (LIKE trong DB) trúng xưởng thì
-   * hiện cả xưởng, trúng chuyền thì hiện chuyền kèm xưởng chứa nó. Số chuyền đang dùng của xưởng luôn đếm trên mọi
-   * chuyền (khóa nút ngừng xưởng dựa vào số này). Danh sách nhà máy luôn đủ (nút chọn nhà máy).
-   */
-  async lines(filter: { q?: string; branch?: string } = {}) {
-    const q = filter.q?.trim();
-    let nodes = this.db.selectFrom('SysOrgUnit').where('OrgType', 'in', ['WORKSHOP', 'LINE']);
-    if (filter.branch) nodes = nodes.where('BranchCode', '=', filter.branch);
-    const [branches, rows, hits] = await Promise.all([
-      this.db.selectFrom('SysBranch').select(['Code', 'Name', 'IsActive']).where('IsAggregate', '=', false).orderBy('SortOrder').orderBy('Code').execute(),
-      nodes.select(['Id', 'Code', 'Name', 'OrgType', 'ParentId', 'ParentOrgType', 'BranchCode', 'SortOrder', 'IsActive']).orderBy('BranchCode').orderBy('SortOrder').orderBy('Code').execute(),
-      q
-        ? nodes
-            .select('Id')
-            .where((eb) => eb.or([eb('Code', 'like', containsLike(q)), eb('Name', 'like', containsLike(q))]))
-            .execute()
-        : null,
-    ]);
-    const lines = rows.filter((r) => r.OrgType === 'LINE');
-    const hit = hits ? new Set(hits.map((h) => h.Id)) : null;
-    const workshopOf = (l: (typeof rows)[number]) => (l.ParentOrgType === 'WORKSHOP' ? l.ParentId : null);
-    const shownLine = (l: (typeof rows)[number]) => !hit || hit.has(l.Id) || (workshopOf(l) !== null && hit.has(workshopOf(l)!));
-    const shownWorkshop = (w: (typeof rows)[number]) => !hit || hit.has(w.Id) || lines.some((l) => workshopOf(l) === w.Id && hit.has(l.Id));
-    return {
+      // ĐVCS (kể cả đang tắt, để hiện đúng tên) cho ô lọc và ô chọn ĐVCS của Nhà máy SX: cùng quyền xem danh mục, không đòi
+      // quyền xem màn Đơn vị cơ sở
       branches: branches.map((b) => ({ code: b.Code, name: b.Name, isActive: !!b.IsActive })),
-      workshops: rows
-        .filter((r) => r.OrgType === 'WORKSHOP' && shownWorkshop(r))
-        .map((w) => ({
-          id: w.Id,
-          code: w.Code,
-          name: w.Name,
-          branchCode: w.BranchCode,
-          sortOrder: w.SortOrder,
-          isActive: !!w.IsActive,
-          activeLines: lines.filter((l) => l.ParentId === w.Id && l.IsActive).length,
-        })),
-      items: lines.filter(shownLine).map((r) => ({
-        id: r.Id,
-        code: r.Code,
-        name: r.Name,
-        branchCode: r.BranchCode,
-        workshopId: r.ParentOrgType === 'WORKSHOP' ? r.ParentId : null,
-        sortOrder: r.SortOrder,
-        isActive: !!r.IsActive,
-      })),
     };
-  }
-
-  /** Nhà máy nhận xưởng, chuyền mới: nhà máy thật đang dùng; mã bắt đầu bằng mã nhà máy, chưa nút nào dùng */
-  private async branchFor(dto: { branchCode: string; code: string }, what: 'chuyền' | 'xưởng', example: string) {
-    const branch = await this.db.selectFrom('SysBranch').select(['Code', 'Name', 'IsActive', 'IsAggregate']).where('Code', '=', dto.branchCode).executeTakeFirst();
-    if (!branch || branch.IsAggregate) throw Errors.notFound('Không có nhà máy này.');
-    if (!branch.IsActive) throw Errors.conflict(`Nhà máy đang tắt, bật lại nhà máy trước khi thêm ${what}.`);
-    // Mã chuyền là khóa ngầm trong dữ liệu nghiệp vụ (ShipmentPlanLine.LineCode); mã mọi nút nằm trong Path nên duy nhất toàn công ty
-    if (!dto.code.startsWith(`${dto.branchCode}-`)) throw invalid(`Mã ${what} bắt đầu bằng mã nhà máy, ví dụ ${dto.branchCode}-${example}.`);
-    const used = await this.db.selectFrom('SysOrgUnit').select('Id').where('Code', '=', dto.code).executeTakeFirst();
-    if (used) throw Errors.conflict(`Mã ${dto.code} đã được dùng.`);
-    return branch;
-  }
-
-  /**
-   * Các thay đổi cây chạy nối tiếp: quy tắc "chuyền đang dùng thì xưởng của nó đang dùng" kiểm trong transaction, nên một người
-   * ngừng xưởng cùng lúc người khác chuyển chuyền vào xưởng đó không lách qua được.
-   */
-  private async lockTree(trx: CoreDb) {
-    const r = await sql<{ r: number }>`DECLARE @r INT; EXEC @r = sp_getapplock @Resource = ${TREE_LOCK}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000; SELECT @r AS r`.execute(trx);
-    if ((r.rows[0]?.r ?? -1) < 0) throw Errors.conflict('Có người khác đang sửa danh mục chuyền, thử lại sau.');
-  }
-
-  /**
-   * Thêm một nút cây rồi đọc lại Id, Path theo mã (duy nhất). Không dùng OUTPUT: SysOrgUnit có trigger kiểm Path (MES_Core/0006),
-   * mà SQL Server không cho OUTPUT không kèm INTO trên bảng có trigger.
-   */
-  private async insertNode(trx: CoreDb, values: Insertable<SysOrgUnitTable>) {
-    await trx.insertInto('SysOrgUnit').values(values).execute();
-    return trx.selectFrom('SysOrgUnit').select(['Id', 'Path']).where('Code', '=', values.Code).executeTakeFirstOrThrow();
-  }
-
-  /** Nút nhà máy của cây; nhà máy thêm sau seed chưa có nút này thì tạo luôn */
-  private async factoryNode(trx: CoreDb, branch: { Code: string; Name: string }, actor: AuthUser) {
-    const factory = await trx.selectFrom('SysOrgUnit').select(['Id', 'Path']).where('OrgType', '=', 'FACTORY').where('BranchCode', '=', branch.Code).executeTakeFirst();
-    if (factory) return factory;
-    return this.insertNode(trx, { Code: branch.Code, Name: branch.Name, OrgType: 'FACTORY', ParentId: null, ParentOrgType: null, BranchCode: branch.Code, Path: `/${branch.Code}/`, SortOrder: 0, IsActive: true, IsSystem: false, CreatedBy: actor.userId });
-  }
-
-  /** Cha của chuyền: xưởng đang dùng của đúng nhà máy, hoặc nút nhà máy khi không chọn xưởng */
-  private async lineParent(trx: CoreDb, branchCode: string, workshopId: number | null, factory: () => Promise<{ Id: number; Path: string }>) {
-    if (workshopId === null) return { ...(await factory()), OrgType: 'FACTORY' as const, Code: null };
-    const w = await trx.selectFrom('SysOrgUnit').select(['Id', 'Code', 'Name', 'Path', 'BranchCode', 'IsActive']).where('Id', '=', workshopId).where('OrgType', '=', 'WORKSHOP').executeTakeFirst();
-    if (!w || w.BranchCode !== branchCode) throw invalid(`Xưởng đã chọn không thuộc nhà máy ${branchCode}.`);
-    if (!w.IsActive) throw Errors.conflict(`${w.Name} (${w.Code}) đang ngừng dùng, bật lại xưởng trước.`);
-    return { Id: w.Id, Path: w.Path, OrgType: 'WORKSHOP' as const, Code: w.Code };
-  }
-
-  /**
-   * Chuyền mới nằm dưới xưởng đã chọn hoặc thẳng dưới nhà máy. Cây tổ chức nằm trong quyền đã tính sẵn (phạm vi theo cả nhánh):
-   * tăng phiên bản quyền để tính lại.
-   */
-  async createLine(actor: AuthUser, dto: LineCreateDto) {
-    const branch = await this.branchFor(dto, 'chuyền', 'L01');
-    const id = await unique(
-      () =>
-        this.db.transaction().execute(async (trx) => {
-          await this.lockTree(trx);
-          const parent = await this.lineParent(trx, branch.Code, dto.workshopId ?? null, () => this.factoryNode(trx, branch, actor));
-          const max = await trx.selectFrom('SysOrgUnit').select((eb) => eb.fn.max('SortOrder').as('m')).where('OrgType', '=', 'LINE').where('BranchCode', '=', branch.Code).executeTakeFirst();
-          const row = await this.insertNode(trx, {
-            Code: dto.code,
-            Name: dto.name,
-            OrgType: 'LINE',
-            ParentId: parent.Id,
-            ParentOrgType: parent.OrgType,
-            BranchCode: branch.Code,
-            Path: `${parent.Path}${dto.code}/`,
-            SortOrder: dto.sortOrder ?? (max?.m ?? 0) + 1,
-            IsActive: true,
-            IsSystem: false,
-            CreatedBy: actor.userId,
-          });
-          await this.permissions.bumpVersion(trx);
-          await this.audit.logStrict(this.entry(actor, 'SysOrgUnit', row.Id, 'LINE_CREATE', undefined, { code: dto.code, name: dto.name, branchCode: branch.Code, workshop: parent.Code }), trx);
-          return row.Id;
-        }),
-      `Mã ${dto.code} đã được dùng.`,
-    );
-    this.permissions.clearCache();
-    this.org.invalidate();
-    return { id };
-  }
-
-  /**
-   * Đổi tên, thứ tự, xưởng, ngừng dùng chuyền. Ngừng dùng: chuyền không còn trong ô chọn khi xếp việc mới, người được giao phạm vi
-   * theo chuyền này mất dữ liệu của chuyền (quyền tính lại ngay); dòng đã xếp vào chuyền vẫn giữ, vẫn sửa được.
-   * Chuyển xưởng: mã chuyền giữ nguyên nên dữ liệu đã xếp không đổi; người được giao cả xưởng cũ mất chuyền này, cả xưởng mới thì
-   * thấy và sửa được dữ liệu của chuyền. Đó là đổi phạm vi dữ liệu nên cần quyền sửa phân quyền, và người đang được giao cả xưởng
-   * cũ hay mới không tự làm được (như không tự sửa phạm vi của mình ở màn Phân quyền).
-   */
-  async updateLine(actor: AuthUser, id: number, dto: LineUpdateDto) {
-    let scopeChanged = false;
-    let changed = false;
-    await this.db.transaction().execute(async (trx) => {
-      await this.lockTree(trx);
-      const before = await trx
-        .selectFrom('SysOrgUnit as l')
-        .leftJoin('SysOrgUnit as p', 'p.Id', 'l.ParentId')
-        .select(['l.Code', 'l.Name', 'l.SortOrder', 'l.IsActive', 'l.ParentId', 'l.ParentOrgType', 'l.BranchCode', 'l.Path', 'p.Code as ParentCode'])
-        .where('l.Id', '=', id)
-        .where('l.OrgType', '=', 'LINE')
-        .executeTakeFirst();
-      if (!before) throw Errors.notFound('Không tìm thấy chuyền.');
-      if (dto.code !== undefined && dto.code !== before.Code) throw Errors.codeImmutable();
-      const set: Updateable<SysOrgUnitTable> = {};
-      if (dto.name !== undefined) set.Name = dto.name;
-      if (dto.sortOrder !== undefined) set.SortOrder = dto.sortOrder;
-      if (dto.isActive !== undefined) set.IsActive = dto.isActive;
-      const workshopBefore = before.ParentOrgType === 'WORKSHOP' ? before.ParentId : null;
-      const workshopAfter = dto.workshopId === undefined ? workshopBefore : dto.workshopId;
-      const moving = workshopAfter !== workshopBefore;
-      let workshopCode: string | null = null;
-      if (moving) await this.assertCanMove(trx, actor, [workshopBefore, workshopAfter]);
-      // Chuyền đang dùng thì xưởng của nó đang dùng: kiểm khi chuyển xưởng và khi bật lại chuyền
-      if (moving || dto.isActive === true) {
-        const factory = () => trx.selectFrom('SysOrgUnit').select(['Id', 'Path']).where('OrgType', '=', 'FACTORY').where('BranchCode', '=', before.BranchCode).executeTakeFirstOrThrow();
-        const parent = await this.lineParent(trx, before.BranchCode, workshopAfter, factory);
-        if (moving) Object.assign(set, { ParentId: parent.Id, ParentOrgType: parent.OrgType, Path: `${parent.Path}${before.Code}/` });
-        workshopCode = parent.Code;
-      }
-      if (!Object.keys(set).length) return;
-      changed = true;
-      // Tên, thứ tự không có trong quyền đã tính: chỉ bật/tắt và chuyển xưởng mới tăng phiên bản quyền
-      scopeChanged = dto.isActive !== undefined || moving;
-      await trx.updateTable('SysOrgUnit').set({ ...set, ModifiedAt: new Date(), ModifiedBy: actor.userId }).where('Id', '=', id).execute();
-      if (scopeChanged) await this.permissions.bumpVersion(trx);
-      // Nhật ký ghi mã xưởng cũ, mới (không chỉ Id) để đọc được chuyền chuyển từ đâu sang đâu
-      const workshopOf = before.ParentOrgType === 'WORKSHOP' ? before.ParentCode : null;
-      const old = { Name: before.Name, SortOrder: before.SortOrder, IsActive: before.IsActive, Workshop: workshopOf, Path: before.Path };
-      const shown: Record<string, unknown> = { ...set };
-      delete shown.ParentId;
-      delete shown.ParentOrgType;
-      await this.audit.logStrict(this.entry(actor, 'SysOrgUnit', id, 'LINE_UPDATE', old, moving ? { ...shown, Workshop: workshopCode } : shown), trx);
-    });
-    if (scopeChanged) this.permissions.clearCache();
-    if (changed) this.org.invalidate();
-  }
-
-  /**
-   * Chuyển chuyền giữa xưởng đổi phạm vi dữ liệu của người được giao cả xưởng (ORG_SUBTREE theo Path) mà không qua màn Phân quyền:
-   * người thao tác phải có quyền sửa phân quyền, và không được đang giữ phạm vi cả xưởng cũ hay mới (tự nới phạm vi của mình).
-   */
-  private async assertCanMove(trx: CoreDb, actor: AuthUser, workshopIds: (number | null)[]) {
-    await this.permissions.assertAdminCeiling(actor, ['admin.permission:update'], 'Chuyển chuyền sang xưởng khác làm đổi phạm vi dữ liệu của người được giao cả xưởng.');
-    const ids = workshopIds.filter((x): x is number => x !== null);
-    if (!ids.length) return;
-    const own = await trx
-      .selectFrom('SysUserRoleScope as s')
-      .innerJoin('SysUserRole as ur', 'ur.Id', 's.UserRoleId')
-      .innerJoin('SysOrgUnit as o', 'o.Id', 's.OrgUnitId')
-      .select(['o.Name', 'o.Code'])
-      .where('ur.UserId', '=', actor.userId)
-      .where('s.ScopeMode', '=', 'ORG_SUBTREE')
-      .where('s.OrgUnitId', 'in', ids)
-      .executeTakeFirst();
-    if (own) throw Errors.selfElevation(`Bạn đang được giao phạm vi cả ${own.Name} (${own.Code}) nên không tự chuyển chuyền vào hay ra khỏi xưởng này. Nhờ quản trị viên khác làm.`);
-  }
-  /** Xưởng gom chuyền của một nhà máy (ADR 0010). Xưởng mới chưa có chuyền nên quyền đã tính không đổi. */
-  async createWorkshop(actor: AuthUser, dto: WorkshopCreateDto) {
-    const branch = await this.branchFor(dto, 'xưởng', 'X01');
-    const id = await unique(
-      () =>
-        this.db.transaction().execute(async (trx) => {
-          await this.lockTree(trx);
-          const factory = await this.factoryNode(trx, branch, actor);
-          const max = await trx.selectFrom('SysOrgUnit').select((eb) => eb.fn.max('SortOrder').as('m')).where('OrgType', '=', 'WORKSHOP').where('BranchCode', '=', branch.Code).executeTakeFirst();
-          const row = await this.insertNode(trx, {
-            Code: dto.code,
-            Name: dto.name,
-            OrgType: 'WORKSHOP',
-            ParentId: factory.Id,
-            ParentOrgType: 'FACTORY',
-            BranchCode: branch.Code,
-            Path: `${factory.Path}${dto.code}/`,
-            SortOrder: dto.sortOrder ?? (max?.m ?? 0) + 1,
-            IsActive: true,
-            IsSystem: false,
-            CreatedBy: actor.userId,
-          });
-          await this.audit.logStrict(this.entry(actor, 'SysOrgUnit', row.Id, 'WORKSHOP_CREATE', undefined, { code: dto.code, name: dto.name, branchCode: branch.Code }), trx);
-          return row.Id;
-        }),
-      `Mã ${dto.code} đã được dùng.`,
-    );
-    this.org.invalidate();
-    return { id };
-  }
-
-  /**
-   * Đổi tên, thứ tự, ngừng dùng xưởng. Xưởng còn chuyền đang dùng thì không ngừng được: chuyền đang dùng luôn nằm trong xưởng
-   * đang dùng, nên người được giao cả xưởng không mất chuyền âm thầm.
-   */
-  async updateWorkshop(actor: AuthUser, id: number, dto: WorkshopUpdateDto) {
-    let activeChanged = false;
-    let changed = false;
-    await this.db.transaction().execute(async (trx) => {
-      await this.lockTree(trx);
-      const before = await trx.selectFrom('SysOrgUnit').select(['Code', 'Name', 'SortOrder', 'IsActive']).where('Id', '=', id).where('OrgType', '=', 'WORKSHOP').executeTakeFirst();
-      if (!before) throw Errors.notFound('Không tìm thấy xưởng.');
-      if (dto.code !== undefined && dto.code !== before.Code) throw Errors.codeImmutable();
-      const set: Updateable<SysOrgUnitTable> = {};
-      if (dto.name !== undefined) set.Name = dto.name;
-      if (dto.sortOrder !== undefined) set.SortOrder = dto.sortOrder;
-      if (dto.isActive !== undefined) set.IsActive = dto.isActive;
-      if (!Object.keys(set).length) return;
-      if (dto.isActive === false) {
-        const active = await trx.selectFrom('SysOrgUnit').select(sql<number>`COUNT(*)`.as('n')).where('ParentId', '=', id).where('IsActive', '=', true).executeTakeFirstOrThrow();
-        const n = Number(active.n);
-        if (n > 0) throw Errors.conflict(`Xưởng còn ${n} chuyền đang dùng: chuyển các chuyền sang xưởng khác hoặc ngừng dùng chúng trước.`);
-      }
-      changed = true;
-      activeChanged = dto.isActive !== undefined;
-      await trx.updateTable('SysOrgUnit').set({ ...set, ModifiedAt: new Date(), ModifiedBy: actor.userId }).where('Id', '=', id).execute();
-      // Phạm vi "cả xưởng" chỉ có hiệu lực khi xưởng đang dùng (PermissionService bỏ qua nút đã ngừng)
-      if (activeChanged) await this.permissions.bumpVersion(trx);
-      await this.audit.logStrict(this.entry(actor, 'SysOrgUnit', id, 'WORKSHOP_UPDATE', before, set), trx);
-    });
-    if (activeChanged) this.permissions.clearCache();
-    if (changed) this.org.invalidate();
   }
 
   // ---------------- Danh mục mã-tên (SysCatalog + SysCatalogItem) ----------------
@@ -517,8 +232,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
 
   /**
    * ĐVCS của nhà máy quyết định đơn hàng nào lập kế hoạch xuất hàng được ở ĐVCS đó, và qua kế hoạch, ai sửa được tỷ lệ cắt của
-   * PO (ADR 0013 mục 11): thêm nhà máy, đổi ĐVCS, bật, tắt nhà máy đòi thêm quyền sửa phân quyền (review 5.9.13 M2), như chuyển
-   * chuyền sang xưởng khác.
+   * PO (ADR 0013 mục 11): thêm nhà máy, đổi ĐVCS, bật, tắt nhà máy đòi thêm quyền sửa phân quyền (review 5.9.13 M2).
    */
   private assertCanScope(actor: AuthUser) {
     return this.permissions.assertAdminCeiling(actor, ['admin.permission:update'], 'Nhà máy SX gắn đơn vị cơ sở quyết định đơn hàng nào lập kế hoạch được ở đơn vị đó.');

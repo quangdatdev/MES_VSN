@@ -206,21 +206,7 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
     expect((await list(planner, `/api/v1/order/line-plans/values?field=scheduledQty&cf=${cf({ styleCode: { in: [STYLE] } })}`)).values).toEqual([100]);
   });
 
-  it('Danh mục hệ thống: ô tìm chuyền, mục danh mục chạy trong DB; số chuyền đang dùng của xưởng vẫn đếm trên mọi chuyền', async () => {
-    const full = await list(admin, '/api/v1/admin/catalogs/lines');
-    const line = full.items.find((l: any) => l.workshopId !== null);
-    expect(line).toBeDefined();
-    const found = await list(admin, `/api/v1/admin/catalogs/lines?q=${encodeURIComponent(line.code)}`);
-    expect(found.items.map((l: any) => l.code)).toContain(line.code);
-    expect(found.items.every((l: any) => l.code.includes(line.code) || l.name.toLowerCase().includes(line.code.toLowerCase()))).toBe(true);
-    const ws = found.workshops.find((w: any) => w.id === line.workshopId);
-    expect(ws.activeLines).toBe(full.workshops.find((w: any) => w.id === line.workshopId).activeLines);
-    // Nút chọn nhà máy vẫn đủ nhà máy
-    expect(found.branches).toEqual(full.branches);
-    const byBranch = await list(admin, `/api/v1/admin/catalogs/lines?branch=${line.branchCode}`);
-    expect(byBranch.items.every((l: any) => l.branchCode === line.branchCode)).toBe(true);
-    expect((await list(admin, '/api/v1/admin/catalogs/lines?q=KHONG-CO-CHUYEN-NAY')).items).toEqual([]);
-    await api().get('/api/v1/admin/catalogs/lines?branch=a01;x').set(auth(admin)).expect(422);
+  it('Danh mục hệ thống: ô tìm mục danh mục chạy trong DB', async () => {
     const units = (await list(admin, '/api/v1/admin/catalogs/items/UNIT')).items;
     expect(units.length).toBeGreaterThan(0);
     const unit = (await list(admin, `/api/v1/admin/catalogs/items/UNIT?q=${encodeURIComponent(units[0].code)}`)).items;

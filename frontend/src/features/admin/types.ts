@@ -212,8 +212,8 @@ export interface SyncRunRow extends SyncRunInfo {
 
 export interface MesCatalog {
   code: string;
-  /** line: chuyền may (SysOrgUnit); factory: nhà máy SX (SysProductionFactory); item: danh mục mã, tên (SysCatalog); shift: ca làm việc */
-  kind: 'line' | 'factory' | 'item' | 'shift';
+  /** factory: nhà máy SX (SysProductionFactory); item: danh mục mã, tên (SysCatalog); shift: ca làm việc */
+  kind: 'factory' | 'item' | 'shift';
   name: string;
   description: string | null;
   total: number;
@@ -238,35 +238,8 @@ export interface CatalogOverview {
   external: ExternalCatalog[];
   /** Không đọc được danh mục BRAVO (chưa có MES_Sync…): vẫn dùng được danh mục MES */
   externalError: string | null;
-}
-
-export interface CatalogLine {
-  id: number;
-  code: string;
-  name: string;
-  branchCode: string;
-  /** Xưởng chứa chuyền; null: chuyền nằm thẳng dưới nhà máy */
-  workshopId: number | null;
-  sortOrder: number;
-  isActive: boolean;
-}
-
-/** Xưởng gom chuyền của một nhà máy (cây Nhà máy → Xưởng → Chuyền) */
-export interface CatalogWorkshop {
-  id: number;
-  code: string;
-  name: string;
-  branchCode: string;
-  sortOrder: number;
-  isActive: boolean;
-  /** Số chuyền đang dùng trong xưởng: còn chuyền thì xưởng không ngừng dùng được */
-  activeLines: number;
-}
-
-export interface CatalogLines {
+  /** ĐVCS (trừ đơn vị tổng hợp, kể cả đang tắt) cho ô lọc, ô chọn đơn vị của Nhà máy SX */
   branches: { code: string; name: string; isActive: boolean }[];
-  workshops: CatalogWorkshop[];
-  items: CatalogLine[];
 }
 
 export interface CatalogItem {

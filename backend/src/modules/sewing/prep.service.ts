@@ -7,6 +7,7 @@ import { scopeOf } from '../../platform/data/base.repository';
 import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type FilterSpec } from '../../platform/data/column-filter';
 import { inTransaction } from '../../platform/data/transaction';
 import { ExportService } from '../../platform/export/export.service';
+import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { ScheduleFeed } from '../order/schedule-feed.service';
 import type { PrepDoneBatchDto, PrepListQuery, PrepStatus, PrepUpdateDto, PrepValuesQuery } from './sewing.dto';
@@ -117,6 +118,7 @@ export class PrepService {
     private readonly exporter: ExportService,
     private readonly fields: FieldPolicyService,
     private readonly catalogs: CatalogLookupService,
+    private readonly org: OrgService,
   ) {}
 
   /**
@@ -157,6 +159,18 @@ export class PrepService {
       this.synced.delete(key);
       syncLogger.warn(`Chưa chép được dàn chuyền (${key}): ${(e as Error)?.message ?? e}`);
     }
+  }
+
+  /**
+   * Tên chuyền theo mã, kể cả chuyền đã giải thể. Mã không còn là bộ phận chuyền nào (chuyền cũ trước phase 5.10, bộ phận bỏ tích
+   * "Xưởng sản xuất") là chuyền mồ côi: hiện mã kèm "(chuyền cũ)", không lỗi. Tên không phải cột đăng ký nên khi Tổ SX bị Ẩn hoặc
+   * Che thì không trả (tên suy ra được mã), như Phân bổ màu cỡ.
+   */
+  private async lineNames(user: AuthUser): Promise<(code: string) => string | undefined> {
+    if ((await this.fields.unreadable(user, RESOURCE, ['lineCode'])).size) return () => undefined;
+    const scope = scopeOf(user);
+    const names = new Map((await this.org.lines(scope.branchCode, scope.isAggregate, { includeInactive: true })).map((l) => [l.code, l.name]));
+    return (code) => names.get(code) ?? `${code} (chuyền cũ)`;
   }
 
   private async activeSteps() {
@@ -248,7 +262,7 @@ export class PrepService {
     await this.sync(user);
     const scope = scopeOf(user);
     const today = todayVN();
-    const [steps, f] = await Promise.all([this.activeSteps(), this.filter(user, q, today)]);
+    const [steps, f, lineName] = await Promise.all([this.activeSteps(), this.filter(user, q, today), this.lineNames(user)]);
     const page = await this.repo.list(scope, { page: q.page, pageSize: q.pageSize, q: q.q, searchExclude: f.searchExclude, sort: f.sort, where: f.where });
     const ids = page.items.map((r) => r.Id);
     const [saved, editable] = await Promise.all([this.stepValues.listByParents(scope, ids), this.repo.editableIds(scope, ids)]);
@@ -259,7 +273,7 @@ export class PrepService {
       ...page,
       today,
       stepInfo: steps.map(presentStep),
-      items: page.items.map((r) => ({ ...this.present(r, steps, byPrep.get(r.Id) ?? [], today), canEdit: editable.has(r.Id) })),
+      items: page.items.map((r) => ({ ...this.present(r, steps, byPrep.get(r.Id) ?? [], today), lineName: lineName(r.LineCode), canEdit: editable.has(r.Id) })),
     };
   }
 
@@ -288,7 +302,8 @@ export class PrepService {
     const used = new Set(saved.map((v) => v.PrepStepId));
     const steps = (await this.steps.all()).filter((s) => s.IsActive || used.has(s.Id));
     const today = todayVN();
-    return { ...this.present(row, steps, saved, today), stepInfo: steps.map(presentStep), today };
+    const lineName = await this.lineNames(user);
+    return { ...this.present(row, steps, saved, today), lineName: lineName(row.LineCode), stepInfo: steps.map(presentStep), today };
   }
 
   async update(user: AuthUser, id: number, dto: PrepUpdateDto) {

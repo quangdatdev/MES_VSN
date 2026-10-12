@@ -1,10 +1,13 @@
 import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
+import type { CoreDatabase } from '../src/platform/database/core.types';
+import type { HrDatabase } from '../src/modules/hr/hr.types';
 import type { OrderDatabase } from '../src/modules/order/order.types';
+import { readLines } from '../scripts/script-db';
 import { clearSimulated, PLANNER_NAME, simulateBranch } from '../scripts/simulate-board';
 
-// Phần ghi database của dàn chuyền mô phỏng (scripts/simulate-board.ts): cần SQL Server đã migrate. Mọi dòng nằm trong
-// transaction được hủy ở cuối bài, không đổi dữ liệu.
+// Phần ghi database của dàn chuyền mô phỏng (scripts/simulate-board.ts) và chuyền đọc từ MES_Hr (scripts/script-db.ts): cần
+// SQL Server đã migrate. Mọi dòng nằm trong transaction được hủy ở cuối bài, không đổi dữ liệu.
 const TODAY = '2026-10-10';
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const lineCodes = (n: number, branch: string) => Array.from({ length: n }, (_, i) => `${branch}-L${String(i + 1).padStart(2, '0')}`);
@@ -216,4 +219,41 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
     );
     expect(await db.selectFrom('SalesOrder').select('Id').where('BranchCode', 'in', [B, OTHER]).execute()).toEqual([]);
   }, 120_000);
+
+  it('chuyền đọc từ MES_Hr (phase 5.10): bộ phận tích "Xưởng sản xuất", đang dùng, theo đúng ĐVCS; bỏ tích, giải thể thì không xếp', async () => {
+    const core = createDb<CoreDatabase>(env.db.coreName);
+    const hr = createDb<HrDatabase>(env.db.hrName);
+    try {
+      const run = hr.transaction().execute(async (trx) => {
+        const type = (await trx.selectFrom('DepartmentType').select('Id').where('Code', '=', 'BO_PHAN').executeTakeFirstOrThrow()).Id;
+        const dept = (code: string, v: object = {}) =>
+          trx
+            .insertInto('Department')
+            .values({ Code: code, Name: `Bộ phận ${code}`, DepartmentTypeId: type, ParentId: null, Path: `/${code}/`, BranchCode: B, SortOrder: 0, IsActive: true, IsProductionWorkshop: true, ...v } as any)
+            .execute();
+        await dept(`${B}-L02`, { SortOrder: 2 });
+        await dept(`${B}-L01`, { SortOrder: 1 });
+        await dept(`${B}-L03`, { IsActive: false, DissolvedDate: '2026-01-01' });
+        await dept(`${B}-X01`, { IsProductionWorkshop: false });
+        await dept(`${OTHER}-L01`, { BranchCode: OTHER });
+        const { linesOf } = await readLines(core, trx);
+        expect(linesOf(B)).toEqual([`${B}-L01`, `${B}-L02`]);
+        expect(linesOf(OTHER)).toEqual([`${OTHER}-L01`]);
+        throw ROLLBACK;
+      });
+      await run.then(
+        () => {
+          throw new Error('transaction phải bị hủy');
+        },
+        (e) => {
+          if (e !== ROLLBACK) throw e;
+        },
+      );
+      // Không truyền kết nối: script tự mở MES_Hr theo .env; bộ phận thử đã hủy nên ĐVCS giả không có chuyền
+      expect((await readLines(core)).linesOf(B)).toEqual([]);
+    } finally {
+      await core.destroy();
+      await hr.destroy();
+    }
+  }, 60_000);
 });
