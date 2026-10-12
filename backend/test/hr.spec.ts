@@ -8,6 +8,7 @@ import { configureApp } from '../src/app.factory';
 import { env } from '../src/config/env';
 import { fold } from '../src/modules/hr/employee-fields';
 import { isHeaderRow, parseDate } from '../src/modules/hr/employee-import.service';
+import { DepartmentService } from '../src/modules/hr/department.service';
 import { HR_DB } from '../src/modules/hr/hr.db';
 import type { HrDb } from '../src/modules/hr/hr.types';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
@@ -698,5 +699,25 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     await putDept(admin, line.l3, { isProductionWorkshop: true }).expect(200);
     expect(await version()).toBe(v + 1);
     expect(await lineLogs()).toBe(logs + 1);
+  });
+
+  it('đọc lại bộ phận lỗi sau khi lưu: vẫn ghi LINE_SET_CHANGE và tăng phiên bản quyền rồi mới báo lỗi', async () => {
+    const admin = await fullAccess();
+    const service = app.get(DepartmentService);
+    const core = app.get<CoreDb>(CORE_DB);
+    const lineLogs = async () =>
+      Number((await core.selectFrom('SysAuditLog').select((eb) => eb.fn.countAll().as('n')).where('ActionCode', '=', 'LINE_SET_CHANGE').where('EntityId', '=', String(line.l3)).executeTakeFirstOrThrow()).n);
+    const v = await version();
+    const logs = await lineLogs();
+    const spy = jest.spyOn(service, 'detail').mockRejectedValueOnce(new Error('Mất kết nối MES_Hr (giả lập)'));
+    try {
+      await putDept(admin, line.l3, { isProductionWorkshop: false }).expect(500);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await version()).toBe(v + 1);
+    expect(await lineLogs()).toBe(logs + 1);
+    expect((await hr.selectFrom('Department').select('IsProductionWorkshop').where('Id', '=', line.l3).executeTakeFirstOrThrow()).IsProductionWorkshop).toBe(false);
+    await putDept(admin, line.l3, { isProductionWorkshop: true }).expect(200);
   });
 });

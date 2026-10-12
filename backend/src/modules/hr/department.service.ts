@@ -115,8 +115,27 @@ export class DepartmentService {
    * (không có transaction chung). Tăng trước commit thì một request chen giữa có thể tính quyền theo tập chuyền cũ rồi giữ trong
    * cache dưới phiên bản mới. Lỗi thì PermissionService thử lại rồi báo lỗi kèm bộ phận đã lưu (màn hình hiện đúng dữ liệu).
    */
-  private recordLines(user: AuthUser, change: LineSetChange, saved: ReturnType<typeof presentDepartment>) {
-    return this.permissions.recordLineSetChange(user, change, { department: saved });
+  private recordLines(user: AuthUser, change: LineSetChange, saved: ReturnType<typeof presentDepartment> | null) {
+    return this.permissions.recordLineSetChange(user, change, { department: saved, departmentId: change.departmentId });
+  }
+
+  /**
+   * Đọc lại bộ phận vừa lưu rồi ghi tập chuyền (nếu đổi). Đọc lại lỗi (lỗi thoáng qua của MES_Hr) thì vẫn ghi nhật ký
+   * LINE_SET_CHANGE và tăng phiên bản quyền trước khi báo lỗi: dữ liệu đã lưu, phạm vi chuyền không được kẹt ở tập cũ.
+   */
+  private async savedWithLines(user: AuthUser, id: number, change: LineSetChange | null, onSaved?: (out: ReturnType<typeof presentDepartment>) => Promise<void>) {
+    let out: ReturnType<typeof presentDepartment> | null = null;
+    let readError: unknown = null;
+    try {
+      out = await this.detail(user, id);
+      // Nhật ký phòng ban thường (cần dữ liệu đọc lại) ghi trước: tập chuyền lỗi sau đó thì nhật ký này vẫn còn
+      if (onSaved) await onSaved(out);
+    } catch (e) {
+      readError = e;
+    }
+    if (change) await this.recordLines(user, change, out);
+    if (readError) throw readError;
+    return out!;
   }
 
   /** Người đang được giao phạm vi chuyền theo mã này: màn hình báo trước khi thêm, tích, khôi phục bộ phận làm họ thấy dữ liệu chuyền */
@@ -219,13 +238,10 @@ export class DepartmentService {
         );
       });
       this.afterWrite();
-      const out = await this.detail(user, id);
-      await this.log(user, id, 'CREATE', undefined, out);
-      if (line) {
-        const after = { isProductionWorkshop: true, branchCode: dto.branchCode ?? null, isActive: true };
-        await this.recordLines(user, { departmentId: id, code: dto.code, operation: 'CREATE', before: null, after }, out);
-      }
-      return out;
+      const after = { isProductionWorkshop: true, branchCode: dto.branchCode ?? null, isActive: true };
+      return await this.savedWithLines(user, id, line ? { departmentId: id, code: dto.code, operation: 'CREATE', before: null, after } : null, (out) =>
+        this.log(user, id, 'CREATE', undefined, out),
+      );
     } catch (e) {
       if (isDuplicate(e)) throw Errors.conflict(`Mã ${dto.code} đã có. Chọn mã khác.`);
       throw e;
@@ -303,14 +319,12 @@ export class DepartmentService {
       return { before, set, moved, lines };
     });
     const changed = Object.keys(result.set).length > 0 || !!result.moved;
-    if (changed) this.afterWrite();
-    const out = await this.detail(user, id);
     if (changed) {
+      this.afterWrite();
       const old = presentDepartment(result.before);
       await this.log(user, id, 'UPDATE', old, { ...result.set, ...(result.moved ? { Path: result.moved.to, MovedNodes: result.moved.nodes } : {}) });
     }
-    if (result.lines) await this.recordLines(user, result.lines, out);
-    return out;
+    return this.savedWithLines(user, id, result.lines);
   }
 
   /**
@@ -340,12 +354,8 @@ export class DepartmentService {
     const line = !!before.IsProductionWorkshop;
     this.afterWrite();
     await this.log(user, id, 'DISSOLVE', { IsActive: true, IsProductionWorkshop: line }, { IsActive: false, DissolvedDate: date, Code: before.Code, IsProductionWorkshop: line });
-    const out = await this.detail(user, id);
-    if (line) {
-      const state = (isActive: boolean) => ({ isProductionWorkshop: true, branchCode: before.BranchCode, isActive });
-      await this.recordLines(user, { departmentId: id, code: before.Code, operation: 'DISSOLVE', before: state(true), after: state(false) }, out);
-    }
-    return out;
+    const state = (isActive: boolean) => ({ isProductionWorkshop: true, branchCode: before.BranchCode, isActive });
+    return this.savedWithLines(user, id, line ? { departmentId: id, code: before.Code, operation: 'DISSOLVE', before: state(true), after: state(false) } : null);
   }
 
   /** Khôi phục phòng ban đã giải thể: cha (nếu có) phải đang dùng */
@@ -366,11 +376,7 @@ export class DepartmentService {
     const line = !!before.IsProductionWorkshop;
     this.afterWrite();
     await this.log(user, id, 'RESTORE', { IsActive: false, DissolvedDate: day(before.DissolvedDate), IsProductionWorkshop: line }, { IsActive: true, Code: before.Code, IsProductionWorkshop: line });
-    const out = await this.detail(user, id);
-    if (line) {
-      const state = (isActive: boolean) => ({ isProductionWorkshop: true, branchCode: before.BranchCode, isActive });
-      await this.recordLines(user, { departmentId: id, code: before.Code, operation: 'RESTORE', before: state(false), after: state(true) }, out);
-    }
-    return out;
+    const state = (isActive: boolean) => ({ isProductionWorkshop: true, branchCode: before.BranchCode, isActive });
+    return this.savedWithLines(user, id, line ? { departmentId: id, code: before.Code, operation: 'RESTORE', before: state(false), after: state(true) } : null);
   }
 }

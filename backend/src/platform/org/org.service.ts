@@ -81,7 +81,7 @@ export class OrgService {
    * Tên chuyền theo mã cho dữ liệu đã xếp, kể cả chuyền đã ngừng dùng. Tra trên mọi ĐVCS: chuyền đã chuyển sang ĐVCS khác vẫn hiện
    * đúng tên ở dữ liệu của ĐVCS cũ (tên chuyền không phải dữ liệu nhạy cảm; dòng nào được thấy vẫn do repository lọc). Mã không còn
    * là bộ phận chuyền nào (chuyền cũ trước phase 5.10, bộ phận đã bỏ tích "Xưởng sản xuất") là chuyền mồ côi: hiện mã kèm
-   * "(chuyền cũ)", không báo lỗi. Hai tham số giữ cho bên gọi cũ, không còn tác dụng.
+   * "(chuyền cũ)", không báo lỗi.
    */
   async lineNamer(): Promise<(code: string) => string> {
     const names = new Map((await this.all()).map((l) => [l.code, l.name]));
