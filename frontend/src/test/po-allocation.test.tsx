@@ -35,7 +35,7 @@ const row = (over: Partial<PoAllocation> = {}): PoAllocation => ({
   isInOsm: true,
   ...over,
 });
-const synced = { syncedAt: '2026-10-12T03:00:00.000Z', sourceActive: true };
+const synced = { syncedAt: '2026-10-12T03:00:00.000Z', sourceActive: true, lastRefresh: null };
 const FACTORIES = [
   { code: 'VSN-PY', name: 'VSN-PY', branchCode: 'A01' },
   { code: 'VIET DUC', name: 'Việt Đức', branchCode: 'A02' },
@@ -44,7 +44,7 @@ const FACTORIES = [
 
 type Put = { ids: number[]; factoryName?: string | null; dryRun?: boolean };
 /** Giả lập máy chủ; `put` trả kết quả (hoặc ném lỗi) của PUT /order/po-allocations/factory */
-function serve(page: Page, put: (body: Put) => PoAllocationFactoryResult = (b) => ({ rows: 3, keys: 2, removed: 0, dryRun: !!b.dryRun })) {
+function serve(page: Page, put: (body: Put) => PoAllocationFactoryResult = (b) => ({ rows: 3, keys: 2, removed: 0, removable: 0, dryRun: !!b.dryRun })) {
   vi.mocked(api).mockImplementation((async (raw: string, opts?: { method?: string; body?: unknown }) => {
     const path = String(raw ?? '');
     if (path === '/me/branch-names') return [{ code: 'A01', name: 'Vietsun Phú Yên' }, { code: 'A02', name: 'Vietsun Đà Nẵng' }];
@@ -137,7 +137,7 @@ describe('Phân bổ PO', () => {
   });
 
   it('chưa đồng bộ nguồn OSM: chỉ cách có dữ liệu, có link Đồng bộ dữ liệu khi được chạy đồng bộ', async () => {
-    serve({ items: [], total: 0, page: 1, pageSize: 100, syncedAt: null, sourceActive: true });
+    serve({ items: [], total: 0, page: 1, pageSize: 100, syncedAt: null, sourceActive: true, lastRefresh: null });
     signIn(['order.poallocation:view', 'admin.sync:update']);
     const { unmount } = renderPage();
     expect(await screen.findByText('Chưa có dữ liệu phân bổ PO từ OSM.')).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe('Phân bổ PO', () => {
     expect(screen.queryByRole('link', { name: 'Đồng bộ dữ liệu' })).toBeNull();
     second.unmount();
     // Máy chủ chưa khai database OSM của nguồn: nguồn tắt, màn Đồng bộ không có nguồn này nên nhờ IT
-    serve({ items: [], total: 0, page: 1, pageSize: 100, syncedAt: null, sourceActive: false });
+    serve({ items: [], total: 0, page: 1, pageSize: 100, syncedAt: null, sourceActive: false, lastRefresh: null });
     signIn(['order.poallocation:view', 'admin.sync:update']);
     renderPage();
     expect(await screen.findByText(/Máy chủ chưa được cấu hình để lấy dữ liệu này từ OSM/)).toBeInTheDocument();
@@ -231,26 +231,31 @@ describe('Phân bổ PO', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('"Theo OSM (bỏ nhập tay)" gửi factoryName null', async () => {
+  it('"Theo OSM (bỏ nhập tay)" báo trước số dòng sẽ bị bỏ và gửi factoryName null', async () => {
     signIn(EDIT);
-    serve({ items: [row({ isFactoryManual: true, factoryName: 'MEKO' })], total: 1, page: 1, pageSize: 100, ...synced });
+    serve({ items: [row({ isFactoryManual: true, factoryName: 'MEKO' })], total: 1, page: 1, pageSize: 100, ...synced }, (b) => ({ rows: 3, keys: 2, removed: 0, removable: 2, dryRun: !!b.dryRun }));
     renderPage();
     expect(await screen.findByText('PO-THU-1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Chọn dòng 1' }));
     fireEvent.click(changeButton());
     const dialog = await screen.findByRole('dialog', { name: 'Đổi nhà máy SX' });
     await within(dialog).findByText(/Sẽ áp cho/);
+    expect(within(dialog).queryByText(/sẽ bị bỏ khỏi Phân bổ PO/)).toBeNull();
     fireEvent.click(within(dialog).getByRole('radio', { name: /Theo OSM/ }));
     expect(within(dialog).queryByRole('combobox', { name: 'Nhà máy' })).toBeNull();
+    expect(within(dialog).getByText('2 dòng nhập tay không còn trong OSM sẽ bị bỏ khỏi Phân bổ PO.')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Đổi nhà máy SX' }));
     await waitFor(() => expect(putBodies()).toHaveLength(2));
     expect(putBodies()[1]).toEqual({ ids: [101], factoryName: null });
   });
 
-  it('máy chủ từ chối (dòng thuộc nhà máy của ĐVCS khác): popup nói lý do, nút lưu khóa', async () => {
+  it('máy chủ từ chối (dòng thuộc nhà máy của ĐVCS khác): popup nói lý do, nút lưu khóa; "Thử lại" hỏi lại máy chủ', async () => {
     signIn(EDIT);
-    serve({ items: [row()], total: 1, page: 1, pageSize: 100, ...synced }, () => {
-      throw new ApiError(403, 'FACTORY_OF_OTHER_BRANCH', 'Có 1/2 dòng (cùng SO, PO, Style No, Màu với dòng đã chọn) đang thuộc nhà máy SX của đơn vị cơ sở khác.');
+    let calls = 0;
+    serve({ items: [row()], total: 1, page: 1, pageSize: 100, ...synced }, (b) => {
+      calls++;
+      if (calls === 1) throw new ApiError(403, 'FACTORY_OF_OTHER_BRANCH', 'Có 1/2 dòng (cùng SO, PO, Style No, Màu với dòng đã chọn) đang thuộc nhà máy SX của đơn vị cơ sở khác.');
+      return { rows: 1, keys: 1, removed: 0, removable: 0, dryRun: !!b.dryRun };
     });
     renderPage();
     expect(await screen.findByText('PO-THU-1')).toBeInTheDocument();
@@ -259,6 +264,33 @@ describe('Phân bổ PO', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Đổi nhà máy SX' });
     expect(await within(dialog).findByText(/đang thuộc nhà máy SX của đơn vị cơ sở khác/)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Đổi nhà máy SX' })).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Thử lại' }));
+    expect(await within(dialog).findByText(/Sẽ áp cho/)).toHaveTextContent('Sẽ áp cho 1 dòng (1 nhóm SO/PO/Style/Màu).');
+    expect(putBodies().filter((b) => b.dryRun)).toHaveLength(2);
+  });
+
+  it('lần làm mới gần nhất giữ dòng vắng hoặc bị bỏ qua thì màn cảnh báo, nhờ báo quản trị kiểm OSM', async () => {
+    signIn(['order.poallocation:view']);
+    serve({
+      items: [row()],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+      ...synced,
+      lastRefresh: { at: '2026-10-12T03:05:00.000Z', reason: 'SHRINK', sourceRows: 18000, previousRows: 25000, keptAbsent: 7000, maxShrinkPercent: 20 },
+    });
+    const { unmount } = renderPage();
+    expect(await screen.findByText('PO-THU-1')).toBeInTheDocument();
+    expect(screen.getByText(/giữ lại 7\.000 dòng không còn trong OSM vì số dòng giảm quá 20%\. Báo quản trị kiểm OSM\./)).toBeInTheDocument();
+    unmount();
+    serve({ items: [row()], total: 1, page: 1, pageSize: 100, ...synced, lastRefresh: { at: '2026-10-12T03:05:00.000Z', reason: 'EMPTY', sourceRows: 0, previousRows: 25000, keptAbsent: 0, maxShrinkPercent: 20 } });
+    const second = renderPage();
+    expect(await screen.findByText(/bị bỏ qua vì bảng chép OSM không có dòng nào/)).toBeInTheDocument();
+    second.unmount();
+    serve({ items: [row()], total: 1, page: 1, pageSize: 100, ...synced });
+    renderPage();
+    expect(await screen.findByText('PO-THU-1')).toBeInTheDocument();
+    expect(screen.queryByText(/Báo quản trị kiểm OSM/)).toBeNull();
   });
 
   it('đơn vị tổng hợp A00: không có nút đổi, không có ô tích; cột Nhà máy SX Chỉ đọc thì nút khóa nói lý do', async () => {

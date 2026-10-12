@@ -1,5 +1,5 @@
 import { Alert, Anchor, Badge, Button, Group, Loader, Modal, Radio, Select, Stack, Text } from '@mantine/core';
-import { IconBuildingFactory2, IconCloudDownload, IconFilterOff, IconSearch } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBuildingFactory2, IconCloudDownload, IconFilterOff, IconRefresh, IconSearch } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
@@ -20,7 +20,7 @@ import { toastOk } from '../../lib/notify';
 import { useMobile } from '../../lib/useMobile';
 import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
-import { emptyFilter, type OrderFilter, type PoAllocation, type PoAllocationFactoryResult, type PoAllocationOptions, type PoAllocationPage } from './api';
+import { emptyFilter, type OrderFilter, type PoAllocation, type PoAllocationFactoryResult, type PoAllocationOptions, type PoAllocationPage, type PoAllocationRefreshNotice } from './api';
 import { EmptyState, ExportButton, readable, useCanWrite, usePagedList } from './common';
 
 const RESOURCE = 'order.poallocation';
@@ -226,6 +226,33 @@ function NotSynced({ sourceActive }: { sourceActive: boolean }) {
   );
 }
 
+/**
+ * Lần làm mới theo OSM gần nhất không làm đủ (bảng chép rỗng, hoặc số dòng giảm bất thường nên giữ dòng không còn trong OSM): dữ liệu
+ * trên lưới có thể chưa khớp OSM. Người xem báo quản trị kiểm OSM; quản trị cho qua bằng cấu hình máy chủ (chi tiết trong tooltip).
+ */
+function RefreshWarning({ notice }: { notice: PoAllocationRefreshNotice }) {
+  const at = fmtDateTime(notice.at);
+  return (
+    <Alert
+      color="orange"
+      variant="light"
+      icon={<IconAlertTriangle size={16} />}
+      py={8}
+      mb="xs"
+      maw={760}
+      title={notice.reason === 'EMPTY' ? 'Dữ liệu OSM chưa được làm mới' : 'Dữ liệu OSM có thể chưa khớp'}
+    >
+      {notice.reason === 'EMPTY' ? (
+        <>Lần làm mới lúc {at} bị bỏ qua vì bảng chép OSM không có dòng nào; lưới vẫn là dữ liệu của lần trước. Báo quản trị kiểm OSM.</>
+      ) : (
+        <span title={`OSM có ${fmtNum(notice.sourceRows)} dòng, trước đó ${fmtNum(notice.previousRows)} dòng. OSM thật sự bớt PO thì quản trị đặt PO_ALLOCATION_MAX_SHRINK_PERCENT=100, khởi động lại rồi đồng bộ lại.`}>
+          Lần làm mới lúc {at} giữ lại {fmtNum(notice.keptAbsent)} dòng không còn trong OSM vì số dòng giảm quá {notice.maxShrinkPercent}%. Báo quản trị kiểm OSM.
+        </span>
+      )}
+    </Alert>
+  );
+}
+
 /** "Đã chọn N dòng" ở chân lưới, kèm nút bỏ chọn */
 function Picked({ count, onClear }: { count: number; onClear: () => void }) {
   return (
@@ -311,7 +338,12 @@ function ChangeFactoryDialog({ ids, onClose, onDone }: { ids: number[]; onClose:
           </Group>
         ) : preview.error ? (
           <Alert color="red" variant="light" title="Không đổi được các dòng đã chọn" maw={520}>
-            {errorText(preview.error)}
+            <Stack gap={8} align="flex-start">
+              <span>{errorText(preview.error)}</span>
+              <Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} loading={preview.isFetching} onClick={() => void preview.refetch()}>
+                Thử lại
+              </Button>
+            </Stack>
           </Alert>
         ) : (
           <div>
@@ -329,6 +361,11 @@ function ChangeFactoryDialog({ ids, onClose, onDone }: { ids: number[]; onClose:
             <Radio value="osm" label="Theo OSM (bỏ nhập tay)" description="Trở lại nhà máy theo OSM. Dòng không còn trong OSM sẽ bị bỏ." />
           </Stack>
         </Radio.Group>
+        {mode === 'osm' && !!preview.data?.removable && (
+          <Alert color="orange" variant="light" py={8} maw={520}>
+            {fmtNum(preview.data.removable)} dòng nhập tay không còn trong OSM sẽ bị bỏ khỏi Phân bổ PO.
+          </Alert>
+        )}
         {mode === 'manual' && (
           <Select
             label="Nhà máy"
@@ -423,6 +460,7 @@ export default function PoAllocationPage() {
       }
       filters={<PoAllocationFilters value={list.filter} onChange={list.setFilter} policy={policy} columns={columnNote} />}
     >
+      {data?.lastRefresh && <RefreshWarning notice={data.lastRefresh} />}
       <DataGrid
         label="Phân bổ PO"
         fill

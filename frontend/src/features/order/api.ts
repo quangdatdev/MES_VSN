@@ -63,11 +63,26 @@ export interface PoAllocation {
   isInOsm?: Masked<boolean>;
 }
 
+/**
+ * Lần làm mới gần nhất không làm đủ: EMPTY bảng chép OSM rỗng (bỏ qua cả lần), SHRINK số dòng giảm quá `maxShrinkPercent` (vẫn thêm,
+ * sửa nhưng giữ `keptAbsent` dòng không còn trong OSM). Màn cảnh báo để người xem báo quản trị kiểm OSM.
+ */
+export interface PoAllocationRefreshNotice {
+  at: string;
+  reason: 'EMPTY' | 'SHRINK';
+  sourceRows: number;
+  previousRows: number;
+  keptAbsent: number;
+  maxShrinkPercent: number;
+}
+
 export interface PoAllocationPage extends Paged<PoAllocation> {
-  /** Lần chép OSM gần nhất có trong dữ liệu; null: chưa đồng bộ lần nào */
+  /** Lần chép OSM của dữ liệu đang có; null: chưa đồng bộ lần nào */
   syncedAt: string | null;
   /** Nguồn đồng bộ đang bật; false: máy chủ chưa khai database OSM của nguồn này */
   sourceActive: boolean;
+  /** Lần làm mới gần nhất bị bỏ qua hoặc giữ dòng vắng; null: bình thường */
+  lastRefresh: PoAllocationRefreshNotice | null;
 }
 
 /** Gợi ý của màn Phân bổ PO: Brand, Season ở dải lọc; nhà máy SX đang dùng (popup Đổi nhà máy SX, gom theo ĐVCS) */
@@ -79,12 +94,14 @@ export interface PoAllocationOptions {
 
 /**
  * Kết quả của PUT /order/po-allocations/factory: số dòng, số nhóm SO/PO/Style No/Màu bị áp (mọi dòng cùng khóa với dòng đã chọn);
- * `removed`: dòng không còn trong OSM bị bỏ khi chọn "Theo OSM"; `dryRun`: chỉ xem trước, chưa ghi
+ * `removed`: dòng không còn trong OSM đã bỏ khi chọn "Theo OSM"; `removable`: số dòng như vậy sẽ bị bỏ nếu chọn "Theo OSM" (xem
+ * trước); `dryRun`: chỉ xem trước, chưa ghi
  */
 export interface PoAllocationFactoryResult {
   rows: number;
   keys: number;
   removed: number;
+  removable: number;
   dryRun: boolean;
 }
 
