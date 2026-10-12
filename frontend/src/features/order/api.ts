@@ -130,6 +130,29 @@ export interface CandidatePo {
   statusCode: string;
 }
 
+/**
+ * Một PO của kế hoạch xuất hàng (khung "PO của kế hoạch", task 5.9.14), theo chính sách cột của Cập nhật tỷ lệ cắt. Số lượng
+ * là của cả PO. Ngày xác nhận theo cột Trạng thái; SL đã xác nhận, chưa xác nhận theo mức chặt hơn của Số lượng và Trạng thái
+ */
+export interface PlanPo {
+  id: number;
+  poCode?: Masked<string>;
+  poNumber?: Masked<string>;
+  destination?: Masked<string> | null;
+  shipDate?: Masked<string>;
+  qty?: Masked<number>;
+  statusCode?: Masked<'DRAFT' | 'CONFIRMED'>;
+  confirmedAt?: Masked<string> | null;
+  confirmedQty?: Masked<number>;
+  unconfirmedQty?: Masked<number>;
+}
+
+export interface PlanPoList {
+  items: PlanPo[];
+  /** PO của kế hoạch nằm ngoài phạm vi người dùng được xem ở Cập nhật tỷ lệ cắt */
+  hiddenCount: number;
+}
+
 export interface CutStyle {
   salesOrderId: number;
   customerName: string;

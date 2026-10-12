@@ -1630,13 +1630,25 @@ a:hover > .home-tile .home-tile-name {
 }
 /* Phần tử của lưới CSS mặc định không co nhỏ hơn nội dung: cho co để bảng tự cuộn ngang bên trong */
 .split-pane > *,
-.split-stack > * {
+.split-stack > *,
+.split-rows > * {
   min-width: 0;
 }
 .split-stack {
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+/*
+ * Lưới chính ở trên, lưới chi tiết của dòng đang chọn ở dưới (Kế hoạch xuất hàng › PO của kế hoạch). Hàng không thấp hơn
+ * nội dung tối thiểu (lưới 220px, thêm tiêu đề khung): màn thấp như 1366×768 thì vùng chính cuộn, lưới không tràn khỏi khung.
+ */
+.split-rows {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(260px, 3fr) minmax(250px, 2fr);
   gap: 10px;
 }
 .pane-title {
@@ -1670,8 +1682,13 @@ a:hover > .home-tile .home-tile-name {
   .grid-wrap[data-fill] {
     min-height: 60vh;
   }
-  .split-stack {
+  .split-stack,
+  .split-rows {
     grid-template-rows: auto auto;
+  }
+  /* Lưới chi tiết thấp hơn lưới chính: kéo trang xuống là thấy hết */
+  .split-rows > .pane + .pane .grid-wrap[data-fill] {
+    min-height: 40vh;
   }
 }
 

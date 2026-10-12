@@ -1,6 +1,6 @@
 import 'reflect-metadata';
-import { sql } from 'kysely';
-import { runSeed } from '../scripts/seed';
+import { sql, type Kysely, type Transaction } from 'kysely';
+import { bootstrapFullAccess, runSeed } from '../scripts/seed';
 import { env } from '../src/config/env';
 import type { CoreDatabase } from '../src/platform/database/core.types';
 import { createDb } from '../src/platform/database/db';
@@ -8,6 +8,10 @@ import { createDb } from '../src/platform/database/db';
 // Seed chạy lại (không --sync-matrix) không được cấp lại quyền quản trị đã thu hồi: gán lại vai trò mà không kèm phạm vi là
 // nới thành không giới hạn (review 5.4.8 lượt 5 #1). Cần MES_Core đã migrate, seed. Thử trên tài khoản mẫu truongchuyen.a
 // (Trưởng chuyền, phạm vi chuyền A01-L03), xong thì trả lại đúng phép gán cũ.
+// Mỗi lần runSeed đọc, ghi hàng trăm dòng: database ở máy khác chậm thì quá 30 giây mặc định. Bài quá giờ vẫn chạy tiếp ngầm
+// (đặt phạm vi, gỡ vai trò của admin) và làm hỏng bài sau, nên chờ đủ lâu
+jest.setTimeout(120_000);
+
 describe('Seed chạy lại', () => {
   const core = createDb<CoreDatabase>(env.db.coreName);
   afterAll(() => core.destroy());
@@ -30,6 +34,225 @@ describe('Seed chạy lại', () => {
     const group = await core.selectFrom('SysMenu').select('Id').where('Code', '=', 'menu.order').executeTakeFirstOrThrow();
     const leaves = await core.selectFrom('SysMenu').select('Path').where('ParentId', '=', group.Id).orderBy('SortOrder').orderBy('Id').execute();
     expect(leaves.slice(0, 3).map((m) => m.Path)).toEqual(['/order/info', '/order/po-allocation', '/order/shipment']);
+  });
+
+  describe('vai trò Toàn quyền (ADR 0014)', () => {
+    const roleOf = (code: string) => core.selectFrom('SysRole').select('Id').where('Code', '=', code).executeTakeFirst();
+    const permsOf = async (roleId: number) =>
+      (
+        await core
+          .selectFrom('SysRolePermission as rp')
+          .innerJoin('SysPermission as p', 'p.Id', 'rp.PermissionId')
+          .select('p.Code')
+          .where('rp.RoleId', '=', roleId)
+          .execute()
+      ).map((r) => r.Code);
+    const adminHas = async (roleId: number) =>
+      !!(await core
+        .selectFrom('SysUserRole as ur')
+        .innerJoin('SysUser as u', 'u.Id', 'ur.UserId')
+        .select('ur.Id')
+        .where('u.Username', '=', 'admin')
+        .where('ur.RoleId', '=', roleId)
+        .executeTakeFirst());
+
+    it('mọi quyền nghiệp vụ, quyền quản trị không vượt ADMIN (người giữ ADMIN gán được), mọi cột nhạy cảm được sửa; admin có vai trò này', async () => {
+      const full = (await roleOf('FULL_ACCESS'))!;
+      const admin = (await roleOf('ADMIN'))!;
+      expect(full).toBeDefined();
+      const all = (await core.selectFrom('SysPermission').select('Code').execute()).map((p) => p.Code);
+      const fullPerms = new Set(await permsOf(full.Id));
+      expect(all.filter((c) => !c.startsWith('admin.') && !fullPerms.has(c))).toEqual([]);
+      const adminPerms = new Set(await permsOf(admin.Id));
+      expect([...fullPerms].filter((c) => c.startsWith('admin.')).sort()).toEqual([...adminPerms].filter((c) => c.startsWith('admin.')).sort());
+      const sensitive = await core.selectFrom('SysResourceField').select(['ResourceId', 'Code']).where('IsSensitive', '=', true).execute();
+      const policies = await core.selectFrom('SysFieldPolicy').select(['ResourceId', 'FieldCode', 'AccessLevel']).where('SubjectType', '=', 'ROLE').where('SubjectId', '=', full.Id).execute();
+      for (const f of sensitive) expect(policies.find((p) => p.ResourceId === f.ResourceId && p.FieldCode === f.Code)?.AccessLevel).toBe('EDITABLE');
+      expect(await adminHas(full.Id)).toBe(true);
+    });
+
+    /**
+     * Như database trước ADR 0014 (chưa có vai trò Toàn quyền), chạy trong một transaction rồi hủy: dữ liệu thật không đổi.
+     * `prep` chỉnh trạng thái trước khi tạo vai trò (trong cùng transaction).
+     */
+    async function inRolledBack(prep: (trx: Transaction<CoreDatabase>) => Promise<void>, check: (trx: Transaction<CoreDatabase>, r: Awaited<ReturnType<typeof bootstrapFullAccess>>) => Promise<void>) {
+      const rollback = new Error('rollback');
+      await expect(
+        core.transaction().execute(async (trx) => {
+          const old = await trx.selectFrom('SysRole').select('Id').where('Code', '=', 'FULL_ACCESS').executeTakeFirst();
+          if (old) {
+            const assigned = trx.selectFrom('SysUserRole').select('Id').where('RoleId', '=', old.Id);
+            await trx.deleteFrom('SysUserRoleScope').where('UserRoleId', 'in', assigned).execute();
+            await trx.deleteFrom('SysUserRole').where('RoleId', '=', old.Id).execute();
+            await trx.deleteFrom('SysRolePermission').where('RoleId', '=', old.Id).execute();
+            await trx.deleteFrom('SysFieldPolicy').where('SubjectType', '=', 'ROLE').where('SubjectId', '=', old.Id).execute();
+            await trx.deleteFrom('SysRole').where('Id', '=', old.Id).execute();
+          }
+          await prep(trx);
+          await check(trx, await bootstrapFullAccess(trx, { by: 'test' }));
+          throw rollback;
+        }),
+      ).rejects.toBe(rollback);
+    }
+
+    it('máy đã cài: tạo vai trò, quyền, cột, gán admin, nhật ký, tăng phiên bản quyền trong một transaction; vai trò đã có thì không làm gì', async () => {
+      const version = async (db: Kysely<CoreDatabase>) => Number((await db.selectFrom('SysPermissionVersion').select('Version').where('Id', '=', 1).executeTakeFirstOrThrow()).Version);
+      const before = await version(core);
+      await inRolledBack(
+        async () => undefined,
+        async (trx, r) => {
+          expect(r).toMatchObject({ grantedTo: ['admin'], skipped: [] });
+          const ur = await trx
+            .selectFrom('SysUserRole as ur')
+            .innerJoin('SysUser as u', 'u.Id', 'ur.UserId')
+            .select('ur.Id')
+            .where('u.Username', '=', 'admin')
+            .where('ur.RoleId', '=', r!.roleId)
+            .executeTakeFirst();
+          expect(ur).toBeDefined();
+          expect(r!.permissions).toBe((await trx.selectFrom('SysRolePermission').select('Id').where('RoleId', '=', r!.roleId).execute()).length);
+          const log = await trx.selectFrom('SysAuditLog').select(['ActionCode', 'NewValue']).where('EntityType', '=', 'SysRole').where('EntityId', '=', String(r!.roleId)).executeTakeFirstOrThrow();
+          expect(JSON.parse(log.NewValue!)).toMatchObject({ role: 'FULL_ACCESS', grantedTo: ['admin'] });
+          expect(await version(trx)).toBe(before + 1);
+          // Đã có vai trò: không tạo, không gán thêm
+          expect(await bootstrapFullAccess(trx, { by: 'test' })).toBeNull();
+        },
+      );
+    });
+
+    it('quyền quản trị theo ADMIN đang có trong DB; admin bị hạ quyền (ADMIN có phạm vi) hoặc đang khóa thì không gán', async () => {
+      await inRolledBack(
+        async (trx) => {
+          // Quản trị đã gỡ bớt một quyền của ADMIN: Toàn quyền tạo sau đó cũng không có quyền này
+          const admin = await trx.selectFrom('SysRole').select('Id').where('Code', '=', 'ADMIN').executeTakeFirstOrThrow();
+          const perm = await trx.selectFrom('SysPermission').select('Id').where('Code', '=', 'admin.sync:update').executeTakeFirstOrThrow();
+          await trx.deleteFrom('SysRolePermission').where('RoleId', '=', admin.Id).where('PermissionId', '=', perm.Id).execute();
+          // admin chỉ còn giữ ADMIN giới hạn theo một ĐVCS
+          const ur = await trx
+            .selectFrom('SysUserRole as ur')
+            .innerJoin('SysUser as u', 'u.Id', 'ur.UserId')
+            .select('ur.Id')
+            .where('u.Username', '=', 'admin')
+            .where('ur.RoleId', '=', admin.Id)
+            .executeTakeFirstOrThrow();
+          const dim = await trx.selectFrom('SysScopeDimension').select('Id').where('Code', '=', 'FACTORY').executeTakeFirstOrThrow();
+          const unit = await trx.selectFrom('SysOrgUnit').select('Id').where('Code', '=', 'A01').executeTakeFirstOrThrow();
+          await trx.insertInto('SysUserRoleScope').values({ UserRoleId: ur.Id, DimensionId: dim.Id, ScopeMode: 'LIST', OrgUnitId: unit.Id } as any).execute();
+        },
+        async (trx, r) => {
+          expect(r!.grantedTo).toEqual([]);
+          expect(r!.skipped[0]).toContain('không còn giữ ADMIN không giới hạn');
+          const codes = (
+            await trx.selectFrom('SysRolePermission as rp').innerJoin('SysPermission as p', 'p.Id', 'rp.PermissionId').select('p.Code').where('rp.RoleId', '=', r!.roleId).execute()
+          ).map((p) => p.Code);
+          expect(codes).not.toContain('admin.sync:update');
+          expect(codes).toContain('admin.permission:update');
+          expect(codes).toContain('order.allocation:delete');
+        },
+      );
+      await inRolledBack(
+        async (trx) => {
+          await trx.updateTable('SysUser').set({ IsActive: false }).where('Username', '=', 'admin').execute();
+        },
+        async (_trx, r) => {
+          expect(r!.grantedTo).toEqual([]);
+          expect(r!.skipped[0]).toContain('đã bị vô hiệu hóa');
+        },
+      );
+    });
+
+    it('--sync-matrix gán lại Toàn quyền cho admin (ngoại lệ có chủ đích), trừ khi ADMIN của admin đã bị giới hạn phạm vi', async () => {
+      const full = (await roleOf('FULL_ACCESS'))!;
+      const adminId = (await core.selectFrom('SysUser').select('Id').where('Username', '=', 'admin').executeTakeFirstOrThrow()).Id;
+      const adminRole = (await roleOf('ADMIN'))!;
+      const main = await core.selectFrom('SysUserRole').select('Id').where('UserId', '=', adminId).where('RoleId', '=', adminRole.Id).executeTakeFirstOrThrow();
+      const bumpVersion = () => sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1 WHERE Id = 1`.execute(core);
+      const removeFull = async () => {
+        await core.deleteFrom('SysUserRole').where('UserId', '=', adminId).where('RoleId', '=', full.Id).execute();
+        await bumpVersion();
+      };
+      let scopeId: string | number | null = null;
+      try {
+        await removeFull();
+        await runSeed({ coreOnly: true, syncMatrix: true });
+        expect(await adminHas(full.Id)).toBe(true);
+        // ADMIN của admin bị giới hạn theo một ĐVCS: không nới thêm bằng Toàn quyền không phạm vi
+        const dim = await core.selectFrom('SysScopeDimension').select('Id').where('Code', '=', 'FACTORY').executeTakeFirstOrThrow();
+        const unit = await core.selectFrom('SysOrgUnit').select('Id').where('Code', '=', 'A01').executeTakeFirstOrThrow();
+        scopeId = (await core.insertInto('SysUserRoleScope').values({ UserRoleId: main.Id, DimensionId: dim.Id, ScopeMode: 'LIST', OrgUnitId: unit.Id } as any).output('inserted.Id').executeTakeFirstOrThrow()).Id;
+        await removeFull();
+        await runSeed({ coreOnly: true, syncMatrix: true });
+        expect(await adminHas(full.Id)).toBe(false);
+      } finally {
+        if (scopeId !== null) await core.deleteFrom('SysUserRoleScope').where('Id', '=', Number(scopeId)).execute();
+        if (!(await adminHas(full.Id))) await core.insertInto('SysUserRole').values({ UserId: adminId, RoleId: full.Id }).execute();
+        await bumpVersion();
+      }
+    });
+
+    it('máy đã cài trước khi có vai trò Toàn quyền: seed chạy lại (như npm run migrate) tạo vai trò ở bước riêng, gán cho admin, ghi nhật ký', async () => {
+      const bumpVersion = () => sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1 WHERE Id = 1`.execute(core);
+      try {
+        // Xóa trong một transaction: hỏng giữa chừng thì không để lại vai trò mất phép gán, mất quyền
+        await core.transaction().execute(async (trx) => {
+          const old = await trx.selectFrom('SysRole').select('Id').where('Code', '=', 'FULL_ACCESS').executeTakeFirst();
+          if (!old) return;
+          const assigned = trx.selectFrom('SysUserRole').select('Id').where('RoleId', '=', old.Id);
+          await trx.deleteFrom('SysUserRoleScope').where('UserRoleId', 'in', assigned).execute();
+          await trx.deleteFrom('SysUserRole').where('RoleId', '=', old.Id).execute();
+          await trx.deleteFrom('SysRolePermission').where('RoleId', '=', old.Id).execute();
+          await trx.deleteFrom('SysFieldPolicy').where('SubjectType', '=', 'ROLE').where('SubjectId', '=', old.Id).execute();
+          await trx.deleteFrom('SysRole').where('Id', '=', old.Id).execute();
+        });
+        await bumpVersion();
+        await runSeed({ coreOnly: true, sampleData: false, by: 'test' });
+        const full = await roleOf('FULL_ACCESS');
+        expect(full).toBeDefined();
+        expect(await adminHas(full!.Id)).toBe(true);
+        const log = await core.selectFrom('SysAuditLog').select(['ActionCode', 'NewValue']).where('EntityType', '=', 'SysRole').where('EntityId', '=', String(full!.Id)).executeTakeFirst();
+        expect(log?.ActionCode).toBe('SEED');
+        const logged = JSON.parse(log!.NewValue!);
+        expect(logged).toMatchObject({ role: 'FULL_ACCESS', grantedTo: ['admin'] });
+        // Quyền, chính sách cột do bước tạo riêng cấp (không phải bước ma trận chung)
+        expect(logged.permissions).toBe((await permsOf(full!.Id)).length);
+        expect(logged.permissions).toBeGreaterThan(0);
+        const policies = await core.selectFrom('SysFieldPolicy').select('Id').where('SubjectType', '=', 'ROLE').where('SubjectId', '=', full!.Id).execute();
+        expect(logged.fieldPolicies).toBe(policies.length);
+        expect(policies.length).toBeGreaterThan(0);
+      } finally {
+        // Bài hỏng giữa chừng: trả lại vai trò và phép gán cho admin để các bài sau, full-access.spec vẫn chạy được
+        if (!(await roleOf('FULL_ACCESS'))) await core.transaction().execute((trx) => bootstrapFullAccess(trx, { by: 'test' }));
+        const full = (await roleOf('FULL_ACCESS'))!;
+        if (!(await adminHas(full.Id))) await core.insertInto('SysUserRole').values({ UserId: (await core.selectFrom('SysUser').select('Id').where('Username', '=', 'admin').executeTakeFirstOrThrow()).Id, RoleId: full.Id }).execute();
+        await bumpVersion();
+      }
+    });
+
+    it('quản trị gỡ Toàn quyền khỏi admin: seed chạy lại không gán lại', async () => {
+      const full = (await roleOf('FULL_ACCESS'))!;
+      const assignment = await core
+        .selectFrom('SysUserRole as ur')
+        .innerJoin('SysUser as u', 'u.Id', 'ur.UserId')
+        .select(['ur.Id', 'ur.UserId', 'ur.RoleId', 'ur.ValidFromAt', 'ur.ValidToAt', 'ur.CreatedBy'])
+        .where('u.Username', '=', 'admin')
+        .where('ur.RoleId', '=', full.Id)
+        .executeTakeFirstOrThrow();
+      const bumpVersion = () => sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1 WHERE Id = 1`.execute(core);
+      await core.deleteFrom('SysUserRole').where('Id', '=', assignment.Id).execute();
+      await bumpVersion();
+      try {
+        await runSeed({ coreOnly: true });
+        expect(await adminHas(full.Id)).toBe(false);
+      } finally {
+        if (!(await adminHas(full.Id))) {
+          await core
+            .insertInto('SysUserRole')
+            .values({ UserId: assignment.UserId, RoleId: assignment.RoleId, ValidFromAt: assignment.ValidFromAt, ValidToAt: assignment.ValidToAt, CreatedBy: assignment.CreatedBy })
+            .execute();
+        }
+        await bumpVersion();
+      }
+    });
   });
 
   it('không gán lại vai trò, nhà máy đã thu hồi của tài khoản mẫu', async () => {

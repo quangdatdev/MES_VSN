@@ -5,7 +5,7 @@ import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.serv
 import { assertFilterField, parseColumnFilters, presentValues, VALUES_LIMIT } from '../../platform/data/column-filter';
 import { ExportService } from '../../platform/export/export.service';
 import { OSM_PO_FIELDS, OSM_PO_FILTER, SourceFeedService, type OsmPoCriteria, type OsmPoField, type OsmPoRow, type OsmPoSort } from '../../platform/feed/source-feed.service';
-import { FieldPolicyService, MASK } from '../../platform/permission/field-policy.service';
+import { FieldPolicyService, MASK, type AccessLevel } from '../../platform/permission/field-policy.service';
 import { PermissionService } from '../../platform/permission/permission.service';
 import { PoAllocationQuery, PoAllocationValuesQuery } from './order.dto';
 import { day } from './order.util';
@@ -18,7 +18,7 @@ const RESOURCE = 'order.poallocation';
 const SORT_PRIORITY: OsmPoField[] = [...new Set<OsmPoField>(['etdRevised', 'etdActual', ...OSM_PO_FIELDS])];
 const isDate = (f: OsmPoField) => f === 'etdRevised' || f === 'etdActual';
 
-type Level = 'HIDDEN' | 'MASKED' | 'READONLY' | 'EDITABLE' | undefined;
+type Level = AccessLevel | undefined;
 
 /**
  * Trường JSON trùng mã cột đăng ký ở SysResourceField (order.poallocation) để chính sách cột áp đúng. Đơn vị cơ sở suy ra từ

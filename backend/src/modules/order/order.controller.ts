@@ -143,7 +143,9 @@ export class ShipmentController {
   @Get('candidates') @RequirePermission('order.shipment:view')
   candidates(@CurrentUser() u: AuthUser, @Query() q: CandidateQuery) { return this.service.candidates(u, q); }
 
-  @Get('candidates/:id/pos') @RequirePermission('order.shipment:view')
+  // Dữ liệu PO: áp chính sách cột của Cập nhật tỷ lệ cắt thay cho của kế hoạch. Interceptor áp theo tên khóa, mà hai tài
+  // nguyên cùng có statusCode, shipDate, syncedAt: để @FieldResource của controller thì cột PO theo cả cột cùng tên của kế hoạch
+  @Get('candidates/:id/pos') @RequirePermission('order.shipment:view') @FieldResource('order.po')
   candidatePos(@CurrentUser() u: AuthUser, @id() soId: number) { return this.service.candidatePos(u, soId); }
 
   @Get('draft') @RequirePermission('order.shipment:view')
@@ -151,6 +153,10 @@ export class ShipmentController {
 
   @Get(':id') @RequirePermission('order.shipment:view')
   get(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.get(u, pid); }
+
+  // Lưới "PO của kế hoạch" (task 5.9.14): cần cả quyền xem PO ở Cập nhật tỷ lệ cắt; chính sách cột của PO như candidates/:id/pos
+  @Get(':id/pos') @RequirePermission('order.shipment:view', 'order.po:view') @FieldResource('order.po')
+  pos(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.posOfPlan(u, pid); }
 
   @Post() @RequirePermission('order.shipment:create')
   create(@CurrentUser() u: AuthUser, @Body() dto: ShipmentPlanCreateDto) { return this.service.create(u, dto); }

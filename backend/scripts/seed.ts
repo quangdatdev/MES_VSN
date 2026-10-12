@@ -7,7 +7,7 @@
 //       npm run seed -w backend -- --no-sample-data      (chỉ tài khoản admin, không đơn hàng giả, phòng ban và nhân viên giả; xem SEED_SAMPLE_DATA)
 // npm run migrate tự gọi seed không dữ liệu mẫu sau khi tạo bảng: cài lần đầu chỉ cần migrate là đăng nhập được bằng admin.
 import * as argon2 from 'argon2';
-import { sql } from 'kysely';
+import { sql, type Kysely, type Transaction } from 'kysely';
 import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
 import type { CoreDatabase } from '../src/platform/database/core.types';
@@ -16,6 +16,8 @@ import type { SewingDatabase } from '../src/modules/sewing/sewing.types';
 import {
   ACTIONS,
   ACTION_LABEL,
+  FULL_ACCESS_ROLE,
+  fullAccessLetters,
   LETTER,
   LINE_COUNT,
   ROLE_ORDER,
@@ -70,7 +72,7 @@ export async function runSeed({
     // ĐVCS tạo trong lần chạy này: chưa ai thu hồi được, gán cho cả tài khoản mẫu đã có (bước 10)
     const createdBranches = new Set<string>();
     /** Phép gán thêm cho tài khoản đã có, ghi vào nhật ký SEED (thay đổi phân quyền phải có nhật ký, CLAUDE.md mục 4.8) */
-    const newGrants: { username: string; branches: string[] }[] = [];
+    const newGrants: { username: string; branches: string[]; roles?: string[] }[] = [];
     for (const b of branches.filter((x) => x.isAggregate || sampleData)) {
       const row = await db.selectFrom('SysBranch').select('Id').where('Code', '=', b.code).executeTakeFirst();
       if (!row) {
@@ -96,7 +98,14 @@ export async function runSeed({
     const roleId = new Map<string, number>();
     const newRoles = new Set<number>();
     for (const [i, r] of roles.entries()) {
-      let row = await db.selectFrom('SysRole').select('Id').where('Code', '=', r.code).executeTakeFirst();
+      const found = await db.selectFrom('SysRole').select(['Id', 'IsSystem']).where('Code', '=', r.code).executeTakeFirst();
+      // Toàn quyền chưa có thì tạo riêng ở bước 9b, trong một transaction cùng quyền, chính sách cột, phép gán, nhật ký (ADR 0014).
+      // Có rồi mà do người dùng tự tạo trùng mã thì không đụng tới
+      if (r.code === FULL_ACCESS_ROLE && !found?.IsSystem) {
+        if (found) console.warn(`Đã có vai trò ${FULL_ACCESS_ROLE} do người dùng tạo (không phải vai trò hệ thống): seed không cấp quyền, không gán vai trò này. Đổi mã vai trò đó rồi chạy lại seed.`);
+        continue;
+      }
+      let row: { Id: number } | undefined = found;
       if (!row) {
         row = await db
           .insertInto('SysRole')
@@ -213,13 +222,17 @@ export async function runSeed({
       bump('menu');
     }
 
-    // 5. Ma trận Role × quyền: chỉ cho vai trò/quyền mới, trừ khi --sync-matrix
+    // 5. Ma trận Role × quyền: chỉ cho vai trò/quyền mới, trừ khi --sync-matrix. Toàn quyền tính riêng (ADR 0014): chưa có thì
+    // tạo ở bước 9b; có rồi thì nhận quyền mới, quyền quản trị chỉ khi ADMIN đang có (vòng ADMIN chạy trước trong cùng tài nguyên)
     for (const r of resources) {
-      for (const [idx, roleCode] of ROLE_ORDER.entries()) {
-        for (const letter of r.matrix[idx] ?? '') {
+      const perRole: [string, string][] = [...ROLE_ORDER.map((code, idx): [string, string] => [code, r.matrix[idx] ?? '']), [FULL_ACCESS_ROLE, fullAccessLetters(r)]];
+      for (const [roleCode, letters] of perRole) {
+        const rid = roleId.get(roleCode);
+        if (rid === undefined) continue;
+        for (const letter of letters) {
           const pid = permId.get(`${r.code}:${LETTER[letter]}`)!;
-          const rid = roleId.get(roleCode)!;
           if (!syncMatrix && !newRoles.has(rid) && !newPerms.has(pid)) continue;
+          if (roleCode === FULL_ACCESS_ROLE && r.code.startsWith('admin.') && !(await adminRoleHas(db, pid))) continue;
           const has = await db.selectFrom('SysRolePermission').select('Id').where('RoleId', '=', rid).where('PermissionId', '=', pid).executeTakeFirst();
           if (!has) {
             await db.insertInto('SysRolePermission').values({ RoleId: rid, PermissionId: pid } as any).execute();
@@ -393,7 +406,8 @@ export async function runSeed({
 
     // 9. Chính sách cột mẫu theo vai trò: chỉ cho vai trò/cột mới, trừ khi --sync-matrix
     for (const p of roleFieldPolicies) {
-      const rid = roleId.get(p.role)!;
+      const rid = roleId.get(p.role);
+      if (rid === undefined) continue;
       if (!syncMatrix && !newRoles.has(rid) && !newFields.has(`${p.resource}.${p.field}`)) continue;
       const has = await db
         .selectFrom('SysFieldPolicy')
@@ -408,6 +422,33 @@ export async function runSeed({
         bump('chính sách cột');
       }
     }
+
+    // 9b. Vai trò Toàn quyền (ADR 0014): tạo một lần, trong một transaction
+    // Tài khoản được gán: như bước 10 (máy không dữ liệu mẫu chỉ có admin). --sync-matrix thì bước 10 gán (reset-demo xóa phép gán trước)
+    const accounts = sampleData ? users : users.filter((x) => x.username === 'admin');
+    const boot = await db.transaction().execute((trx) => bootstrapFullAccess(trx, { by, accounts, assign: !syncMatrix }));
+    if (boot) {
+      bump('vai trò');
+      bump('gán quyền', boot.permissions);
+      bump('chính sách cột', boot.fieldPolicies);
+      if (boot.grantedTo.length) bump('gán vai trò', boot.grantedTo.length);
+      for (const w of boot.skipped) console.warn(w);
+    }
+    const fullId = await db.selectFrom('SysRole').select('Id').where('Code', '=', FULL_ACCESS_ROLE).where('IsSystem', '=', true).executeTakeFirst();
+    if (fullId) roleId.set(FULL_ACCESS_ROLE, fullId.Id);
+
+    /** Gán vai trò không kèm phạm vi (vai trò gán thêm, ADR 0014); có rồi thì thôi. Trả true khi vừa gán */
+    const addRole = async (uid: number, code: string, executor: Kysely<CoreDatabase> = db) => {
+      const rid = roleId.get(code);
+      if (rid === undefined) {
+        console.warn(`Không gán vai trò ${code}: chưa có vai trò hệ thống mã này.`);
+        return false;
+      }
+      if (await executor.selectFrom('SysUserRole').select('Id').where('UserId', '=', uid).where('RoleId', '=', rid).executeTakeFirst()) return false;
+      await executor.insertInto('SysUserRole').values({ UserId: uid, RoleId: rid } as any).execute();
+      bump('gán vai trò');
+      return true;
+    };
 
     // 10. Tài khoản demo; vai trò, nhà máy, phạm vi, ngoại lệ, cột riêng mẫu chỉ cho tài khoản mới (hoặc --sync-matrix):
     // quản trị đã thu hồi thì chạy lại không cấp lại. Gán lại vai trò mà thiếu phạm vi là nới thành không giới hạn (review 5.4.8 lượt 5)
@@ -440,8 +481,9 @@ export async function runSeed({
             await db.insertInto('SysUserBranch').values({ UserId: row.Id, BranchId: branchId.get(bc)!, IsDefault: !hasDefault && bc === u.defaultBranch } as any).execute();
             bump('gán đơn vị cơ sở');
           }
-          newGrants.push({ username: u.username, branches: newBranches });
         }
+        if (newBranches.length) newGrants.push({ username: u.username, branches: newBranches });
+        // Vai trò gán thêm của tài khoản đã có (Toàn quyền cho admin) gán ở bước 9b, chỉ lần tạo vai trò
         continue;
       }
       // Tra đủ phạm vi trước khi gán vai trò: thiếu đơn vị thì không gán (vai trò không kèm phạm vi là không giới hạn)
@@ -479,6 +521,16 @@ export async function runSeed({
             await trx.insertInto('SysUserRoleScope').values({ UserRoleId: ur.Id, DimensionId: did, ScopeMode: s.mode, OrgUnitId: oid, ScopeValue: s.value ?? null } as any).execute();
             bump('phạm vi');
           }
+        }
+        // Vai trò gán thêm (Toàn quyền, ADR 0014), cả khi --sync-matrix: cùng điều kiện với lần tạo vai trò, không nới quyền của
+        // tài khoản quản trị đã bị giới hạn (vai trò chính có phạm vi) hay vô hiệu hóa
+        for (const rc of u.extraRoles ?? []) {
+          const blocked = await extraRoleBlocked(trx, row.Id, u.role);
+          if (blocked) {
+            console.warn(`Không gán vai trò ${rc} cho ${u.username}: ${blocked}. Gán ở Quản trị › Người dùng nếu cần.`);
+            continue;
+          }
+          if (await addRole(row.Id, rc, trx)) newGrants.push({ username: u.username, branches: [], roles: [rc] });
         }
         for (const o of u.overrides ?? []) {
           const pid = permId.get(o.permission)!;
@@ -569,6 +621,109 @@ export async function runSeed({
   } finally {
     await db.destroy();
   }
+}
+
+/**
+ * Lý do tài khoản không nhận vai trò gán thêm không phạm vi (ADR 0014), hoặc null khi được: phải đang hoạt động và đang giữ
+ * vai trò chính không kèm phạm vi, còn hiệu lực. Tài khoản quản trị đã bị cố ý hạ quyền thì không nhận lại quyền qua seed.
+ */
+async function extraRoleBlocked(db: Kysely<CoreDatabase>, userId: number, mainRole: string): Promise<string | null> {
+  const user = await db.selectFrom('SysUser').select('IsActive').where('Id', '=', userId).executeTakeFirst();
+  if (!user?.IsActive) return 'tài khoản đã bị vô hiệu hóa';
+  const now = new Date();
+  const main = await db
+    .selectFrom('SysUserRole as ur')
+    .innerJoin('SysRole as r', 'r.Id', 'ur.RoleId')
+    .select('ur.Id')
+    .where('ur.UserId', '=', userId)
+    .where('r.Code', '=', mainRole)
+    .where((eb) => eb.or([eb('ur.ValidFromAt', 'is', null), eb('ur.ValidFromAt', '<=', now)]))
+    .where((eb) => eb.or([eb('ur.ValidToAt', 'is', null), eb('ur.ValidToAt', '>', now)]))
+    .where((eb) => eb.not(eb.exists(eb.selectFrom('SysUserRoleScope as s').select('s.Id').whereRef('s.UserRoleId', '=', 'ur.Id'))))
+    .executeTakeFirst();
+  return main ? null : `tài khoản không còn giữ ${mainRole} không giới hạn`;
+}
+
+/** ADMIN đang có quyền này trong DB (quyền quản trị của Toàn quyền không vượt ADMIN, ADR 0014) */
+async function adminRoleHas(db: Kysely<CoreDatabase>, permissionId: number) {
+  const row = await db
+    .selectFrom('SysRolePermission as rp')
+    .innerJoin('SysRole as r', 'r.Id', 'rp.RoleId')
+    .select('rp.Id')
+    .where('r.Code', '=', 'ADMIN')
+    .where('rp.PermissionId', '=', permissionId)
+    .executeTakeFirst();
+  return !!row;
+}
+
+/**
+ * Tạo vai trò Toàn quyền một lần (ADR 0014), trong transaction của bên gọi: vai trò, quyền (mọi hành động nghiệp vụ; quyền quản
+ * trị chỉ những quyền ADMIN đang có trong DB, để người giữ ADMIN gán, sửa được vai trò này: trần quyền ADR 0004), chính sách cột,
+ * phép gán cho tài khoản khai `extraRoles`, nhật ký, tăng phiên bản quyền. Lỗi giữa chừng thì không còn gì, lần seed sau làm lại.
+ * Chỉ gán khi tài khoản đang hoạt động và đang giữ vai trò chính (ADMIN) không kèm phạm vi, còn hiệu lực: tài khoản quản trị đã
+ * bị hạ quyền thì không nhận lại quyền qua đường này. Vai trò đã có thì không làm gì: quản trị gỡ rồi thì seed chạy lại không gán lại.
+ */
+export async function bootstrapFullAccess(
+  trx: Transaction<CoreDatabase>,
+  opts: { by?: string; accounts?: typeof users; assign?: boolean } = {},
+) {
+  const { by = 'scripts/seed.ts', accounts = users, assign = true } = opts;
+  if (await trx.selectFrom('SysRole').select('Id').where('Code', '=', FULL_ACCESS_ROLE).executeTakeFirst()) return null;
+  const def = roles.find((r) => r.code === FULL_ACCESS_ROLE)!;
+  const role = await trx
+    .insertInto('SysRole')
+    .values({ Code: def.code, Name: def.name, Description: def.description, SortOrder: (roles.indexOf(def) + 1) * 10, IsActive: true, IsSystem: true } as any)
+    .output('inserted.Id')
+    .executeTakeFirstOrThrow();
+
+  const byCode = new Map(resources.map((r) => [r.code, r]));
+  const perms = await trx.selectFrom('SysPermission as p').innerJoin('SysResource as r', 'r.Id', 'p.ResourceId').select(['p.Id', 'p.Code', 'r.Code as ResourceCode']).execute();
+  const adminRole = await trx.selectFrom('SysRole').select('Id').where('Code', '=', 'ADMIN').executeTakeFirst();
+  const adminPerms = new Set(adminRole ? (await trx.selectFrom('SysRolePermission').select('PermissionId').where('RoleId', '=', adminRole.Id).execute()).map((p) => p.PermissionId) : []);
+  const wanted = perms.filter((p) => {
+    const r = byCode.get(p.ResourceCode);
+    if (!r) return false;
+    const action = p.Code.slice(p.Code.lastIndexOf(':') + 1);
+    if (![...fullAccessLetters(r)].some((l) => LETTER[l] === action)) return false;
+    return !r.code.startsWith('admin.') || adminPerms.has(p.Id);
+  });
+  for (let i = 0; i < wanted.length; i += 500) {
+    await trx.insertInto('SysRolePermission').values(wanted.slice(i, i + 500).map((p) => ({ RoleId: role.Id, PermissionId: p.Id })) as any).execute();
+  }
+
+  const resourceId = new Map((await trx.selectFrom('SysResource').select(['Id', 'Code']).execute()).map((r) => [r.Code, r.Id]));
+  const fields = new Set((await trx.selectFrom('SysResourceField').select(['ResourceId', 'Code']).execute()).map((f) => `${f.ResourceId}.${f.Code}`));
+  const policies = roleFieldPolicies
+    .filter((p) => p.role === FULL_ACCESS_ROLE && resourceId.has(p.resource) && fields.has(`${resourceId.get(p.resource)}.${p.field}`))
+    .map((p) => ({ SubjectType: 'ROLE', SubjectId: role.Id, ResourceId: resourceId.get(p.resource)!, FieldCode: p.field, AccessLevel: p.level }));
+  if (policies.length) await trx.insertInto('SysFieldPolicy').values(policies as any).execute();
+
+  const grantedTo: string[] = [];
+  const skipped: string[] = [];
+  // --sync-matrix (reset-demo xóa phép gán trước): bước 10 gán, cùng điều kiện
+  for (const u of assign ? accounts.filter((x) => x.extraRoles?.includes(FULL_ACCESS_ROLE)) : []) {
+    const user = await trx.selectFrom('SysUser').select('Id').where('Username', '=', u.username).executeTakeFirst();
+    if (!user) continue; // máy cài mới: tài khoản tạo ở bước 10, gán kèm vai trò chính
+    const blocked = await extraRoleBlocked(trx, user.Id, u.role);
+    if (blocked) {
+      skipped.push(`Không gán vai trò Toàn quyền cho ${u.username}: ${blocked}. Gán ở Quản trị › Người dùng nếu cần.`);
+      continue;
+    }
+    await trx.insertInto('SysUserRole').values({ UserId: user.Id, RoleId: role.Id } as any).execute();
+    grantedTo.push(u.username);
+  }
+
+  await trx
+    .insertInto('SysAuditLog')
+    .values({
+      EntityType: 'SysRole',
+      EntityId: String(role.Id),
+      ActionCode: 'SEED',
+      NewValue: JSON.stringify({ by, role: FULL_ACCESS_ROLE, permissions: wanted.length, fieldPolicies: policies.length, grantedTo, ...(skipped.length ? { skipped } : {}) }),
+    } as any)
+    .execute();
+  await sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1, ModifiedAt = SYSUTCDATETIME() WHERE Id = 1`.execute(trx);
+  return { roleId: role.Id, permissions: wanted.length, fieldPolicies: policies.length, grantedTo, skipped };
 }
 
 if (require.main === module) {

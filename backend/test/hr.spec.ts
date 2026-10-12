@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { randomBytes } from 'crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.factory';
@@ -31,6 +32,34 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     return s.body.accessToken as string;
   }
   const hrUser = () => tokenFor('nhansu', 'A00');
+
+  /**
+   * Tài khoản thử chỉ có vai trò Quản trị hệ thống (xem nghiệp vụ, không ghi): tài khoản admin mẫu có thêm vai trò Toàn quyền
+   * (ADR 0014) nên không dùng để kiểm "chỉ có quyền xem". Dọn ở afterAll.
+   */
+  const VIEWER = 'test.hrview';
+  let viewerId = 0;
+  async function viewOnly() {
+    const key = `${VIEWER}@A00`;
+    if (tokens.has(key)) return tokens.get(key)!;
+    const admin = await tokenFor('admin', 'A00');
+    const roles = (await api().get('/api/v1/admin/roles').set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+    const branches = (await api().get('/api/v1/admin/branches').set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+    // Mật khẩu sinh mỗi lần chạy: test dừng giữa chừng thì tài khoản ADMIN còn lại không ai biết mật khẩu
+    const password = `Hv@${randomBytes(12).toString('base64url')}9`;
+    const created = await api().post('/api/v1/admin/users').set(auth(admin)).send({ username: VIEWER, fullName: 'Chỉ xem (test)', initialPassword: password });
+    viewerId = created.status === 201 ? created.body.id : (await api().get(`/api/v1/admin/users?q=${VIEWER}`).set(auth(admin))).body.items.find((u: any) => u.username === VIEWER).id;
+    if (created.status !== 201) {
+      await api().post(`/api/v1/admin/users/${viewerId}/reset-password`).set(auth(admin)).send({ newPassword: password }).expect(200);
+      await api().put(`/api/v1/admin/users/${viewerId}`).set(auth(admin)).send({ isActive: true, unlock: true }).expect(200);
+    }
+    await api().put(`/api/v1/admin/users/${viewerId}/roles`).set(auth(admin)).send({ roleIds: roles.filter((r) => r.code === 'ADMIN').map((r) => r.id) }).expect(200);
+    await api().put(`/api/v1/admin/users/${viewerId}/branches`).set(auth(admin)).send({ branchIds: branches.filter((b) => b.code === 'A00').map((b) => b.id) }).expect(200);
+    const l = await api().post('/api/v1/auth/login').send({ username: VIEWER, password });
+    const t = (await api().post('/api/v1/auth/select-branch').set('Authorization', `Bearer ${l.body.preAuthToken}`).send({ branchCode: 'A00' })).body.accessToken as string;
+    tokens.set(key, t);
+    return t;
+  }
 
   async function dropFixture() {
     const tst = (eb: any) => eb('Code', 'like', 'TST%');
@@ -71,6 +100,11 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
 
   afterAll(async () => {
     await dropFixture();
+    if (viewerId) {
+      const admin = await tokenFor('admin', 'A00');
+      await api().put(`/api/v1/admin/users/${viewerId}/roles`).set(auth(admin)).send({ roleIds: [] }).expect(200);
+      await api().put(`/api/v1/admin/users/${viewerId}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    }
     await app.close();
   });
 
@@ -94,7 +128,7 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     await api().get('/api/v1/hr/departments/tree').set(auth(planner)).expect(403);
     await api().get('/api/v1/hr/employees').set(auth(planner)).expect(403);
     await api().get('/api/v1/hr/employees/options').set(auth(planner)).expect(403);
-    const admin = await tokenFor('admin', 'A00');
+    const admin = await viewOnly();
     await api().get('/api/v1/hr/departments/tree').set(auth(admin)).expect(200);
     await createDept(admin, { code: 'TST-X', name: 'X', departmentTypeId: fx.type }).expect(403);
     await api().put(`/api/v1/hr/departments/${fx.a}`).set(auth(admin)).send({ name: 'Đổi' }).expect(403);
@@ -201,7 +235,9 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     const get = async (token: string) => (await api().get(`/api/v1/hr/employees/${id}`).set(auth(token)).expect(200)).body;
     expect((await get(await hrUser())).idNumber).toBe('999000111222');
     expect((await get(await tokenFor('giamdoc', 'A00'))).idNumber).toBe('***');
-    expect('idNumber' in (await get(await tokenFor('admin', 'A00')))).toBe(false);
+    expect('idNumber' in (await get(await viewOnly()))).toBe(false);
+    // Toàn quyền (ADR 0014): thấy cột nhạy cảm
+    expect((await get(await tokenFor('admin', 'A00'))).idNumber).toBe('999000111222');
     const csv = await api().get(`/api/v1/hr/employees/export?departmentId=${fx.root}`).set(auth(await tokenFor('giamdoc', 'A00'))).expect(200);
     expect(csv.text).toContain('Số CMND/CCCD');
     expect(csv.text).not.toContain('999000111222');

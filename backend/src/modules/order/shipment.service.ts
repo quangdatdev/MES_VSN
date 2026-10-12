@@ -7,7 +7,7 @@ import { scopeOf, type Scope } from '../../platform/data/base.repository';
 import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type FilterSpec } from '../../platform/data/column-filter';
 import { ExportService } from '../../platform/export/export.service';
 import { UserDirectoryService } from '../../platform/org/user-directory.service';
-import { FieldPolicyService, MASK } from '../../platform/permission/field-policy.service';
+import { FieldPolicyService, MASK, type AccessLevel } from '../../platform/permission/field-policy.service';
 import { ORDER_DB } from './order.db';
 import { CandidateQuery, OrderListQuery, OrderValuesQuery, ShipmentPlanCreateDto, ShipmentPlanUpdateDto, type PlanLineQtyDto } from './order.dto';
 import {
@@ -17,6 +17,7 @@ import {
   SalesOrderPoRepository,
   SalesOrderRepository,
   ShipmentPlanRepository,
+  type SalesOrderPoRow,
   type ShipmentPlanRow,
 } from './order.repositories';
 import type { OrderDb } from './order.types';
@@ -94,6 +95,45 @@ const EXPORT_COLUMNS = [
   { key: 'endlineQty', label: 'LK Endline' },
   { key: 'finishedQty', label: 'LK Hoàn thiện' },
 ];
+
+type Level = AccessLevel | undefined;
+
+/**
+ * Thứ tự PO: ngày xuất rồi số PO, chỉ theo cột người dùng xem được nguyên giá trị ở order.po. Xếp theo cột bị Ẩn/Che cũng lộ
+ * thứ tự giá trị (review 5.1 #2, review 5.9.14 #1); không còn cột nào thì theo Id.
+ */
+function poSort(levels: Map<string, AccessLevel>) {
+  const readable = (f: string) => levels.get(f) !== 'HIDDEN' && levels.get(f) !== 'MASKED';
+  const parts = [readable('shipDate') && 'ShipDate:asc', readable('poNumber') && 'PoNumber:asc'].filter(Boolean);
+  return parts.length ? parts.join(',') : 'Id:asc';
+}
+
+/**
+ * Một dòng của lưới "PO của kế hoạch". Khóa trùng mã cột của order.po để interceptor áp chính sách cột. Cột suy ra theo cột
+ * nguồn (như ĐVCS của Phân bổ PO): SL đã xác nhận, chưa xác nhận lộ cả Số lượng lẫn Trạng thái nên theo mức chặt hơn của hai
+ * cột; Ngày xác nhận lộ Trạng thái nên theo cột đó. Bị Che thì luôn "***", kể cả khi giá trị trống hay bằng 0: để trống là
+ * cho biết PO chưa xác nhận.
+ */
+export function presentPlanPo(r: SalesOrderPoRow, qtyLevel: Level, statusLevel: Level) {
+  const confirmed = r.StatusCode === 'CONFIRMED';
+  const out: Record<string, unknown> = {
+    id: r.Id,
+    poCode: r.PoCode,
+    poNumber: r.PoNumber,
+    destination: r.Destination,
+    shipDate: day(r.ShipDate),
+    qty: r.Qty,
+    statusCode: r.StatusCode,
+  };
+  const derived = (value: unknown, ...lv: Level[]) => (lv.includes('HIDDEN') ? undefined : lv.includes('MASKED') ? MASK : value);
+  const put = (key: string, value: unknown) => {
+    if (value !== undefined) out[key] = value;
+  };
+  put('confirmedAt', derived(r.ConfirmedAt, statusLevel));
+  put('confirmedQty', derived(confirmed ? r.Qty : 0, qtyLevel, statusLevel));
+  put('unconfirmedQty', derived(confirmed ? 0 : r.Qty, qtyLevel, statusLevel));
+  return out;
+}
 
 interface DraftLine {
   colorName: string;
@@ -215,7 +255,8 @@ export class ShipmentService {
   async candidatePos(user: AuthUser, salesOrderId: number) {
     const scope = scopeOf(user);
     await this.assignedOrder(scope, salesOrderId);
-    const page = await this.pos.list(scope, { page: 1, pageSize: 200, sort: 'ShipDate:asc', where: (qb) => qb.where('SalesOrderId', '=', salesOrderId) });
+    const { levels } = await this.fields.levels(scope.access, 'order.po');
+    const page = await this.pos.list(scope, { page: 1, pageSize: 200, sort: poSort(levels), where: (qb) => qb.where('SalesOrderId', '=', salesOrderId) });
     return this.fields.shape(
       user,
       'order.po',
@@ -230,6 +271,21 @@ export class ShipmentService {
         statusCode: p.StatusCode,
       })),
     );
+  }
+
+  /**
+   * Lưới "PO của kế hoạch" dưới danh sách kế hoạch (task 5.9.14): PO đã chọn khi lập kế hoạch và số lượng đã xác nhận, chưa
+   * xác nhận. Xác nhận làm ở Cập nhật tỷ lệ cắt, theo cả PO, nên số là của cả PO (một PO có thể nằm trong nhiều kế hoạch).
+   * Dữ liệu PO đi qua phạm vi và chính sách cột của order.po (ADR 0006; controller khai báo @FieldResource('order.po')).
+   * `hiddenCount`: PO của kế hoạch nằm ngoài phạm vi người dùng được xem ở order.po.
+   */
+  async posOfPlan(user: AuthUser, planId: number) {
+    const scope = scopeOf(user);
+    // listByParent kiểm kế hoạch xem được (ĐVCS, phạm vi của order.shipment), không thì 404 như GET /:id
+    const ids = [...new Set((await this.planPos.listByParent(scope, planId)).map((l) => l.SalesOrderPoId))];
+    const { levels } = await this.fields.levels(scope.access, 'order.po');
+    const rows = ids.length ? await this.pos.listAll(scope, { sort: poSort(levels), where: (qb) => qb.where('Id', 'in', ids) }, 'view') : [];
+    return { items: rows.map((r) => presentPlanPo(r, levels.get('qty'), levels.get('statusCode'))), hiddenCount: ids.length - rows.length };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Alert, Button, Grid, Group, Modal, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Grid, Group, Modal, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconAlertCircle, IconListSearch, IconPencil, IconPlus, IconTrash, IconWand } from '@tabler/icons-react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,9 +19,10 @@ import { addDays, fmtDate, fmtNum, qs, sumOf, today } from '../../lib/format';
 import { useLeaveGuard } from '../../lib/leaveGuard';
 import { toastError, toastOk } from '../../lib/notify';
 import { useMobile } from '../../lib/useMobile';
+import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
 import { factoryLabel } from './factoryLabel';
-import { emptyFilter, type Candidate, type CandidatePo, type OrderFilter, type PlanLine, type ShipmentPlan, type ShipmentPlanDetail } from './api';
+import { emptyFilter, type Candidate, type CandidatePo, type OrderFilter, type PlanLine, type PlanPo, type PlanPoList, type ShipmentPlan, type ShipmentPlanDetail } from './api';
 import { EmptyState, ExportButton, filterParams, IssueList, loadError, OrderFilters, PICK_ROW, PLAN_STATUS, PO_STATUS, StatusBadge, useCanWrite, useCustomers, usePagedList } from './common';
 
 const RESOURCE = 'order.shipment';
@@ -121,46 +122,144 @@ export default function ShipmentPage() {
       }
       filters={<OrderFilters policy={policy} value={list.filter} onChange={list.setFilter} customers={customers} statuses={PLAN_STATUS} search={{ label: 'PO/Buy date', placeholder: 'Số PO hoặc Buy date' }} columns={list.columnsOf(NAMES, policy)} />}
     >
-      <DataGrid
-        label="Danh sách kế hoạch xuất hàng"
-        fill
-        columns={columns}
-        rows={items}
-        rowKey={(r) => r.id}
-        policy={policy}
-        loading={list.query.isFetching}
-        error={list.error}
-        onRetry={() => void list.query.refetch()}
-        indexOffset={(list.page - 1) * list.pageSize}
-        sort={list.sort}
-        onSort={list.setSort}
-        {...list.grid}
-        selectedKey={selected?.id}
-        onRowClick={(r) => setSelectedId(r.id)}
-        onRowDoubleClick={(r) => {
-          setSelectedId(r.id);
-          if (canUpdate) setDialog({ planId: r.id });
-        }}
-        empty={
-          <EmptyState
-            filtered={list.filtered}
-            what="kế hoạch"
-            onClear={list.clearFilter}
-            hint={canCreate ? 'Chưa có kế hoạch xuất hàng. Bấm "Thêm kế hoạch" để lập kế hoạch từ một mã hàng.' : 'Chưa có kế hoạch xuất hàng.'}
+      <div className="split-rows">
+        <div className="pane">
+          <DataGrid
+            label="Danh sách kế hoạch xuất hàng"
+            fill
+            columns={columns}
+            rows={items}
+            rowKey={(r) => r.id}
+            policy={policy}
+            loading={list.query.isFetching}
+            error={list.error}
+            onRetry={() => void list.query.refetch()}
+            indexOffset={(list.page - 1) * list.pageSize}
+            sort={list.sort}
+            onSort={list.setSort}
+            {...list.grid}
+            selectedKey={selected?.id}
+            onRowClick={(r) => setSelectedId(r.id)}
+            onRowDoubleClick={(r) => {
+              setSelectedId(r.id);
+              if (canUpdate) setDialog({ planId: r.id });
+            }}
+            empty={
+              <EmptyState
+                filtered={list.filtered}
+                what="kế hoạch"
+                onClear={list.clearFilter}
+                hint={canCreate ? 'Chưa có kế hoạch xuất hàng. Bấm "Thêm kế hoạch" để lập kế hoạch từ một mã hàng.' : 'Chưa có kế hoạch xuất hàng.'}
+              />
+            }
+            footer={
+              <Pager
+                page={list.page}
+                pageSize={list.pageSize}
+                total={list.query.data?.total ?? 0}
+                onPage={list.setPage}
+                extra={planSum !== null && <Text size="sm">Tổng SL kế hoạch trang này: <b>{fmtNum(planSum)}</b></Text>}
+              />
+            }
           />
-        }
-        footer={
-          <Pager
-            page={list.page}
-            pageSize={list.pageSize}
-            total={list.query.data?.total ?? 0}
-            onPage={list.setPage}
-            extra={planSum !== null && <Text size="sm">Tổng SL kế hoạch trang này: <b>{fmtNum(planSum)}</b></Text>}
-          />
-        }
-      />
+        </div>
+        <PlanPoPane plan={selected} />
+      </div>
       {dialog && <PlanDialog planId={dialog.planId} onClose={() => setDialog(null)} onDone={refreshAfterClose} />}
     </WorkPage>
+  );
+}
+
+const PLAN_PO_COLUMNS: Column<PlanPo>[] = [
+  { key: 'poNumber', title: 'PO#', format: 'code' },
+  { key: 'poCode', title: 'Mã PO', format: 'code' },
+  { key: 'destination', title: 'Đích đến' },
+  { key: 'shipDate', title: 'Ngày xuất hàng', format: 'date' },
+  { key: 'qty', title: 'Số lượng', format: 'number' },
+  { key: 'statusCode', title: 'Trạng thái', render: (p) => <StatusBadge map={PO_STATUS} code={String(p.statusCode)} /> },
+  { key: 'confirmedAt', title: 'Ngày xác nhận', format: 'datetime', field: null },
+  { key: 'confirmedQty', title: 'SL đã xác nhận', format: 'number', field: null },
+  { key: 'unconfirmedQty', title: 'SL chưa xác nhận', format: 'number', field: null },
+];
+
+/**
+ * Khung "PO của kế hoạch" dưới danh sách (task 5.9.14): PO đã chọn khi lập kế hoạch đang chọn, PO nào đã xác nhận ở Cập nhật
+ * tỷ lệ cắt, số lượng đã xác nhận, chưa xác nhận. Số là của cả PO (một PO có thể nằm trong nhiều kế hoạch). Cột theo chính
+ * sách cột của Cập nhật tỷ lệ cắt; cột suy ra bỏ khi cột nguồn bị Ẩn, như máy chủ.
+ */
+function PlanPoPane({ plan }: { plan: ShipmentPlan | null }) {
+  const policy = useFieldPolicy('order.po');
+  const canView = useCan('order.po:view');
+  const pos = useQuery({
+    queryKey: ['order', 'shipment-pos', plan?.id],
+    queryFn: () => api<PlanPoList>(`/order/shipment-plans/${plan!.id}/pos`),
+    enabled: !!plan && canView,
+  });
+  const columns = useMemo(() => {
+    const statusHidden = policy.level('statusCode') === 'HIDDEN';
+    const qtyHidden = policy.level('qty') === 'HIDDEN';
+    return PLAN_PO_COLUMNS.filter((c) => (c.key === 'confirmedAt' ? !statusHidden : c.key === 'confirmedQty' || c.key === 'unconfirmedQty' ? !statusHidden && !qtyHidden : true));
+  }, [policy]);
+
+  const rows = plan && canView ? (pos.data?.items ?? []) : [];
+  const hidden = plan && canView ? (pos.data?.hiddenCount ?? 0) : 0;
+  // Trạng thái bị Che hoặc Ẩn thì không đếm được PO đã xác nhận; số lượng bị Che hoặc Ẩn thì không có tổng (sumOf trả null)
+  const statusKnown = rows.every((p) => p.statusCode === 'CONFIRMED' || p.statusCode === 'DRAFT');
+  const confirmedCount = rows.filter((p) => p.statusCode === 'CONFIRMED').length;
+  const confirmedSum = sumOf(rows.map((p) => p.confirmedQty));
+  const unconfirmedSum = sumOf(rows.map((p) => p.unconfirmedQty));
+  const total = sumOf(rows.map((p) => p.qty));
+  const amount = (sum: number | null, count: number) => (sum === null ? `${count} PO` : count === 0 ? fmtNum(sum) : `${fmtNum(sum)} (${count} PO)`);
+  const empty = !plan
+    ? 'Bấm một kế hoạch ở lưới trên để xem PO.'
+    : !canView
+      ? 'Bạn không được xem PO ở màn Cập nhật tỷ lệ cắt nên không thấy trạng thái xác nhận.'
+      : hidden > 0
+        ? `Bạn không được xem ${hidden} PO của kế hoạch này.`
+        : 'Kế hoạch này chưa gắn PO.';
+
+  return (
+    <div className="pane">
+      <div className="pane-title">
+        <span>
+          PO của kế hoạch{' '}
+          {plan && typeof plan.planNo === 'string' && (
+            <Text span size="xs" c="dimmed" fw={400} style={{ whiteSpace: 'nowrap' }}>
+              {plan.planNo}
+            </Text>
+          )}
+        </span>
+        {rows.length > 0 && statusKnown && (
+          <Group gap={6} wrap="wrap" justify="flex-end">
+            <Badge variant="light" color={PO_STATUS.CONFIRMED.color}>Đã xác nhận: {amount(confirmedSum, confirmedCount)}</Badge>
+            <Badge variant="light" color={PO_STATUS.DRAFT.color}>Chưa xác nhận: {amount(unconfirmedSum, rows.length - confirmedCount)}</Badge>
+          </Group>
+        )}
+      </div>
+      <DataGrid
+        label="PO của kế hoạch"
+        fill
+        dense
+        columns={columns}
+        rows={rows}
+        rowKey={(p) => p.id}
+        policy={policy}
+        loading={pos.isFetching && !!plan && canView}
+        error={plan && canView ? loadError(pos.error, 'Không tải được PO của kế hoạch.') : null}
+        onRetry={() => void pos.refetch()}
+        empty={empty}
+        footer={
+          rows.length > 0 && (
+            <Text size="sm" px={8} py={4}>
+              {total === null ? `${rows.length} PO.` : <>Tổng {rows.length} PO: <b>{fmtNum(total)}</b>.</>}
+              {/* Số trong lưới là của cả PO (một PO có thể nằm trong nhiều kế hoạch): luôn nói rõ, kể cả khi không xem được SL kế hoạch */}
+              {policy.visible('qty') && <> Số lượng là của cả PO{typeof plan?.planQty === 'number' ? <>; kế hoạch này lấy <b>{fmtNum(plan.planQty)}</b>.</> : '.'}</>}
+              {hidden > 0 && <> Còn {hidden} PO bạn không được xem.</>}
+            </Text>
+          )
+        }
+      />
+    </div>
   );
 }
 

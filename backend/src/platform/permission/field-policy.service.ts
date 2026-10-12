@@ -7,6 +7,8 @@ import { CORE_DB, type CoreDb } from '../database/database.module';
 import { PermissionService, type UserAccess } from './permission.service';
 
 export const MASK = '***';
+/** Mức của một cột (Ẩn, Che, Chỉ đọc, Sửa được), cho module dựng cột suy ra theo cột nguồn */
+export type { AccessLevel };
 const RANK: Record<AccessLevel, number> = { HIDDEN: 0, MASKED: 1, READONLY: 2, EDITABLE: 3 };
 
 export interface FieldMeta {

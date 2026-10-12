@@ -50,7 +50,12 @@ export const roles = [
   { code: 'ACCOUNTANT', name: 'Kế toán', description: 'Xem và xuất đơn hàng, doanh thu; thấy giá nhưng không sửa' },
   // Phase 5.8 (ADR 0012 mục 6): người được thêm, sửa phòng ban và hồ sơ nhân viên; ADMIN chỉ xem (tách nhiệm vụ, ADR 0004)
   { code: 'HR', name: 'Nhân sự', description: 'Quản lý sơ đồ tổ chức và hồ sơ nhân viên; không xem nghiệp vụ sản xuất' },
+  // ADR 0014 (người dùng yêu cầu 12/10/2026): quyền tính riêng (fullAccessLetters), không có cột trong ma trận của tài nguyên
+  { code: 'FULL_ACCESS', name: 'Toàn quyền', description: 'Mọi quyền xem, thêm, sửa, xóa, xuất file và quản trị; thấy, sửa mọi cột. Vẫn theo luật chung: ghi dữ liệu theo ĐVCS đang làm việc, không tự đổi quyền của mình' },
 ];
+
+/** Vai trò Toàn quyền (ADR 0014) */
+export const FULL_ACCESS_ROLE = 'FULL_ACCESS';
 
 export interface Group {
   code: string;
@@ -140,6 +145,13 @@ export const resources: ResourceDef[] = [
 ];
 
 export const ROLE_ORDER = ['ADMIN', 'DIRECTOR', 'PLANNER', 'LINE_LEADER', 'QC', 'ACCOUNTANT', 'HR'];
+
+/**
+ * Quyền của vai trò Toàn quyền trên một tài nguyên (ADR 0014): mọi hành động nghiệp vụ; quyền quản trị đúng bằng ADMIN, vì người
+ * thao tác chỉ gán, sửa được vai trò có quyền `admin.*` mà chính mình có (trần quyền quản trị, ADR 0004). Các quyền quản trị
+ * ADMIN không có (ví dụ xuất file danh sách vai trò) không dùng ở màn nào.
+ */
+export const fullAccessLetters = (r: ResourceDef): string => (r.code.startsWith('admin.') ? r.matrix[0] : 'VCUDE');
 
 /** Chiều phạm vi (ngoài FACTORY luôn có) gắn với từng tài nguyên: chiều → cột của bảng nguồn. */
 export const scopeBindings: Record<string, Record<string, string>> = {
@@ -322,6 +334,10 @@ export const roleFieldPolicies: { role: string; resource: string; field: string;
   // Chính sách cột tính theo tài nguyên: màn nào có cùng dữ liệu cũng phải khai báo, không thì lộ ở màn đó (review 5.1 lượt 2 N3)
   { role: 'LINE_LEADER', resource: 'order.po', field: 'customerName', level: 'MASKED' },
   { role: 'LINE_LEADER', resource: 'order.prep', field: 'customerName', level: 'MASKED' },
+  // Toàn quyền (ADR 0014): mọi cột nhạy cảm được xem, sửa (cột tính sẵn như Thành tiền, Doanh thu vẫn không nhập được)
+  ...Object.entries(resourceFields).flatMap(([resource, fields]) =>
+    fields.filter(([, , sensitive]) => sensitive === 'S').map(([field]) => ({ role: FULL_ACCESS_ROLE, resource, field, level: 'EDITABLE' as Level })),
+  ),
   // Giấy tờ, liên lạc của nhân viên (ADR 0012 mục 8): mặc định Ẩn; Nhân sự sửa được, Giám đốc thấy là có nhưng bị che
   ...['birthDate', 'idNumber', 'contactPhone', 'contactPerson', 'currentAddress'].flatMap((field) => [
     { role: 'HR', resource: 'hr.employee', field, level: 'EDITABLE' as Level },
@@ -341,11 +357,19 @@ export interface UserDef {
   overrides?: { permission: string; effect: 'ALLOW' | 'DENY'; validTo?: string; reason: string }[];
   /** Chính sách cột riêng (L4 theo người) */
   fieldPolicies?: { resource: string; field: string; level: Level; validTo?: string; reason: string }[];
+  /**
+   * Vai trò gán thêm, không kèm phạm vi. Tài khoản đã có thì chỉ gán khi vai trò vừa tạo ở lần seed này (chưa ai thu hồi được),
+   * như ĐVCS mẫu; quản trị gỡ rồi thì seed chạy lại không gán lại
+   */
+  extraRoles?: string[];
 }
 
 /** Năm người mẫu của phương án nền tảng mục 4.4, cộng tài khoản quản trị. */
 export const users: UserDef[] = [
-  { username: 'admin', fullName: 'Quản trị hệ thống', role: 'ADMIN', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00' },
+  // Toàn quyền: người dùng chốt 12/10/2026 gán cho tài khoản admin (ADR 0014, thay phần tách nhiệm vụ của ADR 0004 với tài khoản này)
+  { username: 'admin', fullName: 'Quản trị hệ thống', role: 'ADMIN', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00', extraRoles: ['FULL_ACCESS'] },
+  // Quản trị chỉ xem nghiệp vụ (tách nhiệm vụ, ADR 0004): minh họa ở kịch bản demo, vì admin đã có Toàn quyền
+  { username: 'quantri', fullName: 'Ngô Văn Quân', role: 'ADMIN', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00' },
   { username: 'giamdoc', fullName: 'Phạm Quốc Hưng', role: 'DIRECTOR', branches: ['A00', 'A01'], defaultBranch: 'A00' },
   { username: 'kehoach.a', fullName: 'Lê Thị Mai', role: 'PLANNER', branches: ['A01'], defaultBranch: 'A01' },
   {
