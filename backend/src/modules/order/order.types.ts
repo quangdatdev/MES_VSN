@@ -177,7 +177,10 @@ export interface PoAllocationRefreshTable {
   /** Lần chép OSM của dữ liệu đang có trong PoAllocation (lần bị bỏ qua không đổi) */
   SourceSyncedAt: Date | null;
   SourceRows: number;
+  /** Mốc đã dùng để so với nguồn ở lần làm mới gần nhất */
   PreviousRows: number;
+  /** Mốc so cho chốt giảm: số dòng nguồn của lần làm mới đủ gần nhất; null: chưa có (dùng số dòng đang có trong OSM) */
+  BaselineRows: number | null;
   InsertedRows: number;
   UpdatedRows: number;
   RemovedRows: number;

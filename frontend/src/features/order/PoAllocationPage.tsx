@@ -228,27 +228,40 @@ function NotSynced({ sourceActive }: { sourceActive: boolean }) {
 
 /**
  * Lần làm mới theo OSM gần nhất không làm đủ (bảng chép rỗng, hoặc số dòng giảm bất thường nên giữ dòng không còn trong OSM): dữ liệu
- * trên lưới có thể chưa khớp OSM. Người xem báo quản trị kiểm OSM; quản trị cho qua bằng cấu hình máy chủ (chi tiết trong tooltip).
+ * trên lưới có thể chưa khớp OSM. Mọi thông tin là chữ (điện thoại không rê chuột được). Người chạy được đồng bộ thấy cách xử lý
+ * (kiểm OSM, hoặc cho qua bằng cấu hình máy chủ); người khác chỉ được nhắc báo quản trị.
  */
 function RefreshWarning({ notice }: { notice: PoAllocationRefreshNotice }) {
+  const canSync = useCan('admin.sync:update');
   const at = fmtDateTime(notice.at);
+  const empty = notice.reason === 'EMPTY';
   return (
-    <Alert
-      color="orange"
-      variant="light"
-      icon={<IconAlertTriangle size={16} />}
-      py={8}
-      mb="xs"
-      maw={760}
-      title={notice.reason === 'EMPTY' ? 'Dữ liệu OSM chưa được làm mới' : 'Dữ liệu OSM có thể chưa khớp'}
-    >
-      {notice.reason === 'EMPTY' ? (
-        <>Lần làm mới lúc {at} bị bỏ qua vì bảng chép OSM không có dòng nào; lưới vẫn là dữ liệu của lần trước. Báo quản trị kiểm OSM.</>
-      ) : (
-        <span title={`OSM có ${fmtNum(notice.sourceRows)} dòng, trước đó ${fmtNum(notice.previousRows)} dòng. OSM thật sự bớt PO thì quản trị đặt PO_ALLOCATION_MAX_SHRINK_PERCENT=100, khởi động lại rồi đồng bộ lại.`}>
-          Lần làm mới lúc {at} giữ lại {fmtNum(notice.keptAbsent)} dòng không còn trong OSM vì số dòng giảm quá {notice.maxShrinkPercent}%. Báo quản trị kiểm OSM.
-        </span>
-      )}
+    <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} py={8} mb="xs" maw={760} title={empty ? 'Dữ liệu OSM chưa được làm mới' : 'Dữ liệu OSM có thể chưa khớp'}>
+      <Stack gap={4}>
+        {empty ? (
+          <span>Lần làm mới lúc {at} bị bỏ qua vì bảng chép OSM không có dòng nào; lưới vẫn là dữ liệu của lần trước.</span>
+        ) : (
+          <>
+            <span>
+              Lần làm mới lúc {at} giữ lại {fmtNum(notice.keptAbsent)} dòng không còn trong OSM vì số dòng giảm quá {notice.maxShrinkPercent}%. Lưới có thể có
+              cả dòng cũ lẫn dòng mới của cùng PO cho tới lần làm mới đủ.
+            </span>
+            <Text size="sm" style={SOFT}>
+              OSM có {fmtNum(notice.sourceRows)} dòng; lần làm mới đủ gần nhất có {fmtNum(notice.previousRows)} dòng.
+            </Text>
+          </>
+        )}
+        {!canSync ? (
+          <span>Báo quản trị kiểm OSM.</span>
+        ) : empty ? (
+          <Text size="sm">Kiểm view OSM rồi chạy lại đồng bộ nguồn "{SOURCE_NAME}".</Text>
+        ) : (
+          <Text size="sm">
+            Kiểm dữ liệu OSM rồi chạy lại đồng bộ. Nếu OSM thật sự bớt PO: đặt PO_ALLOCATION_MAX_SHRINK_PERCENT=100 trong cấu hình máy chủ, khởi động lại backend rồi
+            đồng bộ lại (sau đó trả về giá trị cũ).
+          </Text>
+        )}
+      </Stack>
     </Alert>
   );
 }

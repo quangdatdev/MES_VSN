@@ -127,7 +127,7 @@ export class PoAllocationRefreshService implements OnModuleInit, OnApplicationBo
       this.logger.warn('Không làm mới Phân bổ PO: bảng chép OSM không có dòng nào. Giữ nguyên dữ liệu; kiểm lại lần đồng bộ nguồn OSM.OSMData rồi đồng bộ lại.');
     } else if (r.reason === 'SHRINK') {
       this.logger.warn(
-        `Phân bổ PO: bảng chép OSM chỉ có ${r.source} dòng, giảm quá ${r.maxShrinkPercent}% so với ${r.before} dòng đang có; đã thêm, sửa nhưng giữ ${r.keptAbsent} dòng không còn trong OSM. ` +
+        `Phân bổ PO: bảng chép OSM chỉ có ${r.source} dòng, giảm quá ${r.maxShrinkPercent}% so với mốc ${r.before} dòng (lần làm mới đủ gần nhất); đã thêm, sửa nhưng giữ ${r.keptAbsent} dòng không còn trong OSM (lưới có thể có dòng cũ trùng dòng mới tới lần làm mới đủ). ` +
           'Kiểm lại OSM; OSM thật sự bớt nhiều PO thì đặt PO_ALLOCATION_MAX_SHRINK_PERCENT=100, khởi động lại rồi đồng bộ lại.',
       );
     }
