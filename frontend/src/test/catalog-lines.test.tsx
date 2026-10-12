@@ -5,7 +5,6 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CatalogsPage from '../features/admin/CatalogsPage';
-import { scopeLineGroups } from '../features/admin/UserAccessDrawer';
 import type { CatalogLines } from '../features/admin/types';
 import { api } from '../lib/api';
 import { lineOptions } from '../lib/lines';
@@ -244,43 +243,5 @@ describe('Lựa chọn chuyền theo cây xưởng', () => {
       ['Chi nhánh A01', 'Xưởng may'],
       ['Chi nhánh A02', 'Xưởng may'],
     ]);
-  });
-});
-
-describe('Ô chọn chuyền ở phạm vi người dùng', () => {
-  // Thứ tự như API (nhà máy, thứ tự, mã): xưởng và chuyền xen nhau; hai xưởng trùng tên
-  const unit = (id: number, code: string, orgType: 'FACTORY' | 'WORKSHOP' | 'LINE', parentId: number | null, isActive = true) => ({
-    id,
-    code,
-    name: orgType === 'WORKSHOP' ? 'Xưởng may' : orgType === 'LINE' ? `Chuyền ${code.slice(-2)}` : `Nhà máy ${code}`,
-    orgType,
-    parentId,
-    branchCode: code.slice(0, 3),
-    path: '',
-    isActive,
-  });
-  const units = [
-    unit(1, 'A01', 'FACTORY', null),
-    unit(2, 'A01-X01', 'WORKSHOP', 1),
-    unit(10, 'A01-L01', 'LINE', 1),
-    unit(3, 'A01-X02', 'WORKSHOP', 1),
-    unit(11, 'A01-L02', 'LINE', 3),
-    unit(12, 'A01-L03', 'LINE', 2),
-    unit(13, 'A01-L04', 'LINE', 2, false),
-    unit(4, 'A02', 'FACTORY', null),
-    unit(20, 'A02-L01', 'LINE', 4),
-  ];
-
-  it('xếp theo cây: xưởng theo thứ tự, chuyền thẳng dưới nhà máy sau cùng; tên nhóm kèm mã xưởng; bỏ chuyền đã ngừng', () => {
-    expect(scopeLineGroups(units, new Set())).toEqual([
-      { group: 'ĐVCS A01 – Xưởng may (A01-X01)', items: [{ value: '12', label: 'Chuyền 03 (A01-L03)' }] },
-      { group: 'ĐVCS A01 – Xưởng may (A01-X02)', items: [{ value: '11', label: 'Chuyền 02 (A01-L02)' }] },
-      { group: 'ĐVCS A01', items: [{ value: '10', label: 'Chuyền 01 (A01-L01)' }] },
-      { group: 'ĐVCS A02', items: [{ value: '20', label: 'Chuyền 01 (A02-L01)' }] },
-    ]);
-  });
-
-  it('đã chọn nhà máy thì chỉ gợi ý chuyền của nhà máy đó', () => {
-    expect(scopeLineGroups(units, new Set(['A02'])).map((g) => g.group)).toEqual(['ĐVCS A02']);
   });
 });

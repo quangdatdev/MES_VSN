@@ -121,9 +121,23 @@ export interface FieldPolicyMatrix {
   policies: { roleId: number; fieldCode: string; accessLevel: AccessLevel }[];
 }
 
+/** Chuyền may cho phạm vi chiều Chuyền (phase 5.10): bộ phận tích "Xưởng sản xuất"; nhóm là bộ phận cha */
+export interface ScopeLine {
+  code: string;
+  name: string;
+  branchCode: string;
+  /** false: bỏ tích hoặc bộ phận đã giải thể (phạm vi cũ còn mã này thì không có tác dụng) */
+  isActive: boolean;
+  workshopCode: string | null;
+  workshopName: string | null;
+}
+
 export interface ScopeCatalog {
   dimensions: { id: number; code: string; name: string; description: string | null; orgType: string | null }[];
-  orgUnits: { id: number; code: string; name: string; orgType: 'FACTORY' | 'WORKSHOP' | 'LINE'; parentId: number | null; branchCode: string; path: string; isActive: boolean }[];
+  /** Nút ĐVCS của cây tổ chức (chiều Đơn vị cơ sở) */
+  orgUnits: { id: number; code: string; name: string; orgType: 'FACTORY'; parentId: number | null; branchCode: string; path: string; isActive: boolean }[];
+  /** Chuyền của mọi ĐVCS, kể cả đã ngừng; phạm vi chiều Chuyền lưu mã chuyền (value) */
+  lines: ScopeLine[];
 }
 
 export interface UserAccessInfo {
@@ -136,7 +150,19 @@ export interface UserAccessInfo {
     roleActive: boolean;
     validFromAt: string | null;
     validToAt: string | null;
-    scopes: { id: number; dimension: string; mode: string; orgUnitId: number | null; orgUnitCode: string | null; orgUnitName: string | null; value: string | null }[];
+    scopes: {
+      id: number;
+      dimension: string;
+      mode: string;
+      orgUnitId: number | null;
+      orgUnitCode: string | null;
+      orgUnitName: string | null;
+      value: string | null;
+      /** Chiều Chuyền: tên chuyền của mã (kể cả đã ngừng); null khi mã không còn là bộ phận chuyền hoặc chiều khác */
+      valueName: string | null;
+      /** Chiều Chuyền: mã còn là chuyền đang dùng (false: không có tác dụng); chiều khác: null */
+      valueActive: boolean | null;
+    }[];
   }[];
   overrides: { id: number; permissionId: number; permissionCode: string; permissionName: string; effect: 'ALLOW' | 'DENY'; validFromAt: string | null; validToAt: string | null; reason: string; createdAt: string }[];
   fieldPolicies: { id: number; resourceId: number; resourceCode: string; resourceName: string; fieldCode: string; fieldName: string; accessLevel: AccessLevel; validFromAt: string | null; validToAt: string | null; reason: string | null }[];

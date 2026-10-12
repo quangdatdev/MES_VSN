@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Drawer, Group, MultiSelect, Paper, SegmentedControl, Select, SimpleGrid, Skeleton, Stack, Switch, Tabs, Text, Textarea } from '@mantine/core';
+import { Alert, Badge, Button, Checkbox, Drawer, Group, MultiSelect, Paper, SegmentedControl, Select, SimpleGrid, Skeleton, Stack, Switch, Tabs, Text, Textarea } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { IconBan, IconCheck, IconEye, IconInfoCircle, IconPencil, IconPlus, IconShieldCheck, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,7 +12,7 @@ import { toastError, toastOk } from '../../lib/notify';
 import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
 import { escapeToClose, IconAction, levelColor, LoadError } from './common';
-import { ACTION_LABEL, LEVELS, type AccessLevel, type AdminBranch, type EffectiveAccess, type PermissionMatrix, type ResourceFields, type ScopeCatalog, type UserAccessInfo } from './types';
+import { ACTION_LABEL, LEVELS, type AccessLevel, type AdminBranch, type EffectiveAccess, type PermissionMatrix, type ResourceFields, type ScopeCatalog, type ScopeLine, type UserAccessInfo } from './types';
 
 /** Giá trị của DateTimePicker ("YYYY-MM-DD HH:mm:ss", giờ máy) → ISO gửi API, như ô datetime-local trước đây. */
 const toIso = (v: string | null) => (v ? new Date(v.replace(' ', 'T')).toISOString() : null);
@@ -157,11 +157,17 @@ function ScopeTab({ info, blocked }: { info: UserAccessInfo; blocked: string | n
                 <Text size="sm" c="dimmed">Không giới hạn phạm vi</Text>
               ) : (
                 <Group gap={4} mt={4}>
-                  {a.scopes.map((s) => (
-                    <Badge key={s.id} variant="light" color={s.dimension === 'LINE' ? 'orange' : s.dimension === 'FACTORY' ? 'charcoal' : 'link'}>
-                      {s.dimension === 'FACTORY' ? 'Đơn vị cơ sở' : s.dimension === 'LINE' ? 'Chuyền' : s.dimension === 'OWNER' ? 'Người tạo' : s.dimension}: {s.mode === 'OWN' ? 'chỉ của mình' : s.mode === 'ALL' ? 'tất cả' : s.orgUnitName ? `${s.orgUnitName} (${s.orgUnitCode})` : s.value}
-                    </Badge>
-                  ))}
+                  {a.scopes.map((s) =>
+                    noEffect(s) ? (
+                      <Badge key={s.id} variant="outline" color="gray" title={NO_EFFECT}>
+                        {scopeText(s)} (không còn tác dụng)
+                      </Badge>
+                    ) : (
+                      <Badge key={s.id} variant="light" color={s.dimension === 'LINE' ? 'orange' : s.dimension === 'FACTORY' ? 'charcoal' : 'link'}>
+                        {scopeText(s)}
+                      </Badge>
+                    ),
+                  )}
                 </Group>
               )}
             </div>
@@ -195,63 +201,75 @@ function ScopeTab({ info, blocked }: { info: UserAccessInfo; blocked: string | n
 }
 
 type ScopeRow = UserAccessInfo['assignments'][number]['scopes'][number];
-/** Dòng phạm vi bộ sửa này hiển thị được: nhà máy, chuyền chọn theo danh sách; chỉ bản ghi của mình. */
-const editableScope = (s: ScopeRow) => ((s.dimension === 'FACTORY' || s.dimension === 'LINE') && s.mode === 'LIST' && !!s.orgUnitId) || (s.dimension === 'OWNER' && s.mode === 'OWN');
+const DIM_LABEL: Record<string, string> = { FACTORY: 'Đơn vị cơ sở', LINE: 'Chuyền', OWNER: 'Người tạo' };
+const NO_EFFECT = 'Mã này không còn là chuyền đang dùng (bộ phận tích "Xưởng sản xuất") nên không có tác dụng: người này không thấy dữ liệu của mã này.';
+/** Phạm vi chuyền lưu theo mã (phase 5.10): dòng chọn được ở ô Chuyền */
+const isLineValue = (s: ScopeRow) => s.dimension === 'LINE' && s.mode === 'LIST' && s.orgUnitId === null && !!s.value;
+/** Dòng phạm vi chuyền không còn tác dụng: mã không còn là chuyền đang dùng, hoặc kiểu cũ theo cây tổ chức (trước MES_Core/0009) */
+const noEffect = (s: ScopeRow) => s.dimension === 'LINE' && s.mode !== 'ALL' && (isLineValue(s) ? s.valueActive === false : true);
+/** Dòng phạm vi bộ sửa này hiển thị được: đơn vị cơ sở chọn theo danh sách, chuyền theo mã; chỉ bản ghi của mình. */
+const editableScope = (s: ScopeRow) => (s.dimension === 'FACTORY' && s.mode === 'LIST' && !!s.orgUnitId) || isLineValue(s) || (s.dimension === 'OWNER' && s.mode === 'OWN');
+/** Mã '~…': MES_Core/0009 ghi cho phạm vi cũ theo cây tổ chức vốn không có tác dụng (cả nhánh không còn chuyền, nút không phải chuyền) */
+const lineValueText = (value: string, name: string | null | undefined) =>
+  value.startsWith('~') ? `${value.slice(1)}, phạm vi cũ theo cây tổ chức` : name ? `${name} (${value})` : value;
 const scopeText = (s: ScopeRow) =>
-  `${s.dimension === 'FACTORY' ? 'Đơn vị cơ sở' : s.dimension === 'LINE' ? 'Chuyền' : s.dimension === 'OWNER' ? 'Người tạo' : s.dimension}: ${
-    s.mode === 'ORG_SUBTREE' ? `cả nhánh ${s.orgUnitName ?? s.orgUnitCode ?? ''}` : s.mode === 'ALL' ? 'tất cả' : s.mode === 'OWN' ? 'chỉ của mình' : (s.orgUnitName ?? s.value ?? '')
+  `${DIM_LABEL[s.dimension] ?? s.dimension}: ${
+    s.mode === 'ORG_SUBTREE'
+      ? `cả nhánh ${s.orgUnitName ?? s.orgUnitCode ?? ''}`
+      : s.mode === 'ALL'
+        ? 'tất cả'
+        : s.mode === 'OWN'
+          ? 'chỉ của mình'
+          : s.orgUnitName
+            ? `${s.orgUnitName} (${s.orgUnitCode})`
+            : s.value
+              ? lineValueText(s.value, s.valueName)
+              : ''
   }`;
 
-type OrgUnit = ScopeCatalog['orgUnits'][number];
-
 /**
- * Chuyền đang dùng cho ô chọn phạm vi, gom theo nhà máy và xưởng; branches khác rỗng thì chỉ chuyền của các nhà máy đó.
- * Thứ tự theo cây như ô chọn chuyền ở màn nghiệp vụ: nhà máy, xưởng, chuyền; chuyền không thuộc xưởng sau cùng của nhà máy.
- * Danh sách API đã xếp theo nhà máy, thứ tự, mã nên vị trí trong danh sách là thứ tự của xưởng và của chuyền.
+ * Chuyền đang dùng cho ô chọn phạm vi (bộ phận tích "Xưởng sản xuất"), gom theo ĐVCS và bộ phận cha; branches khác rỗng thì chỉ
+ * chuyền của các ĐVCS đó, trừ chuyền đang chọn (vẫn hiện để bỏ chọn được). Giữ thứ tự API: ĐVCS, nhóm, thứ tự, mã; chuyền nằm
+ * thẳng dưới gốc sau các nhóm. Tên nhóm kèm mã bộ phận cha vì tên có thể trùng.
  */
-export function scopeLineGroups(orgUnits: OrgUnit[], branches: Set<string>): { group: string; items: { value: string; label: string }[] }[] {
-  const unitById = new Map(orgUnits.map((o) => [o.id, o]));
-  const position = new Map(orgUnits.map((o, i) => [o.id, i]));
-  const workshopOf = (o: OrgUnit) => {
-    const parent = o.parentId !== null ? unitById.get(o.parentId) : undefined;
-    return parent?.orgType === 'WORKSHOP' ? parent : undefined;
-  };
-  const treeOrder = (o: OrgUnit) => {
-    const w = workshopOf(o);
-    return [w ? 0 : 1, w ? position.get(w.id)! : 0, position.get(o.id)!];
-  };
-  // Tên nhóm kèm mã xưởng: tên xưởng có thể trùng
-  const groupOf = (o: OrgUnit) => {
-    const w = workshopOf(o);
-    return `ĐVCS ${o.branchCode}${w ? ` – ${w.name} (${w.code})` : ''}`;
-  };
-  return Object.entries(
-    orgUnits
-      .filter((o) => o.isActive && o.orgType === 'LINE' && (branches.size === 0 || branches.has(o.branchCode)))
-      .sort((a, b) => a.branchCode.localeCompare(b.branchCode) || treeOrder(a).reduce((d, v, i) => d || v - treeOrder(b)[i], 0))
-      .reduce<Record<string, { value: string; label: string }[]>>((g, o) => ({ ...g, [groupOf(o)]: [...(g[groupOf(o)] ?? []), { value: String(o.id), label: `${o.name} (${o.code})` }] }), {}),
-  ).map(([group, items]) => ({ group, items }));
+export function scopeLineGroups(lines: ScopeLine[], branches: Set<string>, selected: readonly string[] = []): { group: string; items: { value: string; label: string }[] }[] {
+  const groups = new Map<string, { value: string; label: string }[]>();
+  for (const l of lines) {
+    if (!l.isActive || (branches.size > 0 && !branches.has(l.branchCode) && !selected.includes(l.code))) continue;
+    const group = `ĐVCS ${l.branchCode}${l.workshopCode ? ` – ${l.workshopName ?? l.workshopCode} (${l.workshopCode})` : ''}`;
+    groups.set(group, [...(groups.get(group) ?? []), { value: l.code, label: `${l.name} (${l.code})` }]);
+  }
+  return [...groups].map(([group, items]) => ({ group, items }));
 }
 
 function ScopeEditor({ userId, assignment, catalog, onClose }: { userId: number; assignment: UserAccessInfo['assignments'][number]; catalog: ScopeCatalog; onClose: () => void }) {
   const refresh = useRefresh(userId);
   // Phạm vi bộ sửa chưa hiển thị được (cả nhánh, chiều khác) giữ nguyên khi lưu: bỏ đi âm thầm là nới quyền (review 5.1 lượt 2 F6)
   const kept = assignment.scopes.filter((s) => !editableScope(s));
-  const ids = (dim: string) => assignment.scopes.filter((s) => s.dimension === dim && s.mode === 'LIST' && s.orgUnitId).map((s) => String(s.orgUnitId));
+  const factoryIds = assignment.scopes.filter((s) => s.dimension === 'FACTORY' && s.mode === 'LIST' && s.orgUnitId).map((s) => String(s.orgUnitId));
+  const activeLines = new Set(catalog.lines.filter((l) => l.isActive).map((l) => l.code));
+  const savedLines = assignment.scopes.filter(isLineValue).map((s) => s.value!);
+  const initialLines = savedLines.filter((c) => activeLines.has(c));
+  // Mã đã lưu nay không còn là chuyền đang dùng: chỉ đọc, giữ khi lưu (không có tác dụng; bỏ dòng cuối của chiều là không giới hạn chuyền)
+  const stale = assignment.scopes.filter((s) => isLineValue(s) && !activeLines.has(s.value!));
   const initialOwn = assignment.scopes.some((s) => s.dimension === 'OWNER' && s.mode === 'OWN');
-  const [factories, setFactories] = useState<string[]>(ids('FACTORY'));
-  const [lines, setLines] = useState<string[]>(ids('LINE'));
+  const [factories, setFactories] = useState<string[]>(factoryIds);
+  const [lines, setLines] = useState<string[]>(initialLines);
+  const [dropStale, setDropStale] = useState(false);
   const [own, setOwn] = useState(initialOwn);
-  const dirty = !sameSet(factories, ids('FACTORY')) || !sameSet(lines, ids('LINE')) || own !== initialOwn;
+  // Chỉ bỏ mã cũ khi còn ít nhất một chuyền đang dùng: phép gán vẫn giới hạn chuyền
+  const dropping = dropStale && lines.length > 0;
+  const dirty = !sameSet(factories, factoryIds) || !sameSet(lines, initialLines) || dropping || own !== initialOwn;
   useReportDirty(`scope-${assignment.userRoleId}`, dirty);
   const units = catalog.orgUnits.filter((o) => o.isActive);
-  const factoryData = units.filter((o) => o.orgType === 'FACTORY').map((o) => ({ value: String(o.id), label: `${o.code} – ${o.name}` }));
-  // Chuyền gom theo nhà máy và xưởng; nếu đã chọn nhà máy thì chỉ gợi ý chuyền của các nhà máy đó
+  const factoryData = units.map((o) => ({ value: String(o.id), label: `${o.code} – ${o.name}` }));
+  // Nếu đã chọn đơn vị cơ sở thì chỉ gợi ý chuyền của các đơn vị đó
   const pickedBranches = new Set(units.filter((o) => factories.includes(String(o.id))).map((o) => o.code));
-  const lineData = scopeLineGroups(catalog.orgUnits, pickedBranches);
-  // Chuyền đã chọn nay đã ngừng dùng (màn Danh mục hệ thống): vẫn hiện tên thay vì số Id để quản trị thấy và bỏ chọn
-  const stopped = catalog.orgUnits.filter((o) => o.orgType === 'LINE' && !o.isActive && lines.includes(String(o.id)));
-  const lineOptions = stopped.length ? [...lineData, { group: 'Đã ngừng dùng', items: stopped.map((o) => ({ value: String(o.id), label: `${o.name} (${o.code}, đã ngừng)` })) }] : lineData;
+  const lineData = scopeLineGroups(catalog.lines, pickedBranches, lines);
+  const lineName = new Map(catalog.lines.map((l) => [l.code, l.name]));
+  const staleText = stale.map((s) => lineValueText(s.value!, lineName.get(s.value!) ?? s.valueName)).join('; ');
+  // Đang giới hạn chuyền mà bỏ hết: báo rõ là thành không giới hạn
+  const opensLines = savedLines.length > 0 && lines.length === 0 && stale.length === 0;
 
   const save = useMutation({
     mutationFn: () =>
@@ -261,7 +279,8 @@ function ScopeEditor({ userId, assignment, catalog, onClose }: { userId: number;
           scopes: [
             ...kept.map((s) => ({ dimension: s.dimension, mode: s.mode, orgUnitId: s.orgUnitId ?? undefined, value: s.value ?? undefined })),
             ...factories.map((id) => ({ dimension: 'FACTORY', mode: 'LIST', orgUnitId: Number(id) })),
-            ...lines.map((id) => ({ dimension: 'LINE', mode: 'LIST', orgUnitId: Number(id) })),
+            ...lines.map((code) => ({ dimension: 'LINE', mode: 'LIST', value: code })),
+            ...(dropping ? [] : stale.map((s) => ({ dimension: 'LINE', mode: 'LIST', value: s.value! }))),
             ...(own ? [{ dimension: 'OWNER', mode: 'OWN' }] : []),
           ],
         },
@@ -277,11 +296,43 @@ function ScopeEditor({ userId, assignment, catalog, onClose }: { userId: number;
     <Stack gap="xs" mt="sm" pt="sm" style={{ borderTop: '1px dashed var(--app-line)' }}>
       {kept.length > 0 && (
         <Text size="xs" c="dimmed">
-          Giữ nguyên khi lưu (chưa sửa được ở đây): {kept.map(scopeText).join('; ')}.
+          Giữ nguyên khi lưu (chưa sửa được ở đây): {kept.map((s) => `${scopeText(s)}${noEffect(s) ? ' (không còn tác dụng)' : ''}`).join('; ')}.
         </Text>
       )}
       <MultiSelect label="Đơn vị cơ sở" description="Vai trò chỉ có hiệu lực khi đang làm việc ở các đơn vị này. Ở chế độ xem tổng hợp (A00) chỉ đọc dữ liệu của các đơn vị này (Thông tin đơn hàng dùng chung nên không giới hạn)." placeholder="Không giới hạn" data={factoryData} value={factories} onChange={setFactories} clearable />
-      <MultiSelect label="Chuyền" description="Chỉ thấy và sửa dữ liệu của các chuyền này ở màn có cột chuyền (ví dụ Phân bổ màu cỡ)." placeholder="Không giới hạn" data={lineOptions} value={lines} onChange={setLines} searchable clearable maxDropdownHeight={260} />
+      <MultiSelect
+        label="Chuyền"
+        description="Chỉ thấy và sửa dữ liệu của các chuyền này ở màn có cột chuyền (Phân bổ màu cỡ, Kế hoạch chuẩn bị SX). Chuyền là bộ phận tích “Xưởng sản xuất” ở Sơ đồ tổ chức."
+        placeholder="Không giới hạn"
+        nothingFoundMessage="Không có chuyền khớp"
+        data={lineData}
+        value={lines}
+        onChange={setLines}
+        searchable
+        clearable
+        maxDropdownHeight={260}
+      />
+      {stale.length > 0 && (
+        <Alert variant="light" color="orange" icon={<IconInfoCircle size={16} />} py={6} role="note">
+          <Text size="sm">
+            Không còn là chuyền đang dùng: {staleText}. Người này không thấy dữ liệu của các mã này; mã vẫn được giữ khi lưu để vai trò không thành không giới hạn chuyền.
+          </Text>
+          <Checkbox
+            mt={6}
+            size="xs"
+            label="Bỏ các mã này khi lưu"
+            description={lines.length === 0 ? 'Chọn ít nhất một chuyền đang dùng trước: bỏ hết mã là không giới hạn chuyền.' : undefined}
+            disabled={lines.length === 0}
+            checked={dropping}
+            onChange={(e) => setDropStale(e.currentTarget.checked)}
+          />
+        </Alert>
+      )}
+      {opensLines && (
+        <Text size="xs" c="orange.8" role="status">
+          Bỏ hết chuyền: vai trò này sẽ không còn giới hạn chuyền (thấy mọi chuyền của đơn vị cơ sở đang làm việc).
+        </Text>
+      )}
       <Switch label="Chỉ bản ghi do chính người này tạo" checked={own} onChange={(e) => setOwn(e.currentTarget.checked)} />
       <Group justify="flex-end" gap="xs">
         <Button variant="default" size="xs" onClick={() => confirmDiscard(dirty, onClose)}>Hủy</Button>

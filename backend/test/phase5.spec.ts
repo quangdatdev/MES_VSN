@@ -8,10 +8,14 @@ import { configureApp } from '../src/app.factory';
 import { env } from '../src/config/env';
 import { isDeadlock } from '../src/common/db-errors';
 import { AllExceptionsFilter } from '../src/common/http-exception.filter';
+import { HR_DB } from '../src/modules/hr/hr.db';
+import type { HrDb } from '../src/modules/hr/hr.types';
 import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
 import { inTransaction } from '../src/platform/data/transaction';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
+import { OrgService } from '../src/platform/org/org.service';
+import { PermissionService } from '../src/platform/permission/permission.service';
 
 // Phase 5.1 (L3 phạm vi theo phép gán, L4 cột, L5 ngoại lệ – ADR 0005) và module Đơn hàng (Phase 5.3, ADR 0006).
 // Cần MES_Core + MES_Order đã migrate và seed. Đơn hàng có thể là dữ liệu giả của seed hoặc dữ liệu BRAVO (npm run load:bravo):
@@ -52,7 +56,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
     username: string,
     roleCodes: string[],
     branchCodes: string[],
-    scopes: Record<string, { dimension: string; mode: string; orgUnitId?: number }[]> = {},
+    scopes: Record<string, { dimension: string; mode: string; orgUnitId?: number; value?: string }[]> = {},
   ) {
     const created = await api().post('/api/v1/admin/users').set(auth(admin)).send({ username, fullName: `${username} (test)`, initialPassword: TEST_PASSWORD });
     const id = created.status === 201 ? (created.body.id as number) : await userId(username);
@@ -230,7 +234,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
 
     it('Nam: Trưởng chuyền ở A01, Giám đốc ở A02 – quyền của phép gán này không rò sang phép gán kia', async () => {
       const id = await tempUser('test.nam', ['LINE_LEADER', 'DIRECTOR'], ['A01', 'A02'], {
-        LINE_LEADER: [{ dimension: 'FACTORY', mode: 'LIST', orgUnitId: orgId('A01') }, { dimension: 'LINE', mode: 'LIST', orgUnitId: orgId('A01-L03') }],
+        LINE_LEADER: [{ dimension: 'FACTORY', mode: 'LIST', orgUnitId: orgId('A01') }, { dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }],
         DIRECTOR: [{ dimension: 'FACTORY', mode: 'LIST', orgUnitId: orgId('A02') }],
       });
       try {
@@ -250,7 +254,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         await api().put(`/api/v1/admin/users/${id}/roles`).set(auth(admin)).send({ roleIds: [roleId('LINE_LEADER'), roleId('DIRECTOR'), roleId('QC')] }).expect(200);
         const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin)).expect(200)).body;
         const leader = access.assignments.find((a: any) => a.roleCode === 'LINE_LEADER');
-        expect(leader.scopes.map((s: any) => `${s.dimension}:${s.orgUnitCode}`).sort()).toEqual(['FACTORY:A01', 'LINE:A01-L03']);
+        expect(leader.scopes.map((s: any) => `${s.dimension}:${s.orgUnitCode ?? s.value}`).sort()).toEqual(['FACTORY:A01', 'LINE:A01-L03']);
 
         // Bỏ vai trò thì phạm vi bị xóa kèm audit
         await api().put(`/api/v1/admin/users/${id}/roles`).set(auth(admin)).send({ roleIds: [roleId('QC')] }).expect(200);
@@ -302,21 +306,121 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('phạm vi "cả nhánh" (nhà máy A01) cho chiều chuyền thấy mọi chuyền của A01; cả nhánh không có đơn vị đúng loại => 422', async () => {
-      const id = await tempUser('test.subtree', ['LINE_LEADER'], ['A01'], { LINE_LEADER: [{ dimension: 'LINE', mode: 'ORG_SUBTREE', orgUnitId: orgId('A01') }] });
+    it('phạm vi chuyền kiểu cũ (cả nhánh, danh sách theo nút cây tổ chức) không có tác dụng: thành rỗng, không thành không giới hạn (phase 5.10)', async () => {
+      const id = await tempUser('test.subtree', ['LINE_LEADER'], ['A01']);
+      const t = await tokenFor('test.subtree', 'A01', TEST_PASSWORD);
+      const total = async (path: string) => (await api().get(path).set(auth(t)).expect(200)).body.total as number;
+      const COLOR_SIZE = '/api/v1/order/color-size?pageSize=1';
+      const PREP = `/api/v1/sewing/prep?style=${FIXTURE_STYLE}&startFrom=2020-01-01&pageSize=1`;
       try {
-        const t = await tokenFor('test.subtree', 'A01', TEST_PASSWORD);
-        const lines = new Set((await api().get('/api/v1/order/color-size?pageSize=200').set(auth(t)).expect(200)).body.items.map((i: any) => i.lineCode));
-        expect(lines.size).toBeGreaterThan(1);
+        // Không có dòng chiều chuyền: không giới hạn
+        expect(await total(COLOR_SIZE)).toBeGreaterThan(1);
+        expect(await total(PREP)).toBe(2);
+        // Dòng kiểu cũ chỉ còn khi database chưa chạy MES_Core/0009 (API không ghi được nữa): ghi thẳng để kiểm đóng an toàn,
+        // kể cả khi nút cây tổ chức đang bật và mang đúng mã một chuyền đang dùng (A01-L03)
+        const ur = await core.selectFrom('SysUserRole').select('Id').where('UserId', '=', id).where('RoleId', '=', roleId('LINE_LEADER')).executeTakeFirstOrThrow();
+        const dim = await core.selectFrom('SysScopeDimension').select('Id').where('Code', '=', 'LINE').executeTakeFirstOrThrow();
+        const oldNode = await core.selectFrom('SysOrgUnit').select(['Id', 'IsActive']).where('Code', '=', 'A01-L03').executeTakeFirst();
+        if (oldNode) await core.updateTable('SysOrgUnit').set({ IsActive: true }).where('Id', '=', oldNode.Id).execute();
+        else {
+          await core
+            .insertInto('SysOrgUnit')
+            .values({ Code: 'A01-L03', Name: 'Chuyền 03 (cũ)', OrgType: 'LINE', ParentId: orgId('A01'), ParentOrgType: 'FACTORY', BranchCode: 'A01', Path: '/A01/A01-L03/', SortOrder: 3, IsActive: true, IsSystem: false } as any)
+            .execute();
+        }
+        const lineNode = (await core.selectFrom('SysOrgUnit').select('Id').where('Code', '=', 'A01-L03').executeTakeFirstOrThrow()).Id;
+        try {
+          for (const [mode, orgUnitId] of [['ORG_SUBTREE', orgId('A01')], ['LIST', orgId('A01')], ['LIST', lineNode], ['ORG_SUBTREE', lineNode]] as const) {
+            await core.deleteFrom('SysUserRoleScope').where('UserRoleId', '=', ur.Id).execute();
+            await core.insertInto('SysUserRoleScope').values({ UserRoleId: ur.Id, DimensionId: dim.Id, ScopeMode: mode, OrgUnitId: orgUnitId, ScopeValue: null } as any).execute();
+            await app.get(PermissionService).bumpVersion();
+            expect([mode, orgUnitId, await total(COLOR_SIZE), await total(PREP)]).toEqual([mode, orgUnitId, 0, 0]);
+          }
+        } finally {
+          await core.deleteFrom('SysUserRoleScope').where('UserRoleId', '=', ur.Id).execute();
+          if (oldNode) await core.updateTable('SysOrgUnit').set({ IsActive: oldNode.IsActive }).where('Id', '=', oldNode.Id).execute();
+          else await core.deleteFrom('SysOrgUnit').where('Id', '=', lineNode).execute();
+        }
         const bad = await api()
           .put(`/api/v1/admin/users/${id}/roles/${roleId('LINE_LEADER')}/scope`)
           .set(auth(admin))
-          .send({ scopes: [{ dimension: 'FACTORY', mode: 'ORG_SUBTREE', orgUnitId: orgId('A01-L03') }] })
+          .send({ scopes: [{ dimension: 'LINE', mode: 'ORG_SUBTREE', orgUnitId: orgId('A01') }] })
           .expect(422);
         expect(bad.body.error.code).toBe('VALIDATION_FAILED');
       } finally {
         await dropUser(id);
       }
+    });
+
+    it('Trưởng chuyền chỉ thấy chuyền được giao ở Kế hoạch chuẩn bị SX; ở A00 chỉ đọc đúng chuyền đó (phạm vi chuyền theo mã bộ phận)', async () => {
+      const PREP = `/api/v1/sewing/prep?style=${FIXTURE_STYLE}&startFrom=2020-01-01&pageSize=50`;
+      const lines = async (t: string, path: string) => new Set((await api().get(path).set(auth(t)).expect(200)).body.items.map((i: any) => i.lineCode));
+      expect(await lines(await tokenFor('truongchuyen.a', 'A01'), PREP)).toEqual(new Set(['A01-L03']));
+      expect(await lines(await tokenFor('kehoach.a', 'A01'), PREP)).toEqual(new Set(['A01-L03', 'A01-L05']));
+
+      const id = await tempUser('test.linea00', ['LINE_LEADER'], ['A00', 'A01'], { LINE_LEADER: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }] });
+      try {
+        const a00 = await tokenFor('test.linea00', 'A00', TEST_PASSWORD);
+        const seen = (await api().get('/api/v1/order/color-size?pageSize=200').set(auth(a00)).expect(200)).body;
+        expect(seen.total).toBeGreaterThan(0);
+        expect(new Set(seen.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
+        await api().put(`/api/v1/order/color-size/${seen.items[0].id}`).set(auth(a00)).send({ rows: [] }).expect(403);
+        expect(await lines(a00, PREP)).toEqual(new Set(['A01-L03']));
+      } finally {
+        await dropUser(id);
+      }
+    });
+
+    it('/admin/scope-catalog trả chuyền từ bộ phận tích "Xưởng sản xuất" (kèm ĐVCS, nhóm); cây tổ chức chỉ còn nút ĐVCS', async () => {
+      const catalog = (await api().get('/api/v1/admin/scope-catalog').set(auth(admin)).expect(200)).body;
+      expect(catalog.orgUnits.length).toBeGreaterThan(0);
+      expect(catalog.orgUnits.every((o: any) => o.orgType === 'FACTORY')).toBe(true);
+      expect(catalog.dimensions.find((d: any) => d.code === 'LINE').orgType).toBeNull();
+      const l03 = catalog.lines.find((l: any) => l.code === 'A01-L03');
+      expect(l03).toMatchObject({ branchCode: 'A01', isActive: true, workshopCode: 'A01-X01' });
+      // Bộ phận không tích (xưởng mẫu A01-X01) không phải chuyền
+      expect(catalog.lines.some((l: any) => l.code === 'A01-X01')).toBe(false);
+      const hrLines = await app.get<HrDb>(HR_DB).selectFrom('Department').select('Code').where('IsProductionWorkshop', '=', true).where('BranchCode', 'is not', null).execute();
+      expect(new Set(catalog.lines.map((l: any) => l.code))).toEqual(new Set(hrLines.map((d) => d.Code)));
+    });
+
+    it('bỏ tích "Xưởng sản xuất" của bộ phận chuyền: Trưởng chuyền mất chuyền đó ngay khi phiên bản quyền tăng (thành rỗng, không thành không giới hạn)', async () => {
+      const hr = app.get<HrDb>(HR_DB);
+      const org = app.get(OrgService);
+      const t = await tokenFor('truongchuyen.a', 'A01');
+      const COLOR_SIZE = '/api/v1/order/color-size?pageSize=200';
+      const PREP = `/api/v1/sewing/prep?style=${FIXTURE_STYLE}&startFrom=2020-01-01&pageSize=50`;
+      expect((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.total).toBeGreaterThan(0);
+      // Nạp sẵn cache chuyền của OrgService (30 giây) để kiểm: tăng phiên bản quyền là đủ, tiến trình khác không gọi được invalidate()
+      expect((await org.activeLineCodes()).has('A01-L03')).toBe(true);
+      await hr.updateTable('Department').set({ IsProductionWorkshop: false }).where('Code', '=', 'A01-L03').execute();
+      try {
+        await app.get(PermissionService).bumpVersion();
+        const after = (await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body;
+        expect(after.total).toBe(0);
+        expect((await api().get(PREP).set(auth(t)).expect(200)).body.total).toBe(0);
+        // Người không bị giới hạn chuyền vẫn thấy dòng của chuyền này (dữ liệu cũ còn mã)
+        const planner = await tokenFor('kehoach.a', 'A01');
+        expect((await api().get(COLOR_SIZE).set(auth(planner)).expect(200)).body.items.some((i: any) => i.lineCode === 'A01-L03')).toBe(true);
+        // Phạm vi đã lưu vẫn còn, hiện là không còn tác dụng; lưu lại phép gán vẫn giữ được mã đó
+        const tc = await userId('truongchuyen.a');
+        const scopes = (await api().get(`/api/v1/admin/users/${tc}/access`).set(auth(admin)).expect(200)).body.assignments.find((a: any) => a.roleCode === 'LINE_LEADER').scopes;
+        expect(scopes).toEqual([expect.objectContaining({ dimension: 'LINE', mode: 'LIST', value: 'A01-L03', orgUnitId: null, valueActive: false })]);
+        await api().put(`/api/v1/admin/users/${tc}/roles/${roleId('LINE_LEADER')}/scope`).set(auth(admin)).send({ scopes: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }] }).expect(200);
+        // Gán mới mã đó (phép gán chưa có mã này) thì bị từ chối: không còn là chuyền
+        const fresh = await tempUser('test.untick', ['LINE_LEADER'], ['A01']);
+        try {
+          const bad = await api().put(`/api/v1/admin/users/${fresh}/roles/${roleId('LINE_LEADER')}/scope`).set(auth(admin)).send({ scopes: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }] }).expect(422);
+          expect(bad.body.error.message).toContain('A01-L03');
+        } finally {
+          await dropUser(fresh);
+        }
+      } finally {
+        await hr.updateTable('Department').set({ IsProductionWorkshop: true }).where('Code', '=', 'A01-L03').execute();
+        org.invalidate();
+        await app.get(PermissionService).bumpVersion();
+      }
+      expect(new Set((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
     });
 
     it('Kế toán (phạm vi ĐVCS A01, A02): ở A00 chỉ đọc kế hoạch của hai ĐVCS này, ở A03 không có quyền; đơn hàng dùng chung thì thấy hết', async () => {
@@ -346,6 +450,21 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         .expect(422);
       expect(r.body.error.code).toBe('VALIDATION_FAILED');
       await api().put(`/api/v1/admin/users/${tc}/roles/${roleId('LINE_LEADER')}/scope`).set(auth(admin)).send({ scopes: [{ dimension: 'OWNER', mode: 'LIST', value: 'x' }] }).expect(422);
+      // Chiều chuyền theo mã (phase 5.10): mã phải là bộ phận đang tích "Xưởng sản xuất", đúng hoa thường; không theo cả nhánh
+      for (const bad of [
+        { dimension: 'LINE', mode: 'LIST', value: 'A01' },
+        { dimension: 'LINE', mode: 'LIST', value: 'A01-X01' },
+        { dimension: 'LINE', mode: 'LIST', value: 'a01-l03' },
+        { dimension: 'LINE', mode: 'LIST', value: 'KHONG-CO' },
+        { dimension: 'LINE', mode: 'OWN' },
+        { dimension: 'LINE', mode: 'ORG_SUBTREE', orgUnitId: orgId('A01') },
+        { dimension: 'LINE', mode: 'ALL', value: 'A01-L03' },
+      ]) {
+        const res = await api().put(`/api/v1/admin/users/${tc}/roles/${roleId('LINE_LEADER')}/scope`).set(auth(admin)).send({ scopes: [bad] });
+        expect([res.status, res.body.error?.code, bad]).toEqual([422, 'VALIDATION_FAILED', bad]);
+      }
+      const kept = (await api().get(`/api/v1/admin/users/${tc}/access`).set(auth(admin)).expect(200)).body.assignments.find((a: any) => a.roleCode === 'LINE_LEADER').scopes;
+      expect(kept.map((s: any) => `${s.dimension}:${s.mode}:${s.value}:${s.valueName}:${s.valueActive}`)).toEqual(['LINE:LIST:A01-L03:Chuyền 03:true']);
       const me = (await api().get('/api/v1/me').set(auth(admin))).body.user.id;
       const self = await api().put(`/api/v1/admin/users/${me}/roles/${roleId('ADMIN')}/scope`).set(auth(admin)).send({ scopes: [] }).expect(403);
       expect(self.body.error.code).toBe('SELF_ELEVATION_FORBIDDEN');
@@ -894,7 +1013,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       const t = await tokenFor('kehoach.a', 'A01');
       const plan = (await api().get(`/api/v1/order/line-plans?pageSize=200&style=${FIXTURE_STYLE}`).set(auth(t))).body.items.find((p: any) => p.id === fixture.planId && p.lineCount === 0);
       // Kế hoạch giới hạn chuyền 3, Giám đốc xem mọi chuyền: phạm vi xem rộng hơn phạm vi sửa
-      const id = await tempUser('test.line', ['PLANNER', 'DIRECTOR'], ['A01'], { PLANNER: [{ dimension: 'LINE', mode: 'LIST', orgUnitId: orgId('A01-L03') }] });
+      const id = await tempUser('test.line', ['PLANNER', 'DIRECTOR'], ['A01'], { PLANNER: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }] });
       try {
         await api()
           .put(`/api/v1/order/line-plans/${plan.id}/lines`)
@@ -925,8 +1044,8 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       // Kế hoạch: chuyền 3 (xem và sửa); QC: chuyền 5 (không có quyền Xếp chuyền). Cho phép sửa theo người lấy hợp mọi phép gán
       // nên phạm vi sửa {3, 5} rộng hơn phạm vi xem {3}
       const id = await tempUser('test.m1', ['PLANNER', 'QC'], ['A01'], {
-        PLANNER: [{ dimension: 'LINE', mode: 'LIST', orgUnitId: orgId('A01-L03') }],
-        QC: [{ dimension: 'LINE', mode: 'LIST', orgUnitId: orgId('A01-L05') }],
+        PLANNER: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }],
+        QC: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L05' }],
       });
       const line = (lineCode: string, qty: number) => ({ lines: [{ lineCode, qty, avgOutput: 1000, startDate: '2026-12-07' }] });
       try {

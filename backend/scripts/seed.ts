@@ -454,6 +454,8 @@ export async function runSeed({
     // quản trị đã thu hồi thì chạy lại không cấp lại. Gán lại vai trò mà thiếu phạm vi là nới thành không giới hạn (review 5.4.8 lượt 5)
     const hash = await argon2.hash(env.demoPassword, { type: argon2.argon2id });
     const userId = new Map<string, number>();
+    // Chiều theo cây tổ chức (OrgType có giá trị: FACTORY) ghi OrgUnitId; chiều giá trị (LINE từ MES_Core/0009: mã bộ phận chuyền) ghi ScopeValue
+    const dimByOrg = new Map((await db.selectFrom('SysScopeDimension').select(['Code', 'OrgType']).execute()).map((d) => [d.Code, d.OrgType !== null]));
     // Không dữ liệu mẫu: chỉ admin để đăng nhập lần đầu; người dùng thật tạo ở màn Người dùng
     for (const u of sampleData ? users : users.filter((x) => x.username === 'admin')) {
       let row = await db.selectFrom('SysUser').select('Id').where('Username', '=', u.username).executeTakeFirst();
@@ -486,9 +488,15 @@ export async function runSeed({
         // Vai trò gán thêm của tài khoản đã có (Toàn quyền cho admin) gán ở bước 9b, chỉ lần tạo vai trò
         continue;
       }
-      // Tra đủ phạm vi trước khi gán vai trò: thiếu đơn vị thì không gán (vai trò không kèm phạm vi là không giới hạn)
-      const scopes = (u.scopes ?? []).map((s) => ({ ...s, oid: s.org ? orgId.get(s.org) : null }));
-      const missing = scopes.filter((s) => s.oid === undefined || !dims.has(s.dimension)).map((s) => s.org ?? s.dimension);
+      // Tra đủ phạm vi trước khi gán vai trò: thiếu đơn vị thì không gán (vai trò không kèm phạm vi là không giới hạn).
+      // Chiều giá trị nhận mã ở `value` hoặc `org` (phạm vi chuyền mẫu ghi mã chuyền, trước 5.10 là nút cây tổ chức cùng mã); mã chưa
+      // là chuyền đang dùng thì phạm vi vẫn ghi, chỉ không có tác dụng (đóng an toàn)
+      const scopes = (u.scopes ?? []).map((s) =>
+        dimByOrg.get(s.dimension) === false
+          ? { ...s, oid: null, value: s.value ?? s.org ?? null }
+          : { ...s, oid: s.org ? orgId.get(s.org) : null, value: s.value ?? null },
+      );
+      const missing = scopes.filter((s) => s.oid === undefined || !dims.has(s.dimension) || (s.mode === 'LIST' && s.oid === null && !s.value)).map((s) => s.org ?? s.value ?? s.dimension);
       if (missing.length) {
         console.warn(
           `Không gán vai trò ${u.role} cho ${u.username}: thiếu ${missing.join(', ')} của phạm vi (xem cảnh báo ở trên). Có đơn vị rồi thì gán ở màn Người dùng hoặc chạy npm run seed -- --sync-matrix.`,
@@ -517,8 +525,9 @@ export async function runSeed({
           const oid = s.oid ?? null;
           let q = trx.selectFrom('SysUserRoleScope').select('Id').where('UserRoleId', '=', ur.Id).where('DimensionId', '=', did).where('ScopeMode', '=', s.mode);
           q = oid === null ? q.where('OrgUnitId', 'is', null) : q.where('OrgUnitId', '=', oid);
+          q = s.value === null ? q.where('ScopeValue', 'is', null) : q.where('ScopeValue', '=', s.value);
           if (!(await q.executeTakeFirst())) {
-            await trx.insertInto('SysUserRoleScope').values({ UserRoleId: ur.Id, DimensionId: did, ScopeMode: s.mode, OrgUnitId: oid, ScopeValue: s.value ?? null } as any).execute();
+            await trx.insertInto('SysUserRoleScope').values({ UserRoleId: ur.Id, DimensionId: did, ScopeMode: s.mode, OrgUnitId: oid, ScopeValue: s.value } as any).execute();
             bump('phạm vi');
           }
         }
