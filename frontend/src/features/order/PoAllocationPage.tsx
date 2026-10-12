@@ -58,6 +58,8 @@ function ManualCell({ r }: { r: PoAllocation }) {
           Không còn trong OSM
         </Badge>
       ) : (
+        // Vắng (cột bị Ẩn) hoặc bị Che thì không nói gì về nhà máy theo OSM
+        osm !== undefined &&
         osm !== MASK &&
         osm !== r.factoryName && (
           <Text span size="xs" style={SOFT} title="Nhà máy SX theo OSM ở lần đồng bộ gần nhất">
