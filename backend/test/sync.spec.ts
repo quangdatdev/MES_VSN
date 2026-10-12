@@ -120,8 +120,15 @@ describe('Phase 5.2: đồng bộ dữ liệu qua database trung gian', () => {
       { name: 'Qty', type: 'int', len: 4, precision: 10, scale: 0, collation: null },
       ...stamp,
     ];
+    // Như nguồn OSM: chép toàn bộ mỗi lần, theo nhóm (view có dòng trùng nguyên dòng)
+    const FULLP: SourceDef = { view: 'vTestSyncFull', name: 'Bảng mẫu chép toàn bộ theo nhóm', group: 'ORDER', match: 'PARTITION', columns: ['P'], mode: 'FULL' };
+    const fullCols: Col[] = [
+      { name: 'P', type: 'int', len: 4, precision: 10, scale: 0, collation: null },
+      { name: 'C', type: 'nvarchar', len: 20, precision: 0, scale: 0, collation: 'SQL_Latin1_General_CP1_CI_AS' },
+    ];
     let keyId: number;
     let partId: number;
+    let fullId: number;
 
     const batches = (text: string) => text.split(/^\s*GO\s*$/gim).map((b) => b.trim()).filter(Boolean);
     async function drop() {
@@ -131,7 +138,7 @@ describe('Phase 5.2: đồng bộ dữ liệu qua database trung gian', () => {
         await syncDb.deleteFrom('SyncRun').where('SyncSourceId', 'in', ids).execute();
         await syncDb.deleteFrom('SyncSource').where('Id', 'in', ids).execute();
       }
-      for (const t of ['TestSyncKey', 'TestSyncPart']) {
+      for (const t of ['TestSyncKey', 'TestSyncPart', 'TestSyncFull']) {
         await sql.raw(`IF OBJECT_ID(N'bravo.usp_Sync_${t}', N'P') IS NOT NULL DROP PROCEDURE bravo.usp_Sync_${t}`).execute(syncDb);
         await sql.raw(`IF OBJECT_ID(N'bravo.src_${t}', N'SN') IS NOT NULL DROP SYNONYM bravo.src_${t}`).execute(syncDb);
         await sql.raw(`IF OBJECT_ID(N'bravo.${t}', N'U') IS NOT NULL DROP TABLE bravo.${t}`).execute(syncDb);
@@ -145,11 +152,14 @@ describe('Phase 5.2: đồng bộ dữ liệu qua database trung gian', () => {
       await drop();
       await sql.raw(`CREATE TABLE dbo.SrcTestSyncKey (K INT NULL, Name NVARCHAR(100) COLLATE SQL_Latin1_General_CP1_CI_AS NULL, CreatedAt DATETIME NULL, ModifiedAt DATETIME NULL)`).execute(syncDb);
       await sql.raw(`CREATE TABLE dbo.SrcTestSyncPart (P INT NULL, C VARCHAR(10) COLLATE SQL_Latin1_General_CP1_CI_AS NULL, Qty INT NULL, CreatedAt DATETIME NULL, ModifiedAt DATETIME NULL)`).execute(syncDb);
-      for (const b of [...batches(render(KEY, keyCols, 9001, 'TEST')), ...batches(render(PART, partCols, 9002, 'TEST'))]) await sql.raw(b).execute(syncDb);
+      await sql.raw(`CREATE TABLE dbo.SrcTestSyncFull (P INT NULL, C NVARCHAR(10) COLLATE SQL_Latin1_General_CP1_CI_AS NULL)`).execute(syncDb);
+      for (const b of [...batches(render(KEY, keyCols, 9001, 'TEST')), ...batches(render(PART, partCols, 9002, 'TEST')), ...batches(render(FULLP, fullCols, 9003, 'TEST'))]) await sql.raw(b).execute(syncDb);
       await sql.raw('CREATE SYNONYM bravo.src_TestSyncKey FOR dbo.SrcTestSyncKey').execute(syncDb);
       await sql.raw('CREATE SYNONYM bravo.src_TestSyncPart FOR dbo.SrcTestSyncPart').execute(syncDb);
+      await sql.raw('CREATE SYNONYM bravo.src_TestSyncFull FOR dbo.SrcTestSyncFull').execute(syncDb);
       keyId = (await source('TEST.TestSyncKey')).id;
       partId = (await source('TEST.TestSyncPart')).id;
+      fullId = (await source('TEST.TestSyncFull')).id;
     });
 
     afterAll(async () => {
@@ -243,6 +253,19 @@ describe('Phase 5.2: đồng bộ dữ liệu qua database trung gian', () => {
       expect(inc).toMatchObject({ status: 'SUCCEEDED', mode: 'INCREMENTAL', targetCount: 3, newWatermarkAt: '2026-01-03T09:00:00' });
       const rows = (await sql<{ P: number | null; C: string; Qty: number }>`SELECT P, C, Qty FROM bravo.TestSyncPart ORDER BY P, C`.execute(syncDb)).rows;
       expect(rows).toEqual([{ P: 1, C: 'a', Qty: 1 }, { P: 2, C: 'a', Qty: 5 }, { P: 2, C: 'b', Qty: 2 }]);
+    });
+
+    it('PARTITION chép toàn bộ (như nguồn OSM): dòng trùng nguyên dòng vẫn chép đủ; nguồn bớt dòng thì bảng chép bớt; nguồn trả 0 dòng thì dừng, giữ dữ liệu', async () => {
+      for (const [p, c] of [[1, 'ạ'], [1, 'ạ'], [2, 'b']] as const) await sql`INSERT INTO dbo.SrcTestSyncFull VALUES (${p}, ${c})`.execute(syncDb);
+      expect(await runAndWait(fullId)).toMatchObject({ status: 'SUCCEEDED', mode: 'FULL', readCount: 3, targetCount: 3 });
+      expect((await sql<{ C: string }>`SELECT TOP 1 C FROM bravo.TestSyncFull WHERE P = 1`.execute(syncDb)).rows[0].C).toBe('ạ');
+      await sql`DELETE FROM dbo.SrcTestSyncFull WHERE P = 2`.execute(syncDb);
+      expect(await runAndWait(fullId)).toMatchObject({ status: 'SUCCEEDED', mode: 'FULL', targetCount: 2 });
+      await sql`DELETE FROM dbo.SrcTestSyncFull`.execute(syncDb);
+      const empty = await runAndWait(fullId);
+      expect(empty).toMatchObject({ status: 'FAILED' });
+      expect(empty.errorMessage).toMatch(/0 dòng/);
+      expect(await count('bravo.TestSyncFull')).toBe(2);
     });
 
     it('việc sau đồng bộ (onQueueDrained, ví dụ nạp đơn hàng) chạy một lần khi hàng đợi chạy hết, chỉ khi nguồn liên quan chép thành công', async () => {

@@ -5,6 +5,7 @@ type PageModule = Promise<{ default: ComponentType }>;
 /** Code của từng màn, tải khi cần (dynamic import) */
 const loaders: Record<string, () => PageModule> = {
   '/order/info': () => import('../features/order/SalesOrderPage'),
+  '/order/po-allocation': () => import('../features/order/PoAllocationPage'),
   '/order/shipment': () => import('../features/order/ShipmentPage'),
   '/order/cut-ratio': () => import('../features/order/CutRatioPage'),
   '/order/line-plan': () => import('../features/order/LinePlanPage'),

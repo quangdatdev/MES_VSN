@@ -642,6 +642,33 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
+    it('Nhà máy SX theo OSM là danh sách: được tích một nhà máy trong danh sách thì thấy đơn ở Chọn mã hàng; không sửa tay được (409) (ADR 0013 mục 9)', async () => {
+      const db = app.get<OrderDb>(ORDER_DB);
+      const ORDER = `/api/v1/order/sales-orders/${fixture.orderId}`;
+      await db.updateTable('SalesOrder').set({ ProductionFactoryCode: `KHÁC NHÀ MÁY,${FIXTURE_FACTORY}`, IsFactoryFromOsm: true }).where('Id', '=', fixture.orderId).execute();
+      try {
+        const kh = await tokenFor('kehoach.a', 'A01');
+        const c = (await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(kh)).expect(200)).body.find((x: any) => x.salesOrderId === fixture.orderId);
+        expect(c?.productionFactoryCode).toBe(`KHÁC NHÀ MÁY,${FIXTURE_FACTORY}`);
+        // Đường getById của bộ lọc (PO của đơn để lập kế hoạch) cũng theo danh sách
+        await api().get(`/api/v1/order/shipment-plans/candidates/${fixture.orderId}/pos`).set(auth(kh)).expect(200);
+        // So mã không phân biệt hoa thường như collation
+        await db.updateTable('SalesOrder').set({ ProductionFactoryCode: `khác nhà máy,${FIXTURE_FACTORY.toLowerCase()}` }).where('Id', '=', fixture.orderId).execute();
+        expect((await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(kh)).expect(200)).body.some((x: any) => x.salesOrderId === fixture.orderId)).toBe(true);
+        await db.updateTable('SalesOrder').set({ ProductionFactoryCode: `KHÁC NHÀ MÁY,${FIXTURE_FACTORY}` }).where('Id', '=', fixture.orderId).execute();
+        const shown = (await api().get(ORDER).set(auth(kh)).expect(200)).body;
+        expect(shown).toMatchObject({ factoryFromOsm: true });
+        expect((await api().put(ORDER).set(auth(kh)).send({ productionFactoryCode: FIXTURE_FACTORY }).expect(409)).body.error.message).toMatch(/OSM/);
+        // Lưu cả form gửi lại đúng giá trị đang có: không báo lỗi
+        await api().put(ORDER).set(auth(kh)).send({ productionFactoryCode: `KHÁC NHÀ MÁY,${FIXTURE_FACTORY}`, qty: 3000 }).expect(200);
+        // Danh sách không có nhà máy nào được tích: không thấy
+        await db.updateTable('SalesOrder').set({ ProductionFactoryCode: 'KHÁC NHÀ MÁY,NHÀ MÁY KHÁC 2' }).where('Id', '=', fixture.orderId).execute();
+        expect((await api().get(`/api/v1/order/shipment-plans/candidates?style=${FIXTURE_STYLE}`).set(auth(kh)).expect(200)).body.some((x: any) => x.salesOrderId === fixture.orderId)).toBe(false);
+      } finally {
+        await db.updateTable('SalesOrder').set({ ProductionFactoryCode: FIXTURE_FACTORY, IsFactoryFromOsm: false }).where('Id', '=', fixture.orderId).execute();
+      }
+    });
+
     it('đơn hàng, PO dùng chung: ĐVCS khác xem được nhưng không sửa, xóa, đổi Nhà máy SX, thêm PO, sửa màu cỡ (404) (review 5.9 H1)', async () => {
       const id = await tempUser('test.p59w', ['PLANNER'], ['A02'], {}, [fixture.factoryId]);
       try {
@@ -895,11 +922,16 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('PO#, cỡ dạng dữ liệu BRAVO (dấu cách, ngoặc, loại cỡ) lưu được; PO# có dấu tiếng Việt, cỡ ký tự lạ => 422', async () => {
+    it('PO#, cỡ dạng dữ liệu BRAVO (dấu cách, ngoặc, loại cỡ) lưu được; PO# có dấu, dài tới 192 ký tự lưu được; quá dài, xuống dòng, cỡ ký tự lạ => 422', async () => {
       const t = await tokenFor('kehoach.a', 'A01');
       const po = (poNumber: string, sizeName: string) => ({ salesOrderId: fixture.orderId, poNumber, shipDate: '2027-06-30', lines: [{ colorName: 'Đen', sizeName, qty: 1 }] });
-      // Cột PO# là VARCHAR như nguồn BRAVO: chữ có dấu sẽ bị đổi thành "?" nên từ chối ngay
-      await api().post('/api/v1/order/cut-ratio/pos').set(auth(t)).send(po('PO Đặc biệt', 'M')).expect(422);
+      // Cột PO# là NVARCHAR(192) từ MES_Order/0007: chữ tiếng Việt lưu đúng
+      const long = `PO Đặc biệt ${'x'.repeat(180)}`;
+      expect(long.length).toBe(192);
+      const vn = await api().post('/api/v1/order/cut-ratio/pos').set(auth(t)).send(po(long, 'M')).expect(201);
+      expect(vn.body.poNumber).toBe(long.toUpperCase());
+      await api().post('/api/v1/order/cut-ratio/pos').set(auth(t)).send(po(`${long}x`, 'M')).expect(422);
+      await api().post('/api/v1/order/cut-ratio/pos').set(auth(t)).send(po('PO\n1', 'M')).expect(422);
       await api().post('/api/v1/order/cut-ratio/pos').set(auth(t)).send(po('PO-1', 'M+')).expect(422);
       const ok = await api().post('/api/v1/order/cut-ratio/pos').set(auth(t)).send(po('PO 12 (A), B/2', '32 SHORT')).expect(201);
       expect(ok.body.poNumber).toBe('PO 12 (A), B/2');

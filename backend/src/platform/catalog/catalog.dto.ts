@@ -5,6 +5,8 @@ import { IsBoolean, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, M
 const Optional = () => ValidateIf((_o, v) => v !== undefined);
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const upper = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
+// Mã nhà máy SX so khớp với danh sách theo OSM đã tách (factory-list.ts): gộp khoảng trắng như khi tách
+const factoryCode = () => Transform(({ value }) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().toUpperCase() : value));
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const HHMM_MESSAGE = { message: 'Giờ dạng HH:mm, ví dụ 07:30.' };
 
@@ -100,8 +102,11 @@ export class CatalogItemsQuery {
 // ---------- Nhà máy SX (ADR 0013) ----------
 
 export class FactoryCreateDto {
-  /** Mã lưu vào đơn hàng (SalesOrder.ProductionFactoryCode) nên chữ hoa, không dấu, không sửa được sau khi tạo */
-  @upper() @Matches(/^[A-Z0-9._-]{1,30}$/, { message: 'Mã gồm chữ không dấu, số, dấu chấm, gạch (tối đa 30 ký tự).' }) code!: string;
+  /**
+   * Mã lưu vào đơn hàng (SalesOrder.ProductionFactoryCode, danh sách cách nhau dấu phẩy) nên không có dấu phẩy, không sửa được
+   * sau khi tạo. Mã là tên nhà máy theo OSM (ADR 0013 mục 9): có khoảng trắng, chữ tiếng Việt
+   */
+  @factoryCode() @Matches(/^[^,\p{C}]{1,100}$/u, { message: 'Mã tối đa 100 ký tự, không có dấu phẩy (thường là tên nhà máy theo OSM).' }) code!: string;
   @trim() @IsString() @MinLength(1) @MaxLength(100) name!: string;
   @upper() @Matches(/^[A-Z0-9]{1,10}$/, { message: 'Chọn đơn vị cơ sở.' }) branchCode!: string;
   @IsOptional() @trim() @IsString() @MaxLength(300) description?: string | null;

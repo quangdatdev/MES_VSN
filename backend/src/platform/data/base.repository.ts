@@ -34,8 +34,8 @@ export interface ListOptions {
   /** Cột không tìm theo q: cột người dùng không được xem nguyên giá trị (tìm được là đoán được giá trị). */
   searchExclude?: string[];
   /**
-   * Chỉ dòng của các nhà máy SX được tích cho người dùng (ADR 0013), theo cột `productionFactoryColumn` của repository.
-   * Danh sách nhà máy lấy từ quyền của phiên, không từ client.
+   * Chỉ dòng của các nhà máy SX được tích cho người dùng (ADR 0013), theo cột `productionFactoryColumn` của repository (danh
+   * sách mã cách nhau dấu phẩy: chỉ cần một mã được tích). Danh sách nhà máy lấy từ quyền của phiên, không từ client.
    */
   assignedFactories?: boolean;
 }
@@ -171,12 +171,16 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
     return (await this.info()).scope === 'BRANCH' && !scope.isAggregate;
   }
 
-  /** Giới hạn theo nhà máy SX được tích cho người dùng (lấy từ quyền của phiên); không được tích nhà máy nào thì không thấy gì. */
+  /**
+   * Giới hạn theo nhà máy SX được tích cho người dùng (lấy từ quyền của phiên); không được tích nhà máy nào thì không thấy gì.
+   * Cột nhà máy là danh sách mã cách nhau dấu phẩy (ADR 0013 mục 9, theo OSM): dòng hiện ra khi có ít nhất một mã được tích.
+   */
   private assigned<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, alias?: string): Q {
     if (!this.productionFactoryColumn) throw new Error(`${this.resource} không khai báo cột nhà máy SX (productionFactoryColumn)`);
     const factories = scope.access.productionFactories;
     const col = alias ? `${alias}.${this.productionFactoryColumn}` : this.productionFactoryColumn;
-    return factories.length ? qb.where(col, 'in', factories) : qb.where(FALSE);
+    if (!factories.length) return qb.where(FALSE);
+    return qb.where(sql<SqlBool>`EXISTS (SELECT 1 FROM STRING_SPLIT(${sql.ref(col)}, ',') f WHERE f.value IN (${sql.join(factories)}))`);
   }
 
   /** Lớp con dùng hàm này cho truy vấn riêng (thống kê, sinh số chứng từ) thay vì tự viết điều kiện phân quyền. */

@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { CompiledQuery, sql, type Compilable, type Kysely, type QueryResult } from 'kysely';
 import { env } from '../../config/env';
+import { factoryListFor } from '../../platform/catalog/factory-list';
 import { createDb } from '../../platform/database/db';
 import { inTransaction } from '../../platform/data/transaction';
 import type { BuiltPo, ImportPlan, MesPo, MesState } from './bravo-order.mapping';
@@ -11,7 +12,7 @@ const perBatch = (paramsPerRow: number) => Math.max(1, Math.min(1000, Math.floor
 const chunks = <T>(rows: T[], size: number) => Array.from({ length: Math.ceil(rows.length / size) }, (_, i) => rows.slice(i * size, (i + 1) * size));
 /** Số PO theo Id như BaseRepository.createNumbered: PO-<ĐVCS>-<Id 6 số>, Id hơn 6 số thì giữ nguyên */
 const PO_NO = sql.raw(`CONCAT('PO-', BranchCode, '-', CASE WHEN Id > 999999 THEN CAST(Id AS VARCHAR(10)) ELSE RIGHT('000000' + CAST(Id AS VARCHAR(10)), 6) END)`);
-const ORDER_BATCH = perBatch(19);
+const ORDER_BATCH = perBatch(20);
 const PO_BATCH = perBatch(16);
 
 /**
@@ -72,6 +73,48 @@ export class BravoOrderImportRepository implements OnApplicationShutdown {
       await lockBravoImport(trx);
       const p = await plan(await this.state(trx));
       return { plan: p, applied: await this.write(trx, p) };
+    });
+  }
+
+  /**
+   * Cập nhật Nhà máy SX theo OSM (ADR 0013 mục 9) cho đơn nạp từ BRAVO: đơn có trong OSM nhận danh sách nhà máy theo OSM và
+   * khóa sửa tay (IsFactoryFromOsm); đơn trước đó theo OSM mà nay OSM không còn thì mở khóa, giữ giá trị. Đơn chưa có trong OSM
+   * giữ Nhà máy SX người dùng chọn. `factories`: ProductId → danh sách nhà máy (FtyName của OSM, chưa chuẩn hóa). Cùng khóa ứng
+   * dụng với bước nạp đơn hàng: hai việc ghi SalesOrder không chạy chồng. `productIds`: chỉ xét các sản phẩm này (bài test dùng
+   * để không đụng đơn khác trên database dùng chung).
+   */
+  async applyOsmFactories(factories: Map<number, string>, productIds?: number[]): Promise<{ updated: number; unlocked: number; tooLong: number[] }> {
+    return inTransaction(this.db, async (trx) => {
+      await lockBravoImport(trx);
+      const only = productIds ? new Set(productIds) : null;
+      const rows = (await trx.selectFrom('SalesOrder').select(['Id', 'SourceProductId', 'ProductionFactoryCode', 'IsFactoryFromOsm']).where('SourceProductId', 'is not', null).execute()).filter(
+        (r) => !only || only.has(r.SourceProductId!),
+      );
+      const set: { id: number; code: string }[] = [];
+      const unlock: number[] = [];
+      const tooLong: number[] = [];
+      for (const r of rows) {
+        const { code, tooLong: long } = factoryListFor(factories.get(r.SourceProductId!));
+        if (long) tooLong.push(r.SourceProductId!);
+        else if (code) {
+          if (code !== r.ProductionFactoryCode || !r.IsFactoryFromOsm) set.push({ id: r.Id, code });
+        } else if (r.IsFactoryFromOsm) unlock.push(r.Id);
+      }
+      let updated = 0;
+      for (const part of chunks(set, perBatch(2))) {
+        const rows = sql.join(part.map((u) => sql`(${u.id}, ${u.code})`));
+        const res = await low(
+          trx,
+          sql`UPDATE t SET t.ProductionFactoryCode = v.Code, t.IsFactoryFromOsm = 1 FROM dbo.SalesOrder t JOIN (VALUES ${rows}) AS v (Id, Code) ON v.Id = t.Id`.compile(trx),
+        );
+        updated += Number(res.numAffectedRows ?? 0);
+      }
+      let unlocked = 0;
+      for (const ids of chunks(unlock, 1000)) {
+        const res = await low(trx, trx.updateTable('SalesOrder').set({ IsFactoryFromOsm: false }).where('Id', 'in', ids));
+        unlocked += Number(res.numAffectedRows ?? 0);
+      }
+      return { updated, unlocked, tooLong };
     });
   }
 
@@ -138,6 +181,7 @@ export class BravoOrderImportRepository implements OnApplicationShutdown {
               SourceHash: o.hash,
               BranchCode: o.branchCode,
               ProductionFactoryCode: o.factoryCode,
+              IsFactoryFromOsm: o.factoryFromOsm,
               CreatedBy: null,
             })),
           )

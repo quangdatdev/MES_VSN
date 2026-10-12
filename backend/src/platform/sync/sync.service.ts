@@ -6,6 +6,7 @@ import type { AuthUser } from '../auth/auth.types';
 import { UserDirectoryService } from '../org/user-directory.service';
 import { SyncStartDto } from './sync.dto';
 import { SYNC_RUN_TIMEOUT_MS } from './sync.db';
+import type { OsmPoCriteria, OsmPoField, OsmPoSort } from './osm-po-source';
 import { SyncRepository, isConnectionLost, isNotMigrated } from './sync.repository';
 
 /** Mốc và mốc lọc là giờ của nguồn (BRAVO), lưu không kèm múi giờ: trả về dạng "YYYY-MM-DDTHH:mm:ss", không có Z. */
@@ -210,6 +211,16 @@ export class SyncService implements OnModuleInit {
     return this.ready(() => this.repo.bravoOrderSource(branches));
   }
 
+  /** Nhà máy SX theo OSM của từng sản phẩm BRAVO; null khi chưa có, chưa đồng bộ nguồn OSM */
+  osmFactories() {
+    return this.ready(() => this.repo.osmFactories());
+  }
+
+  /** Các danh sách nhà máy khác nhau trong bảng chép OSM; null khi chưa có, chưa đồng bộ nguồn OSM */
+  osmFactoryLists() {
+    return this.ready(() => this.repo.osmFactoryLists());
+  }
+
   private async followUp(runId: string) {
     if (this.followUps.size === 0 && this.drainHooks.length === 0) return;
     const run = await this.repo.runOutcome(runId);
@@ -230,6 +241,29 @@ export class SyncService implements OnModuleInit {
         this.logger.error(`Việc sau đồng bộ lỗi, thử lại ở đợt đồng bộ sau: ${(e as Error).message}`, (e as Error).stack);
       });
     }
+  }
+
+  /** Phân bổ PO theo OSM (task 5.9.12): một trang; chưa đồng bộ thì trang rỗng, `syncedAt` null */
+  osmPoPage(c: OsmPoCriteria, page: number, pageSize: number, sort: OsmPoSort[]) {
+    return this.ready(() => this.repo.osmPoPage(c, page, pageSize, sort));
+  }
+
+  /** Phân bổ PO theo OSM: giá trị của một trường cho popup lọc theo cột */
+  osmPoValues(c: OsmPoCriteria, field: OsmPoField, search: string | undefined, limit: number) {
+    return this.ready(() => this.repo.osmPoValues(c, field, search, limit));
+  }
+
+  /** Phân bổ PO theo OSM: mọi dòng khớp điều kiện, cho xuất file */
+  osmPoAll(c: OsmPoCriteria, sort: OsmPoSort[]) {
+    return this.ready(() => this.repo.osmPoAll(c, sort));
+  }
+
+  /** Phân bổ PO theo OSM: các Brand, Season đang có */
+  osmPoOptions() {
+    return this.ready(async () => {
+      const [brands, seasons] = await Promise.all([this.repo.osmPoDistinct('brand'), this.repo.osmPoDistinct('season')]);
+      return { brands, seasons };
+    });
   }
 
   /** Một trang dữ liệu của bảng chép danh mục. Bảng lấy theo mã nguồn trong SyncSource, không nhận tên bảng từ client. */

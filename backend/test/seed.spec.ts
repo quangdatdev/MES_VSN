@@ -23,6 +23,15 @@ describe('Seed chạy lại', () => {
     expect(rows.map((r) => r.Code)).toEqual(expect.arrayContaining(['A00', 'A01', 'A02', 'A03']));
   });
 
+  it('database đã seed trước khi có màn mới: seed chạy lại xếp menu đúng thứ tự seed-data (Phân bổ PO ngay sau Thông tin đơn hàng)', async () => {
+    // Như máy chủ trước task 5.9.12: Kế hoạch xuất hàng giữ thứ tự cũ (20), màn mới chèn vào cũng nhận 20
+    await core.updateTable('SysMenu').set({ SortOrder: 20 }).where('Code', 'in', ['menu.order.shipment', 'menu.order.poallocation']).execute();
+    await runSeed({ coreOnly: true });
+    const group = await core.selectFrom('SysMenu').select('Id').where('Code', '=', 'menu.order').executeTakeFirstOrThrow();
+    const leaves = await core.selectFrom('SysMenu').select('Path').where('ParentId', '=', group.Id).orderBy('SortOrder').orderBy('Id').execute();
+    expect(leaves.slice(0, 3).map((m) => m.Path)).toEqual(['/order/info', '/order/po-allocation', '/order/shipment']);
+  });
+
   it('không gán lại vai trò, nhà máy đã thu hồi của tài khoản mẫu', async () => {
     const user = await core.selectFrom('SysUser').select('Id').where('Username', '=', 'truongchuyen.a').executeTakeFirstOrThrow();
     const roles = await core.selectFrom('SysUserRole').selectAll().where('UserId', '=', user.Id).execute();

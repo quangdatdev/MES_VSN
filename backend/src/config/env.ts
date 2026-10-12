@@ -43,6 +43,14 @@ export const env = {
     stagingName: process.env.DB_TRUNGGIAN_NAME ?? '',
     // Database trung gian nằm ở SQL Server khác: tên linked server tới máy đó (synonym 4 phần). Cùng máy thì để trống.
     stagingServer: process.env.DB_TRUNGGIAN_SERVER?.trim() ?? '',
+    // Database của OSM chứa view nhà máy sản xuất của đơn hàng (vOSMDataFty). MES chỉ đọc view, chép vào MES_Sync.osm
+    osmName: process.env.DB_OSM_NAME?.trim() ?? '',
+    // Database OSM ở SQL Server khác: tên linked server. Cùng máy thì để trống
+    osmServer: process.env.DB_OSM_SERVER?.trim() ?? '',
+    // Database ứng dụng OSM chứa view gốc phân bổ PO theo nhà máy (v_OSMData), chép vào MES_Sync.osm cho màn Phân bổ PO
+    osmAppName: process.env.DB_OSM_APP_NAME?.trim() ?? '',
+    // Database ứng dụng OSM ở SQL Server khác: tên linked server. Cùng máy thì để trống
+    osmAppServer: process.env.DB_OSM_APP_SERVER?.trim() ?? '',
     encrypt: process.env.DB_ENCRYPT === 'true',
     trustServerCertificate: process.env.DB_TRUST_CERT !== 'false',
   },
@@ -61,6 +69,9 @@ export const env = {
   // trên máy dùng thật (không dữ liệu mẫu), tắt trên máy demo, máy test: đơn giả không bị trộn đơn thật, test không tự nạp;
   // máy demo nạp đơn BRAVO bằng npm run load:bravo
   bravoOrderImport: flag('BRAVO_ORDER_IMPORT', !flag('SEED_SAMPLE_DATA', !isProd)),
+  // Cập nhật Nhà máy SX của đơn hàng theo OSM sau mỗi đợt đồng bộ và lúc khởi động (ADR 0013 mục 9). Mặc định bật, kể cả khi
+  // nạp đơn hàng tự động tắt; test tắt (test/setup-env.ts) để bước này không chạy xen vào bài test
+  osmFactoryUpdate: flag('OSM_FACTORY_UPDATE', true),
   // Cookie refresh chỉ gửi qua HTTPS. Demo trong mạng nội bộ chạy HTTP thì để COOKIE_SECURE=false.
   cookieSecure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : isProd,
   // Chỉ khai báo khi thật sự chạy sau reverse proxy (ví dụ "loopback" hoặc IP của Nginx). Mặc định không tin

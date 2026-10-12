@@ -1,5 +1,6 @@
-// Sinh migration MES_Sync cho các view nguồn: bảng chép (schema bravo), thủ tục chép tăng dần, dòng SyncSource.
-// Đọc cấu trúc cột thật của view trong database trung gian (DB_TRUNGGIAN_NAME), chỉ đọc danh mục hệ thống.
+// Sinh migration MES_Sync cho các view nguồn: bảng chép (schema theo hệ thống: bravo, osm), thủ tục chép tăng dần, dòng SyncSource.
+// Đọc cấu trúc cột thật của view trong database nguồn (scripts/source-databases.ts: BRAVO ở DB_TRUNGGIAN_NAME; OSM ở DB_OSM_NAME,
+// v_OSMData ở DB_OSM_APP_NAME), qua linked server khi database ở máy khác; chỉ đọc danh mục hệ thống.
 // Dùng: npx tsx scripts/sync-gen.ts --out migrations/MES_Sync/NNNN_ten.sql   (mọi nguồn trong SOURCES)
 //       npx tsx scripts/sync-gen.ts DM_MauSac DM_Size --out ...             (chỉ một số nguồn, khi thêm nguồn mới)
 //       npx tsx scripts/sync-gen.ts --procs-only --out ...                  (chỉ sinh lại thủ tục chép, CREATE OR ALTER: sửa thủ tục
@@ -8,11 +9,15 @@
 // Thêm nguồn: khai báo trong SOURCES, sinh migration MỚI chỉ cho nguồn đó (không sửa migration đã chạy).
 import { writeFileSync } from 'fs';
 import { sql } from 'kysely';
-import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
+import { assertSourceNames, sourceDatabaseOf } from './source-databases';
+
+export type SourceSystem = 'BRAVO' | 'OSM';
 
 export interface SourceDef {
-  /** View trong database trung gian */
+  /** Hệ thống nguồn; mặc định BRAVO */
+  system?: SourceSystem;
+  /** View trong database nguồn */
   view: string;
   name: string;
   group: 'CATALOG' | 'ORDER';
@@ -45,7 +50,36 @@ export const SOURCES: SourceDef[] = [
   { view: 'vThongTinPO_MauCo', name: 'Màu cỡ theo PO', group: 'ORDER', match: 'PARTITION', columns: ['ProductId', 'CustomerPONo'], mode: 'INCREMENTAL', description: 'Thay cả nhóm dòng của PO có thay đổi' },
   { view: 'vBangCanDoiSanXuat', name: 'Bảng cân đối sản xuất', group: 'ORDER', match: 'KEY', columns: ['ProduceId'], mode: 'INCREMENTAL' },
   { view: 'vBangCanDoiSanXuat_MauCo_Tong', name: 'Màu cỡ bảng cân đối sản xuất', group: 'ORDER', match: 'PARTITION', columns: ['ProduceId'], mode: 'INCREMENTAL', description: 'Thay cả nhóm dòng của bảng cân đối có thay đổi' },
+  // OSM (12/10/2026): nhà máy sản xuất của đơn hàng theo SO và mã hàng. View không có cột thời gian; có dòng trùng nguyên dòng
+  // nên không dùng khóa (SO, StyleNo) được, chép theo nhóm SO
+  {
+    system: 'OSM',
+    view: 'vOSMDataFty',
+    name: 'Nhà máy sản xuất của đơn hàng (OSM)',
+    group: 'ORDER',
+    match: 'PARTITION',
+    columns: ['SO'],
+    mode: 'FULL',
+    description: 'View không có cột thời gian, lấy toàn bộ mỗi lần (khoảng 3.500 dòng). FtyName là danh sách nhà máy cách nhau dấu phẩy',
+  },
+  // OSM (12/10/2026, task 5.9.12): phân bổ PO theo nhà máy cho màn Quản trị đơn hàng › Phân bổ PO, view gốc của database ứng dụng
+  // OSM (DB_OSM_APP_NAME). Không có cột thời gian, không có khóa (khoảng 1/6 số dòng trùng nguyên dòng): chép theo nhóm PO
+  {
+    system: 'OSM',
+    view: 'v_OSMData',
+    name: 'Phân bổ PO theo nhà máy (OSM)',
+    group: 'ORDER',
+    match: 'PARTITION',
+    columns: ['PO'],
+    mode: 'FULL',
+    description: 'View không có cột thời gian, lấy toàn bộ mỗi lần (khoảng 30.000 dòng, có dòng trùng nguyên dòng). Màn Quản trị đơn hàng › Phân bổ PO đọc bảng chép này',
+  },
 ];
+
+/** Schema của bảng chép, synonym, thủ tục theo hệ thống nguồn */
+export const schemaOf = (system: string) => (system === 'OSM' ? 'osm' : 'bravo');
+/** Tên database nguồn trong câu báo lỗi của thủ tục chép */
+const originOf = (system: string) => (system === 'OSM' ? 'database OSM' : 'database trung gian');
 
 export interface Col {
   name: string;
@@ -60,7 +94,8 @@ export interface Col {
 
 const q = (n: string) => `[${n.replace(/]/g, ']]')}]`;
 const lit = (s: string | null | undefined) => (s == null ? 'NULL' : `N'${s.replace(/'/g, "''")}'`);
-export const tableName = (view: string) => view.replace(/^v/, '');
+/** Tên bảng chép theo tên view: bỏ tiền tố v (vDM_MauSac → DM_MauSac, v_OSMData → OSMData) */
+export const tableName = (view: string) => view.replace(/^v_?/, '');
 const STRING = new Set(['nvarchar', 'nchar', 'varchar', 'char']);
 /** Chốt xóa hàng loạt khi chép tăng dần: dừng nếu định xóa quá số dòng này VÀ quá tỷ lệ này của bảng chép */
 const MASS_DELETE_MIN_ROWS = 100;
@@ -85,12 +120,17 @@ function typeOf(c: Col): string {
   return out;
 }
 
-/** Sinh SQL cho một nguồn. `system` chỉ đổi mã và hệ thống trong SyncSource (test dùng 'TEST'), schema vẫn là bravo. */
-export function render(src: SourceDef, cols: Col[], sortOrder: number, system = 'BRAVO', opts: { procsOnly?: boolean } = {}): string {
+/**
+ * Sinh SQL cho một nguồn. `system` đổi mã và hệ thống trong SyncSource (test dùng 'TEST'); schema theo hệ thống (OSM: osm,
+ * còn lại: bravo).
+ */
+export function render(src: SourceDef, cols: Col[], sortOrder: number, system: string = src.system ?? 'BRAVO', opts: { procsOnly?: boolean } = {}): string {
   const t = tableName(src.view);
-  const target = `bravo.${q(t)}`;
-  const synonym = `bravo.${q(`src_${t}`)}`;
-  const proc = `bravo.${q(`usp_Sync_${t}`)}`;
+  const schema = schemaOf(system);
+  const origin = originOf(system);
+  const target = `${schema}.${q(t)}`;
+  const synonym = `${schema}.${q(`src_${t}`)}`;
+  const proc = `${schema}.${q(`usp_Sync_${t}`)}`;
   const names = cols.map((c) => c.name);
   const col = (n: string) => cols.find((c) => c.name === n)!;
   for (const k of src.columns) if (!names.includes(k)) throw new Error(`${src.view} không có cột khóa ${k}`);
@@ -109,17 +149,17 @@ export function render(src: SourceDef, cols: Col[], sortOrder: number, system = 
   const since = src.mode === 'INCREMENTAL' ? `[ModifiedAt] >= @SinceAt OR [CreatedAt] >= @SinceAt` : '';
   const defs = (ns: string[], nullable: (n: string) => boolean, indent = '    ') => ns.map((n) => `${indent}${q(n)} ${typeOf(col(n))} ${nullable(n) ? 'NULL' : 'NOT NULL'}`).join(',\n');
   const guardEmpty = (what: string) =>
-    `IF NOT EXISTS (SELECT 1 FROM ${what}) AND EXISTS (SELECT 1 FROM ${target})\n    THROW 50002, N'View nguồn trả về 0 dòng. Dừng lại để không xóa hết dữ liệu đã chép; kiểm tra view ở database trung gian.', 1;`;
+    `IF NOT EXISTS (SELECT 1 FROM ${what}) AND EXISTS (SELECT 1 FROM ${target})\n    THROW 50002, N'View nguồn trả về 0 dòng. Dừng lại để không xóa hết dữ liệu đã chép; kiểm tra view ở ${origin}.', 1;`;
   const guardKeys = (what: string) => [
     `IF EXISTS (SELECT 1 FROM ${what} WHERE ${src.columns.map((k) => `${q(k)} IS NULL`).join(' OR ')})\n    THROW 50003, N'View nguồn có dòng thiếu khóa (${src.columns.join(', ')}). Không chép để tránh ghi sai dòng.', 1;`,
-    `IF EXISTS (SELECT 1 FROM ${what} GROUP BY ${keyList} HAVING COUNT(*) > 1)\n    THROW 50001, N'View nguồn trả về khóa trùng (${src.columns.join(', ')}). Không chép để tránh ghi sai dòng; báo bên quản lý database trung gian.', 1;`,
+    `IF EXISTS (SELECT 1 FROM ${what} GROUP BY ${keyList} HAVING COUNT(*) > 1)\n    THROW 50001, N'View nguồn trả về khóa trùng (${src.columns.join(', ')}). Không chép để tránh ghi sai dòng; báo bên quản lý ${origin}.', 1;`,
   ];
   // Chép tăng dần là nút bấm thường ngày, không hỏi lại: nếu đối soát định xóa nhiều dòng (view trả thiếu, lỗi bên nguồn)
   // thì dừng; xóa thật thì dùng Chép lại toàn bộ (có xác nhận)
   const guardMassDelete = (gone: string) =>
     `DECLARE @Gone INT = (SELECT COUNT(*) FROM ${target} t WHERE ${gone}), @Have INT = (SELECT COUNT(*) FROM ${target});\n` +
     `    IF @Gone > ${MASS_DELETE_MIN_ROWS} AND @Gone * 100 > @Have * ${MASS_DELETE_PERCENT}\n    BEGIN\n` +
-    `      DECLARE @GoneMsg NVARCHAR(400) = CONCAT(N'Lần đồng bộ này sẽ xóa ', @Gone, N'/', @Have, N' dòng vì không còn bên nguồn (quá ${MASS_DELETE_PERCENT}% bảng chép). Dừng lại để kiểm tra view ở database trung gian; nếu bên BRAVO xóa thật thì dùng Chép lại toàn bộ.');\n` +
+    `      DECLARE @GoneMsg NVARCHAR(400) = CONCAT(N'Lần đồng bộ này sẽ xóa ', @Gone, N'/', @Have, N' dòng vì không còn bên nguồn (quá ${MASS_DELETE_PERCENT}% bảng chép). Dừng lại để kiểm tra view ở ${origin}; nếu bên ${system === 'OSM' ? 'OSM' : 'BRAVO'} xóa thật thì dùng Chép lại toàn bộ.');\n` +
     `      THROW 50004, @GoneMsg, 1;\n    END;`;
 
   const out: string[] = [];
@@ -150,6 +190,12 @@ export function render(src: SourceDef, cols: Col[], sortOrder: number, system = 
       '  SET @ReadCount = (SELECT COUNT(*) FROM #src);',
       ...guardKeys('#src').map((g) => `  ${g}`),
       `  IF @SinceAt IS NULL\n    ${guardEmpty('#src')}`,
+    );
+  } else if (src.mode === 'FULL') {
+    // Chép toàn bộ mỗi lần (view không có cột thời gian): không có nhánh chép tăng dần, không cần #keys, #alive
+    body.push(
+      `  INSERT INTO #src (${list()}) SELECT ${list()} FROM ${synonym};\n  ${guardEmpty('#src')}`,
+      '  SET @ReadCount = (SELECT COUNT(*) FROM #src);',
     );
   } else {
     body.push(
@@ -183,7 +229,8 @@ export function render(src: SourceDef, cols: Col[], sortOrder: number, system = 
       '  COMMIT TRANSACTION;',
     );
   } else {
-    const inScope = (a: string) => `(@SinceAt IS NULL OR EXISTS (SELECT 1 FROM #keys k WHERE ${partOn('k', a)}))`;
+    // Chép toàn bộ: thay cả bảng chép
+    const inScope = (a: string) => (src.mode === 'FULL' ? '1 = 1' : `(@SinceAt IS NULL OR EXISTS (SELECT 1 FROM #keys k WHERE ${partOn('k', a)}))`);
     body.push(
       `  -- Số liệu báo cáo (gần đúng, nhóm không có khóa dòng): dòng của nhóm mới; dòng mới hoặc đổi trong nhóm đã có; dòng cũ không còn`,
       `  SELECT @InsertedCount = COUNT(*) FROM #src s WHERE NOT EXISTS (SELECT 1 FROM ${target} t WHERE ${partOn('s', 't')});`,
@@ -206,7 +253,7 @@ export function render(src: SourceDef, cols: Col[], sortOrder: number, system = 
 
   if (opts.procsOnly) return out.join('\n');
   out.push(
-    `INSERT INTO dbo.SyncSource (Code, Name, Description, SystemCode, GroupCode, SourceObject, SourceSynonym, TargetTable, ProcName, SyncModeCode, KeyColumns, SortOrder)\nVALUES (${lit(`${system}.${t}`)}, ${lit(src.name)}, ${lit(src.description)}, ${lit(system)}, '${src.group}', ${lit(src.view)}, ${lit(`bravo.src_${t}`)}, ${lit(`bravo.${t}`)}, ${lit(`bravo.usp_Sync_${t}`)}, '${src.mode}', ${lit(src.columns.join(', '))}, ${sortOrder});`,
+    `INSERT INTO dbo.SyncSource (Code, Name, Description, SystemCode, GroupCode, SourceObject, SourceSynonym, TargetTable, ProcName, SyncModeCode, KeyColumns, SortOrder)\nVALUES (${lit(`${system}.${t}`)}, ${lit(src.name)}, ${lit(src.description)}, ${lit(system)}, '${src.group}', ${lit(src.view)}, ${lit(`${schema}.src_${t}`)}, ${lit(`${schema}.${t}`)}, ${lit(`${schema}.usp_Sync_${t}`)}, '${src.mode}', ${lit(src.columns.join(', '))}, ${sortOrder});`,
     'GO',
     '',
   );
@@ -222,8 +269,36 @@ export async function readColumns(db: ReturnType<typeof createDb<any>>, object: 
   return rows.rows;
 }
 
+/**
+ * Cấu trúc cột của view `dbo.<view>` ở database nằm sau linked server: đọc danh mục hệ thống của database đó qua tên 4 phần
+ * (OBJECT_ID không tra được sang máy khác). Mã kiểu hệ thống giống nhau giữa các máy SQL Server nên TYPE_NAME chạy ở máy này.
+ */
+// any: đọc danh mục hệ thống qua linked server, không có kiểu bảng
+export async function readRemoteColumns(db: ReturnType<typeof createDb<any>>, server: string, database: string, view: string): Promise<Col[]> {
+  const cat = (t: string) => sql.raw(`${q(server)}.${q(database)}.sys.${t}`);
+  const rows = await sql<Col>`
+    SELECT c.name, TYPE_NAME(c.system_type_id) AS type, c.max_length AS len, c.precision, c.scale, c.collation_name AS collation
+    FROM ${cat('columns')} c
+    JOIN ${cat('objects')} o ON o.object_id = c.object_id
+    JOIN ${cat('schemas')} s ON s.schema_id = o.schema_id
+    WHERE s.name = N'dbo' AND o.name = ${view}
+    ORDER BY c.column_id`.execute(db);
+  return rows.rows;
+}
+
+/** Database nguồn của một view (scripts/source-databases.ts) */
+function sourceDatabase(src: SourceDef) {
+  const system = src.system ?? 'BRAVO';
+  const d = sourceDatabaseOf(system, src.view);
+  if (!d) throw new Error(`Chưa khai báo database nguồn cho ${system} (${src.view}) trong scripts/source-databases.ts`);
+  const name = d.name();
+  if (!name) throw new Error(`Thiếu ${d.nameVar} trong backend/.env (database chứa view ${src.view})`);
+  const server = d.server();
+  assertSourceNames(d, name, server);
+  return { name, server };
+}
+
 async function main() {
-  if (!env.db.stagingName) throw new Error('Thiếu DB_TRUNGGIAN_NAME trong backend/.env');
   const args = process.argv.slice(2);
   const procsOnly = args.includes('--procs-only');
   const outAt = args.indexOf('--out');
@@ -232,17 +307,33 @@ async function main() {
   const only = args.filter((a, i) => !a.startsWith('--') && (outAt < 0 || i !== outAt + 1));
   const picked = only.length ? SOURCES.filter((s) => only.includes(tableName(s.view))) : SOURCES;
   if (only.length && picked.length !== only.length) throw new Error(`Không có trong SOURCES: ${only.filter((o) => !SOURCES.some((s) => tableName(s.view) === o)).join(', ')}`);
-  const db = createDb<any>(env.db.stagingName); // any: chỉ đọc danh mục hệ thống
+  // any: chỉ đọc danh mục hệ thống. Database sau linked server đọc từ master của máy này
+  const dbs = new Map<string, ReturnType<typeof createDb<any>>>();
+  const connect = (name: string) => {
+    if (!dbs.has(name)) dbs.set(name, createDb<any>(name));
+    return dbs.get(name)!;
+  };
+  const columnsOf = async (src: SourceDef) => {
+    const { name, server } = sourceDatabase(src);
+    const cols = server ? await readRemoteColumns(connect('master'), server, name, src.view) : await readColumns(connect(name), `dbo.${src.view}`);
+    if (cols.length === 0) throw new Error(`Không thấy view ${src.view} trong ${server ? `${server}.` : ''}${name}`);
+    return cols;
+  };
   try {
     const parts = [
-      `-- Sinh bởi backend/scripts/sync-gen.ts từ cấu trúc view của database trung gian. Không sửa tay:`,
+      `-- Sinh bởi backend/scripts/sync-gen.ts từ cấu trúc view của database nguồn. Không sửa tay:`,
       `-- muốn đổi thì sửa SOURCES trong script rồi sinh migration mới. ADR 0007.`,
       '',
     ];
+    // Schema của hệ thống mới (không phải bravo) tạo trước bảng chép
+    if (!procsOnly) {
+      for (const schema of new Set(picked.map((p) => schemaOf(p.system ?? 'BRAVO')).filter((x) => x !== 'bravo'))) {
+        parts.push(`IF SCHEMA_ID(N'${schema}') IS NULL EXEC(N'CREATE SCHEMA ${schema}');`, 'GO', '');
+      }
+    }
     for (const src of picked) {
-      const cols = await readColumns(db, `dbo.${src.view}`);
-      if (cols.length === 0) throw new Error(`Không thấy view ${src.view} trong ${env.db.stagingName}`);
-      parts.push(render(src, cols, (SOURCES.indexOf(src) + 1) * 10, 'BRAVO', { procsOnly }));
+      const cols = await columnsOf(src);
+      parts.push(render(src, cols, (SOURCES.indexOf(src) + 1) * 10, src.system ?? 'BRAVO', { procsOnly }));
     }
     const text = parts.join('\n');
     if (outFile) {
@@ -250,7 +341,7 @@ async function main() {
       console.error(`Đã ghi ${outFile} (${picked.length} nguồn${procsOnly ? ', chỉ thủ tục' : ''})`);
     } else process.stdout.write(text);
   } finally {
-    await db.destroy();
+    for (const db of dbs.values()) await db.destroy();
   }
 }
 

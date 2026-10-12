@@ -17,7 +17,8 @@ import type { OrderDatabase } from '../src/modules/order/order.types';
 import { MAX_COLOR_SIZE_ROWS, SIZE_NAME } from '../src/modules/order/order.rules';
 import type { CoreDatabase } from '../src/platform/database/core.types';
 import { createDb } from '../src/platform/database/db';
-import { readBravoOrderSource } from '../src/platform/sync/bravo-order-source';
+import { factoryListFor } from '../src/platform/catalog/factory-list';
+import { readBravoOrderSource, readOsmFactories } from '../src/platform/sync/bravo-order-source';
 import { syncBranchesFromBravo } from './bravo-branches';
 import { clearSewingPrep } from './sewing-data';
 import { assertDemoMachine } from './local-db';
@@ -59,11 +60,6 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
     const { branches, linesOf, plannerId } = await readLines(core);
     if (!branches.length) throw new Error('MES_Core chưa có đơn vị cơ sở nào đang dùng: chạy npm run seed trước.');
     // Đơn vị tính BRAVO (mã không dấu) đổi sang tên theo danh mục Đơn vị tính (Quản trị › Danh mục hệ thống)
-    // BRAVO chưa có nhà máy sản xuất của đơn (chờ BA, 5.2.8). Giả định tạm (ADR 0013): đơn may ở nhà máy SX cùng mã với chi
-    // nhánh nhận đơn nếu có nhà máy đó đang dùng, để popup Chọn mã hàng có đơn ngay; khác thì để trống, chọn ở Thông tin đơn hàng
-    const sameCodeFactories = new Set(
-      (await core.selectFrom('SysProductionFactory').select('Code').where('IsActive', '=', true).execute()).map((f) => f.Code),
-    );
     const unitNames = new Map(
       (await core.selectFrom('SysCatalogItem as i').innerJoin('SysCatalog as c', 'c.Id', 'i.CatalogId').select(['i.Code', 'i.Name']).where('c.Code', '=', 'UNIT').execute()).map((u) => [u.Code, u.Name]),
     );
@@ -73,6 +69,15 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
       throw new Error(`Bảng chép BRAVO trong ${env.db.syncName} chưa có dữ liệu: vào màn Đồng bộ dữ liệu, bấm Đồng bộ (cần ThongTinPO, ThongTinPO_MauCo và các danh mục) rồi chạy lại.`);
     }
     const source = await readBravoOrderSource(sync, branches);
+    // Nhà máy SX theo OSM (ADR 0013 mục 9). Máy demo chưa đồng bộ OSM: giữ giả định cũ (nhà máy SX cùng mã chi nhánh nhận đơn, nếu
+    // đang dùng) để tài khoản mẫu thấy đơn ở Chọn mã hàng; giá trị này không khóa sửa tay
+    const osmFactories = await readOsmFactories(sync);
+    const sameCode = osmFactories
+      ? null
+      : new Set((await core.selectFrom('SysProductionFactory').select('Code').where('IsActive', '=', true).execute()).map((f) => f.Code));
+    if (!osmFactories) console.log('Chưa có dữ liệu OSM trong MES_Sync: Nhà máy SX tạm theo mã chi nhánh nhận đơn (máy demo).');
+    const factoryOf = (productId: number, branchCode: string) =>
+      osmFactories ? factoryListFor(osmFactories.get(productId)).code : sameCode!.has(branchCode) ? branchCode : null;
     const used = new Set<string>();
     const { built, skipped } = buildOrders(source, (o) => orderNumber(o.Name, o.ProductId, o.BranchCode, used), unitNames);
     const today = localToday();
@@ -101,7 +106,8 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
           SourceProductId: o.productId,
           SourceHash: o.hash,
           BranchCode: o.branchCode,
-          ProductionFactoryCode: sameCodeFactories.has(o.branchCode) ? o.branchCode : null,
+          ProductionFactoryCode: factoryOf(o.productId, o.branchCode),
+          IsFactoryFromOsm: osmFactories != null && factoryOf(o.productId, o.branchCode) != null,
           CreatedBy: null,
         })),
         ['Id', 'SourceProductId'],
@@ -109,7 +115,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
       const orderId = new Map(orderRows.map((r) => [r.SourceProductId as number, r.Id as number]));
       for (const o of built) {
         bump(o.branchCode, 'đơn hàng');
-        if (!sameCodeFactories.has(o.branchCode)) bump(o.branchCode, 'chưa có Nhà máy SX (chọn ở Thông tin đơn hàng)');
+        if (factoryOf(o.productId, o.branchCode) == null) bump(o.branchCode, 'chưa có Nhà máy SX (chọn ở Thông tin đơn hàng)');
         if (o.closed) bump(o.branchCode, 'đã đóng lệnh');
       }
 

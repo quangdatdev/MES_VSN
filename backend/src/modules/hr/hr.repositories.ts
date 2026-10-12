@@ -314,7 +314,11 @@ export class EmployeeRepository extends BaseRepository<EmployeeRow> {
   }
 }
 
-// ---------- Danh mục của module: loại phòng ban, chức danh (dùng chung, chưa có màn sửa; quyền kiểm ở controller) ----------
+// ---------- Danh mục của module: loại phòng ban, chức danh ----------
+// Dùng chung toàn công ty, không có cột nhà máy nên không qua BaseRepository (như các danh mục khác: PrepStep, SysCatalogItem).
+// Quyền kiểm ở controller: loại phòng ban sửa ở Quản trị › Danh mục hệ thống (admin.catalog); chức danh chưa có màn sửa.
+
+export type DepartmentTypeUsageRow = DepartmentTypeRow & { DepartmentCount: number };
 
 @Injectable()
 export class HrCatalogRepository {
@@ -326,6 +330,48 @@ export class HrCatalogRepository {
 
   async type(id: number, db: HrDb = this.db): Promise<DepartmentTypeRow | undefined> {
     return (await db.selectFrom('DepartmentType').selectAll().where('Id', '=', id).executeTakeFirst()) as DepartmentTypeRow | undefined;
+  }
+
+  /** Loại kèm số phòng ban đang dùng loại đó (chưa giải thể); có id thì chỉ một loại */
+  typesWithUsage(id?: number, db: HrDb = this.db): Promise<DepartmentTypeUsageRow[]> {
+    let qb = db
+      .selectFrom('DepartmentType as t')
+      .selectAll('t')
+      .select((eb) =>
+        eb.selectFrom('Department as d').select(sql<number>`COUNT(*)`.as('n')).whereRef('d.DepartmentTypeId', '=', 't.Id').where('d.IsActive', '=', true).as('DepartmentCount'),
+      );
+    if (id !== undefined) qb = qb.where('t.Id', '=', id);
+    return qb.orderBy('t.LevelOrder').orderBy('t.SortOrder').orderBy('t.Id').execute() as Promise<DepartmentTypeUsageRow[]>;
+  }
+
+  /** Bảng có trigger nên không INSERT ... OUTPUT được: thêm rồi đọc lại theo mã */
+  async insertType(values: Insertable<DepartmentTypeTable>, db: HrDb): Promise<DepartmentTypeRow> {
+    await db.insertInto('DepartmentType').values(values).execute();
+    return (await db.selectFrom('DepartmentType').selectAll().where('Code', '=', values.Code).executeTakeFirstOrThrow()) as DepartmentTypeRow;
+  }
+
+  async updateType(
+    id: number,
+    set: Pick<Updateable<DepartmentTypeTable>, 'Name' | 'Description' | 'LevelOrder' | 'IsFinalLevel' | 'SortOrder' | 'IsActive'>,
+    userId: number,
+    db: HrDb,
+  ): Promise<DepartmentTypeRow> {
+    await db.updateTable('DepartmentType').set({ ...set, ModifiedAt: new Date(), ModifiedBy: userId }).where('Id', '=', id).execute();
+    return (await this.type(id, db))!;
+  }
+
+  /**
+   * Phòng ban thuộc loại này đang có phòng ban con, tính cả dòng đã giải thể: khôi phục không kiểm lại cấp cuối, nên loại
+   * thành cấp cuối khi còn con đã giải thể thì khôi phục con sẽ phá luật (cùng luật anyChildren khi đổi loại một phòng ban).
+   */
+  parentsOfType(typeId: number, db: HrDb): Promise<{ Code: string; Name: string }[]> {
+    return db
+      .selectFrom('Department as p')
+      .select(['p.Code', 'p.Name'])
+      .where('p.DepartmentTypeId', '=', typeId)
+      .where((eb) => eb.exists(eb.selectFrom('Department as c').select('c.Id').whereRef('c.ParentId', '=', 'p.Id')))
+      .orderBy('p.Path')
+      .execute();
   }
 
   jobTitles(db: HrDb = this.db): Promise<JobTitleRow[]> {

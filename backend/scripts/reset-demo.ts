@@ -11,6 +11,7 @@
 //    vai trò, phạm vi, ngoại lệ, cột riêng, ĐVCS, nhà máy SX) về như seed; ĐVCS ngoài mẫu và BRAVO, nhà máy SX, vai trò, người
 //    dùng tạo thêm khi demo bị vô hiệu hóa (không xóa vật lý); thu hồi mọi phiên đăng nhập.
 //  - Nhật ký SysAuditLog giữ nguyên (chỉ ghi thêm), có thêm một dòng DEMO_RESET.
+import { OSM_FACTORY_NOTE } from '../src/platform/catalog/factory-list';
 import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
 import type { CoreDatabase } from '../src/platform/database/core.types';
@@ -125,7 +126,13 @@ async function main() {
           .where('Code', '=', f.code)
           .execute();
       }
-      await trx.updateTable('SysProductionFactory').set({ IsActive: false, ModifiedAt: now }).where('Code', 'not in', productionFactories.map((f) => f.code)).execute();
+      // Giữ nhà máy do đồng bộ OSM tự thêm: đơn hàng nạp từ BRAVO mang các mã này (ADR 0013 mục 9)
+      await trx
+        .updateTable('SysProductionFactory')
+        .set({ IsActive: false, ModifiedAt: now })
+        .where('Code', 'not in', productionFactories.map((f) => f.code))
+        .where((eb) => eb.or([eb('CreatedBy', 'is not', null), eb('Description', 'is', null), eb('Description', '<>', OSM_FACTORY_NOTE)]))
+        .execute();
       for (const c of catalogs) {
         const cat = await trx.selectFrom('SysCatalog').select('Id').where('Code', '=', c.code).executeTakeFirst();
         if (!cat) continue;

@@ -20,6 +20,7 @@ import { useLeaveGuard } from '../../lib/leaveGuard';
 import { toastError, toastOk } from '../../lib/notify';
 import { useMobile } from '../../lib/useMobile';
 import { useSession } from '../../store/session';
+import { factoryLabel } from './factoryLabel';
 import { emptyFilter, type Candidate, type CandidatePo, type OrderFilter, type PlanLine, type ShipmentPlan, type ShipmentPlanDetail } from './api';
 import { EmptyState, ExportButton, filterParams, IssueList, loadError, OrderFilters, PICK_ROW, PLAN_STATUS, PO_STATUS, StatusBadge, useCanWrite, useCustomers, usePagedList } from './common';
 
@@ -460,7 +461,7 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
   const cols = useMemo(() => {
     const name = new Map(factories.map((f) => [f.code, f.name]));
     const withFactory = CANDIDATE_COLS.map((c) =>
-      c.key === 'productionFactoryCode' ? { ...c, render: (r: Candidate) => (r.productionFactoryCode ? <span title={r.productionFactoryCode}>{name.get(r.productionFactoryCode) ?? r.productionFactoryCode}</span> : '') } : c,
+      c.key === 'productionFactoryCode' ? { ...c, render: (r: Candidate) => (r.productionFactoryCode ? <span title={r.productionFactoryCode}>{factoryLabel(r.productionFactoryCode, name)}</span> : '') } : c,
     );
     return withBranchNames(withFactory, branchName);
   }, [branchName, factories]);

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
 import { sql, type Insertable, type Updateable } from 'kysely';
 import { AppException, Errors } from '../../common/app.exception';
 import { sqlErrorNumbers } from '../../common/db-errors';
@@ -8,8 +8,10 @@ import type { SysCatalogItemTable, SysOrgUnitTable, SysProductionFactoryTable, S
 import { CORE_DB, type CoreDb } from '../database/database.module';
 import { OrgService } from '../org/org.service';
 import { PermissionService } from '../permission/permission.service';
+import { OSM_FACTORY_SOURCE } from '../sync/bravo-order-source';
 import { SyncService } from '../sync/sync.service';
 import { CatalogLookupService } from './catalog-lookup.service';
+import { FACTORY_CODE_MAX, OSM_FACTORY_NOTE, splitFactories } from './factory-list';
 import {
   CatalogItemCreateDto,
   CatalogItemUpdateDto,
@@ -55,7 +57,7 @@ const NAME_MAX: Record<string, number> = { UNIT: 20 };
  * Dùng chung toàn công ty, không theo nhà máy, không đi qua BaseRepository (như các bảng Sys* khác).
  */
 @Injectable()
-export class CatalogService {
+export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger('Catalog');
 
   constructor(
@@ -66,6 +68,19 @@ export class CatalogService {
     private readonly sync: SyncService,
     private readonly lookup: CatalogLookupService,
   ) {}
+
+  onModuleInit() {
+    // Tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX (ADR 0013 mục 9): quản trị gắn ĐVCS, tích cho người dùng
+    this.sync.onSucceeded(OSM_FACTORY_SOURCE, () => this.importOsmFactories());
+  }
+
+  /** Lúc khởi động: đợt đồng bộ OSM chạy khi backend dừng, hoặc lần thêm trước bị lỗi giữa chừng */
+  onApplicationBootstrap() {
+    void this.importOsmFactories().catch((e) => {
+      if (e instanceof AppException && e.code === 'SYNC_NOT_READY') return;
+      this.logger.error(`Thêm nhà máy SX theo OSM lúc khởi động lỗi: ${(e as Error).message}`, (e as Error).stack);
+    });
+  }
 
   private entry(actor: AuthUser, entityType: string, entityId: number, actionCode: string, oldValue?: unknown, newValue?: unknown) {
     return { userId: actor.userId, username: actor.username, branchCode: actor.branchCode, entityType, entityId, actionCode, oldValue, newValue, ip: actor.ip ?? null };
@@ -554,6 +569,43 @@ export class CatalogService {
     });
     this.lookup.invalidateFactories();
     if (activeChanged) this.permissions.clearCache();
+  }
+
+  /**
+   * Thêm vào danh mục Nhà máy SX các tên nhà máy có trong bảng chép OSM mà danh mục chưa có: mã = tên = tên theo OSM, chưa gắn
+   * ĐVCS (quản trị gắn ở Danh mục hệ thống). Không đổi, không tắt nhà máy đã có. Chạy sau mỗi lần đồng bộ nguồn OSM và lúc khởi
+   * động; chưa đồng bộ OSM thì không làm gì. Thêm từng tên, SQL Server tự so trùng theo collation (WHERE NOT EXISTS); tên vừa
+   * được thêm cùng lúc (người tạo tay, lần chạy khác) thì bỏ qua, các tên khác vẫn thêm (review OSM L4).
+   */
+  async importOsmFactories(): Promise<{ added: string[] }> {
+    const lists = await this.sync.osmFactoryLists();
+    if (!lists) return { added: [] };
+    const names = [...new Map(lists.flatMap((l) => splitFactories(l)).map((n) => [n.toUpperCase(), n])).values()];
+    const tooLong = names.filter((n) => n.length > FACTORY_CODE_MAX);
+    if (tooLong.length) this.logger.warn(`Tên nhà máy OSM dài quá ${FACTORY_CODE_MAX} ký tự, không thêm vào danh mục (đơn hàng mang tên này không ai tích được): ${tooLong.join(' | ')}`);
+    const max = await this.db.selectFrom('SysProductionFactory').select((eb) => eb.fn.max('SortOrder').as('m')).executeTakeFirst();
+    let sort = max?.m ?? 0;
+    const added: string[] = [];
+    for (const code of names.filter((n) => n.length <= FACTORY_CODE_MAX)) {
+      try {
+        const r = await sql`
+          INSERT INTO dbo.SysProductionFactory (Code, Name, BranchCode, Description, SortOrder, IsActive, IsSystem, CreatedBy)
+          SELECT ${code}, ${code}, NULL, ${OSM_FACTORY_NOTE}, ${sort + 10}, 1, 0, NULL
+          WHERE NOT EXISTS (SELECT 1 FROM dbo.SysProductionFactory WHERE Code = ${code})`.execute(this.db);
+        if (Number(r.numAffectedRows ?? 0) > 0) {
+          sort += 10;
+          added.push(code);
+        }
+      } catch (e) {
+        if (!isDuplicate(e)) throw e;
+      }
+    }
+    if (added.length) {
+      this.lookup.invalidateFactories();
+      await this.audit.log({ userId: null, username: 'system', entityType: 'SysProductionFactory', actionCode: 'FACTORY_IMPORT', newValue: { by: 'OSM', added } });
+      this.logger.log(`Thêm ${added.length} nhà máy SX theo OSM: ${added.join(', ')}`);
+    }
+    return { added };
   }
 
   // ---------------- Ca làm việc ----------------

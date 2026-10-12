@@ -12,14 +12,14 @@ import type { HrDb } from '../src/modules/hr/hr.types';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 
 // Phase 5.8 – Sơ đồ tổ chức, Thông tin nhân sự (ADR 0012). Cần MES_Core, MES_Hr đã migrate và seed (vai trò Nhân sự, tài khoản nhansu).
-// Test tự tạo phòng ban mã TST-…, chức danh TST-…, nhân viên mã TST…; xóa hết khi xong.
+// Test tự tạo phòng ban mã TST-…, chức danh TST-…, nhân viên mã TST…, loại phòng ban mã TST_…; xóa hết khi xong.
 describe('Phase 5.8: Quản trị nhân sự', () => {
   let app: INestApplication;
   let hr: HrDb;
   const api = () => request(app.getHttpServer());
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
   const tokens = new Map<string, string>();
-  const fx = { type: 0, finalType: 0, root: 0, a: 0, a1: 0, b: 0, common: 0, onlyA: 0, onlyB: 0 };
+  const fx = { type: 0, finalType: 0, root: 0, a: 0, a1: 0, b: 0, common: 0, onlyA: 0, onlyB: 0, newType: 0 };
 
   async function tokenFor(username: string, branchCode: string) {
     const key = `${username}@${branchCode}`;
@@ -38,6 +38,7 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     await hr.deleteFrom('Employee').where(tst).execute();
     await hr.deleteFrom('JobTitle').where(tst).execute();
     await hr.deleteFrom('Department').where(tst).execute();
+    await hr.deleteFrom('DepartmentType').where(tst).execute();
   }
 
   const createDept = (token: string, body: object) => api().post('/api/v1/hr/departments').set(auth(token)).send(body);
@@ -288,5 +289,63 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     expect((await api().get(`/api/v1/hr/departments/${fx.b}`).set(auth(t)).expect(200)).body).toMatchObject({ managerCode: 'TST101', managerName: 'Lê Văn Một' });
     const gone = (await hr.selectFrom('Employee').select('Id').where('Code', '=', 'TST105').executeTakeFirstOrThrow()).Id;
     await api().put(`/api/v1/hr/departments/${fx.b}`).set(auth(t)).send({ managerEmployeeId: gone }).expect(422);
+  });
+
+  // ---------- Loại phòng ban (task 5.8.9): sửa ở Quản trị › Danh mục hệ thống, quyền admin.catalog ----------
+  const TYPES = '/api/v1/hr/department-types';
+
+  it('loại phòng ban: chỉ quyền danh mục hệ thống thêm, sửa; mã viết hoa, không đổi; trùng mã, trùng tên 409; dùng được ngay', async () => {
+    const admin = await tokenFor('admin', 'A00');
+    for (const [user, branch] of [['nhansu', 'A00'], ['giamdoc', 'A00'], ['kehoach.a', 'A01']] as const) {
+      const other = await tokenFor(user, branch);
+      await api().get(TYPES).set(auth(other)).expect(403);
+      await api().post(TYPES).set(auth(other)).send({ code: 'TST_X', name: 'X test', levelOrder: 1, isFinalLevel: false }).expect(403);
+    }
+    const created = (await api().post(TYPES).set(auth(admin)).send({ code: ' tst_to ', name: 'Tổ test', description: '  ', levelOrder: 5, isFinalLevel: false }).expect(201)).body;
+    expect(created).toMatchObject({ code: 'TST_TO', name: 'Tổ test', description: null, levelOrder: 5, isFinalLevel: false, isActive: true, isSystem: false, departmentCount: 0 });
+    fx.newType = created.id;
+    await api().post(TYPES).set(auth(admin)).send({ code: 'TST TO', name: 'Sai mã test', levelOrder: 1, isFinalLevel: false }).expect(422);
+    await api().post(TYPES).set(auth(admin)).send({ code: 'TST_TO', name: 'Trùng mã test', levelOrder: 1, isFinalLevel: false }).expect(409);
+    // Trùng tên không phân biệt hoa thường; khác dấu là tên khác
+    await api().post(TYPES).set(auth(admin)).send({ code: 'TST_TO2', name: 'TỔ TEST', levelOrder: 1, isFinalLevel: false }).expect(409);
+    await api().put(`${TYPES}/${created.id}`).set(auth(admin)).send({ code: 'TST_KHAC' }).expect(422);
+    await api().put(`${TYPES}/${created.id}`).set(auth(await hrUser())).send({ name: 'Đổi tên test' }).expect(403);
+    const renamed = (await api().put(`${TYPES}/${created.id}`).set(auth(admin)).send({ code: 'tst_to', name: 'Tổ sản xuất test', levelOrder: 6 }).expect(200)).body;
+    expect(renamed).toMatchObject({ code: 'TST_TO', name: 'Tổ sản xuất test', levelOrder: 6 });
+    // Ô chọn loại ở Sơ đồ tổ chức có ngay loại mới, thêm phòng ban với loại mới được
+    const t = await hrUser();
+    const options = (await api().get('/api/v1/hr/departments/options').set(auth(t)).expect(200)).body.types;
+    expect(options).toEqual(expect.arrayContaining([expect.objectContaining({ id: created.id, name: 'Tổ sản xuất test', isActive: true })]));
+    await createDept(t, { code: 'TST-LOAI-P', name: 'Cha loại mới test', departmentTypeId: created.id, parentId: fx.root }).expect(201);
+  });
+
+  it('loại phòng ban: bật cấp cuối bị chặn khi có phòng ban con, kể cả đã giải thể; ngừng dùng giữ phòng ban cũ; ghi nhật ký', async () => {
+    const admin = await tokenFor('admin', 'A00');
+    const t = await hrUser();
+    const deptId = async (code: string) => (await hr.selectFrom('Department').select('Id').where('Code', '=', code).executeTakeFirstOrThrow()).Id;
+    const p = await deptId('TST-LOAI-P');
+    const c = (await createDept(t, { code: 'TST-LOAI-C', name: 'Con loại mới test', departmentTypeId: fx.type, parentId: p }).expect(201)).body.id;
+    await api().post(`/api/v1/hr/departments/${c}/dissolve`).set(auth(t)).send({}).expect(201);
+    const blocked = await api().put(`${TYPES}/${fx.newType}`).set(auth(admin)).send({ isFinalLevel: true }).expect(422);
+    expect(blocked.body.error.message).toContain('Cha loại mới test (TST-LOAI-P)');
+    // Cha đổi sang loại khác thì loại mới không còn phòng ban có con: bật được, rồi phòng ban loại này không nhận con
+    await api().put(`/api/v1/hr/departments/${p}`).set(auth(t)).send({ departmentTypeId: fx.type }).expect(200);
+    expect((await api().put(`${TYPES}/${fx.newType}`).set(auth(admin)).send({ isFinalLevel: true }).expect(200)).body.isFinalLevel).toBe(true);
+    const leaf = (await createDept(t, { code: 'TST-LOAI-L', name: 'Lá loại mới test', departmentTypeId: fx.newType, parentId: fx.root }).expect(201)).body.id;
+    await createDept(t, { code: 'TST-LOAI-L1', name: 'Con của lá test', departmentTypeId: fx.type, parentId: leaf }).expect(422);
+    const row = async () => (await api().get(TYPES).set(auth(admin)).expect(200)).body.find((x: any) => x.id === fx.newType);
+    expect(await row()).toMatchObject({ isFinalLevel: true, departmentCount: 1 });
+
+    // Ngừng dùng: phòng ban mới không chọn được loại này; phòng ban đang dùng vẫn sửa được
+    await api().put(`${TYPES}/${fx.newType}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    await createDept(t, { code: 'TST-LOAI-M', name: 'Loại đã ngừng test', departmentTypeId: fx.newType, parentId: fx.root }).expect(422);
+    await api().put(`/api/v1/hr/departments/${leaf}`).set(auth(t)).send({ name: 'Lá đổi tên test' }).expect(200);
+    expect(await row()).toMatchObject({ isActive: false, departmentCount: 1 });
+    // Trùng tên với loại đã ngừng vẫn bị chặn (dùng lại loại đó)
+    expect((await api().post(TYPES).set(auth(admin)).send({ code: 'TST_TO3', name: 'tổ sản xuất TEST', levelOrder: 1, isFinalLevel: false }).expect(409)).body.error.message).toContain('ngừng dùng');
+
+    const audit = JSON.stringify((await api().get('/api/v1/admin/audit?entityType=DepartmentType&pageSize=50').set(auth(admin)).expect(200)).body);
+    expect(audit).toContain('TST_TO');
+    expect(audit).toContain('Tổ sản xuất test');
   });
 });

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { AuditService } from '../../platform/audit/audit.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
+import { splitFactories } from '../../platform/catalog/factory-list';
 import { scopeOf } from '../../platform/data/base.repository';
 import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type FilterSpec } from '../../platform/data/column-filter';
 import { ExportService } from '../../platform/export/export.service';
@@ -67,6 +68,8 @@ export function presentSalesOrder(r: SalesOrderRow) {
     statusCode: r.StatusCode,
     branchCode: r.BranchCode,
     productionFactoryCode: r.ProductionFactoryCode,
+    /** Nhà máy SX lấy theo OSM: màn hình khóa ô chọn (ADR 0013 mục 9) */
+    factoryFromOsm: !!r.IsFactoryFromOsm,
     createdAt: r.CreatedAt,
     modifiedAt: r.ModifiedAt,
   };
@@ -172,14 +175,17 @@ export class SalesOrderService {
     };
   }
 
-  /** Nhà máy SX phải là nhà máy đang dùng của danh mục Nhà máy SX; rỗng là bỏ chọn; giữ nguyên giá trị hiện tại của đơn thì không kiểm (nhà máy có thể đã ngừng) */
+  /**
+   * Chọn tay một nhà máy SX đang dùng của danh mục (đơn chưa có trong OSM); rỗng là bỏ chọn; giữ nguyên giá trị hiện tại của đơn
+   * thì không kiểm (nhà máy có thể đã ngừng, hoặc là danh sách theo OSM trước đây). Mã so không phân biệt hoa thường như
+   * collation, lưu đúng mã của danh mục.
+   */
   private async factoryCode(code: string | null | undefined, current?: string | null): Promise<string | null> {
     if (!code) return null;
     if (code === current) return code;
-    if (!(await this.catalogs.productionFactories()).some((f) => f.code === code && f.isActive)) {
-      throw invalid(`Nhà máy SX "${code}" không có trong danh mục Nhà máy SX hoặc đã ngừng dùng.`);
-    }
-    return code;
+    const f = (await this.catalogs.productionFactories()).find((x) => x.isActive && x.code.toUpperCase() === code.toUpperCase());
+    if (!f) throw invalid(`Nhà máy SX "${code}" không có trong danh mục Nhà máy SX hoặc đã ngừng dùng.`);
+    return f.code;
   }
 
   async get(user: AuthUser, id: number) {
@@ -228,7 +234,12 @@ export class SalesOrderService {
     if (dto.cmPrice !== undefined) set.CmPrice = dto.cmPrice;
     if (dto.shipDate !== undefined) set.ShipDate = dto.shipDate;
     if (dto.statusCode !== undefined) set.StatusCode = dto.statusCode;
-    if (dto.productionFactoryCode !== undefined) set.ProductionFactoryCode = await this.factoryCode(dto.productionFactoryCode, before?.ProductionFactoryCode);
+    if (dto.productionFactoryCode !== undefined) {
+      // Nhà máy SX theo OSM không sửa tay (ADR 0013 mục 9); lưu cả form gửi lại đúng giá trị đang có thì bỏ qua
+      if (before?.IsFactoryFromOsm) {
+        if ((dto.productionFactoryCode || null) !== before.ProductionFactoryCode) throw conflict('Nhà máy SX của đơn này lấy theo OSM, không sửa tay được. Sửa ở OSM rồi đồng bộ lại.');
+      } else set.ProductionFactoryCode = await this.factoryCode(dto.productionFactoryCode, before?.ProductionFactoryCode);
+    }
     const row = await this.repo.update(scope, id, set);
     const out = presentSalesOrder(row);
     await this.log(user, id, 'UPDATE', before && presentSalesOrder(before), out);
@@ -250,11 +261,13 @@ export class SalesOrderService {
   async export(user: AuthUser, query: OrderListQuery) {
     const q = await readableQuery(this.fields, user, RESOURCE, query);
     const rows = await this.repo.listAll(scopeOf(user), { q: q.q, searchExclude: q.searchExclude, sort: await this.sort(user, q.sort), where: await this.where(user, q) });
-    // File xuất ghi tên nhà máy SX, tên chi nhánh như trên lưới; chính sách cột vẫn áp theo khóa productionFactoryCode
-    const factoryName = new Map((await this.catalogs.productionFactories()).map((f) => [f.code, f.name]));
+    // File xuất ghi tên nhà máy SX (danh sách theo OSM thì từng tên), tên chi nhánh như trên lưới; chính sách cột vẫn áp theo khóa
+    // productionFactoryCode
+    const factoryName = new Map((await this.catalogs.productionFactories()).map((f) => [f.code.toUpperCase(), f.name]));
     const items = rows.map((r) => {
       const o = presentSalesOrder(r);
-      return { ...o, productionFactoryCode: o.productionFactoryCode && (factoryName.get(o.productionFactoryCode) ?? o.productionFactoryCode) };
+      const names = splitFactories(o.productionFactoryCode).map((c) => factoryName.get(c.toUpperCase()) ?? c);
+      return { ...o, productionFactoryCode: names.length ? names.join(', ') : null };
     });
     return this.exporter.csv(user, RESOURCE, EXPORT_COLUMNS, await this.catalogs.withBranchNames(items), `thong-tin-don-hang-${user.branchCode}.csv`);
   }

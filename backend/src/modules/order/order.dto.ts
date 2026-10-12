@@ -28,11 +28,13 @@ const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.t
 // Đổi chữ hoa trước khi kiểm để độ dài đo đúng giá trị được lưu (NVARCHAR(120), MaxLength đếm theo UTF-16 như SQL Server)
 const STYLE_CODE = /^[^\p{C}\p{Zl}\p{Zp}]+$/u;
 const styleCode = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
-// PO# lưu VARCHAR(40) như nguồn BRAVO: chỉ ký tự ASCII in được (có dấu cách, ngoặc, dấu phẩy)
-const PO_NUMBER = /^[\x20-\x7E]{1,40}$/;
-// Mã mục danh mục (SysCatalogItem.Code); chuỗi rỗng là bỏ chọn
-const CATALOG_CODE = /^[A-Z0-9._-]{0,30}$/;
-const catalogCode = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
+// PO# lưu NVARCHAR(192) (MES_Order/0007): có chữ tiếng Việt, dấu cách, ngoặc; chặn ký tự điều khiển, định dạng ẩn, ngắt dòng
+const PO_NUMBER = /^[^\p{C}\p{Zl}\p{Zp}]+$/u;
+// Đổi chữ hoa trước khi kiểm (như mã hàng): MaxLength đếm theo UTF-16 như NVARCHAR, đúng giá trị được lưu
+const poNumber = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
+// Nhà máy SX (SysProductionFactory.Code, tên nhà máy theo OSM, ADR 0013 mục 9); chuỗi rỗng là bỏ chọn. Nhận cả danh sách cách
+// nhau dấu phẩy (như cột) để lưu cả form gửi lại đúng giá trị đang có; giá trị mới phải là một mã của danh mục (service kiểm)
+const FACTORY_CODE = /^[^\p{C}]{0,400}$/u;
 
 export const SALES_ORDER_STATUSES = ['NEW', 'PLANNING', 'IN_PRODUCTION', 'DONE', 'CANCELLED'] as const;
 export const PLAN_STATUSES = ['PLANNED', 'SCHEDULED', 'IN_PRODUCTION', 'DONE'] as const;
@@ -65,6 +67,28 @@ export class OrderValuesQuery extends OrderListQuery {
   @IsOptional() @IsString() @MaxLength(60) search?: string;
 }
 
+// ---------- Phân bổ PO (OSM, task 5.9.12) ----------
+
+/**
+ * Bộ lọc của màn Phân bổ PO, cùng tên tham số với các lưới Đơn hàng (giao diện dùng chung bộ lọc trên URL): `customer` là Brand,
+ * `season` là Season, `style` tìm trong Style No, Style name, `q` tìm trong PO, SO. Độ dài theo cột của view OSM v_OSMData.
+ */
+export class PoAllocationQuery {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) pageSize: number = 100;
+  @IsOptional() @IsString() @MaxLength(60) q?: string;
+  @IsOptional() @IsString() @MaxLength(40) sort?: string;
+  @IsOptional() @IsString() @MaxLength(50) customer?: string;
+  @IsOptional() @IsString() @MaxLength(50) season?: string;
+  @IsOptional() @IsString() @MaxLength(120) style?: string;
+  @IsOptional() @IsString() @ColumnFilterParam() cf?: string;
+}
+
+export class PoAllocationValuesQuery extends PoAllocationQuery {
+  @IsString() @FilterFieldParam() field!: string;
+  @IsOptional() @IsString() @MaxLength(60) search?: string;
+}
+
 // ---------- Thông tin đơn hàng ----------
 
 export class SalesOrderCreateDto {
@@ -80,7 +104,7 @@ export class SalesOrderCreateDto {
   @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Max(100_000_000) cmPrice?: number | null;
   @IsISO8601({ strict: true }) @DateOnly() shipDate!: string;
   @IsOptional() @IsIn(SALES_ORDER_STATUSES) statusCode?: (typeof SALES_ORDER_STATUSES)[number];
-  @IsOptional() @catalogCode() @IsString() @Matches(CATALOG_CODE, { message: 'Mã nhà máy sản xuất không hợp lệ.' }) productionFactoryCode?: string | null;
+  @IsOptional() @trim() @IsString() @Matches(FACTORY_CODE, { message: 'Mã nhà máy sản xuất không hợp lệ.' }) productionFactoryCode?: string | null;
 }
 
 export class SalesOrderUpdateDto {
@@ -96,7 +120,7 @@ export class SalesOrderUpdateDto {
   @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Max(100_000_000) cmPrice?: number | null;
   @Optional() @IsISO8601({ strict: true }) @DateOnly() shipDate?: string;
   @Optional() @IsIn(SALES_ORDER_STATUSES) statusCode?: (typeof SALES_ORDER_STATUSES)[number];
-  @IsOptional() @catalogCode() @IsString() @Matches(CATALOG_CODE, { message: 'Mã nhà máy sản xuất không hợp lệ.' }) productionFactoryCode?: string | null;
+  @IsOptional() @trim() @IsString() @Matches(FACTORY_CODE, { message: 'Mã nhà máy sản xuất không hợp lệ.' }) productionFactoryCode?: string | null;
 }
 
 // ---------- Màu cỡ (dùng chung) ----------
@@ -132,7 +156,7 @@ export class CutRatioStyleValuesQuery extends CutRatioStyleQuery {
 
 export class PoCreateDto {
   @Type(() => Number) @IsInt() salesOrderId!: number;
-  @trim() @Matches(PO_NUMBER, { message: 'PO# tối đa 40 ký tự, không xuống dòng.' }) poNumber!: string;
+  @poNumber() @IsString() @MinLength(1, { message: 'Nhập PO#.' }) @MaxLength(192, { message: 'PO# tối đa 192 ký tự.' }) @Matches(PO_NUMBER, { message: 'PO# không được có xuống dòng hay ký tự ẩn.' }) poNumber!: string;
   @IsOptional() @trim() @IsString() @MaxLength(60) destination?: string;
   @IsOptional() @trim() @IsString() @MaxLength(30) packingListCode?: string;
   @IsOptional() @trim() @IsString() @MaxLength(30) customsDeclarationNo?: string;

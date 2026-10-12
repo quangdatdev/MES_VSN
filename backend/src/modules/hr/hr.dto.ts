@@ -64,6 +64,33 @@ export class DepartmentDissolveDto {
   @IsOptional() @DateOnly() @RealDate() dissolvedDate?: string;
 }
 
+// ---------- Loại phòng ban (Quản trị › Danh mục hệ thống) ----------
+
+/** Khớp CK_DepartmentType_Code: chữ hoa ASCII, số, gạch dưới, gạch ngang */
+const DEPARTMENT_TYPE_CODE = /^[A-Z0-9_-]{1,20}$/;
+const upperTrim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
+
+export class DepartmentTypeCreateDto {
+  @upperTrim() @IsString() @Matches(DEPARTMENT_TYPE_CODE, { message: 'Mã gồm chữ hoa không dấu, số, gạch dưới, gạch ngang; tối đa 20 ký tự.' }) code!: string;
+  @trim() @IsString() @MinLength(1, { message: 'Nhập tên loại phòng ban.' }) @MaxLength(100) name!: string;
+  @apply(...Text(300)) description?: string | null;
+  @Type(() => Number) @IsInt() @Min(0) @Max(99) levelOrder!: number;
+  @IsBoolean() isFinalLevel!: boolean;
+  /** Bỏ trống: xếp cuối */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(1_000_000) sortOrder?: number;
+}
+
+/** Sửa loại phòng ban: chỉ gửi phần đã đổi. Mã không sửa được (gửi mã khác thì 422 CODE_IMMUTABLE). */
+export class DepartmentTypeUpdateDto {
+  @Optional() @upperTrim() @IsString() code?: string;
+  @Optional() @trim() @IsString() @MinLength(1, { message: 'Nhập tên loại phòng ban.' }) @MaxLength(100) name?: string;
+  @apply(...Text(300)) description?: string | null;
+  @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(99) levelOrder?: number;
+  @Optional() @IsBoolean() isFinalLevel?: boolean;
+  @Optional() @Type(() => Number) @IsInt() @Min(0) @Max(1_000_000) sortOrder?: number;
+  @Optional() @IsBoolean() isActive?: boolean;
+}
+
 // ---------- Nhân viên ----------
 
 export class EmployeeListQuery {

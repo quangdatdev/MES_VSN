@@ -6,7 +6,7 @@ import { SewingModule } from './modules/sewing/sewing.module';
 import { AdminModule } from './platform/admin/admin.module';
 import { AuditModule } from './platform/audit/audit.module';
 import { AuthModule } from './platform/auth/auth.module';
-import { BravoFeedModule } from './platform/bravo/bravo-feed.module';
+import { SourceFeedModule } from './platform/feed/source-feed.module';
 import { CatalogModule } from './platform/catalog/catalog.module';
 import { DataModule } from './platform/data/data.module';
 import { DatabaseModule } from './platform/database/database.module';
@@ -17,7 +17,7 @@ import { PermissionModule } from './platform/permission/permission.module';
 import { SyncModule } from './platform/sync/sync.module';
 
 @Module({
-  imports: [DatabaseModule, PermissionModule, AuditModule, DataModule, OrgModule, ExportModule, AuthModule, MeModule, AdminModule, SyncModule, BravoFeedModule, CatalogModule, OrderModule, SewingModule, HrModule],
+  imports: [DatabaseModule, PermissionModule, AuditModule, DataModule, OrgModule, ExportModule, AuthModule, MeModule, AdminModule, SyncModule, SourceFeedModule, CatalogModule, OrderModule, SewingModule, HrModule],
   controllers: [HealthController],
 })
 export class AppModule {}

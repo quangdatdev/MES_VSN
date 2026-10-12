@@ -59,6 +59,24 @@ export interface AdminFactory {
   isActive: boolean;
 }
 
+/** Loại phòng ban (MES_Hr, task 5.8.9): sửa ở Danh mục hệ thống, ô chọn loại ở Sơ đồ tổ chức */
+export interface AdminDepartmentType {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  /** Chỉ để xếp các phòng ban cùng cha: số nhỏ đứng trước */
+  levelOrder: number;
+  /** Phòng ban loại này không có phòng ban con */
+  isFinalLevel: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  /** Nạp sẵn khi cài đặt; sửa được như loại khác */
+  isSystem: boolean;
+  /** Số phòng ban chưa giải thể đang dùng loại này */
+  departmentCount: number;
+}
+
 export interface PermissionMatrix {
   actions: string[];
   modules: {

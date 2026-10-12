@@ -11,6 +11,8 @@ import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import { createDb } from '../src/platform/database/db';
+import { CatalogService } from '../src/platform/catalog/catalog.service';
+import { SyncService } from '../src/platform/sync/sync.service';
 import type { SyncDatabase } from '../src/platform/sync/sync.types';
 
 // Phase 5.4: Quản trị › Danh mục hệ thống. Cần MES_Core đã migrate (0003) và seed (quyền admin.catalog, danh mục mẫu);
@@ -218,7 +220,8 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await api().post('/api/v1/admin/catalogs/factories').set(auth(planner)).send({ code: 'TEST-P54-G', name: 'x', branchCode: 'A01' }).expect(403);
     await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Tổng hợp', branchCode: 'A00' }).expect(422);
     await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Không có ĐVCS', branchCode: 'Z99' }).expect(422);
-    await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST P54!', name: 'Sai mã', branchCode: 'A01' }).expect(422);
+    // Mã là tên nhà máy theo OSM (có dấu, khoảng trắng, ADR 0013 mục 9) nhưng không có dấu phẩy: đơn hàng lưu danh sách mã cách nhau dấu phẩy
+    await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST,P54', name: 'Sai mã', branchCode: 'A01' }).expect(422);
     const created = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: ' test-p54-g ', name: 'Nhà máy thử', branchCode: 'A01' }).expect(201)).body;
     await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Trùng', branchCode: 'A01' }).expect(409);
     const list = (await api().get('/api/v1/admin/catalogs/factories?q=TEST-P54-G').set(auth(admin)).expect(200)).body;
@@ -602,6 +605,35 @@ describe('Phase 5.4: danh mục hệ thống', () => {
       expect(await seen()).toEqual(['A01-T54G', 'A01-T54N']);
     } finally {
       await leader.done();
+    }
+  });
+
+  it('tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX: so trùng không phân biệt hoa thường, bỏ tên quá dài, không bật lại mục đã ngừng (ADR 0013 mục 9)', async () => {
+    const catalogs = app.get(CatalogService);
+    const spy = jest.spyOn(app.get(SyncService), 'osmFactoryLists');
+    const codes = () => core.selectFrom('SysProductionFactory').select(['Code', 'Name', 'BranchCode', 'IsActive', 'Description']).where('Code', 'like', 'TEST-OSM%').orderBy('Code').execute();
+    try {
+      // Chưa đồng bộ OSM: không làm gì
+      spy.mockResolvedValueOnce(null);
+      expect(await catalogs.importOsmFactories()).toEqual({ added: [] });
+      // Tên dài quá 100 ký tự (mã nhà máy) không thêm
+      spy.mockResolvedValueOnce([' TEST-OSM-A , test-osm-a', 'TEST-OSM-B,TEST-OSM  C', `TEST-OSM-${'X'.repeat(100)}`]);
+      expect((await catalogs.importOsmFactories()).added).toEqual(['TEST-OSM-A', 'TEST-OSM-B', 'TEST-OSM C']);
+      expect(await codes()).toEqual([
+        { Code: 'TEST-OSM C', Name: 'TEST-OSM C', BranchCode: null, IsActive: true, Description: 'Thêm tự động theo OSM' },
+        { Code: 'TEST-OSM-A', Name: 'TEST-OSM-A', BranchCode: null, IsActive: true, Description: 'Thêm tự động theo OSM' },
+        { Code: 'TEST-OSM-B', Name: 'TEST-OSM-B', BranchCode: null, IsActive: true, Description: 'Thêm tự động theo OSM' },
+      ]);
+      const audit = (await api().get('/api/v1/admin/audit?entityType=SysProductionFactory&pageSize=5').set(auth(admin)).expect(200)).body.items;
+      expect(audit.some((a: any) => a.actionCode === 'FACTORY_IMPORT')).toBe(true);
+      // Quản trị ngừng một mục; OSM vẫn có tên đó (khác hoa thường): không thêm trùng, không bật lại
+      await core.updateTable('SysProductionFactory').set({ IsActive: false }).where('Code', '=', 'TEST-OSM-A').execute();
+      spy.mockResolvedValueOnce(['test-osm-a,TEST-OSM-B']);
+      expect(await catalogs.importOsmFactories()).toEqual({ added: [] });
+      expect((await codes()).find((c) => c.Code === 'TEST-OSM-A')?.IsActive).toBe(false);
+    } finally {
+      spy.mockRestore();
+      await core.deleteFrom('SysProductionFactory').where('Code', 'like', 'TEST-OSM%').execute();
     }
   });
 });

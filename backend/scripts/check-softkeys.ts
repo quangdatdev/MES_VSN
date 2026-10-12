@@ -16,6 +16,8 @@ interface SoftKey {
   sameBranch?: boolean;
   /** Đích là SysCatalogItem: chỉ đối chiếu các mục của danh mục có mã này */
   catalog?: string;
+  /** Giá trị nguồn là danh sách mã cách nhau dấu ngăn này (ví dụ ","): mỗi mã trong danh sách phải có ở đích */
+  list?: string;
   nullable?: boolean;
 }
 
@@ -60,7 +62,8 @@ async function main() {
       const pairs = (
         await sql<{ v: string | number; b: string | null }>`SELECT DISTINCT ${sql.ref(src.column)} AS v, ${k.sameBranch ? sql.ref('BranchCode') : sql`NULL`} AS b
           FROM dbo.${sql.table(src.table)} WHERE ${sql.ref(src.column)} IS NOT NULL`.execute(conn(src.database))
-      ).rows;
+      ).rows
+        .flatMap((p) => (k.list && typeof p.v === 'string' ? p.v.split(k.list).map((v) => ({ v: v.trim(), b: p.b })).filter((x) => x.v) : [p]));
       const targets = (
         await sql<{ v: string | number; b: string | null }>`SELECT ${sql.ref(dst.column)} AS v, ${k.sameBranch ? sql.ref('BranchCode') : sql`NULL`} AS b
           FROM dbo.${sql.table(dst.table)} ${
@@ -68,7 +71,7 @@ async function main() {
           }`.execute(conn(dst.database))
       ).rows;
       const known = new Set(targets.map((t) => `${String(t.v).toUpperCase()}|${t.b ?? ''}`));
-      const missing = pairs.filter((p) => !known.has(`${String(p.v).toUpperCase()}|${p.b ?? ''}`));
+      const missing = [...new Map(pairs.map((p) => [`${String(p.v).toUpperCase()}|${p.b ?? ''}`, p])).values()].filter((p) => !known.has(`${String(p.v).toUpperCase()}|${p.b ?? ''}`));
       orphans += missing.length;
       const label = `${k.from} → ${k.to}${k.where ? ` (${k.where})` : ''}${k.catalog ? ` (danh mục ${k.catalog})` : ''}${k.sameBranch ? ', cùng nhà máy' : ''}`;
       console.log(missing.length ? `  LỖI  ${label}: ${missing.length} giá trị mồ côi, ví dụ ${missing.slice(0, 5).map((m) => `${m.v}${m.b ? `@${m.b}` : ''}`).join(', ')}` : `  OK   ${label}`);

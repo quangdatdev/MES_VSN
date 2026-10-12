@@ -67,6 +67,45 @@ export const BRAVO_ORDER_SOURCE_CODES = [
 ];
 
 /**
+ * Nguồn mà bước cập nhật Nhà máy SX theo OSM đọc tới: chép xong thì cập nhật lại (sản phẩm BRAVO mang số SO, mã hàng để ghép).
+ */
+export const OSM_FACTORY_SOURCE = 'OSM.OSMDataFty';
+export const OSM_FACTORY_SOURCE_CODES = [OSM_FACTORY_SOURCE, 'BRAVO.DM_SanPhamDonHang'];
+
+/** Bảng chép OSM đã có và đã đồng bộ ít nhất một lần chưa: chưa thì không cập nhật gì (không coi mọi đơn là "OSM không có") */
+async function osmReady(sync: Kysely<any>) {
+  const t = await sql<{ id: number | null }>`SELECT OBJECT_ID(N'osm.OSMDataFty', N'U') AS id`.execute(sync);
+  if (t.rows[0]?.id == null) return false;
+  const n = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM osm.OSMDataFty`.execute(sync);
+  return (n.rows[0]?.n ?? 0) > 0;
+}
+
+/**
+ * Nhà máy SX theo OSM của từng sản phẩm BRAVO (ProductId → FtyName, danh sách cách nhau dấu phẩy). Ghép như người dùng chốt
+ * 12/10/2026: số SO của sản phẩm (DM_SanPhamDonHang.Code) = vOSMDataFty.SO và mã hàng = StyleNo; mã hàng lấy theo BRAVO
+ * (StyleName, cùng kết quả với SalesOrder.StyleCode lúc chốt) để người dùng sửa mã hàng ở MES không làm mất ghép. Ghép giữa hai
+ * bảng chép trong MES_Sync: view OSM chậm, không đọc từng dòng. null khi chưa có bảng chép OSM hoặc chưa đồng bộ.
+ */
+export async function readOsmFactories(sync: Kysely<any>): Promise<Map<number, string> | null> {
+  if (!(await osmReady(sync))) return null;
+  // Một sản phẩm khớp nhiều dòng OSM (dòng trùng, hoặc sau này khác nhà máy): gộp mọi danh sách, bên đọc bỏ mã trùng
+  const rows = await sql<{ ProductId: number; FtyName: string | null }>`
+    SELECT p.ProductId, STRING_AGG(CAST(f.FtyName AS NVARCHAR(MAX)), N',') AS FtyName
+    FROM bravo.DM_SanPhamDonHang p
+    JOIN osm.OSMDataFty f ON f.SO = p.Code AND f.StyleNo = p.StyleName
+    WHERE f.FtyName IS NOT NULL
+    GROUP BY p.ProductId`.execute(sync);
+  return new Map(rows.rows.map((r) => [r.ProductId, r.FtyName ?? '']));
+}
+
+/** Các danh sách nhà máy khác nhau trong bảng chép OSM (để thêm tên nhà máy mới vào danh mục); null khi chưa có, chưa đồng bộ */
+export async function readOsmFactoryLists(sync: Kysely<any>): Promise<string[] | null> {
+  if (!(await osmReady(sync))) return null;
+  const rows = await sql<{ FtyName: string }>`SELECT DISTINCT FtyName FROM osm.OSMDataFty WHERE FtyName IS NOT NULL`.execute(sync);
+  return rows.rows.map((r) => r.FtyName);
+}
+
+/**
  * Đọc đơn hàng, PO, màu cỡ BRAVO đã chép trong MES_Sync (chỉ đọc, ADR 0007) của các ĐVCS `branches`. Dùng chung cho bước
  * nạp tăng dần sau mỗi lần đồng bộ (BravoOrderImportService) và lệnh `load:bravo`. Bảng chép bravo.* sinh theo cột của view
  * (sync-gen.ts), không có kiểu Kysely: đọc bằng sql có kiểu dòng.

@@ -8,7 +8,6 @@ import { BravoOrderImportRepository } from '../src/modules/order/bravo-order-imp
 import { planImport } from '../src/modules/order/bravo-order.mapping';
 import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
-import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import type { BravoOrderSource, SourceCell, SourceOrder, SourcePo } from '../src/platform/sync/bravo-order-source';
 
 // Nạp tăng dần đơn hàng BRAVO vào MES_Order (ADR 0013 mục 8), chạy trên database thật. Dữ liệu nguồn giả lập (không ghi vào
@@ -56,7 +55,6 @@ const NO_WRITE = { newOrders: 0, updatedOrders: 0, baselined: 0, newPos: 0, upda
 describe('Nạp tăng dần đơn hàng BRAVO vào MES_Order', () => {
   let app: INestApplication;
   let db: OrderDb;
-  let core: CoreDb;
   let repo: BravoOrderImportRepository;
   let opts: Parameters<typeof planImport>[2];
   const run = (src: BravoOrderSource) => repo.apply((state) => planImport(src, state, opts));
@@ -81,10 +79,9 @@ describe('Nạp tăng dần đơn hàng BRAVO vào MES_Order', () => {
     app = mod.createNestApplication();
     await app.init();
     db = app.get<OrderDb>(ORDER_DB);
-    core = app.get<CoreDb>(CORE_DB);
     repo = app.get(BravoOrderImportRepository);
-    const factories = await core.selectFrom('SysProductionFactory').select('Code').where('IsActive', '=', true).execute();
-    opts = { branches: ['A01'], unitNames: new Map([['CHIEC', 'Chiếc']]), activeFactories: new Set(factories.map((f) => f.Code)) };
+    // Đơn thử 1 có trong OSM (ADR 0013 mục 9)
+    opts = { branches: ['A01'], unitNames: new Map([['CHIEC', 'Chiếc']]), osmFactories: new Map([[BASE + 1, 'NM THỬ OSM, NM THỬ OSM 2']]) };
     await cleanup();
   });
 
@@ -106,7 +103,8 @@ describe('Nạp tăng dần đơn hàng BRAVO vào MES_Order', () => {
     const o1 = await orderOf(1);
     expect(o1).toMatchObject({ OrderNo: 'TEST-BRAVO-1', CustomerName: 'KH thử', UnitName: 'Chiếc', StatusCode: 'NEW', BranchCode: 'A01', CreatedBy: null });
     expect(o1.SourceHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(o1.ProductionFactoryCode).toBe(opts.activeFactories.has('A01') ? 'A01' : null);
+    expect(o1).toMatchObject({ ProductionFactoryCode: 'NM THỬ OSM,NM THỬ OSM 2', IsFactoryFromOsm: true });
+    expect(await orderOf(2)).toMatchObject({ ProductionFactoryCode: null, IsFactoryFromOsm: false });
     const [p1] = await posOf(1);
     expect(p1.PoCode).toBe(`PO-A01-${String(p1.Id).padStart(6, '0')}`);
     expect(p1).toMatchObject({ PoNumber: 'T1-P1', Qty: 30, StatusCode: 'DRAFT', CreatedBy: null });
@@ -221,6 +219,24 @@ describe('Nạp tăng dần đơn hàng BRAVO vào MES_Order', () => {
     expect(usr).toEqual({ status: 'fulfilled', value: 'xong' });
     expect(imp.status).toBe('rejected');
     expect(isDeadlock((imp as PromiseRejectedResult).reason)).toBe(true);
+  });
+
+  it('Nhà máy SX theo OSM: đơn có trong OSM nhận danh sách, khóa sửa tay; đơn không còn trong OSM mở khóa, giữ giá trị; đơn chọn tay giữ nguyên', async () => {
+    const src: BravoOrderSource = { orders: [order(1), order(2), order(3)], pos: [po(1), po(2), po(3)], cells: [cell(1), cell(2), cell(3)] };
+    await repo.apply((state) => planImport(src, state, { ...opts, osmFactories: null }));
+    const ours = [BASE + 1, BASE + 2, BASE + 3];
+    // Người dùng chọn tay nhà máy cho đơn 3 (chưa có trong OSM)
+    await db.updateTable('SalesOrder').set({ ProductionFactoryCode: 'CHỌN TAY', ModifiedBy: 1 }).where('SourceProductId', '=', BASE + 3).execute();
+    expect(await repo.applyOsmFactories(new Map([[BASE + 1, ' NM A , NM B,nm a'], [BASE + 2, 'NM C']]), ours)).toEqual({ updated: 2, unlocked: 0, tooLong: [] });
+    expect(await orderOf(1)).toMatchObject({ ProductionFactoryCode: 'NM A,NM B', IsFactoryFromOsm: true });
+    expect(await orderOf(2)).toMatchObject({ ProductionFactoryCode: 'NM C', IsFactoryFromOsm: true });
+    expect(await orderOf(3)).toMatchObject({ ProductionFactoryCode: 'CHỌN TAY', IsFactoryFromOsm: false });
+    // OSM đổi nhà máy đơn 2, bỏ đơn 1
+    expect(await repo.applyOsmFactories(new Map([[BASE + 2, 'NM D']]), ours)).toEqual({ updated: 1, unlocked: 1, tooLong: [] });
+    expect(await orderOf(1)).toMatchObject({ ProductionFactoryCode: 'NM A,NM B', IsFactoryFromOsm: false });
+    expect(await orderOf(2)).toMatchObject({ ProductionFactoryCode: 'NM D', IsFactoryFromOsm: true });
+    // Chạy lại không ghi gì; danh sách quá 400 ký tự không ghi, báo lại
+    expect(await repo.applyOsmFactories(new Map([[BASE + 2, 'NM D'], [BASE + 3, 'X'.repeat(401)]]), ours)).toEqual({ updated: 0, unlocked: 0, tooLong: [BASE + 3] });
   });
 
   it('nhiều đơn, PO, ô hơn một lô ghi: mỗi PO nhận đúng màu cỡ của mình, số PO theo Id', async () => {

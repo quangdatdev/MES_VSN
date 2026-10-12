@@ -14,6 +14,8 @@ import {
   DraftQuery,
   OrderListQuery,
   OrderValuesQuery,
+  PoAllocationQuery,
+  PoAllocationValuesQuery,
   PoCreateDto,
   SalesOrderCreateDto,
   SalesOrderUpdateDto,
@@ -21,6 +23,7 @@ import {
   ShipmentPlanCreateDto,
   ShipmentPlanUpdateDto,
 } from './order.dto';
+import { PoAllocationService } from './po-allocation.service';
 import { SalesOrderService } from './sales-order.service';
 import { ShipmentService } from './shipment.service';
 
@@ -59,6 +62,25 @@ export class SalesOrderController {
 
   @Delete(':id') @HttpCode(204) @RequirePermission('order.allocation:delete')
   async remove(@CurrentUser() u: AuthUser, @id() oid: number) { await this.service.remove(u, oid); }
+}
+
+/** Phân bổ PO (tài nguyên order.poallocation): phân bổ PO theo nhà máy SX lấy từ OSM, chỉ xem (task 5.9.12). */
+@Controller('order/po-allocations')
+@FieldResource('order.poallocation')
+export class PoAllocationController {
+  constructor(private readonly service: PoAllocationService) {}
+
+  @Get() @RequirePermission('order.poallocation:view')
+  list(@CurrentUser() u: AuthUser, @Query() q: PoAllocationQuery) { return this.service.list(u, q); }
+
+  @Get('options') @RequirePermission('order.poallocation:view')
+  options(@CurrentUser() u: AuthUser) { return this.service.options(u); }
+
+  @Get('values') @RequirePermission('order.poallocation:view')
+  values(@CurrentUser() u: AuthUser, @Query() q: PoAllocationValuesQuery) { return this.service.values(u, q); }
+
+  @Get('export') @RequirePermission('order.poallocation:export')
+  export(@CurrentUser() u: AuthUser, @Query() q: PoAllocationQuery) { return this.service.export(u, q); }
 }
 
 /** Cập nhật tỷ lệ cắt (tài nguyên order.po): mã hàng → PO → màu cỡ. */

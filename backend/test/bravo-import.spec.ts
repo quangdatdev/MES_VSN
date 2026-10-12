@@ -1,4 +1,5 @@
 import { buildOrders, planImport, type MesOrder, type MesPo, type MesState } from '../src/modules/order/bravo-order.mapping';
+import { normalizeFactories, splitFactories } from '../src/platform/catalog/factory-list';
 import type { BravoOrderSource, SourceCell, SourceOrder, SourcePo } from '../src/platform/sync/bravo-order-source';
 
 // Không cần database: so dữ liệu BRAVO với MES_Order của bước nạp tăng dần (ADR 0013 mục 8)
@@ -44,7 +45,8 @@ const source = (over: Partial<BravoOrderSource> = {}): BravoOrderSource => ({
   ...over,
 });
 const units = new Map([['CHIEC', 'Chiếc']]);
-const opts = { branches: ['A01', 'A02'], unitNames: units, activeFactories: new Set(['A01']) };
+// Nhà máy SX theo OSM (ADR 0013 mục 9): sản phẩm 1 có trong OSM, danh sách hai nhà máy
+const opts = { branches: ['A01', 'A02'], unitNames: units, osmFactories: new Map([[1, 'VIET DUC, VSN-DN']]) as Map<number, string> | null };
 
 /** Trạng thái MES đúng như vừa nạp `src` (có dấu nội dung): so lại phải không còn gì để ghi */
 function stateOf(src: BravoOrderSource, over: { order?: Partial<MesOrder>; po?: Partial<MesPo> } = {}): MesState {
@@ -90,14 +92,29 @@ const counts = (p: ReturnType<typeof planImport>) => ({
 const NOTHING = { newOrders: 0, orderUpdates: 0, hashUpdates: 0, newPos: 0, poUpdates: 0, cellUpdates: 0, cellsKept: 0 };
 
 describe('Nạp tăng dần đơn hàng BRAVO: so với MES_Order', () => {
-  it('sản phẩm mới có PO: thêm đơn kèm dấu nội dung; Nhà máy SX cùng mã chi nhánh nếu đang dùng; số đơn trùng thì thêm -2', () => {
+  it('danh sách nhà máy theo OSM: tách theo dấu phẩy, bỏ khoảng trắng, bỏ mã trùng (không phân biệt hoa thường), giữ thứ tự', () => {
+    expect(splitFactories(' VIET DUC ,VSN-DN,, viet duc,HÙNG  DŨNG ')).toEqual(['VIET DUC', 'VSN-DN', 'HÙNG DŨNG']);
+    expect(normalizeFactories('VIET DUC , VSN-DN')).toBe('VIET DUC,VSN-DN');
+    expect(normalizeFactories(' , ')).toBeNull();
+    expect(normalizeFactories(null)).toBeNull();
+  });
+
+  it('đơn mới có danh sách nhà máy OSM dài quá cột (400 ký tự): vẫn thêm đơn, Nhà máy SX để trống, báo lại (không lỗi cả lần nạp)', () => {
+    const long = Array.from({ length: 50 }, (_v, i) => `NHÀ MÁY SỐ ${i}`).join(',');
+    const plan = planImport(source(), { orders: [], pos: [] }, { ...opts, osmFactories: new Map([[1, long]]) });
+    expect(plan.newOrders.map((o) => [o.factoryCode, o.factoryFromOsm])).toEqual([[null, false]]);
+    expect(plan.factoryTooLong).toEqual([1]);
+  });
+
+  it('sản phẩm mới có PO: thêm đơn kèm dấu nội dung; Nhà máy SX theo OSM (khóa sửa tay), OSM chưa có thì để trống; số đơn trùng thì thêm -2', () => {
     const src = source({ orders: [order(), order({ ProductId: 2, BranchCode: 'A02', PoProductId: 2 })], pos: [po(), po({ ProductId: 2 })], cells: [cell(), cell({ ProductId: 2 })] });
     const manual: MesOrder = { ...stateOf(source()).orders[0], Id: 5, SourceProductId: null, SourceHash: null, OrderNo: 'so-1' };
     const plan = planImport(src, { orders: [manual], pos: [] }, opts);
-    expect(plan.newOrders.map((o) => [o.productId, o.orderNo, o.factoryCode])).toEqual([
-      [1, 'SO-1-2', 'A01'],
-      [2, 'SO-1', null],
+    expect(plan.newOrders.map((o) => [o.productId, o.orderNo, o.factoryCode, o.factoryFromOsm])).toEqual([
+      [1, 'SO-1-2', 'VIET DUC,VSN-DN', true],
+      [2, 'SO-1', null, false],
     ]);
+    expect(planImport(src, { orders: [], pos: [] }, { ...opts, osmFactories: null }).newOrders.map((o) => o.factoryCode)).toEqual([null, null]);
     expect(plan.newOrders[0].fields).toMatchObject({ CustomerName: 'KH1', UnitName: 'Chiếc', Qty: 30, ShipDate: '2026-11-01' });
     expect(plan.newOrders[0].hash).toMatch(/^[0-9a-f]{64}$/);
   });

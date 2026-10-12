@@ -3,7 +3,7 @@ import { AppException } from '../../common/app.exception';
 import { isDeadlock } from '../../common/db-errors';
 import { env } from '../../config/env';
 import { AuditService } from '../../platform/audit/audit.service';
-import { BravoFeedService } from '../../platform/bravo/bravo-feed.service';
+import { SourceFeedService } from '../../platform/feed/source-feed.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
 import { BranchService } from '../../platform/permission/branch.service';
 import { planImport } from './bravo-order.mapping';
@@ -25,6 +25,8 @@ export interface BravoImportSummary {
   goneOrders: number;
   gonePos: number;
   skippedNoPo: Record<string, number>;
+  /** Đơn mới có danh sách nhà máy theo OSM dài quá cột: thêm với Nhà máy SX trống; ProductId, tối đa 50 */
+  factoryTooLong: number[];
 }
 
 const MAX_IDS = 50;
@@ -46,7 +48,7 @@ export class BravoOrderImportService implements OnModuleInit, OnApplicationBoots
   private stopped = false;
 
   constructor(
-    private readonly feed: BravoFeedService,
+    private readonly feed: SourceFeedService,
     private readonly repo: BravoOrderImportRepository,
     private readonly catalogs: CatalogLookupService,
     private readonly branches: BranchService,
@@ -114,12 +116,11 @@ export class BravoOrderImportService implements OnModuleInit, OnApplicationBoots
 
   private async once(): Promise<BravoImportSummary | null> {
     const branches = await this.branches.activeCodes();
-    const [src, units, factories] = await Promise.all([this.feed.orderSource(branches), this.catalogs.items('UNIT'), this.catalogs.productionFactories()]);
+    const [src, units, osmFactories] = await Promise.all([this.feed.orderSource(branches), this.catalogs.items('UNIT'), this.feed.osmFactories()]);
     if (!src.orders.length) return null;
     const unitNames = new Map(units.map((u) => [u.code, u.name]));
-    const activeFactories = new Set(factories.filter((f) => f.isActive).map((f) => f.code));
     const started = Date.now();
-    const { plan, applied } = await this.repo.apply((state) => planImport(src, state, { branches, unitNames, activeFactories }));
+    const { plan, applied } = await this.repo.apply((state) => planImport(src, state, { branches, unitNames, osmFactories }));
     const summary: BravoImportSummary = {
       newOrders: applied.newOrders,
       newByBranch: applied.newByBranch,
@@ -133,6 +134,7 @@ export class BravoOrderImportService implements OnModuleInit, OnApplicationBoots
       goneOrders: plan.goneOrders,
       gonePos: plan.gonePos,
       skippedNoPo: Object.fromEntries(plan.skipped),
+      factoryTooLong: plan.factoryTooLong.slice(0, MAX_IDS),
     };
     // Nhật ký chỉ khi có ghi dữ liệu: PO giữ màu cỡ, đơn đổi chi nhánh tồn tại lâu dài, ghi mỗi đợt thì nhiễu (đã có trong log)
     if (summary.newOrders + summary.updatedOrders + summary.baselined + summary.newPos + summary.updatedPos + summary.cellUpdates > 0) {
@@ -141,7 +143,8 @@ export class BravoOrderImportService implements OnModuleInit, OnApplicationBoots
     this.logger.log(
       `Nạp đơn hàng BRAVO (${Date.now() - started} ms): ${summary.newOrders} đơn mới, ${summary.updatedOrders} đơn cập nhật, ${summary.newPos} PO mới, ` +
         `${summary.updatedPos} PO cập nhật, ${summary.cellUpdates} PO thay màu cỡ, ${summary.cellsKept.count} PO giữ màu cỡ của MES, ` +
-        `${summary.branchChanged.count} đơn BRAVO đổi chi nhánh, ${summary.goneOrders} đơn và ${summary.gonePos} PO không còn ở BRAVO.`,
+        `${summary.branchChanged.count} đơn BRAVO đổi chi nhánh, ${summary.goneOrders} đơn và ${summary.gonePos} PO không còn ở BRAVO` +
+        (plan.factoryTooLong.length ? `, ${plan.factoryTooLong.length} đơn mới có danh sách nhà máy OSM dài quá 400 ký tự (để trống).` : '.'),
     );
     return summary;
   }

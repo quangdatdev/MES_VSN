@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { CurrentUser, FieldResource, RequirePermission } from '../../platform/auth/decorators';
+import { DepartmentTypeService } from './department-type.service';
 import { DepartmentService } from './department.service';
 import { EmployeeImportService } from './employee-import.service';
 import { EmployeeService } from './employee.service';
-import { DepartmentCreateDto, DepartmentDissolveDto, DepartmentTreeQuery, DepartmentUpdateDto, EmployeeImportDto, EmployeeListQuery, EmployeeWriteDto, ManagerOptionsQuery } from './hr.dto';
+import { DepartmentCreateDto, DepartmentDissolveDto, DepartmentTreeQuery, DepartmentTypeCreateDto, DepartmentTypeUpdateDto, DepartmentUpdateDto, EmployeeImportDto, EmployeeListQuery, EmployeeWriteDto, ManagerOptionsQuery } from './hr.dto';
 
 const id = () => Param('id', ParseIntPipe);
 
@@ -41,6 +42,24 @@ export class DepartmentController {
 
   @Post(':id/restore') @RequirePermission('hr.orgchart:update')
   restore(@CurrentUser() u: AuthUser, @id() did: number) { return this.service.restore(u, did); }
+}
+
+/**
+ * Danh mục Loại phòng ban: nằm ở Quản trị › Danh mục hệ thống nên dùng quyền danh mục (admin.catalog) như Cấu hình chuẩn bị SX
+ * (người dùng chốt 12/10/2026, ngoại lệ ADR 0012 mục 6). Ô chọn loại ở Sơ đồ tổ chức vẫn lấy qua /hr/departments/options.
+ */
+@Controller('hr/department-types')
+export class DepartmentTypeController {
+  constructor(private readonly service: DepartmentTypeService) {}
+
+  @Get() @RequirePermission('admin.catalog:view')
+  list() { return this.service.list(); }
+
+  @Post() @RequirePermission('admin.catalog:create')
+  create(@CurrentUser() u: AuthUser, @Body() dto: DepartmentTypeCreateDto) { return this.service.create(u, dto); }
+
+  @Put(':id') @RequirePermission('admin.catalog:update')
+  update(@CurrentUser() u: AuthUser, @id() tid: number, @Body() dto: DepartmentTypeUpdateDto) { return this.service.update(u, tid, dto); }
 }
 
 /** Thông tin nhân sự (tài nguyên hr.employee, dùng chung toàn công ty). Chính sách cột áp cho mọi endpoint. */

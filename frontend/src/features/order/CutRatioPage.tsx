@@ -526,7 +526,7 @@ function AddPoDialog({ style, onClose, onDone }: { style: CutStyle; onClose: () 
   const form = useForm({
     initialValues: { poNumber: '', destination: '', packingListCode: '', customsDeclarationNo: '', shipDate: style.shipDate ?? '' },
     validate: {
-      poNumber: (v) => (/^[\x20-\x7E]{1,40}$/.test(v.trim()) ? null : 'Nhập PO#, tối đa 40 ký tự, không dấu'),
+      poNumber: (v) => (/^[^\p{C}\p{Zl}\p{Zp}]{1,192}$/u.test(v.trim()) ? null : 'Nhập PO#, tối đa 192 ký tự, không xuống dòng'),
       shipDate: (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? null : 'Chọn ngày xuất hàng'),
     },
   });

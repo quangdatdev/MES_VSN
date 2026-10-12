@@ -21,6 +21,7 @@ import { toastError, toastOk } from '../../lib/notify';
 import { useMobile } from '../../lib/useMobile';
 import { useSession } from '../../store/session';
 import type { FactoryOption, SalesOrder } from './api';
+import { factoryLabel } from './factoryLabel';
 import { EmptyState, ExportButton, OrderFilters, PICK_ROW, SALES_STATUS, StatusBadge, statusOptions, useCanWrite, useCustomers, useOriginLock, usePagedList } from './common';
 
 const RESOURCE = 'order.allocation';
@@ -53,7 +54,7 @@ function withFactoryNames(factories: FactoryOption[]): Column<SalesOrder>[] {
   const name = new Map(factories.map((f) => [f.code, f.name]));
   return COLUMNS.map((c) =>
     c.key === 'productionFactoryCode'
-      ? { ...c, filterLabel: (v) => name.get(String(v)) ?? String(v), render: (r) => (r.productionFactoryCode ? <span title={r.productionFactoryCode}>{name.get(r.productionFactoryCode) ?? r.productionFactoryCode}</span> : <span className="cell-empty">–</span>) }
+      ? { ...c, filterLabel: (v) => factoryLabel(String(v), name), render: (r) => (r.productionFactoryCode ? <span title={r.productionFactoryCode}>{factoryLabel(r.productionFactoryCode, name)}</span> : <span className="cell-empty">–</span>) }
       : c,
   );
 }
@@ -207,7 +208,12 @@ function factorySelectData(factories: FactoryOption[], current: string | null, b
     group: code ? branchName(code) : 'Chưa gắn đơn vị cơ sở',
     items: shown.filter((f) => f.branchCode === code).map((f) => ({ value: f.code, label: f.isActive ? f.name : `${f.name} (đã ngừng)` })),
   }));
-  if (current && current !== MASK && !factories.some((f) => f.code === current)) groups.push({ group: 'Không còn trong danh mục', items: [{ value: current, label: current }] });
+  if (current && current !== MASK && !factories.some((f) => f.code === current)) {
+    // Danh sách nhiều nhà máy theo OSM (đơn nay không còn trong OSM): giữ giá trị, hiện bằng tên
+    const list = current.includes(',');
+    const label = factoryLabel(current, new Map(factories.map((f) => [f.code, f.name])));
+    groups.push({ group: list ? 'Theo OSM trước đây' : 'Không còn trong danh mục', items: [{ value: current, label }] });
+  }
   return groups;
 }
 
@@ -255,6 +261,7 @@ function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrde
   const form = useOrderForm(order, policy);
   const { orderTypes, orderTypeNames, units, factories } = useCustomers();
   const factoryData = factorySelectData(factories, form.getInitialValues().productionFactoryCode, branchName);
+  const factoryNames = useMemo(() => new Map(factories.map((f) => [f.code, f.name])), [factories]);
   const blocked = order ? [] : Object.keys(REQUIRED).filter((f) => !policy.editable(f));
   const dirty = form.isDirty();
   useLeaveGuard(dirty);
@@ -296,7 +303,17 @@ function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrde
                 policy={policy}
                 field="productionFactoryCode"
                 label="Nhà máy SX"
-                render={(lock) => (
+                render={(lock) =>
+                  // Theo OSM (ADR 0013 mục 9): chỉ xem, giá trị gửi lại nguyên như cũ khi lưu
+                  order?.factoryFromOsm && order.productionFactoryCode && order.productionFactoryCode !== MASK ? (
+                    <TextInput
+                      label="Nhà máy SX"
+                      value={factoryLabel(order.productionFactoryCode, factoryNames)}
+                      description="Lấy theo OSM, không chọn tay được. Sửa ở OSM rồi đồng bộ lại."
+                      readOnly
+                      className="field-readonly"
+                    />
+                  ) : (
                   <Select
                     label="Nhà máy SX"
                     placeholder="Chọn nhà máy SX"
@@ -313,7 +330,8 @@ function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrde
                     {...form.getInputProps('productionFactoryCode')}
                     {...lock}
                   />
-                )}
+                  )
+                }
               />
             </Group>
             <Guarded policy={policy} field="customerName" label="Khách hàng" render={(lock) => <TextInput label="Khách hàng" withAsterisk={!lock.readOnly} className={req} data-autofocus {...form.getInputProps('customerName')} {...lock} />} />

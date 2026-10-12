@@ -164,7 +164,7 @@ export async function runSeed({
       }
     }
 
-    // 4. Menu: nhóm rồi mục lá (tên, thứ tự nhóm và tên, đường dẫn mục lá của menu hệ thống theo seed-data)
+    // 4. Menu: nhóm rồi mục lá (tên, thứ tự của nhóm và mục lá, đường dẫn mục lá của menu hệ thống theo seed-data)
     const groupId = new Map<string, number>();
     for (const [i, g] of groups.entries()) {
       const code = `menu.${g.code}`;
@@ -187,9 +187,11 @@ export async function runSeed({
     }
     for (const [i, r] of resources.entries()) {
       const code = `menu.${r.code}`;
-      const exists = await db.selectFrom('SysMenu').select(['Id', 'Name', 'Path', 'IsSystem']).where('Code', '=', code).executeTakeFirst();
+      const exists = await db.selectFrom('SysMenu').select(['Id', 'Name', 'Path', 'SortOrder', 'IsSystem']).where('Code', '=', code).executeTakeFirst();
       if (exists) {
-        if (exists.IsSystem && (exists.Name !== r.name || exists.Path !== r.path)) {
+        // Thứ tự cũng theo seed-data: thêm màn vào giữa nhóm (Phân bổ PO sau Thông tin đơn hàng) thì các màn sau lùi xuống, không
+        // trùng thứ tự với màn mới (không có màn nào sửa thứ tự menu)
+        if (exists.IsSystem && (exists.Name !== r.name || exists.Path !== r.path || exists.SortOrder !== (i + 1) * 10)) {
           await db.updateTable('SysMenu').set({ Name: r.name, Path: r.path, SortOrder: (i + 1) * 10, ModifiedAt: new Date() }).where('Id', '=', exists.Id).execute();
           bump('cập nhật menu');
         }

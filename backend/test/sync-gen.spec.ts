@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import { SOURCES, render, type Col } from '../scripts/sync-gen';
+import { SOURCES, render, schemaOf, tableName, type Col } from '../scripts/sync-gen';
 
 // Không cần database. Thủ tục chép của mỗi nguồn trong migration MES_Sync mới nhất phải đúng bằng đầu ra hiện tại của
 // sync-gen.ts: sửa script sinh mà quên sinh migration mới (--procs-only) thì test này báo.
@@ -37,11 +37,12 @@ describe('Migration MES_Sync khớp với sync-gen.ts', () => {
 
   it.each(SOURCES.map((s) => [s.view]))('%s: thủ tục mới nhất trong migration đúng bằng đầu ra hiện tại', (view) => {
     const src = SOURCES.find((s) => s.view === view)!;
-    const proc = `bravo.[usp_Sync_${view.replace(/^v/, '')}]`;
+    const system = src.system ?? 'BRAVO';
+    const proc = `${schemaOf(system)}.[usp_Sync_${tableName(view)}]`;
     // Migration cuối cùng có thủ tục này là bản đang chạy trên database
     const latest = [...texts].reverse().map((t) => procOf(t, proc)).find((p) => p !== null);
     expect(latest).toBeTruthy();
-    const generated = procOf(render(src, colsFrom(latest!), 0, 'BRAVO', { procsOnly: true }), proc);
+    const generated = procOf(render(src, colsFrom(latest!), 0, system, { procsOnly: true }), proc);
     expect(latest).toBe(generated);
   });
 });

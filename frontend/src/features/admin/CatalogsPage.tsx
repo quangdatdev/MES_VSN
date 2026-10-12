@@ -8,6 +8,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconClock,
+  IconHierarchy2,
   IconKey,
   IconListDetails,
   IconLock,
@@ -23,7 +24,7 @@ import { ActionButton } from '../../components/ActionButton';
 import { DebouncedTextInput } from '../../components/DebouncedInput';
 import { PageHeader } from '../../components/PageHeader';
 import { Pager } from '../../components/Pager';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { confirmAction, confirmDiscard } from '../../lib/confirm';
 import { guardedLeave, useLeaveGuard } from '../../lib/leaveGuard';
 import { fmtDateTime, fmtNum, qs } from '../../lib/format';
@@ -31,9 +32,11 @@ import { ORDER_OPTIONS_KEY } from '../../lib/queryKeys';
 import { toastError, toastOk } from '../../lib/notify';
 import { useCan } from '../../shell/permissions';
 import { EmptyRow, escapeToClose, IconAction, LoadError, SkeletonRows, upper } from './common';
+import { HR_KEYS } from '../hr/api';
+import { fold } from '../hr/tree';
 import type { PrepStep } from '../sewing/api';
 import { PREP_STEPS_KEY, PrepStepsPane } from './PrepStepsPane';
-import type { AdminFactory, CatalogItem, CatalogLine, CatalogLines, CatalogOverview, CatalogShift, CatalogWorkshop, ExternalCatalog, ExternalRows, MesCatalog } from './types';
+import type { AdminDepartmentType, AdminFactory, CatalogItem, CatalogLine, CatalogLines, CatalogOverview, CatalogShift, CatalogWorkshop, ExternalCatalog, ExternalRows, MesCatalog } from './types';
 
 const KEY = ['admin', 'catalogs'] as const;
 /** Cây đầy đủ xưởng, chuyền (khung Chuyền may là khung mặc định) */
@@ -47,11 +50,15 @@ const STOP_ITEM = 'Không còn trong ô chọn khi nhập mới, dữ liệu cũ
 const CODE_LOCKED = 'Mã không đổi được sau khi tạo';
 /** Danh mục của module May (MES_Sewing), không nằm trong tổng quan danh mục của nền tảng */
 const PREP = { code: 'PREP_STEP', name: 'Cấu hình chuẩn bị SX' };
+/** Danh mục của module Nhân sự (MES_Hr, task 5.8.9): ô chọn loại ở Sơ đồ tổ chức */
+const DEPT_TYPE = { code: 'DEPT_TYPE', name: 'Loại phòng ban' };
+const DEPT_TYPES_QUERY = { queryKey: [...KEY, 'department-types'], queryFn: () => api<AdminDepartmentType[]>('/hr/department-types') };
 const hours = (minutes: number) => `${Math.floor(minutes / 60)} giờ${minutes % 60 ? ` ${minutes % 60} phút` : ''}`;
 
 export default function CatalogsPage() {
   const overview = useQuery({ queryKey: KEY, queryFn: () => api<CatalogOverview>('/admin/catalogs') });
   const prepSteps = useQuery({ queryKey: PREP_STEPS_KEY, queryFn: () => api<PrepStep[]>('/sewing/prep-steps') });
+  const deptTypes = useQuery(DEPT_TYPES_QUERY);
   const [params, setParams] = useSearchParams();
   const mes = overview.data?.mes ?? [];
   const external = overview.data?.external ?? [];
@@ -78,7 +85,7 @@ export default function CatalogsPage() {
         onChange={select}
         allowDeselect={false}
         data={[
-          { group: 'Danh mục MES', items: [...mes.map((c) => ({ value: c.code, label: c.name })), { value: PREP.code, label: PREP.name }] },
+          { group: 'Danh mục MES', items: [...mes.map((c) => ({ value: c.code, label: c.name })), { value: PREP.code, label: PREP.name }, { value: DEPT_TYPE.code, label: DEPT_TYPE.name }] },
           { group: 'Chép từ BRAVO (chỉ xem)', items: external.map((c) => ({ value: c.code, label: c.name })) },
         ]}
       />
@@ -101,6 +108,13 @@ export default function CatalogsPage() {
             count={prepSteps.data ? prepSteps.data.filter((s) => s.isActive).length : null}
             label={PREP.name}
           />
+          <NavItem
+            active={selected === DEPT_TYPE.code}
+            onClick={() => select(DEPT_TYPE.code)}
+            icon={<IconHierarchy2 size={16} stroke={1.7} />}
+            count={deptTypes.data ? deptTypes.data.filter((t) => t.isActive).length : null}
+            label={DEPT_TYPE.name}
+          />
           <div className="catalog-nav-group">Chép từ BRAVO (chỉ xem)</div>
           {overview.data?.externalError ? (
             <Text size="xs" c="dimmed" px={10} pb={8}>{overview.data.externalError}</Text>
@@ -119,7 +133,8 @@ export default function CatalogsPage() {
           {currentMes?.kind === 'shift' && <ShiftsPane info={currentMes} />}
           {currentExt && <ExternalPane key={currentExt.code} info={currentExt} />}
           {selected === PREP.code && <PrepStepsPane />}
-          {overview.isSuccess && !currentMes && !currentExt && selected !== PREP.code && <Text c="dimmed" size="sm">Chọn một danh mục ở cột bên trái.</Text>}
+          {selected === DEPT_TYPE.code && <DepartmentTypesPane />}
+          {overview.isSuccess && !currentMes && !currentExt && selected !== PREP.code && selected !== DEPT_TYPE.code && <Text c="dimmed" size="sm">Chọn một danh mục ở cột bên trái.</Text>}
         </section>
       </div>
     </>
@@ -173,6 +188,8 @@ function useSave(onDone?: () => void) {
       // Nhà máy SX hiện ở màn Đơn vị cơ sở và popup gán của màn Người dùng
       void qc.invalidateQueries({ queryKey: ['admin', 'branches'] });
       void qc.invalidateQueries({ queryKey: ['admin', 'user-factories'] });
+      // Ô chọn loại phòng ban, cây phòng ban (tên loại, thứ tự theo cấp) ở Sơ đồ tổ chức
+      void qc.invalidateQueries({ queryKey: HR_KEYS.departments });
       onDone?.();
     },
     onError: (e) => toastError(e, 'Chưa lưu được'),
@@ -893,7 +910,8 @@ function FactoryDialog({ factory, branches, branchesLoading, defaultBranch, onCl
     },
     validateInputOnBlur: true,
     validate: {
-      code: (v) => (factory || /^[A-Z0-9._-]{1,30}$/.test(v.trim().toUpperCase()) ? null : 'Gồm chữ không dấu, số, dấu chấm, gạch (tối đa 30 ký tự)'),
+      // Mã là tên nhà máy theo OSM (ADR 0013 mục 9): có dấu, khoảng trắng; đơn hàng lưu danh sách mã cách nhau dấu phẩy
+      code: (v) => (factory || /^[^,\p{C}]{1,100}$/u.test(v.trim()) ? null : 'Nhập mã, tối đa 100 ký tự, không có dấu phẩy'),
       name: (v) => (v.trim() ? null : 'Nhập tên nhà máy'),
       branchCode: (v) => (v ? null : 'Chọn đơn vị cơ sở'),
     },
@@ -916,7 +934,7 @@ function FactoryDialog({ factory, branches, branchesLoading, defaultBranch, onCl
           <TextInput
             label="Mã"
             withAsterisk={!factory}
-            description={factory ? `${CODE_LOCKED} vì đơn hàng đã lưu theo mã.` : 'Chữ không dấu; không sửa được sau khi tạo.'}
+            description={factory ? `${CODE_LOCKED} vì đơn hàng đã lưu theo mã.` : 'Đặt đúng tên nhà máy trong OSM (ví dụ VIET DUC) để đơn hàng nhận đúng nhà máy. Không sửa được sau khi tạo.'}
             readOnly={!!factory}
             className={factory ? 'field-readonly' : undefined}
             data-autofocus={!factory || undefined}
@@ -940,6 +958,181 @@ function FactoryDialog({ factory, branches, branchesLoading, defaultBranch, onCl
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={close}>Hủy</Button>
             <Button type="submit" loading={save.isPending}>{factory ? 'Lưu thay đổi' : 'Thêm nhà máy'}</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------- Loại phòng ban (MES_Hr, task 5.8.9) ----------------
+
+const stopDeptType = (n: number) =>
+  `${n > 0 ? `${fmtNum(n)} phòng ban đang dùng loại này giữ nguyên loại và vẫn sửa được. ` : ''}Không chọn được loại này khi thêm phòng ban hay đổi loại. Bật lại lúc nào cũng được.`;
+
+/** Loại phòng ban cho ô chọn ở Sơ đồ tổ chức. Xếp theo cấp rồi thứ tự, đúng thứ tự các phòng ban cùng cha trên cây. */
+function DepartmentTypesPane() {
+  const canCreate = useCan('admin.catalog:create');
+  const canEdit = useCan('admin.catalog:update');
+  const q = useQuery(DEPT_TYPES_QUERY);
+  const [search, setSearch] = useState('');
+  const [dialog, setDialog] = useState<AdminDepartmentType | 'create' | null>(null);
+  const save = useSave();
+  const all = q.data ?? [];
+  // Danh mục nhỏ: lọc tại chỗ, gõ không dấu vẫn ra
+  const term = fold(search);
+  const rows = term ? all.filter((t) => fold(`${t.code} ${t.name}`).includes(term)) : all;
+  // Mọi loại đang dùng đều là cấp cuối thì không thêm được phòng ban gốc hay phòng ban có con
+  const noParentType = q.isSuccess && !all.some((t) => t.isActive && !t.isFinalLevel);
+
+  return (
+    <>
+      <PaneHead
+        title={DEPT_TYPE.name}
+        description="Dùng ở ô Loại phòng ban của Sơ đồ tổ chức. Cấp xếp thứ tự các phòng ban cùng cha; loại cấp cuối không có phòng ban con."
+        actions={canCreate && <Button leftSection={<IconPlus size={15} />} onClick={() => setDialog('create')}>Thêm loại</Button>}
+      >
+        <SearchBox value={search} onChange={setSearch} placeholder="Tìm mã, tên loại" />
+      </PaneHead>
+      <PaneError query={q} what="danh mục loại phòng ban" />
+      {noParentType && (
+        <Alert color="yellow" mb="sm">
+          Không còn loại nào đang dùng mà có phòng ban con được, nên chưa thêm được phòng ban gốc hay phòng ban cấp trên. Dùng lại hoặc thêm một loại không phải cấp cuối.
+        </Alert>
+      )}
+      <div className="table-frame">
+        <table className="dense-table">
+          <thead>
+            <tr>
+              <th style={{ width: 120 }}>Mã</th>
+              <th>Tên</th>
+              <th style={{ width: 60 }}>Cấp</th>
+              <th style={{ width: 90 }}>Cấp cuối</th>
+              <th style={{ width: 72 }}>Thứ tự</th>
+              <th style={{ width: 96 }}>Phòng ban</th>
+              <th>Mô tả</th>
+              <th style={{ width: 150 }}>Trạng thái</th>
+              <th style={{ width: 56 }} aria-label="Thao tác" />
+            </tr>
+          </thead>
+          <tbody>
+            {q.isPending && <SkeletonRows cols={9} />}
+            {rows.map((t) => (
+              <tr key={t.id} data-inactive={!t.isActive || undefined}>
+                <td className="mono" style={{ fontWeight: 600 }}>{t.code}</td>
+                <td>
+                  <Group gap={6} wrap="nowrap">
+                    <span>{t.name}</span>
+                    {t.isSystem && <Badge size="xs" variant="light" color="gray">Nạp sẵn</Badge>}
+                  </Group>
+                </td>
+                <td className="num">{t.levelOrder}</td>
+                <td>{t.isFinalLevel ? <Badge size="sm" variant="light" color="orange">Có</Badge> : <Text size="sm" c="dimmed">Không</Text>}</td>
+                <td className="num">{t.sortOrder}</td>
+                <td className="num">{fmtNum(t.departmentCount)}</td>
+                <td className="cell-wrap"><Text size="sm" c="dimmed">{t.description}</Text></td>
+                <td>
+                  <StatusCell
+                    active={t.isActive}
+                    canEdit={canEdit}
+                    busy={save.isPending}
+                    label={t.code}
+                    onChange={(on) =>
+                      confirmStop(on, `${t.name} (${t.code})`, stopDeptType(t.departmentCount), () =>
+                        save.mutate({ method: 'PUT', path: `/hr/department-types/${t.id}`, body: { isActive: on }, done: `Đã ${on ? 'dùng lại' : 'ngừng dùng'} loại ${t.name} (${t.code}).` }),
+                      )
+                    }
+                  />
+                </td>
+                <td>{canEdit && <EditButton label={t.code} onClick={() => setDialog(t)} />}</td>
+              </tr>
+            ))}
+            {q.isSuccess && rows.length === 0 && (
+              term ? (
+                <EmptyRow colSpan={9} action={clearButton(() => setSearch(''))}>Không có loại nào khớp “{search.trim()}”.</EmptyRow>
+              ) : (
+                <EmptyRow colSpan={9}>Chưa có loại phòng ban nào. Bấm “Thêm loại” để tạo.</EmptyRow>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+      {dialog && <DepartmentTypeDialog type={dialog === 'create' ? null : dialog} onClose={() => setDialog(null)} />}
+    </>
+  );
+}
+
+function DepartmentTypeDialog({ type, onClose }: { type: AdminDepartmentType | null; onClose: () => void }) {
+  const form = useForm({
+    initialValues: {
+      code: type?.code ?? '',
+      name: type?.name ?? '',
+      levelOrder: (type?.levelOrder ?? '') as number | '',
+      sortOrder: (type?.sortOrder ?? '') as number | '',
+      isFinalLevel: type?.isFinalLevel ?? false,
+      description: type?.description ?? '',
+    },
+    validateInputOnBlur: true,
+    validate: {
+      code: (v) => (type || /^[A-Z0-9_-]{1,20}$/.test(v.trim().toUpperCase()) ? null : 'Gồm chữ hoa không dấu, số, gạch dưới, gạch ngang (tối đa 20 ký tự)'),
+      name: (v) => (v.trim() ? null : 'Nhập tên loại'),
+      levelOrder: (v) => (v === '' ? 'Nhập cấp, từ 0 đến 99' : null),
+    },
+  });
+  const save = useSave(onClose);
+  const submit = (v: typeof form.values) => {
+    const full = { name: v.name.trim(), levelOrder: Number(v.levelOrder), isFinalLevel: v.isFinalLevel, sortOrder: v.sortOrder === '' ? undefined : v.sortOrder, description: v.description.trim() || null };
+    // Lỗi của máy chủ gắn vào đúng ô: trùng mã, trùng tên; bật cấp cuối khi có phòng ban loại này đang có con
+    const onError = (e: unknown) => {
+      if (!(e instanceof ApiError)) return;
+      if (e.status === 409) form.setFieldError(!type && e.message.startsWith('Mã ') ? 'code' : 'name', e.message);
+      else if (e.code === 'VALIDATION_FAILED' && full.isFinalLevel && !type?.isFinalLevel) form.setFieldError('isFinalLevel', e.message);
+    };
+    if (type) {
+      const before: Record<string, unknown> = { name: type.name, levelOrder: type.levelOrder, isFinalLevel: type.isFinalLevel, sortOrder: type.sortOrder, description: type.description };
+      // Chỉ gửi phần đã đổi: hai người sửa hai ô khác nhau không ghi đè nhau
+      const body = Object.fromEntries(Object.entries(full).filter(([k, x]) => x !== undefined && x !== before[k]));
+      if (Object.keys(body).length === 0) return onClose();
+      save.mutate({ method: 'PUT', path: `/hr/department-types/${type.id}`, body, done: `Đã lưu loại ${type.code} – ${full.name}.` }, { onError });
+    } else {
+      const code = v.code.trim().toUpperCase();
+      save.mutate({ method: 'POST', path: '/hr/department-types', body: { ...full, code }, done: `Đã thêm loại phòng ban ${code} – ${full.name}.` }, { onError });
+    }
+  };
+  useLeaveGuard(form.isDirty());
+  const close = () => confirmDiscard(form.isDirty(), onClose);
+  return (
+    <Modal opened onClose={close} {...escapeToClose(close)} title={type ? `Sửa loại phòng ban ${type.code}` : 'Thêm loại phòng ban'}>
+      <form onSubmit={form.onSubmit(submit)}>
+        <Stack gap="sm">
+          <TextInput
+            label="Mã"
+            withAsterisk={!type}
+            description={type ? `${CODE_LOCKED}.` : 'Chữ hoa không dấu, số, gạch dưới, gạch ngang. Không sửa được sau khi tạo.'}
+            readOnly={!!type}
+            className={type ? 'field-readonly' : undefined}
+            maxLength={20}
+            data-autofocus={!type || undefined}
+            {...form.getInputProps('code')}
+            onChange={upper((x) => form.setFieldValue('code', x))}
+          />
+          <TextInput label="Tên loại" withAsterisk maxLength={100} placeholder="Ví dụ: Tổ" data-autofocus={type ? true : undefined} {...form.getInputProps('name')} />
+          <SimpleGrid cols={2} spacing="sm">
+            <NumberInput label="Cấp" withAsterisk min={0} max={99} clampBehavior="strict" allowDecimal={false} allowNegative={false} {...form.getInputProps('levelOrder')} />
+            <NumberInput label="Thứ tự" placeholder="Xếp cuối" min={0} max={1_000_000} allowDecimal={false} allowNegative={false} {...form.getInputProps('sortOrder')} />
+          </SimpleGrid>
+          <Text size="xs" c="dimmed" mt={-6}>
+            Cấp xếp các phòng ban cùng cha: số nhỏ đứng trước (Công ty 1, Khối 2, Phòng 3). Cùng cấp thì theo Thứ tự rồi tên.
+          </Text>
+          <Switch
+            label="Cấp cuối"
+            description="Phòng ban loại này không có phòng ban con."
+            {...form.getInputProps('isFinalLevel', { type: 'checkbox' })}
+          />
+          <Textarea label="Mô tả" autosize minRows={2} maxLength={300} {...form.getInputProps('description')} />
+          <Group justify="flex-end" mt="xs">
+            <Button variant="default" onClick={close}>Hủy</Button>
+            <Button type="submit" loading={save.isPending}>{type ? 'Lưu thay đổi' : 'Thêm loại'}</Button>
           </Group>
         </Stack>
       </form>

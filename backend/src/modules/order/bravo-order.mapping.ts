@@ -2,7 +2,8 @@
 // tăng dần sau mỗi lần đồng bộ (BravoOrderImportService) và lệnh nạp lại toàn bộ `load:bravo`. Giả định khi BA chưa chốt
 // (anh-xa-bravo-don-hang.html, mục Cần chốt) ghi ở docs/thiet-ke/db-order.md, mục "Nạp từ BRAVO".
 import { createHash } from 'crypto';
-import type { BravoOrderSource, SourceCell, SourceOrder } from '../../platform/bravo/bravo-feed.service';
+import { factoryListFor } from '../../platform/catalog/factory-list';
+import type { BravoOrderSource, SourceCell, SourceOrder } from '../../platform/feed/source-feed.service';
 
 export interface Cell {
   color: string;
@@ -148,7 +149,7 @@ export function buildOrders(src: BravoOrderSource, numberOf: (o: SourceOrder) =>
       syncedAt = later(syncedAt, p.SyncedAt);
       for (const c of list) syncedAt = later(syncedAt, c.SyncedAt);
       pos.push({
-        poNumber: clean(p.CustomerPONo, 40) ?? '(trống)',
+        poNumber: clean(p.CustomerPONo, 192) ?? '(trống)',
         shipDate: ymd(p.Etd),
         syncedAt: p.SyncedAt,
         destination: clean(p.Destination, 60),
@@ -226,7 +227,8 @@ export interface MesState {
 }
 
 export interface ImportPlan {
-  newOrders: (BuiltOrder & { factoryCode: string | null })[];
+  /** Nhà máy SX của đơn mới theo OSM (danh sách mã, ADR 0013 mục 9); OSM chưa có đơn này thì để trống, người dùng chọn tay */
+  newOrders: (BuiltOrder & { factoryCode: string | null; factoryFromOsm: boolean })[];
   /**
    * Ghi cột lấy từ BRAVO, dấu nội dung; trạng thái Mới → Hoàn thành khi `closed` (tính trong câu ghi). `force`: BRAVO đổi đơn
    * sau lần nạp trước, ghi đè cả khi người dùng đã sửa đơn ở MES; không `force` thì chỉ ghi đơn chưa ai sửa
@@ -246,6 +248,8 @@ export interface ImportPlan {
   cellsKept: number[];
   /** Đơn nạp từ BRAVO mà nay BRAVO đổi chi nhánh nhận đơn (ĐVCS bất biến ở MES): không cập nhật */
   branchChanged: number[];
+  /** Đơn mới có danh sách nhà máy theo OSM dài quá cột: thêm đơn với Nhà máy SX trống (ProductId) */
+  factoryTooLong: number[];
   /** Đơn nạp từ BRAVO không còn trong bảng chép hoặc không còn PO; PO nạp từ BRAVO không còn: giữ, chờ BA chốt cách xử lý */
   goneOrders: number;
   gonePos: number;
@@ -254,16 +258,16 @@ export interface ImportPlan {
 }
 
 /**
- * Khóa ghép số PO giữa BRAVO và MES: không phân biệt hoa thường; ký tự ngoài ASCII thành "?". Cột PoNumber là VARCHAR: số PO
- * BRAVO vốn là VARCHAR nên giữ nguyên, chỉ chữ giữ chỗ "(trống)" của PO không có số bị lưu thành "(tr?ng)". Ký tự Latin-1
- * (é, à) SQL Server giữ nguyên nhưng hai phía cùng thành "?" nên vẫn khớp.
+ * Khóa ghép số PO giữa BRAVO và MES: không phân biệt hoa thường; ký tự ngoài ASCII thành "?". Trước MES_Order/0007 cột PoNumber
+ * là VARCHAR, chữ tiếng Việt lưu thành "?" (0007 đã sửa "(tr?ng)" của PO không có số; PO nhập tay cũ có thể còn): hai phía
+ * cùng quy về "?" nên vẫn khớp.
  */
 const poNumberKey = (s: string) => s.toUpperCase().replace(/[^\x20-\x7E]/g, '?');
 const sameCells = (a: Cell[], b: Cell[]) => a.length === b.length && a.every((c, i) => c.color === b[i].color && c.size === b[i].size && c.qty === b[i].qty);
 
 /**
  * So dữ liệu BRAVO với MES_Order, ra việc cần ghi. Không xóa gì. Quy tắc (ADR 0013 mục 8):
- * - Sản phẩm mới (có PO, ĐVCS đang dùng): thêm đơn, PO, màu cỡ như `load:bravo`; Nhà máy SX cùng mã chi nhánh nhận đơn nếu có.
+ * - Sản phẩm mới (có PO, ĐVCS đang dùng): thêm đơn, PO, màu cỡ như `load:bravo`; Nhà máy SX theo OSM nếu OSM có (ADR 0013 mục 9).
  * - Đơn đã có, biết BRAVO đổi hay không theo dấu nội dung (SourceHash), không theo mốc chép:
  *   - dấu khác: BRAVO đã đổi đơn, cột lấy từ BRAVO theo BRAVO, kể cả khi người dùng đã sửa ở MES;
  *   - dấu giống: không ghi gì, giữ phần người dùng sửa;
@@ -275,19 +279,21 @@ const sameCells = (a: Cell[], b: Cell[]) => a.length === b.length && a.every((c,
 export function planImport(
   src: BravoOrderSource,
   state: MesState,
-  opts: { branches: string[]; unitNames: Map<string, string>; activeFactories: Set<string> },
+  opts: { branches: string[]; unitNames: Map<string, string>; osmFactories: Map<number, string> | null },
 ): ImportPlan {
-  const { unitNames, activeFactories } = opts;
+  const { unitNames, osmFactories } = opts;
   const mesBySource = new Map(state.orders.filter((o) => o.SourceProductId != null).map((o) => [o.SourceProductId!, o]));
   const used = new Set(state.orders.map((o) => `${o.BranchCode}|${o.OrderNo.toUpperCase()}`));
   const { built, skipped } = buildOrders(src, (o) => mesBySource.get(o.ProductId)?.OrderNo ?? orderNumber(o.Name, o.ProductId, o.BranchCode, used), unitNames);
   const posByOrder = group(state.pos, (p) => p.SalesOrderId);
-  const plan: ImportPlan = { newOrders: [], orderUpdates: [], hashUpdates: [], newPos: [], poUpdates: [], cellUpdates: [], cellsKept: [], branchChanged: [], goneOrders: 0, gonePos: 0, skipped };
+  const plan: ImportPlan = { newOrders: [], orderUpdates: [], hashUpdates: [], newPos: [], poUpdates: [], cellUpdates: [], cellsKept: [], branchChanged: [], factoryTooLong: [], goneOrders: 0, gonePos: 0, skipped };
 
   for (const o of built) {
     const m = mesBySource.get(o.productId);
     if (!m) {
-      plan.newOrders.push({ ...o, factoryCode: activeFactories.has(o.branchCode) ? o.branchCode : null });
+      const { code: factoryCode, tooLong } = factoryListFor(osmFactories?.get(o.productId));
+      if (tooLong) plan.factoryTooLong.push(o.productId);
+      plan.newOrders.push({ ...o, factoryCode, factoryFromOsm: factoryCode != null });
       continue;
     }
     if (m.BranchCode !== o.branchCode) {

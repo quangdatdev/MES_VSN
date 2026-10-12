@@ -3,7 +3,8 @@ import { sql } from 'kysely';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import { env } from '../../config/env';
 import { CORE_DB, type CoreDb } from '../database/database.module';
-import { readBravoOrderSource } from './bravo-order-source';
+import { readBravoOrderSource, readOsmFactories, readOsmFactoryLists } from './bravo-order-source';
+import { readOsmPoAll, readOsmPoDistinct, readOsmPoPage, readOsmPoValues, type OsmPoCriteria, type OsmPoField, type OsmPoSort } from './osm-po-source';
 import { createSyncRunner, SYNC_DB } from './sync.db';
 import type { SyncDb, SyncMode } from './sync.types';
 
@@ -178,6 +179,36 @@ export class SyncRepository {
     } finally {
       await reader.destroy();
     }
+  }
+
+  /** Nhà máy SX theo OSM của từng sản phẩm BRAVO (chỉ đọc) */
+  osmFactories() {
+    return readOsmFactories(this.db);
+  }
+
+  /** Các danh sách nhà máy khác nhau trong bảng chép OSM (chỉ đọc) */
+  osmFactoryLists() {
+    return readOsmFactoryLists(this.db);
+  }
+
+  /** Phân bổ PO theo OSM (bảng chép osm.OSMData, chỉ đọc): một trang */
+  osmPoPage(c: OsmPoCriteria, page: number, pageSize: number, sort: OsmPoSort[]) {
+    return readOsmPoPage(this.db, c, page, pageSize, sort);
+  }
+
+  /** Phân bổ PO theo OSM: giá trị của một trường cho popup lọc theo cột */
+  osmPoValues(c: OsmPoCriteria, field: OsmPoField, search: string | undefined, limit: number) {
+    return readOsmPoValues(this.db, c, field, search, limit);
+  }
+
+  /** Phân bổ PO theo OSM: mọi dòng khớp điều kiện, cho xuất file */
+  osmPoAll(c: OsmPoCriteria, sort: OsmPoSort[]) {
+    return readOsmPoAll(this.db, c, sort);
+  }
+
+  /** Phân bổ PO theo OSM: các giá trị đang có của Brand, Season */
+  osmPoDistinct(field: 'brand' | 'season') {
+    return readOsmPoDistinct(this.db, field);
   }
 
   /** Mã nguồn và trạng thái của một lần chạy, để chạy việc nối tiếp khi nguồn chép xong */

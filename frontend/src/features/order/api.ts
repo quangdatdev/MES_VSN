@@ -2,6 +2,7 @@
 // Trường có thể vắng mặt (cột Ẩn) hoặc là "***" (cột Che) tùy chính sách cột của người xem.
 
 import type { Masked } from '../../lib/fieldPolicy';
+import type { Paged } from '../../lib/types';
 
 export type { Masked };
 
@@ -23,8 +24,42 @@ export interface SalesOrder {
   shipDate: string;
   statusCode: string;
   branchCode: string;
-  /** Mã nhà máy SX (danh mục Nhà máy SX); null: chưa chọn */
+  /** Mã nhà máy SX (danh mục Nhà máy SX), theo OSM có thể là nhiều mã cách nhau dấu phẩy; null: chưa có */
   productionFactoryCode?: Masked<string | null>;
+  /** Nhà máy SX lấy theo OSM: không chọn tay được */
+  factoryFromOsm?: boolean;
+}
+
+/**
+ * Một dòng phân bổ PO theo nhà máy, lấy từ OSM (màn Phân bổ PO, chỉ xem). Dòng trùng nguyên dòng của OSM chỉ có một. Không có Id:
+ * `rowNo` là số thứ tự trong danh sách đang xem. Mọi cột đều theo chính sách cột: vắng mặt khi bị Ẩn, "***" khi bị Che.
+ */
+export interface PoAllocation {
+  rowNo: number;
+  brand?: Masked<string | null>;
+  season?: Masked<string | null>;
+  po?: Masked<string | null>;
+  so?: Masked<string | null>;
+  shipMode?: Masked<string | null>;
+  styleName?: Masked<string | null>;
+  styleNo?: Masked<string | null>;
+  color?: Masked<string | null>;
+  etdActual?: Masked<string | null>;
+  etdRevised?: Masked<string | null>;
+  /** Tên nhà máy SX theo OSM (cũng là mã trong danh mục Nhà máy SX) */
+  factoryName?: Masked<string | null>;
+  /**
+   * Đơn vị cơ sở quản lý nhà máy SX theo danh mục Nhà máy SX; null: nhà máy chưa gắn ĐVCS hoặc chưa có trong danh mục. Theo cả
+   * chính sách của cột Nhà máy SX (Nhà máy SX bị Ẩn thì không có, bị Che thì bị che)
+   */
+  branchCode?: Masked<string | null>;
+}
+
+export interface PoAllocationPage extends Paged<PoAllocation> {
+  /** Lần chép gần nhất của nguồn OSM này; null: chưa đồng bộ lần nào */
+  syncedAt: string | null;
+  /** Nguồn đồng bộ đang bật; false: máy chủ chưa khai database OSM của nguồn này */
+  sourceActive: boolean;
 }
 
 /** Nhà máy SX (ô chọn chỉ cho nhà máy đang dùng; nhà máy đã ngừng để hiện tên ở đơn hàng cũ), gom theo đơn vị cơ sở */
