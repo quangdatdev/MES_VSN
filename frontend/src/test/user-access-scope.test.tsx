@@ -167,11 +167,32 @@ describe('Phân quyền chi tiết: phạm vi chuyền theo mã bộ phận', ()
     expect(save).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('bỏ hết chuyền đang chọn: báo trước vai trò sẽ không còn giới hạn chuyền', async () => {
-    await openEditor(access([scope(11, 'A01-L03', 'Chuyền 03', true)]));
+  it('bỏ hết chuyền đang chọn: báo trước vai trò sẽ không còn giới hạn chuyền, bấm lưu phải xác nhận', async () => {
+    const save = await openEditor(access([scope(11, 'A01-L03', 'Chuyền 03', true)]));
     expect(screen.queryByText(/vai trò này sẽ không còn giới hạn chuyền/)).not.toBeInTheDocument();
     const field = screen.getByRole('combobox', { name: 'Chuyền' });
     fireEvent.keyDown(field, { key: 'Backspace' });
     expect(await screen.findByText(/vai trò này sẽ không còn giới hạn chuyền/)).toBeInTheDocument();
+
+    // Nới quyền: không lưu ngay, hỏi lại; Giữ lại thì không gửi gì
+    fireEvent.click(save);
+    expect(await screen.findByText('Bỏ giới hạn chuyền của vai trò Trưởng chuyền?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Giữ lại' }));
+    await waitFor(() => expect(screen.queryByText('Bỏ giới hạn chuyền của vai trò Trưởng chuyền?')).not.toBeInTheDocument());
+    expect(calls).toHaveLength(0);
+
+    fireEvent.click(save);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bỏ giới hạn chuyền' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(sentScopes()).toEqual([]);
+  });
+
+  it('còn giới hạn chuyền thì lưu ngay, không hỏi lại', async () => {
+    const save = await openEditor(access([scope(11, 'A01-L03', 'Chuyền 03', true)]));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Chuyền' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Chuyền 05 (A01-L05)' }));
+    fireEvent.click(save);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(screen.queryByText(/Bỏ giới hạn chuyền của vai trò/)).not.toBeInTheDocument();
   });
 });

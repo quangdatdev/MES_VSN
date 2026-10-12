@@ -24,6 +24,8 @@ export class OrgService {
   private source: LineSource | null = null;
   /** Tăng mỗi lần invalidate(): lần đọc bắt đầu trước đó (có thể đọc dữ liệu trước khi đổi) không được ghi vào cache */
   private generation = 0;
+  /** Lần đọc đang chạy của lượt invalidate hiện tại: nhiều request cùng lúc chờ chung một lần đọc */
+  private loading: { generation: number; lines: Promise<LineInfo[]> } | null = null;
   private static readonly TTL_MS = 30_000;
 
   /** Module Nhân sự đăng ký nguồn chuyền lúc khởi động; đăng ký lại thì thay nguồn cũ. */
@@ -34,14 +36,26 @@ export class OrgService {
 
   /**
    * Mọi chuyền, kể cả đã ngừng: dữ liệu cũ (kế hoạch đã xếp) vẫn phải hiện đúng tên chuyền.
-   * Chưa có nguồn đăng ký thì không có chuyền nào (đóng an toàn: phạm vi chiều LINE thành tập rỗng).
+   * Chưa có nguồn đăng ký thì không có chuyền nào (đóng an toàn: phạm vi chiều LINE thành tập rỗng). Nguồn lỗi thì lỗi đi tiếp
+   * tới bên gọi (request bị từ chối, không bao giờ thành "không giới hạn chuyền") và không được cache.
    */
-  private async all(): Promise<LineInfo[]> {
-    if (this.cache && Date.now() - this.cache.at < OrgService.TTL_MS) return this.cache.lines;
-    const gen = this.generation;
-    const lines = this.source ? await this.source.loadLines() : [];
-    // Bỏ tích một chuyền xong mà lần đọc cũ ghi đè cache thì chuyền đó còn trong phạm vi quyền thêm 30 giây
-    if (gen === this.generation) this.cache = { at: Date.now(), lines };
+  private all(): Promise<LineInfo[]> {
+    if (this.cache && Date.now() - this.cache.at < OrgService.TTL_MS) return Promise.resolve(this.cache.lines);
+    const generation = this.generation;
+    if (this.loading?.generation === generation) return this.loading.lines;
+    const lines = (this.source ? this.source.loadLines() : Promise.resolve([])).then(
+      (loaded) => {
+        // Bỏ tích một chuyền xong mà lần đọc cũ ghi đè cache thì chuyền đó còn trong phạm vi quyền thêm 30 giây
+        if (generation === this.generation) this.cache = { at: Date.now(), lines: loaded };
+        return loaded;
+      },
+    );
+    const loading = { generation, lines };
+    this.loading = loading;
+    const done = () => {
+      if (this.loading === loading) this.loading = null;
+    };
+    lines.then(done, done);
     return lines;
   }
 
@@ -64,11 +78,13 @@ export class OrgService {
   }
 
   /**
-   * Tên chuyền theo mã cho dữ liệu đã xếp, kể cả chuyền đã ngừng dùng. Mã không còn là bộ phận chuyền nào (chuyền cũ trước phase
-   * 5.10, bộ phận đã bỏ tích "Xưởng sản xuất") là chuyền mồ côi: hiện mã kèm "(chuyền cũ)", không báo lỗi.
+   * Tên chuyền theo mã cho dữ liệu đã xếp, kể cả chuyền đã ngừng dùng. Tra trên mọi ĐVCS: chuyền đã chuyển sang ĐVCS khác vẫn hiện
+   * đúng tên ở dữ liệu của ĐVCS cũ (tên chuyền không phải dữ liệu nhạy cảm; dòng nào được thấy vẫn do repository lọc). Mã không còn
+   * là bộ phận chuyền nào (chuyền cũ trước phase 5.10, bộ phận đã bỏ tích "Xưởng sản xuất") là chuyền mồ côi: hiện mã kèm
+   * "(chuyền cũ)", không báo lỗi. Hai tham số giữ cho bên gọi cũ, không còn tác dụng.
    */
-  async lineNamer(branchCode: string, isAggregate = false): Promise<(code: string) => string> {
-    const names = new Map((await this.lines(branchCode, isAggregate, { includeInactive: true })).map((l) => [l.code, l.name]));
+  async lineNamer(_branchCode?: string, _isAggregate?: boolean): Promise<(code: string) => string> {
+    const names = new Map((await this.all()).map((l) => [l.code, l.name]));
     return (code) => names.get(code) ?? `${code} (chuyền cũ)`;
   }
 

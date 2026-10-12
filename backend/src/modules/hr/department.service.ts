@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppException, Errors } from '../../common/app.exception';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import type { AuthUser } from '../../platform/auth/auth.types';
@@ -8,7 +8,7 @@ import { scopeOf } from '../../platform/data/base.repository';
 import { inTransaction } from '../../platform/data/transaction';
 import { OrgService } from '../../platform/org/org.service';
 import { BranchService } from '../../platform/permission/branch.service';
-import { PermissionService } from '../../platform/permission/permission.service';
+import { PermissionService, type LineSetChange } from '../../platform/permission/permission.service';
 import { HR_DB } from './hr.db';
 import type { DepartmentCreateDto, DepartmentDissolveDto, DepartmentUpdateDto } from './hr.dto';
 import { DepartmentRepository, EmployeeRepository, HrCatalogRepository, type DepartmentNodeRow, type DepartmentTypeRow } from './hr.repositories';
@@ -22,7 +22,6 @@ const MAX_PATH = 400;
 const isDuplicate = (e: unknown) => sqlErrorNumbers(e).some((n) => n === 2601 || n === 2627);
 /** Ô chọn Chuyền may lọc theo ĐVCS đăng nhập nên chuyền phải có ĐVCS (database cũng chặn: CK_Department_ProductionWorkshopBranch) */
 const NEED_BRANCH = 'Bộ phận tích "Xưởng sản xuất" phải thuộc một đơn vị cơ sở: chọn đơn vị cơ sở trước.';
-const logger = new Logger('Department');
 
 export function presentDepartment(r: DepartmentNodeRow) {
   return {
@@ -71,7 +70,8 @@ const label = (d: { Name: string; Code: string }) => `${d.Name} (${d.Code})`;
  *
  * Bộ phận tích "Xưởng sản xuất" là chuyền may (phase 5.10): phạm vi chiều LINE của Trưởng chuyền chỉ có tác dụng với chuyền đang
  * dùng, nên tích, bỏ tích, đổi ĐVCS, giải thể, khôi phục chuyền là đổi phạm vi dữ liệu mà không qua màn Phân quyền. Các thao tác
- * này đòi thêm admin.permission:update (như chuyển chuyền cũ giữa xưởng, mục 6.5) và tăng phiên bản quyền.
+ * này đòi thêm admin.permission:update (như chuyển chuyền cũ giữa xưởng, mục 6.5), người làm không được đang giữ phạm vi chuyền
+ * đó; sau khi lưu ghi nhật ký bắt buộc LINE_SET_CHANGE và tăng phiên bản quyền (PermissionService.recordLineSetChange).
  */
 @Injectable()
 export class DepartmentService {
@@ -102,21 +102,29 @@ export class DepartmentService {
   }
 
   /**
-   * Gọi sau khi transaction MES_Hr đã commit. Xóa cache chuyền ở mọi lần ghi (đổi tên, cha, thứ tự của bộ phận cha cũng đổi tên
-   * nhóm, thứ tự trong ô chọn chuyền), trước khi tăng phiên bản quyền để quyền tính lại đọc tập chuyền mới.
-   * Phiên bản quyền ở MES_Core, không chung transaction với MES_Hr: tăng sau khi commit (tăng trước thì một request chen giữa có thể
-   * tính quyền theo tập chuyền cũ rồi giữ trong cache dưới phiên bản mới). Tăng lỗi thì vẫn xóa cache quyền của tiến trình này và
-   * ghi log, không báo lỗi cho người dùng vì dữ liệu đã lưu.
+   * Gọi ngay sau khi transaction MES_Hr đã commit, ở mọi lần ghi phòng ban: xóa cache chuyền (đổi tên, cha, thứ tự của bộ phận cha
+   * cũng đổi tên nhóm, thứ tự trong ô chọn chuyền). Phải trước bước tăng phiên bản quyền (recordLines) để quyền tính lại đọc tập
+   * chuyền mới.
    */
-  private async afterWrite(linesChanged: boolean) {
+  private afterWrite() {
     this.org.invalidate();
-    if (!linesChanged) return;
-    try {
-      await this.permissions.bumpVersion();
-    } catch (e) {
-      this.permissions.clearCache();
-      logger.error(`Đã đổi chuyền may nhưng không tăng được phiên bản quyền: ${(e as Error).message}`);
-    }
+  }
+
+  /**
+   * Tập chuyền đã đổi: nhật ký LINE_SET_CHANGE và tăng phiên bản quyền trong một transaction MES_Core, sau commit của MES_Hr
+   * (không có transaction chung). Tăng trước commit thì một request chen giữa có thể tính quyền theo tập chuyền cũ rồi giữ trong
+   * cache dưới phiên bản mới. Lỗi thì PermissionService thử lại rồi báo lỗi kèm bộ phận đã lưu (màn hình hiện đúng dữ liệu).
+   */
+  private recordLines(user: AuthUser, change: LineSetChange, saved: ReturnType<typeof presentDepartment>) {
+    return this.permissions.recordLineSetChange(user, change, { department: saved });
+  }
+
+  /** Người đang được giao phạm vi chuyền theo mã này: màn hình báo trước khi thêm, tích, khôi phục bộ phận làm họ thấy dữ liệu chuyền */
+  async lineHolders(user: AuthUser, code: string) {
+    // Quyền như chính thao tác: thêm hoặc sửa Sơ đồ tổ chức (controller đã đòi xem Sơ đồ tổ chức và sửa Phân quyền)
+    const own = (await this.permissions.accessOf(user)).permissions;
+    if (!own.has('hr.orgchart:create') && !own.has('hr.orgchart:update')) throw Errors.permissionDenied();
+    return { code, holders: await this.permissions.lineScopeHolders(code) };
   }
 
   async tree(user: AuthUser, includeDissolved: boolean) {
@@ -210,9 +218,13 @@ export class DepartmentService {
           trx,
         );
       });
-      await this.afterWrite(line);
+      this.afterWrite();
       const out = await this.detail(user, id);
       await this.log(user, id, 'CREATE', undefined, out);
+      if (line) {
+        const after = { isProductionWorkshop: true, branchCode: dto.branchCode ?? null, isActive: true };
+        await this.recordLines(user, { departmentId: id, code: dto.code, operation: 'CREATE', before: null, after }, out);
+      }
       return out;
     } catch (e) {
       if (isDuplicate(e)) throw Errors.conflict(`Mã ${dto.code} đã có. Chọn mã khác.`);
@@ -278,14 +290,26 @@ export class DepartmentService {
         moved = { from: before.Path, to: newPath, nodes };
       }
       if (Object.keys(set).length) await this.repo.updateNode(scope, id, set, trx);
-      return { before, set, moved, linesChanged: lineAfter !== lineBefore || (lineBefore && branchChanged) };
+      const lines: LineSetChange | null =
+        lineAfter !== lineBefore || (lineBefore && branchChanged)
+          ? {
+              departmentId: id,
+              code: before.Code,
+              operation: lineAfter !== lineBefore ? (lineAfter ? 'TICK' : 'UNTICK') : 'BRANCH',
+              before: { isProductionWorkshop: lineBefore, branchCode: before.BranchCode, isActive: !!before.IsActive },
+              after: { isProductionWorkshop: lineAfter, branchCode: branchAfter, isActive: !!before.IsActive },
+            }
+          : null;
+      return { before, set, moved, lines };
     });
-    if (Object.keys(result.set).length || result.moved) await this.afterWrite(result.linesChanged);
+    const changed = Object.keys(result.set).length > 0 || !!result.moved;
+    if (changed) this.afterWrite();
     const out = await this.detail(user, id);
-    if (Object.keys(result.set).length || result.moved) {
+    if (changed) {
       const old = presentDepartment(result.before);
       await this.log(user, id, 'UPDATE', old, { ...result.set, ...(result.moved ? { Path: result.moved.to, MovedNodes: result.moved.nodes } : {}) });
     }
+    if (result.lines) await this.recordLines(user, result.lines, out);
     return out;
   }
 
@@ -314,9 +338,14 @@ export class DepartmentService {
       return d;
     });
     const line = !!before.IsProductionWorkshop;
-    await this.afterWrite(line);
+    this.afterWrite();
     await this.log(user, id, 'DISSOLVE', { IsActive: true, IsProductionWorkshop: line }, { IsActive: false, DissolvedDate: date, Code: before.Code, IsProductionWorkshop: line });
-    return this.detail(user, id);
+    const out = await this.detail(user, id);
+    if (line) {
+      const state = (isActive: boolean) => ({ isProductionWorkshop: true, branchCode: before.BranchCode, isActive });
+      await this.recordLines(user, { departmentId: id, code: before.Code, operation: 'DISSOLVE', before: state(true), after: state(false) }, out);
+    }
+    return out;
   }
 
   /** Khôi phục phòng ban đã giải thể: cha (nếu có) phải đang dùng */
@@ -335,8 +364,13 @@ export class DepartmentService {
       return d;
     });
     const line = !!before.IsProductionWorkshop;
-    await this.afterWrite(line);
+    this.afterWrite();
     await this.log(user, id, 'RESTORE', { IsActive: false, DissolvedDate: day(before.DissolvedDate), IsProductionWorkshop: line }, { IsActive: true, Code: before.Code, IsProductionWorkshop: line });
-    return this.detail(user, id);
+    const out = await this.detail(user, id);
+    if (line) {
+      const state = (isActive: boolean) => ({ isProductionWorkshop: true, branchCode: before.BranchCode, isActive });
+      await this.recordLines(user, { departmentId: id, code: before.Code, operation: 'RESTORE', before: state(false), after: state(true) }, out);
+    }
+    return out;
   }
 }

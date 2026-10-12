@@ -3,7 +3,7 @@ import { api } from '../../lib/api';
 import { qs } from '../../lib/format';
 import type { Paged } from '../../lib/types';
 import { useCan } from '../../shell/permissions';
-import type { Department, DepartmentOptions, EmployeeCard, EmployeeDetail, EmployeeOptions, ManagerOption } from './types';
+import type { Department, DepartmentOptions, EmployeeCard, EmployeeDetail, EmployeeOptions, LineHolders, ManagerOption } from './types';
 
 // Dữ liệu nhân sự dùng chung toàn công ty (ADR 0012): khóa truy vấn không kèm nhà máy của phiên.
 export const HR_KEYS = {
@@ -33,6 +33,9 @@ export function useDepartment(id: number | null) {
     enabled: id != null,
   });
 }
+
+/** Ai đang được giao phạm vi chuyền theo mã này: hỏi ngay trước khi thêm, tích, khôi phục bộ phận chuyền may (không cache) */
+export const fetchLineHolders = (code: string) => api<LineHolders>(`/hr/departments/line-holders${qs({ code })}`);
 
 export function useDepartmentOptions() {
   return useQuery({ queryKey: HR_KEYS.deptOptions, queryFn: () => api<DepartmentOptions>('/hr/departments/options'), staleTime: 60_000 });

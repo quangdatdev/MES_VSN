@@ -12,6 +12,7 @@ import { HR_DB } from '../src/modules/hr/hr.db';
 import type { HrDb } from '../src/modules/hr/hr.types';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import { OrgService } from '../src/platform/org/org.service';
+import { PermissionService } from '../src/platform/permission/permission.service';
 
 // Phase 5.8 – Sơ đồ tổ chức, Thông tin nhân sự (ADR 0012). Cần MES_Core, MES_Hr đã migrate và seed (vai trò Nhân sự, tài khoản nhansu).
 // Test tự tạo phòng ban mã TST-…, chức danh TST-…, nhân viên mã TST…, loại phòng ban mã TST_…; xóa hết khi xong.
@@ -554,5 +555,148 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
       await api().put(`/api/v1/admin/users/${uid}/roles`).set(auth(admin)).send({ roleIds: [] }).expect(200);
       await api().put(`/api/v1/admin/users/${uid}`).set(auth(admin)).send({ isActive: false }).expect(200);
     }
+  });
+
+  // ---------- Sửa theo review 5.10.15: người giữ phạm vi chuyền, danh sách người bị ảnh hưởng, nhật ký LINE_SET_CHANGE ----------
+
+  /**
+   * Tài khoản thử có vai trò Toàn quyền ở A02 và phạm vi chuyền theo các mã `codes`: mã đầu qua API (phải là chuyền đang dùng), các
+   * mã sau ghi thẳng vào database (phạm vi đang "ngủ": bộ sửa phạm vi chỉ nhận chuyền đang dùng). Dọn bằng drop().
+   */
+  async function lineHolder(username: string, codes: string[]) {
+    const admin = await tokenFor('admin', 'A00');
+    const roles = (await api().get('/api/v1/admin/roles').set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+    const branches = (await api().get('/api/v1/admin/branches').set(auth(admin)).expect(200)).body as { id: number; code: string }[];
+    const fullRole = roles.find((r) => r.code === 'FULL_ACCESS')!.id;
+    const password = `Hl@${randomBytes(12).toString('base64url')}9`;
+    const created = await api().post('/api/v1/admin/users').set(auth(admin)).send({ username, fullName: `Chuyền thử (${username})`, initialPassword: password });
+    const uid = created.status === 201 ? (created.body.id as number) : (await api().get(`/api/v1/admin/users?q=${username}`).set(auth(admin))).body.items.find((u: any) => u.username === username).id;
+    const drop = async () => {
+      await api().put(`/api/v1/admin/users/${uid}/roles`).set(auth(admin)).send({ roleIds: [] }).expect(200);
+      await api().put(`/api/v1/admin/users/${uid}`).set(auth(admin)).send({ isActive: false }).expect(200);
+    };
+    try {
+      if (created.status !== 201) {
+        await api().post(`/api/v1/admin/users/${uid}/reset-password`).set(auth(admin)).send({ newPassword: password }).expect(200);
+        await api().put(`/api/v1/admin/users/${uid}`).set(auth(admin)).send({ isActive: true, unlock: true }).expect(200);
+      }
+      await api().put(`/api/v1/admin/users/${uid}/roles`).set(auth(admin)).send({ roleIds: [fullRole] }).expect(200);
+      await api().put(`/api/v1/admin/users/${uid}/branches`).set(auth(admin)).send({ branchIds: branches.filter((b) => b.code === 'A02').map((b) => b.id) }).expect(200);
+      await api().put(`/api/v1/admin/users/${uid}/roles/${fullRole}/scope`).set(auth(admin)).send({ scopes: [{ dimension: 'LINE', mode: 'LIST', value: codes[0] }] }).expect(200);
+      if (codes.length > 1) {
+        const core = app.get<CoreDb>(CORE_DB);
+        const ur = await core.selectFrom('SysUserRole').select('Id').where('UserId', '=', uid).where('RoleId', '=', fullRole).executeTakeFirstOrThrow();
+        const dim = await core.selectFrom('SysScopeDimension').select('Id').where('Code', '=', 'LINE').executeTakeFirstOrThrow();
+        await core
+          .insertInto('SysUserRoleScope')
+          .values(codes.slice(1).map((c) => ({ UserRoleId: ur.Id, DimensionId: dim.Id, ScopeMode: 'LIST' as const, OrgUnitId: null, ScopeValue: c, CreatedBy: null })))
+          .execute();
+      }
+      const l = await api().post('/api/v1/auth/login').send({ username, password });
+      const token = (await api().post('/api/v1/auth/select-branch').set('Authorization', `Bearer ${l.body.preAuthToken}`).send({ branchCode: 'A02' })).body.accessToken as string;
+      return { token, drop };
+    } catch (e) {
+      await drop();
+      throw e;
+    }
+  }
+  const restoreDept = (token: string, id: number) => api().post(`/api/v1/hr/departments/${id}/restore`).set(auth(token));
+
+  it('chuyền may: người đang giữ phạm vi chuyền không tự thêm bộ phận tích sẵn mã đó, không tự khôi phục, không tự đổi ĐVCS (403)', async () => {
+    const holder = await lineHolder('test.hrline2', ['TST-L3', 'TST-L7']);
+    const admin = await fullAccess();
+    try {
+      // Mã TST-L7 chưa là bộ phận: phạm vi đang "ngủ", thêm bộ phận tích sẵn mã đó là tự mở phạm vi của mình
+      const own = await createDept(holder.token, { code: 'TST-L7', name: 'Chuyền thử 7', departmentTypeId: fx.finalType, parentId: fx.root, branchCode: 'A02', isProductionWorkshop: true }).expect(403);
+      expect(own.body.error.code).toBe('SELF_ELEVATION_FORBIDDEN');
+      expect(await hr.selectFrom('Department').select('Id').where('Code', '=', 'TST-L7').executeTakeFirst()).toBeUndefined();
+      expect((await putDept(holder.token, line.l3, { branchCode: 'A01' }).expect(403)).body.error.code).toBe('SELF_ELEVATION_FORBIDDEN');
+      // Người khác giải thể; người giữ phạm vi không tự khôi phục
+      await api().post(`/api/v1/hr/departments/${line.l3}/dissolve`).set(auth(admin)).send({}).expect(201);
+      expect((await restoreDept(holder.token, line.l3).expect(403)).body.error.code).toBe('SELF_ELEVATION_FORBIDDEN');
+      await restoreDept(admin, line.l3).expect(201);
+      // Bộ phận không phải chuyền: người giữ phạm vi vẫn thêm được (không đổi tập chuyền)
+      await createDept(holder.token, { code: 'TST-L7', name: 'Phòng thử 7', departmentTypeId: fx.finalType, parentId: fx.root, branchCode: 'A02' }).expect(201);
+    } finally {
+      await holder.drop();
+    }
+  });
+
+  it('line-holders: ai đang được giao phạm vi chuyền theo mã (quyền như thao tác); nhật ký LINE_SET_CHANGE ghi cờ, ĐVCS trước, sau và người bị ảnh hưởng', async () => {
+    const holder = await lineHolder('test.hrline3', ['TST-L3']);
+    const admin = await fullAccess();
+    const holders = (token: string, code: string) => api().get(`/api/v1/hr/departments/line-holders?code=${encodeURIComponent(code)}`).set(auth(token));
+    const me = { username: 'test.hrline3', fullName: 'Chuyền thử (test.hrline3)' };
+    try {
+      expect((await holders(admin, 'tst-l3').expect(200)).body).toEqual({ code: 'TST-L3', holders: [me] });
+      const seeded = (await holders(admin, 'A01-L03').expect(200)).body.holders.map((h: any) => h.username);
+      expect(seeded).toEqual(expect.arrayContaining(['truongchuyen.a', 'truongchuyen.b']));
+      expect((await holders(admin, 'TST-KHONG-CO').expect(200)).body.holders).toEqual([]);
+      // Thiếu sửa Phân quyền (Nhân sự), không có Sơ đồ tổ chức (Kế hoạch), chỉ xem Sơ đồ tổ chức (Quản trị): 403; mã sai dạng: 422
+      await holders(await hrUser(), 'TST-L3').expect(403);
+      await holders(await tokenFor('kehoach.a', 'A01'), 'TST-L3').expect(403);
+      await holders(await viewOnly(), 'TST-L3').expect(403);
+      await holders(admin, 'TST L3').expect(422);
+
+      const core = app.get<CoreDb>(CORE_DB);
+      const lastLineLog = async () =>
+        core
+          .selectFrom('SysAuditLog')
+          .select(['ActionCode', 'EntityType', 'Username', 'OldValue', 'NewValue'])
+          .where('ActionCode', '=', 'LINE_SET_CHANGE')
+          .where('EntityId', '=', String(line.l3))
+          .orderBy('Id', 'desc')
+          .executeTakeFirstOrThrow();
+      await putDept(admin, line.l3, { isProductionWorkshop: false }).expect(200);
+      let log = await lastLineLog();
+      expect(log).toMatchObject({ EntityType: 'Department', Username: 'admin' });
+      expect(JSON.parse(log.OldValue!)).toEqual({ Code: 'TST-L3', IsProductionWorkshop: true, BranchCode: 'A02', IsActive: true });
+      expect(JSON.parse(log.NewValue!)).toEqual({ Code: 'TST-L3', IsProductionWorkshop: false, BranchCode: 'A02', IsActive: true, Operation: 'UNTICK', AffectedUsers: [me] });
+      await putDept(admin, line.l3, { isProductionWorkshop: true, branchCode: 'A01' }).expect(200);
+      log = await lastLineLog();
+      expect(JSON.parse(log.NewValue!)).toMatchObject({ IsProductionWorkshop: true, BranchCode: 'A01', Operation: 'TICK', AffectedUsers: [me] });
+      await putDept(admin, line.l3, { branchCode: 'A02' }).expect(200);
+      log = await lastLineLog();
+      expect(JSON.parse(log.OldValue!)).toMatchObject({ BranchCode: 'A01' });
+      expect(JSON.parse(log.NewValue!)).toMatchObject({ BranchCode: 'A02', Operation: 'BRANCH' });
+      // Đổi tên không đổi tập chuyền: không có LINE_SET_CHANGE mới
+      await putDept(admin, line.l3, { name: 'Chuyền thử 3' }).expect(200);
+      expect(await lastLineLog()).toEqual(log);
+      // Tài khoản đã tắt thì không còn trong danh sách
+      await holder.drop();
+      expect((await holders(admin, 'TST-L3').expect(200)).body.holders).toEqual([]);
+    } finally {
+      await holder.drop();
+    }
+  });
+
+  it('tăng phiên bản quyền lỗi: thử lại rồi báo LINE_SCOPE_UPDATE_FAILED kèm bộ phận đã lưu; không im lặng, không ghi nửa chừng', async () => {
+    const admin = await fullAccess();
+    const permissions = app.get(PermissionService);
+    const core = app.get<CoreDb>(CORE_DB);
+    const lineLogs = async () =>
+      Number((await core.selectFrom('SysAuditLog').select((eb) => eb.fn.countAll().as('n')).where('ActionCode', '=', 'LINE_SET_CHANGE').where('EntityId', '=', String(line.l3)).executeTakeFirstOrThrow()).n);
+    const v = await version();
+    const logs = await lineLogs();
+    const spy = jest.spyOn(permissions, 'bumpVersion').mockRejectedValue(new Error('Mất kết nối MES_Core (giả lập)'));
+    try {
+      const res = await putDept(admin, line.l3, { isProductionWorkshop: false }).expect(500);
+      expect(res.body.error.code).toBe('LINE_SCOPE_UPDATE_FAILED');
+      expect(res.body.error.message).toContain('Đã lưu bộ phận TST-L3');
+      expect(res.body.error.details.department).toMatchObject({ id: line.l3, code: 'TST-L3', isProductionWorkshop: false });
+      expect(spy).toHaveBeenCalledTimes(3);
+    } finally {
+      spy.mockRestore();
+    }
+    // Nhật ký và phiên bản quyền cùng một transaction: không có cái này mà thiếu cái kia
+    expect(await version()).toBe(v);
+    expect(await lineLogs()).toBe(logs);
+    expect((await hr.selectFrom('Department').select('IsProductionWorkshop').where('Id', '=', line.l3).executeTakeFirstOrThrow()).IsProductionWorkshop).toBe(false);
+    // Tiến trình này đã xóa cache: ô chọn chuyền thấy ngay
+    expect(codesOf(await meLines(await tokenFor('nhansu', 'A02')))).not.toContain('TST-L3');
+    // Máy chủ ổn lại: tích lại bình thường
+    await putDept(admin, line.l3, { isProductionWorkshop: true }).expect(200);
+    expect(await version()).toBe(v + 1);
+    expect(await lineLogs()).toBe(logs + 1);
   });
 });

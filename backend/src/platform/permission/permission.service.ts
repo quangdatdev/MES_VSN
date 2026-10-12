@@ -1,6 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'kysely';
-import { Errors } from '../../common/app.exception';
+import { AppException, Errors } from '../../common/app.exception';
+import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { CORE_DB, type CoreDb } from '../database/database.module';
 import type { OrgType, ScopeMode } from '../database/core.types';
@@ -14,6 +15,36 @@ const ADMIN_PREFIX = 'admin.';
  * cây tổ chức. Chỉ dạng ALL hoặc LIST theo giá trị hợp lệ; mã nào không còn là chuyền đang dùng thì không có tác dụng.
  */
 export const LINE_DIMENSION = 'LINE';
+
+/** Trạng thái của một bộ phận xét theo tập chuyền may: có tích "Xưởng sản xuất", thuộc ĐVCS nào, còn dùng không */
+export interface LineState {
+  isProductionWorkshop: boolean;
+  branchCode: string | null;
+  isActive: boolean;
+}
+
+/** Một lần đổi tập chuyền may (thêm, tích, bỏ tích, đổi ĐVCS, giải thể, khôi phục bộ phận tích "Xưởng sản xuất") */
+export interface LineSetChange {
+  departmentId: number;
+  code: string;
+  operation: 'CREATE' | 'TICK' | 'UNTICK' | 'BRANCH' | 'DISSOLVE' | 'RESTORE';
+  /** null khi thêm mới */
+  before: LineState | null;
+  after: LineState;
+}
+
+/** Người đang có phép gán mang phạm vi chuyền theo một mã: chỉ tên đăng nhập, họ tên */
+export interface LineScopeHolder {
+  username: string;
+  fullName: string;
+}
+
+/** Mã nhật ký của một lần đổi tập chuyền may (SysAuditLog.ActionCode) */
+export const LINE_SET_CHANGE = 'LINE_SET_CHANGE';
+/** Mã lỗi khi bộ phận đã lưu (MES_Hr) mà chưa ghi được nhật ký, phiên bản quyền (MES_Core) */
+export const LINE_SCOPE_UPDATE_FAILED = 'LINE_SCOPE_UPDATE_FAILED';
+const LINE_CHANGE_ATTEMPTS = 3;
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Một điều kiện của phạm vi trên một chiều. `none` là đóng an toàn: không khớp bản ghi nào. */
 export type Condition =
@@ -101,10 +132,12 @@ export class PermissionService {
   private cache = new Map<string, UserAccess>();
   /** Phiên bản quyền lúc tập chuyền được tải lại lần cuối (xem lineCodes). */
   private linesVersion: string | null = null;
+  private readonly logger = new Logger('Permission');
 
   constructor(
     @Inject(CORE_DB) private readonly db: CoreDb,
     private readonly org: OrgService,
+    private readonly audit: AuditService,
   ) {}
 
   async getVersion(): Promise<string> {
@@ -385,11 +418,6 @@ export class PermissionService {
   }
 
   /**
-   * Trần quyền quản trị: người thao tác phải đang có mọi quyền admin.* trong `codes` (tại nhà máy đang làm việc).
-   * Chặn đường vòng "tạo tài khoản phụ rồi gán vai trò quản trị cao hơn", hoặc đặt lại mật khẩu của người quyền cao hơn.
-   * Quyền nghiệp vụ không bị giới hạn: cấp quyền nghiệp vụ là việc của người giữ admin.permission:update.
-   */
-  /**
    * Người dùng có phép gán nào mang phạm vi chuyền (chiều LINE) theo đúng mã này không, kể cả phép gán đã hết hạn hay chưa tới
    * hạn: tích, bỏ tích, giải thể bộ phận chuyền đó là đổi phạm vi của chính họ (CLAUDE.md mục 4.8), như người được giao cả xưởng
    * không tự chuyển chuyền trước phase 5.10.
@@ -401,12 +429,92 @@ export class PermissionService {
       .innerJoin('SysScopeDimension as d', 'd.Id', 's.DimensionId')
       .select('s.Id')
       .where('ur.UserId', '=', userId)
-      .where('d.Code', '=', 'LINE')
+      .where('d.Code', '=', LINE_DIMENSION)
       .where('s.ScopeValue', '=', code)
       .executeTakeFirst();
     return !!row;
   }
 
+  /**
+   * Người đang có phép gán mang phạm vi chuyền theo đúng mã này: tài khoản đang hoạt động, vai trò đang dùng, phép gán chưa hết hạn
+   * (kể cả chưa tới hạn). Phạm vi của họ đang "ngủ" khi mã chưa là chuyền đang dùng: thêm, tích, khôi phục bộ phận mã đó làm họ thấy
+   * dữ liệu chuyền đó; bỏ tích, giải thể làm họ mất. Màn hình báo trước danh sách này, nhật ký LINE_SET_CHANGE ghi lại.
+   */
+  async lineScopeHolders(code: string, db: CoreDb = this.db): Promise<LineScopeHolder[]> {
+    const rows = await db
+      .selectFrom('SysUserRoleScope as s')
+      .innerJoin('SysUserRole as ur', 'ur.Id', 's.UserRoleId')
+      .innerJoin('SysUser as u', 'u.Id', 'ur.UserId')
+      .innerJoin('SysRole as r', 'r.Id', 'ur.RoleId')
+      .innerJoin('SysScopeDimension as d', 'd.Id', 's.DimensionId')
+      .select(['u.Username', 'u.FullName'])
+      .distinct()
+      .where('d.Code', '=', LINE_DIMENSION)
+      .where('s.ScopeMode', '=', 'LIST')
+      .where('s.ScopeValue', '=', code)
+      .where('u.IsActive', '=', true)
+      .where('r.IsActive', '=', true)
+      .where((eb) => eb.or([eb('ur.ValidToAt', 'is', null), eb('ur.ValidToAt', '>=', new Date())]))
+      .orderBy('u.Username')
+      .execute();
+    return rows.map((r) => ({ username: r.Username, fullName: r.FullName }));
+  }
+
+  /**
+   * Ghi một lần đổi tập chuyền may sau khi bộ phận đã lưu ở MES_Hr: một transaction MES_Core gồm nhật ký bắt buộc LINE_SET_CHANGE
+   * (cờ, ĐVCS, trạng thái trước và sau, người đang được giao phạm vi chuyền đó) và tăng phiên bản quyền (mục 4.4). MES_Hr và
+   * MES_Core không có transaction chung nên bước này chạy sau commit của MES_Hr; lỗi thì thử lại. Vẫn lỗi thì ghi log đủ dữ liệu
+   * để dựng lại nhật ký, xóa cache quyền của tiến trình này (tiến trình này tính lại theo tập chuyền mới) và báo lỗi cho người
+   * dùng: không im lặng. `details` đi kèm lỗi (ví dụ bộ phận đã lưu, để màn hình hiện đúng dữ liệu).
+   */
+  async recordLineSetChange(actor: AuthUser, change: LineSetChange, details: unknown = null): Promise<void> {
+    const state = (s: LineState | null) => (s ? { Code: change.code, IsProductionWorkshop: s.isProductionWorkshop, BranchCode: s.branchCode, IsActive: s.isActive } : undefined);
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= LINE_CHANGE_ATTEMPTS; attempt++) {
+      try {
+        await this.db.transaction().execute(async (trx) => {
+          const affectedUsers = await this.lineScopeHolders(change.code, trx);
+          await this.audit.logStrict(
+            {
+              userId: actor.userId,
+              username: actor.username,
+              branchCode: actor.branchCode,
+              entityType: 'Department',
+              entityId: change.departmentId,
+              actionCode: LINE_SET_CHANGE,
+              oldValue: state(change.before),
+              newValue: { ...state(change.after), Operation: change.operation, AffectedUsers: affectedUsers },
+              ip: actor.ip,
+            },
+            trx,
+          );
+          await this.bumpVersion(trx);
+        });
+        this.clearCache();
+        return;
+      } catch (e) {
+        lastError = e;
+        if (attempt < LINE_CHANGE_ATTEMPTS) await pause(200 * attempt);
+      }
+    }
+    this.clearCache();
+    this.logger.error(
+      `Đã lưu bộ phận ${change.code} nhưng không ghi được ${LINE_SET_CHANGE} và không tăng được phiên bản quyền sau ${LINE_CHANGE_ATTEMPTS} lần: ${(lastError as Error)?.message}. ` +
+        `Dữ liệu để dựng lại: ${JSON.stringify({ actor: { userId: actor.userId, username: actor.username, branchCode: actor.branchCode }, change })}`,
+    );
+    throw new AppException(
+      LINE_SCOPE_UPDATE_FAILED,
+      `Đã lưu bộ phận ${change.code} nhưng chưa cập nhật được phân quyền theo chuyền (chưa ghi nhật ký, người được giao chuyền có thể chưa thấy thay đổi). Báo quản trị hệ thống: máy chủ đã ghi lại chi tiết.`,
+      500,
+      details,
+    );
+  }
+
+  /**
+   * Trần quyền quản trị: người thao tác phải đang có mọi quyền admin.* trong `codes` (tại nhà máy đang làm việc).
+   * Chặn đường vòng "tạo tài khoản phụ rồi gán vai trò quản trị cao hơn", hoặc đặt lại mật khẩu của người quyền cao hơn.
+   * Quyền nghiệp vụ không bị giới hạn: cấp quyền nghiệp vụ là việc của người giữ admin.permission:update.
+   */
   async assertAdminCeiling(actor: AuthUser, codes: Iterable<string>, message: string): Promise<void> {
     const own = (await this.accessOf(actor)).permissions;
     const missing = [...new Set(codes)].filter((c) => c.startsWith(ADMIN_PREFIX) && !own.has(c));

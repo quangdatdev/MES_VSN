@@ -68,4 +68,46 @@ describe('OrgService: nguồn chuyền đăng ký từ module', () => {
     state.slow = false;
     expect(await org.activeLineCodes()).toEqual(new Set());
   });
+
+  it('nhiều request cùng lúc chờ chung một lần đọc nguồn', async () => {
+    const org = new OrgService();
+    const { state, source } = fakeSource([line('L1'), line('L2', 'A02')]);
+    org.registerSource(source);
+    state.slow = true;
+    const a = org.lines('A01');
+    const b = org.activeLineCodes();
+    const c = org.lineNamer();
+    state.release();
+    expect((await a).map((l) => l.code)).toEqual(['L1']);
+    expect(await b).toEqual(new Set(['L1', 'L2']));
+    expect((await c)('L2')).toBe('Chuyền L2');
+    expect(state.loads).toBe(1);
+  });
+
+  it('nguồn lỗi: lỗi đi tới bên gọi (không thành danh sách rỗng hay cũ), không giữ trong cache, lần sau đọc lại', async () => {
+    const org = new OrgService();
+    let fail = true;
+    org.registerSource({
+      loadLines: async () => {
+        if (fail) throw new Error('Mất kết nối MES_Hr (giả lập)');
+        return [line('L1')];
+      },
+    });
+    await expect(org.activeLineCodes()).rejects.toThrow('Mất kết nối MES_Hr');
+    await expect(org.lines('A01')).rejects.toThrow('Mất kết nối MES_Hr');
+    await expect(org.assertLine('A01', 'L1')).rejects.toThrow('Mất kết nối MES_Hr');
+    fail = false;
+    expect(await org.activeLineCodes()).toEqual(new Set(['L1']));
+  });
+
+  it('lineNamer tra tên trên mọi ĐVCS, kể cả chuyền đã ngừng; mã không còn là chuyền thì kèm "(chuyền cũ)"', async () => {
+    const org = new OrgService();
+    org.registerSource(fakeSource([line('L1'), line('L2', 'A01', false), line('L3', 'A02')]).source);
+    const name = await org.lineNamer('A01', false);
+    expect(name('L1')).toBe('Chuyền L1');
+    expect(name('L2')).toBe('Chuyền L2');
+    // Chuyền đã chuyển sang ĐVCS khác: dữ liệu cũ ở A01 vẫn hiện đúng tên
+    expect(name('L3')).toBe('Chuyền L3');
+    expect(name('A01-L99')).toBe('A01-L99 (chuyền cũ)');
+  });
 });

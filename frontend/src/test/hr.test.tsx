@@ -11,7 +11,7 @@ import EmployeesPage from '../features/hr/EmployeesPage';
 import OrgChartPage from '../features/hr/OrgChartPage';
 import { buildTree, deptChoices, filterTree, subtreeIds } from '../features/hr/tree';
 import type { Department, EmployeeCard, EmployeeDetail, EmployeeField, EmployeeOptions } from '../features/hr/types';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { useSession } from '../store/session';
 import { theme } from '../theme/theme';
 
@@ -198,18 +198,41 @@ describe('Sơ đồ tổ chức', () => {
   let items: Department[];
   const posts: unknown[] = [];
   const puts: unknown[] = [];
+  /** Người đang được giao phạm vi chuyền theo mã (giả GET /hr/departments/line-holders) và các mã đã hỏi */
+  let holders: Record<string, { username: string; fullName: string }[]> = {};
+  const asked: string[] = [];
+  const restores: string[] = [];
+  /** Lần ghi kế tiếp: máy chủ lưu bộ phận nhưng chưa cập nhật được phân quyền theo chuyền */
+  let failLineScope = false;
   beforeEach(() => {
     signIn(HR_ALL);
     view.mobile = false;
     items = [...DEPTS];
     posts.length = 0;
     puts.length = 0;
+    holders = {};
+    asked.length = 0;
+    restores.length = 0;
+    failLineScope = false;
     vi.mocked(api).mockReset();
     vi.mocked(api).mockImplementation((async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (path.startsWith('/hr/departments/line-holders')) {
+        const code = new URLSearchParams(path.split('?')[1]).get('code')!;
+        asked.push(code);
+        return { code, holders: holders[code] ?? [] };
+      }
       if (opts?.method === 'PUT' && path.startsWith('/hr/departments/')) {
         puts.push(opts.body);
         const id = Number(path.split('/').pop());
         const saved = { ...items.find((d) => d.id === id)!, ...(opts.body as Partial<Department>) };
+        items = items.map((d) => (d.id === id ? saved : d));
+        if (failLineScope) throw new ApiError(500, 'LINE_SCOPE_UPDATE_FAILED', `Đã lưu bộ phận ${saved.code} nhưng chưa cập nhật được phân quyền theo chuyền.`, { department: saved });
+        return saved;
+      }
+      if (opts?.method === 'POST' && path.endsWith('/restore')) {
+        const id = Number(path.split('/')[3]);
+        const saved = { ...items.find((d) => d.id === id)!, isActive: true, dissolvedDate: null };
+        restores.push(saved.code);
         items = items.map((d) => (d.id === id ? saved : d));
         return saved;
       }
@@ -222,7 +245,14 @@ describe('Sơ đồ tổ chức', () => {
         return created;
       }
       if (path.startsWith('/hr/departments/tree')) return { items };
-      if (path === '/hr/departments/options') return { types: TYPES, factories: [{ code: 'A01', name: 'Nhà máy 1' }] };
+      if (path === '/hr/departments/options')
+        return {
+          types: TYPES,
+          factories: [
+            { code: 'A01', name: 'Nhà máy 1' },
+            { code: 'A02', name: 'Nhà máy 2' },
+          ],
+        };
       if (path.startsWith('/hr/departments/manager-options')) return [];
       throw new Error(`Chưa giả lập ${path}`);
     }) as unknown as typeof api);
@@ -351,6 +381,8 @@ describe('Sơ đồ tổ chức', () => {
     fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
 
     await waitFor(() => expect(puts).toHaveLength(1));
+    // Không ai đang được giao phạm vi chuyền KT: lưu ngay, không hỏi lại
+    expect(asked).toEqual(['KT']);
     expect(puts[0]).toEqual({ branchCode: 'A01', isProductionWorkshop: true });
     expect((await screen.findAllByTitle('Xưởng sản xuất: hiện trong ô chọn Chuyền may của đơn vị cơ sở A01')).length).toBeGreaterThan(0);
     await waitFor(() => expect(within(node(3)!).getByText('Xưởng SX')).toBeInTheDocument());
@@ -401,6 +433,105 @@ describe('Sơ đồ tổ chức', () => {
     fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]).toEqual({ name: 'Chuyền 01 mới' });
+  });
+
+  // ---------- Sửa theo review 5.10.15: báo trước người sẽ thấy dữ liệu chuyền, hệ quả đổi ĐVCS, lỗi chưa cập nhật phân quyền ----------
+  const dialog = () => screen.findByRole('dialog');
+
+  it('tích bộ phận mà có người đang được giao phạm vi mã đó: hỏi lại, nêu số người và tên; Xem lại thì chưa lưu', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    holders = { NM1: [{ username: 'tc.a', fullName: 'Nguyễn Văn A' }, { username: 'tc.b', fullName: 'Trần Thị B' }] };
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Nhà máy 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    fireEvent.click(await workshopBox());
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+
+    const ask = await dialog();
+    expect(ask).toHaveTextContent('Lưu thay đổi của Nhà máy 1?');
+    expect(ask).toHaveTextContent('2 người sẽ thấy dữ liệu chuyền này: Nguyễn Văn A (tc.a), Trần Thị B (tc.b). Họ đang được giao phạm vi chuyền NM1 ở màn Phân quyền.');
+    fireEvent.click(within(ask).getByRole('button', { name: 'Xem lại' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(puts).toHaveLength(0);
+
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ isProductionWorkshop: true });
+    expect(asked).toEqual(['NM1', 'NM1']);
+  });
+
+  it('thêm bộ phận tích sẵn: hỏi máy chủ theo mã vừa gõ (viết hoa) trước khi thêm', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    holders = { 'NM1-C09': [{ username: 'tc.c', fullName: 'Lê Văn C' }] };
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Nhà máy 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Thao tác với Nhà máy 1' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Thêm phòng ban con' }));
+    await waitFor(() => expect(inputOf(/Mã phòng ban/)).toBeInTheDocument());
+    fireEvent.change(inputOf(/Mã phòng ban/), { target: { value: 'nm1-c09' } });
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Chuyền 09' } });
+    fireEvent.click(inputOf(/Loại phòng ban/));
+    fireEvent.click(await screen.findByRole('option', { name: /Bộ phận/ }));
+    fireEvent.click(await workshopBox());
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+
+    const ask = await dialog();
+    expect(ask).toHaveTextContent('Thêm Chuyền 09?');
+    expect(ask).toHaveTextContent('1 người sẽ thấy dữ liệu chuyền này: Lê Văn C (tc.c).');
+    fireEvent.click(within(ask).getByRole('button', { name: 'Thêm phòng ban' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(asked).toEqual(['NM1-C09']);
+    expect(posts[0]).toMatchObject({ code: 'NM1-C09', branchCode: 'A01', isProductionWorkshop: true });
+  });
+
+  it('đổi đơn vị cơ sở của chuyền: báo trước dàn chuyền ở đơn vị cơ sở cũ không còn hàng', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    items = [...DEPTS, LINE()];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-C01');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Chuyền 01' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    fireEvent.click(inputOf(/Đơn vị cơ sở/));
+    fireEvent.click(await screen.findByRole('option', { name: 'A02 – Nhà máy 2' }));
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+
+    const ask = await dialog();
+    expect(ask).toHaveTextContent('Chuyền chuyển sang đơn vị cơ sở A02: kế hoạch đã xếp vào chuyền này ở A01 vẫn giữ mã chuyền nhưng không còn hàng trên bảng dàn chuyền của A01');
+    // Chuyền vẫn là chuyền: không hỏi người được giao (danh sách người thấy không đổi)
+    expect(asked).toEqual([]);
+    fireEvent.click(within(ask).getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ branchCode: 'A02' });
+  });
+
+  it('khôi phục chuyền: báo trước người sẽ thấy lại dữ liệu chuyền; không ai thì khôi phục ngay', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    items = [...DEPTS, LINE(), { ...dept(7, 'NM1-C02', 'Chuyền 02', 4, '/VSN/NM1/NM1-C02/', 5, { branchCode: 'A01', isProductionWorkshop: true }), isActive: false, dissolvedDate: '2026-10-01' }];
+    holders = { 'NM1-C02': [{ username: 'tc.a', fullName: 'Nguyễn Văn A' }] };
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-C02&all=1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Chuyền 02' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Khôi phục' }));
+    const ask = await dialog();
+    expect(ask).toHaveTextContent('Khôi phục Chuyền 02?');
+    expect(ask).toHaveTextContent('1 người sẽ thấy dữ liệu chuyền này: Nguyễn Văn A (tc.a).');
+    expect(restores).toEqual([]);
+    fireEvent.click(within(ask).getByRole('button', { name: 'Khôi phục' }));
+    await waitFor(() => expect(restores).toEqual(['NM1-C02']));
+  });
+
+  it('máy chủ đã lưu nhưng chưa cập nhật được phân quyền: hiện bộ phận đã lưu (form đóng), không coi như chưa lưu', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    failLineScope = true;
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Nhà máy 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    fireEvent.click(await workshopBox());
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+    await waitFor(() => expect(puts).toHaveLength(1));
+    // Về khung xem với dữ liệu đã lưu: có dấu Xưởng sản xuất, không còn form
+    await waitFor(() => expect(document.querySelector('form')).toBeNull());
+    expect(within(screen.getByRole('article')).getByText('Xưởng sản xuất')).toBeInTheDocument();
   });
 });
 

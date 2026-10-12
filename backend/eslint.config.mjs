@@ -46,6 +46,17 @@ export default tseslint.config(
       'no-restricted-imports': ['error', { patterns: [{ group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Đơn hàng không phụ thuộc module May (ADR 0009).' }, NO_HR, NO_SYNC] }],
     },
   },
+  // Nền tảng không phụ thuộc module nghiệp vụ (CLAUDE.md mục 3): module cấp dữ liệu cho nền tảng bằng cách đăng ký vào service của
+  // nền tảng (ví dụ module Nhân sự đăng ký LineSource vào OrgService), không để nền tảng import ngược
+  {
+    files: ['src/platform/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ group: ['**/modules/**', '**/modules'], message: 'Nền tảng không import module nghiệp vụ: để module đăng ký vào service của nền tảng (như LineSource).' }] },
+      ],
+    },
+  },
   // Module Nhân sự (ADR 0012) đứng riêng: không đọc bên trong module nghiệp vụ khác
   {
     files: ['src/modules/hr/**/*.ts'],

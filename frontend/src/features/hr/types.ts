@@ -29,6 +29,12 @@ export interface Department {
   modifiedAt: string | null;
 }
 
+/** Người đang được giao phạm vi chuyền theo một mã (GET /hr/departments/line-holders): thấy dữ liệu chuyền đó khi mã thành chuyền */
+export interface LineHolders {
+  code: string;
+  holders: { username: string; fullName: string }[];
+}
+
 export interface DepartmentType {
   id: number;
   code: string;

@@ -292,6 +292,16 @@ function ScopeEditor({ userId, assignment, catalog, onClose }: { userId: number;
     },
     onError: (e) => toastError(e, 'Chưa lưu được'),
   });
+  // Bỏ hết chuyền là nới quyền (thành không giới hạn chuyền): hỏi lại, không chỉ hiện dòng cảnh báo
+  const submit = () =>
+    opensLines
+      ? confirmAction({
+          title: `Bỏ giới hạn chuyền của vai trò ${assignment.roleName}?`,
+          consequence: 'Vai trò này sẽ không còn giới hạn chuyền: người này thấy và sửa dữ liệu của mọi chuyền ở đơn vị cơ sở đang làm việc (màn có cột chuyền).',
+          confirmLabel: 'Bỏ giới hạn chuyền',
+          onConfirm: () => save.mutate(),
+        })
+      : save.mutate();
   return (
     <Stack gap="xs" mt="sm" pt="sm" style={{ borderTop: '1px dashed var(--app-line)' }}>
       {kept.length > 0 && (
@@ -336,7 +346,7 @@ function ScopeEditor({ userId, assignment, catalog, onClose }: { userId: number;
       <Switch label="Chỉ bản ghi do chính người này tạo" checked={own} onChange={(e) => setOwn(e.currentTarget.checked)} />
       <Group justify="flex-end" gap="xs">
         <Button variant="default" size="xs" onClick={() => confirmDiscard(dirty, onClose)}>Hủy</Button>
-        <ActionButton size="xs" loading={save.isPending} blockedReason={dirty ? null : 'Chưa có thay đổi nào.'} onClick={() => save.mutate()}>
+        <ActionButton size="xs" loading={save.isPending} blockedReason={dirty ? null : 'Chưa có thay đổi nào.'} onClick={submit}>
           Lưu phạm vi
         </ActionButton>
       </Group>

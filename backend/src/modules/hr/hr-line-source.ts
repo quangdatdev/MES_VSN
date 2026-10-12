@@ -1,5 +1,5 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
-import { sql } from 'kysely';
+import { sql, type SqlBool } from 'kysely';
 import type { LineSource } from '../../platform/org/line-source';
 import { OrgService, type LineInfo } from '../../platform/org/org.service';
 import { HR_DB } from './hr.db';
@@ -26,7 +26,8 @@ export class HrLineSource implements LineSource, OnModuleInit {
       .selectFrom('Department as d')
       .leftJoin('Department as p', 'p.Id', 'd.ParentId')
       .select(['d.Code', 'd.Name', 'd.BranchCode', 'd.IsActive', 'p.Code as ParentCode', 'p.Name as ParentName'])
-      .where('d.IsProductionWorkshop', '=', true)
+      // Hằng số trong câu lệnh (không phải tham số): SQL Server mới dùng được chỉ mục có lọc IX_Department_ProductionWorkshop
+      .where(sql<SqlBool>`d.IsProductionWorkshop = 1`)
       .where('d.BranchCode', 'is not', null)
       .orderBy('d.BranchCode')
       .orderBy(sql`CASE WHEN p.Id IS NULL THEN 1 ELSE 0 END`)

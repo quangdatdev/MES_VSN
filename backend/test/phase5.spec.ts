@@ -9,6 +9,7 @@ import { env } from '../src/config/env';
 import { isDeadlock } from '../src/common/db-errors';
 import { AllExceptionsFilter } from '../src/common/http-exception.filter';
 import { HR_DB } from '../src/modules/hr/hr.db';
+import { HrLineSource } from '../src/modules/hr/hr-line-source';
 import type { HrDb } from '../src/modules/hr/hr.types';
 import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
@@ -420,6 +421,45 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         org.invalidate();
         await app.get(PermissionService).bumpVersion();
       }
+      expect(new Set((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
+    });
+
+    it('phạm vi chuyền mã "~…" (MES_Core/0009 ghi cho phạm vi cũ vốn không có tác dụng): tập rỗng, không thành không giới hạn', async () => {
+      const id = await tempUser('test.linetilde', ['LINE_LEADER'], ['A01'], { LINE_LEADER: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }] });
+      const core = app.get<CoreDb>(CORE_DB);
+      try {
+        // Bộ sửa phạm vi không nhận mã "~": ghi thẳng như migration 0009
+        const ur = await core.selectFrom('SysUserRole').select('Id').where('UserId', '=', id).where('RoleId', '=', roleId('LINE_LEADER')).executeTakeFirstOrThrow();
+        await core.updateTable('SysUserRoleScope').set({ ScopeValue: '~A01-L03' }).where('UserRoleId', '=', ur.Id).execute();
+        await app.get(PermissionService).bumpVersion();
+        const access = await app.get(PermissionService).getAccess(id, { code: 'A01', isAggregate: false });
+        const grants = access.grants.get('order.colorsize:view') ?? [];
+        expect(grants.length).toBeGreaterThan(0);
+        for (const g of grants) expect(g.conditions).toContainEqual({ dim: 'LINE', kind: 'none' });
+        const t = await tokenFor('test.linetilde', 'A01', TEST_PASSWORD);
+        expect((await api().get('/api/v1/order/color-size?pageSize=200').set(auth(t)).expect(200)).body.total).toBe(0);
+      } finally {
+        await dropUser(id);
+      }
+    });
+
+    it('nguồn chuyền lỗi (LineSource.loadLines ném lỗi): request của người bị giới hạn chuyền bị từ chối, không thành không giới hạn', async () => {
+      const COLOR_SIZE = '/api/v1/order/color-size?pageSize=200';
+      const t = await tokenFor('truongchuyen.a', 'A01');
+      const org = app.get(OrgService);
+      const spy = jest.spyOn(app.get(HrLineSource), 'loadLines').mockRejectedValue(new Error('Mất kết nối MES_Hr (giả lập)'));
+      try {
+        org.invalidate();
+        await app.get(PermissionService).bumpVersion();
+        const res = await api().get(COLOR_SIZE).set(auth(t));
+        expect(res.status).toBe(500);
+        expect(res.body.items).toBeUndefined();
+      } finally {
+        spy.mockRestore();
+        org.invalidate();
+        await app.get(PermissionService).bumpVersion();
+      }
+      // Lỗi không bị giữ trong cache: nguồn đọc lại được thì chạy lại bình thường
       expect(new Set((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
     });
 

@@ -1,4 +1,4 @@
-import { Badge, Button, Checkbox, Group, NumberInput, Select, Text, TextInput, Title } from '@mantine/core';
+import { Badge, Button, Checkbox, Group, NumberInput, Select, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,10 +12,10 @@ import { confirmAction, confirmDiscard } from '../../lib/confirm';
 import { fmtDate, today } from '../../lib/format';
 import { toastError, toastOk } from '../../lib/notify';
 import { useCan } from '../../shell/permissions';
-import { HR_KEYS, useDepartmentOptions, useManagerOptions } from './api';
+import { fetchLineHolders, HR_KEYS, useDepartmentOptions, useManagerOptions } from './api';
 import { DepartmentSelect, DissolvedBadge, Fact, FieldCell, Trail, WorkshopBadge } from './common';
 import { ancestorsOf, subtreeIds, type FlatDept } from './tree';
-import type { Department } from './types';
+import type { Department, LineHolders } from './types';
 
 /** `seq`: số lượt bấm thêm, làm khóa của form (chọn lại đúng thao tác thêm thì form dựng lại từ đầu) */
 export type PanelMode = { kind: 'view' } | { kind: 'edit' } | { kind: 'create'; parentId: number | null; typeId: number | null; seq: number };
@@ -35,6 +35,49 @@ const lineLock = (action: string) => `Bộ phận là chuyền may: ${action} c�
 const LOCK_ICON = { verticalAlign: -2 } as const;
 /** Ô lưới form co được (như .hr-cell) mà không mang luật ẩn mô tả của .hr-cell */
 const GRID_CELL = { minWidth: 0 } as const;
+
+/**
+ * Máy chủ đã lưu bộ phận (MES_Hr) nhưng chưa ghi được nhật ký, phiên bản quyền (MES_Core): lỗi kèm bộ phận đã lưu để màn hình
+ * hiện đúng dữ liệu thay vì để form như chưa lưu.
+ */
+const savedDespiteError = (e: unknown): Department | null =>
+  e instanceof ApiError && e.code === 'LINE_SCOPE_UPDATE_FAILED' ? ((e.details as { department?: Department } | null)?.department ?? null) : null;
+
+const MAX_NAMES = 10;
+/** Phạm vi chuyền đang "ngủ" của người khác sống lại khi mã thành chuyền đang dùng: nêu tên để người thao tác biết trước */
+function holdersNote(code: string, holders: LineHolders['holders']) {
+  const names = holders
+    .slice(0, MAX_NAMES)
+    .map((h) => `${h.fullName} (${h.username})`)
+    .join(', ');
+  const more = holders.length > MAX_NAMES ? ` và ${holders.length - MAX_NAMES} người khác` : '';
+  return `${holders.length} người sẽ thấy dữ liệu chuyền này: ${names}${more}. Họ đang được giao phạm vi chuyền ${code} ở màn Phân quyền.`;
+}
+
+/** Đổi ĐVCS của chuyền: dữ liệu đã xếp ở ĐVCS cũ còn mã, còn tên, nhưng bảng dàn chuyền, ô chọn của ĐVCS cũ không còn chuyền này */
+const moveNote = (from: string, to: string) =>
+  `Chuyền chuyển sang đơn vị cơ sở ${to}: kế hoạch đã xếp vào chuyền này ở ${from} vẫn giữ mã chuyền nhưng không còn hàng trên bảng dàn chuyền của ${from}, và ô chọn Chuyền may của ${from} không còn chuyền này.`;
+
+/** Hỏi lại trước thao tác làm đổi chuyền may khi có điều cần báo; không có thì làm ngay */
+function confirmLineChange(notes: string[], title: string, confirmLabel: string, run: () => void) {
+  if (!notes.length) return run();
+  confirmAction({
+    title,
+    consequence: (
+      <Stack gap="xs">
+        {notes.map((n) => (
+          <Text key={n} size="sm">
+            {n}
+          </Text>
+        ))}
+      </Stack>
+    ),
+    confirmLabel,
+    cancelLabel: 'Xem lại',
+    danger: false,
+    onConfirm: run,
+  });
+}
 
 interface Props {
   /** Phòng ban đang xem (null khi thêm phòng ban gốc mà chưa chọn gì) */
@@ -56,6 +99,7 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
   const canViewEmployees = useCan('hr.employee:view');
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const qc = useQueryClient();
+  const [checkingRestore, setCheckingRestore] = useState(false);
 
   const refresh = async (saved: Department) => {
     // Ô chọn Chuyền may (Xếp chuyền, Chuẩn bị SX) đọc /me/lines: đổi tên, cờ, ĐVCS, cha của bộ phận đều có thể đổi danh sách đó
@@ -69,7 +113,11 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
       toastOk(`${d.name} đã giải thể từ ${fmtDate(d.dissolvedDate)}.`, 'Đã giải thể');
       await refresh(d);
     },
-    onError: (e) => toastError(e, 'Chưa giải thể được'),
+    onError: async (e) => {
+      const saved = savedDespiteError(e);
+      toastError(e, saved ? 'Đã giải thể, chưa cập nhật phân quyền' : 'Chưa giải thể được');
+      if (saved) await refresh(saved);
+    },
   });
   const restore = useMutation({
     mutationFn: (d: Department) => api<Department>(`/hr/departments/${d.id}/restore`, { method: 'POST', body: {} }),
@@ -77,7 +125,11 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
       toastOk(`${d.name} đang dùng trở lại.`, 'Đã khôi phục');
       await refresh(d);
     },
-    onError: (e) => toastError(e, 'Chưa khôi phục được'),
+    onError: async (e) => {
+      const saved = savedDespiteError(e);
+      toastError(e, saved ? 'Đã khôi phục, chưa cập nhật phân quyền' : 'Chưa khôi phục được');
+      if (saved) await refresh(saved);
+    },
   });
 
   if (mode.kind === 'create' || (mode.kind === 'edit' && dept)) {
@@ -123,6 +175,21 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
       confirmLabel: 'Giải thể',
       onConfirm: () => dissolve.mutate(dept),
     });
+  // Khôi phục chuyền may: người đang được giao phạm vi chuyền này thấy lại dữ liệu chuyền, báo trước
+  const askRestore = async () => {
+    if (!dept.isProductionWorkshop) return restore.mutate(dept);
+    setCheckingRestore(true);
+    let holders: LineHolders['holders'];
+    try {
+      holders = (await fetchLineHolders(dept.code)).holders;
+    } catch (e) {
+      toastError(e, 'Chưa kiểm được người được giao chuyền này');
+      return;
+    } finally {
+      setCheckingRestore(false);
+    }
+    confirmLineChange(holders.length ? [holdersNote(dept.code, holders)] : [], `Khôi phục ${dept.name}?`, 'Khôi phục', () => restore.mutate(dept));
+  };
 
   return (
     <article className="hr-panel" aria-labelledby="hr-dept-title">
@@ -154,7 +221,7 @@ export function DepartmentPanel({ dept, items, mode, onMode, onDirty, onPick, on
                 Giải thể
               </ActionButton>
             ) : (
-              <ActionButton variant="default" leftSection={<IconArrowBackUp size={15} />} blockedReason={restoreBlocked} loading={restore.isPending} onClick={() => restore.mutate(dept)}>
+              <ActionButton variant="default" leftSection={<IconArrowBackUp size={15} />} blockedReason={restoreBlocked} loading={restore.isPending || checkingRestore} onClick={() => void askRestore()}>
                 Khôi phục
               </ActionButton>
             )}
@@ -270,11 +337,45 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
       onDirty(false);
       await onSaved(d);
     },
-    onError: (e) => {
+    onError: async (e) => {
+      const saved = savedDespiteError(e);
+      if (saved) {
+        toastError(e, 'Đã lưu, chưa cập nhật phân quyền');
+        onDirty(false);
+        await onSaved(saved);
+        return;
+      }
       if (creating && e instanceof ApiError && e.status === 409) form.setFieldError('code', e.message);
       toastError(e, creating ? 'Chưa thêm được phòng ban' : 'Chưa lưu được');
     },
   });
+  const [checking, setChecking] = useState(false);
+  /**
+   * Trước khi lưu: thêm hay tích bộ phận làm mã thành chuyền đang dùng thì hỏi máy chủ ai đang được giao phạm vi chuyền mã này;
+   * đổi ĐVCS của chuyền thì báo hệ quả ở ĐVCS cũ. Có điều cần báo thì hỏi lại, không thì lưu ngay.
+   */
+  const submit = async (v: typeof form.values) => {
+    if (typeError) return;
+    const code = creating ? v.code.trim().toUpperCase() : dept!.code;
+    const turningOn = v.isProductionWorkshop && (creating || !dept!.isProductionWorkshop);
+    const moving = !creating && dept!.isProductionWorkshop && v.isProductionWorkshop && !!dept!.branchCode && !!v.branchCode && v.branchCode !== dept!.branchCode;
+    const notes: string[] = [];
+    if (turningOn) {
+      setChecking(true);
+      try {
+        const { holders } = await fetchLineHolders(code);
+        if (holders.length) notes.push(holdersNote(code, holders));
+      } catch (e) {
+        toastError(e, 'Chưa kiểm được người được giao chuyền này');
+        return;
+      } finally {
+        setChecking(false);
+      }
+    }
+    if (moving) notes.push(moveNote(dept!.branchCode!, v.branchCode!));
+    const label = creating ? 'Thêm phòng ban' : 'Lưu thay đổi';
+    confirmLineChange(notes, creating ? `Thêm ${v.name.trim()}?` : `Lưu thay đổi của ${dept!.name}?`, label, () => save.mutate(v));
+  };
 
   const parentPath = form.values.parentId == null ? [] : [...ancestorsOf(byId, form.values.parentId), byId.get(form.values.parentId)].filter(Boolean);
   const factories = options.data?.factories ?? [];
@@ -286,7 +387,7 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
   const workshopLock = !canChangeLines ? WORKSHOP_NEED_ADMIN : !workshop && !form.values.branchCode ? WORKSHOP_NEED_BRANCH : null;
 
   return (
-    <form className="hr-panel" aria-labelledby="hr-dept-form-title" onSubmit={form.onSubmit((v) => (typeError ? undefined : save.mutate(v)))}>
+    <form className="hr-panel" aria-labelledby="hr-dept-form-title" onSubmit={form.onSubmit((v) => void submit(v))}>
       <header className="hr-panel-head">
         <div className="hr-panel-titles">
           <Text size="sm" c="dimmed">
@@ -300,7 +401,7 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
           <Button variant="default" onClick={cancel}>
             Hủy
           </Button>
-          <ActionButton type="submit" loading={save.isPending} blockedReason={!creating && !dirty ? 'Chưa có thay đổi nào.' : typeError}>
+          <ActionButton type="submit" loading={save.isPending || checking} blockedReason={!creating && !dirty ? 'Chưa có thay đổi nào.' : typeError}>
             {creating ? 'Thêm phòng ban' : 'Lưu thay đổi'}
           </ActionButton>
         </Group>

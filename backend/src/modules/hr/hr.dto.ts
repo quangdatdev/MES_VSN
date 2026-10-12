@@ -24,6 +24,14 @@ export class DepartmentTreeQuery {
   @IsOptional() @IsIn(['0', '1']) includeDissolved?: '0' | '1';
 }
 
+/** Mã bộ phận sắp thành chuyền may (thêm, tích, khôi phục): hỏi ai đang được giao phạm vi chuyền theo mã này */
+export class LineHoldersQuery {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @IsString()
+  @Matches(DEPARTMENT_CODE, { message: 'Mã gồm chữ hoa không dấu, số, gạch ngang; tối đa 20 ký tự.' })
+  code!: string;
+}
+
 export class ManagerOptionsQuery {
   @IsOptional() @IsString() @MaxLength(60) q?: string;
   /** Nhân viên đang chọn: luôn trả về dù không khớp q (ô hiện đúng tên) */

@@ -5,7 +5,7 @@ import { DepartmentTypeService } from './department-type.service';
 import { DepartmentService } from './department.service';
 import { EmployeeImportService } from './employee-import.service';
 import { EmployeeService } from './employee.service';
-import { DepartmentCreateDto, DepartmentDissolveDto, DepartmentTreeQuery, DepartmentTypeCreateDto, DepartmentTypeUpdateDto, DepartmentUpdateDto, EmployeeImportDto, EmployeeListQuery, EmployeeWriteDto, ManagerOptionsQuery } from './hr.dto';
+import { DepartmentCreateDto, DepartmentDissolveDto, DepartmentTreeQuery, DepartmentTypeCreateDto, DepartmentTypeUpdateDto, DepartmentUpdateDto, EmployeeImportDto, EmployeeListQuery, EmployeeWriteDto, LineHoldersQuery, ManagerOptionsQuery } from './hr.dto';
 
 const id = () => Param('id', ParseIntPipe);
 
@@ -26,6 +26,11 @@ export class DepartmentController {
   // Ô Người quản lý: nhân viên đang làm, tìm trên máy chủ. Theo cả quyền xem hồ sơ nhân viên (repository lọc)
   @Get('manager-options') @RequirePermission('hr.orgchart:view')
   managerOptions(@CurrentUser() u: AuthUser, @Query() q: ManagerOptionsQuery) { return this.service.managerOptions(u, q.q, q.selected); }
+
+  // Xem trước khi thêm, tích, khôi phục bộ phận chuyền may: ai đang được giao phạm vi chuyền theo mã này sẽ thấy dữ liệu chuyền đó.
+  // Quyền như chính thao tác: sửa Phân quyền (kiểm ở đây) và thêm hoặc sửa Sơ đồ tổ chức (kiểm ở service)
+  @Get('line-holders') @RequirePermission('hr.orgchart:view', 'admin.permission:update')
+  lineHolders(@CurrentUser() u: AuthUser, @Query() q: LineHoldersQuery) { return this.service.lineHolders(u, q.code); }
 
   @Post() @RequirePermission('hr.orgchart:create')
   create(@CurrentUser() u: AuthUser, @Body() dto: DepartmentCreateDto) { return this.service.create(u, dto); }

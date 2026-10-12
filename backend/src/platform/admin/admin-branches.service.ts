@@ -108,7 +108,8 @@ export class AdminBranchesService implements OnModuleInit {
         .values({ Code: dto.code, Name: dto.name.trim(), Description: dto.description ?? null, IsAggregate: false, SortOrder: sortOrder, IsActive: true, IsSystem: false, CreatedBy: actor.userId } as any)
         .output('inserted.Id')
         .executeTakeFirstOrThrow();
-      // Nút gốc cây tổ chức như ĐVCS chép từ BRAVO: dùng được cho phạm vi vai trò, thêm xưởng, chuyền (review 5.9 lượt 2).
+      // Nút gốc cây tổ chức như ĐVCS chép từ BRAVO: dùng được cho phạm vi ĐVCS của vai trò (review 5.9 lượt 2). Từ phase 5.10
+      // cây chỉ còn nút ĐVCS: chuyền may là bộ phận tích "Xưởng sản xuất" ở Sơ đồ tổ chức, không thêm vào SysOrgUnit.
       // SysOrgUnit có trigger nên chèn không dùng OUTPUT
       await trx
         .insertInto('SysOrgUnit')
