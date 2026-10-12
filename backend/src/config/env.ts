@@ -72,6 +72,9 @@ export const env = {
   // Cập nhật Nhà máy SX của đơn hàng theo OSM sau mỗi đợt đồng bộ và lúc khởi động (ADR 0013 mục 9). Mặc định bật, kể cả khi
   // nạp đơn hàng tự động tắt; test tắt (test/setup-env.ts) để bước này không chạy xen vào bài test
   osmFactoryUpdate: flag('OSM_FACTORY_UPDATE', true),
+  // Làm mới bảng Phân bổ PO (MES_Order.PoAllocation) từ dữ liệu OSM đã chép sau mỗi đợt đồng bộ nguồn OSM.OSMData và lúc khởi
+  // động (Phase 5.10). Mặc định bật; test tắt (test/setup-env.ts) để bước này không chạy xen vào bài test, bài test gọi thẳng
+  poAllocationRefresh: flag('PO_ALLOCATION_REFRESH', true),
   // Cookie refresh chỉ gửi qua HTTPS. Demo trong mạng nội bộ chạy HTTP thì để COOKIE_SECURE=false.
   cookieSecure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : isProd,
   // Chỉ khai báo khi thật sự chạy sau reverse proxy (ví dụ "loopback" hoặc IP của Nginx). Mặc định không tin

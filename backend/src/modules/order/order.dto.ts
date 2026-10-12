@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -87,6 +88,31 @@ export class PoAllocationQuery {
 export class PoAllocationValuesQuery extends PoAllocationQuery {
   @IsString() @FilterFieldParam() field!: string;
   @IsOptional() @IsString() @MaxLength(60) search?: string;
+}
+
+// Mã nhà máy SX của danh mục (tên theo OSM, MES_Core/0008): không dấu phẩy, không ký tự điều khiển
+const FACTORY_NAME = /^[^\p{C},]+$/u;
+
+/**
+ * Đổi Nhà máy SX ở Phân bổ PO (task 5.10.4). `ids`: dòng đang thấy (máy chủ áp cho mọi dòng cùng SO, PO, Style No, Màu).
+ * `factoryName`: mã nhà máy của danh mục (trùng mã cột đã đăng ký nên chính sách cột của Nhà máy SX tự áp); null là "Theo OSM";
+ * bỏ trống chỉ được khi `dryRun` (hỏi trước số dòng sẽ bị áp). Không đặt khóa trùng mã cột khác (po, so, color…).
+ */
+export class PoAllocationFactoryDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Chọn ít nhất một dòng.' })
+  @ArrayMaxSize(500, { message: 'Mỗi lần đổi tối đa 500 dòng.' })
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  ids!: number[];
+  @ValidateIf((o: { factoryName?: unknown; dryRun?: boolean }) => o.factoryName !== null && (o.factoryName !== undefined || !o.dryRun))
+  @trim()
+  @IsString({ message: 'Chọn nhà máy SX, hoặc "Theo OSM" để bỏ nhập tay.' })
+  @MinLength(1, { message: 'Chọn nhà máy SX, hoặc "Theo OSM" để bỏ nhập tay.' })
+  @MaxLength(100)
+  @Matches(FACTORY_NAME, { message: 'Mã nhà máy SX không hợp lệ.' })
+  factoryName?: string | null;
+  @IsOptional() @IsBoolean() dryRun?: boolean;
 }
 
 // ---------- Thông tin đơn hàng ----------

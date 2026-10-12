@@ -94,9 +94,10 @@ export interface ResourceDef {
 export const resources: ResourceDef[] = [
   // Đơn hàng, PO lấy hết từ BRAVO, dùng chung toàn công ty, không lọc theo ĐVCS (ADR 0013, đổi từ BRANCH ngày 11/10/2026)
   { code: 'order.allocation', name: 'Thông tin đơn hàng', path: '/order/info', table: 'SalesOrder', scope: 'SHARED', matrix: ['V', 'VE', 'VCUDE', '', '', 'VE'] },
-  // Phân bổ PO theo nhà máy SX lấy từ OSM (task 5.9.12): chỉ xem, đọc bảng chép ở MES_Sync qua lớp đồng bộ (không có bảng ở
-  // database module), dùng chung toàn công ty. Quyền xem như Thông tin đơn hàng
-  { code: 'order.poallocation', name: 'Phân bổ PO', path: '/order/po-allocation', scope: 'SHARED', matrix: ['V', 'VE', 'VE', '', '', 'VE'] },
+  // Phân bổ PO theo nhà máy SX lấy từ OSM (task 5.9.12): bảng làm việc MES_Order.PoAllocation chép từ dữ liệu OSM đã đồng bộ,
+  // dùng chung toàn công ty (ĐVCS suy từ Nhà máy SX). Quyền xem như Thông tin đơn hàng; Kế hoạch sửa Nhà máy SX (Phase 5.10,
+  // máy đã cài nhận quyền qua migration MES_Core/0010)
+  { code: 'order.poallocation', name: 'Phân bổ PO', path: '/order/po-allocation', table: 'PoAllocation', scope: 'SHARED', matrix: ['V', 'VE', 'VUE', '', '', 'VE'] },
   { code: 'order.shipment', name: 'Kế hoạch xuất hàng', path: '/order/shipment', table: 'ShipmentPlan', matrix: ['V', 'VE', 'VCUDE', '', '', 'VE'] },
   { code: 'order.po', name: 'Cập nhật tỷ lệ cắt', path: '/order/cut-ratio', table: 'SalesOrderPo', scope: 'SHARED', matrix: ['V', 'VE', 'VCUDE', 'V', '', 'VE'] },
   { code: 'order.lineplan', name: 'Xếp chuyền', path: '/order/line-plan', table: 'ShipmentPlan', matrix: ['V', 'VE', 'VCUDE', 'V', '', 'VE'] },
@@ -184,7 +185,8 @@ export const resourceFields: Record<string, [code: string, name: string, sensiti
     ['shipDate', 'Ngày xuất hàng'],
     ['statusCode', 'Trạng thái'],
   ],
-  // Mã trùng khóa JSON của API Phân bổ PO (po-allocation.service.ts); tên cột theo view OSM v_OSMData
+  // Mã trùng khóa JSON của API Phân bổ PO (po-allocation.service.ts); tên cột theo view OSM v_OSMData. Đơn vị cơ sở, nhà máy theo
+  // OSM, dấu nhập tay suy ra từ Nhà máy SX: mức của chúng còn đi theo mức của Nhà máy SX (service lấy mức chặt hơn)
   'order.poallocation': [
     ['brand', 'Brand'],
     ['season', 'Season'],
@@ -198,6 +200,9 @@ export const resourceFields: Record<string, [code: string, name: string, sensiti
     ['etdRevised', 'ETD-Revised'],
     ['factoryName', 'Nhà máy SX'],
     ['branchCode', 'Đơn vị cơ sở'],
+    ['isFactoryManual', 'Nhập tay'],
+    ['osmFactoryName', 'Nhà máy SX theo OSM'],
+    ['isInOsm', 'Còn trong OSM'],
   ],
   'order.shipment': [
     ['planNo', 'Số kế hoạch'],

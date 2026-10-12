@@ -1,40 +1,68 @@
+import { Errors } from '../src/common/app.exception';
+import type { PoAllocationListRow } from '../src/modules/order/po-allocation.repository';
 import { PoAllocationService } from '../src/modules/order/po-allocation.service';
-import type { OsmPoCriteria, OsmPoRow, OsmPoSort } from '../src/platform/feed/source-feed.service';
 
-// Không cần database: màn Phân bổ PO (task 5.9.12) dựng điều kiện, bỏ trường bị Ẩn/Che, sắp xếp mặc định, ĐVCS theo danh mục
-const row = (over: Partial<OsmPoRow> = {}): OsmPoRow => ({
-  brand: 'B1',
-  season: 'S1',
-  po: 'PO1',
-  so: 'SO1',
-  shipMode: 'SEA',
-  styleName: 'Áo thử',
-  styleNo: 'ST1',
-  color: 'Navy',
-  etdActual: new Date('2026-10-01T00:00:00Z'),
-  etdRevised: null,
-  factoryName: 'VIET DUC',
-  branchCode: 'A01',
-  ...over,
-});
+// Không cần database: màn Phân bổ PO (task 5.9.12, Phase 5.10) dựng điều kiện, bỏ trường bị Ẩn/Che, sắp xếp mặc định, các trường
+// suy ra từ Nhà máy SX theo mức của Nhà máy SX, luồng đổi Nhà máy SX (A00, ĐVCS khác, xem trước, Theo OSM, nhật ký)
+const row = (over: Partial<PoAllocationListRow> = {}): PoAllocationListRow =>
+  ({
+    Id: '11',
+    RowHash: Buffer.alloc(32),
+    Brand: 'B1',
+    Season: 'S1',
+    PoNo: 'PO1',
+    SoNo: 'SO1',
+    ShipMode: 'SEA',
+    StyleName: 'Áo thử',
+    StyleNo: 'ST1',
+    Color: 'Navy',
+    EtdActualDate: new Date('2026-10-01T00:00:00Z'),
+    EtdRevisedDate: null,
+    OsmFactoryCode: 'VIET DUC',
+    ProductionFactoryCode: 'VIET DUC',
+    IsFactoryManual: false,
+    IsInOsm: true,
+    SyncedAt: new Date('2026-10-12T03:00:00Z'),
+    CreatedAt: new Date(),
+    CreatedBy: null,
+    ModifiedAt: null,
+    ModifiedBy: null,
+    BranchCode: 'A01',
+    ...over,
+  }) as unknown as PoAllocationListRow;
 
 type Level = 'HIDDEN' | 'MASKED' | 'READONLY' | 'EDITABLE';
 
 /** `policy`: mức của từng cột với người xem; Ẩn, Che là không xem được nguyên giá trị */
 function make(policy: Record<string, Level> = {}) {
-  const feed = {
-    osmPoPage: jest.fn(async (_c: OsmPoCriteria, page: number, pageSize: number, _sort: OsmPoSort[]) => ({
+  const repo = {
+    list: jest.fn(async (_s: unknown, opts: any) => ({
+      items: [row(), row({ Id: 12, PoNo: 'PO2', ProductionFactoryCode: 'MEKO', OsmFactoryCode: 'X', IsFactoryManual: true, IsInOsm: false, BranchCode: null })],
       total: 2,
-      page,
-      pageSize,
-      rows: [row(), row({ po: 'PO2', factoryName: null, branchCode: null })],
-      syncedAt: new Date('2026-10-12T03:00:00Z'),
-      sourceActive: true,
+      page: opts.page,
+      pageSize: opts.pageSize,
     })),
-    osmPoValues: jest.fn(async (_c: OsmPoCriteria, _field: string, _search: string | undefined, _limit: number) => ({ rows: ['A01', null], truncated: false })),
-    osmPoAll: jest.fn(async (_c: OsmPoCriteria, _sort: OsmPoSort[]) => [row(), row({ factoryName: 'LẠ', branchCode: null })]),
-    osmPoOptions: jest.fn(async () => ({ brands: ['B1'], seasons: ['S1'] })),
+    lastSyncedAt: jest.fn(async () => new Date('2026-10-12T03:00:00Z') as Date | null),
+    distinctValues: jest.fn(async (_s: unknown, _c: unknown, _o: unknown): Promise<{ rows: unknown[]; truncated: boolean }> => ({ rows: ['A01', null], truncated: false })),
+    distinct: jest.fn(async (_s: unknown, col: string) => (col === 'Brand' ? ['B1'] : ['S1'])),
+    countFor: jest.fn(async (_s: unknown, _o: unknown, _a: unknown) => 2),
+    listAll: jest.fn(async (_s: unknown, _o: unknown) => [row(), row({ Id: 12, ProductionFactoryCode: 'LẠ', IsFactoryManual: true, IsInOsm: false, BranchCode: null })]),
+    assertWritable: jest.fn(async (scope: { isAggregate: boolean }) => {
+      if (scope.isAggregate) throw Errors.aggregateReadOnly();
+    }),
+    withWriteLock: jest.fn(async (work: (trx: unknown) => Promise<unknown>) => work({})),
+    target: jest.fn(async (_s: unknown, _ids: number[], _trx: unknown) => ({
+      found: 1,
+      keys: 1,
+      rows: 2,
+      groups: [{ PoNo: 'PO1', SoNo: null, StyleNo: 'ST1', Color: 'Navy', ProductionFactoryCode: 'VIET DUC', IsFactoryManual: false, n: 2 }],
+      otherBranch: 0,
+      writable: 2,
+    })),
+    setManual: jest.fn(async (_s: unknown, _ids: number[], _code: string, _trx: unknown) => 2),
+    resetToOsm: jest.fn(async (_s: unknown, _ids: number[], _trx: unknown) => ({ updated: 2, removed: 0 })),
   };
+  const feed = { osmPoSourceActive: jest.fn(async () => true) };
   const levels = new Map(Object.entries(policy));
   const blind = (f: string) => levels.get(f) === 'HIDDEN' || levels.get(f) === 'MASKED';
   const fields = {
@@ -46,106 +74,185 @@ function make(policy: Record<string, Level> = {}) {
     productionFactories: jest.fn(async () => [
       { code: 'VIET DUC', name: 'Việt Đức', branchCode: 'A01', isActive: true },
       { code: 'MEKO', name: 'Meko', branchCode: null, isActive: true },
+      { code: 'CU', name: 'Nhà máy cũ', branchCode: 'A01', isActive: false },
     ]),
     branchNames: jest.fn(async () => new Map([['A01', 'Vietsun Đà Nẵng']])),
   };
   const exporter = { csv: jest.fn(async (_u: unknown, _r: string, _c: { key: string }[], rows: unknown[], _f: string) => rows) };
-  const service = new PoAllocationService(feed as any, fields as any, permissions as any, catalogs as any, exporter as any);
-  return { service, feed, exporter };
+  const audit = { log: jest.fn(async () => undefined) };
+  const service = new PoAllocationService(repo as any, feed as any, fields as any, permissions as any, catalogs as any, exporter as any, audit as any);
+  return { service, repo, feed, exporter, audit };
 }
-const user = { userId: 1, username: 'u', branchCode: 'A01', tokenType: 'access' } as any;
+const access = { productionFactories: ['VIET DUC'] };
+const user = { userId: 1, username: 'u', branchCode: 'A01', isAggregate: false, tokenType: 'access', access } as any;
+const aggregate = { ...user, branchCode: 'A00', isAggregate: true } as any;
 const query = (over: Record<string, unknown> = {}) => ({ page: 2, pageSize: 100, ...over }) as any;
-const ALL = ['etdRevised', 'etdActual', 'brand', 'season', 'po', 'so', 'shipMode', 'styleName', 'styleNo', 'color', 'factoryName', 'branchCode'];
+
+/** Tên cột của một mục ORDER BY (biểu thức ĐVCS là CASE theo danh mục) */
+function orderCols(orderBy: { expr: { toOperationNode(): unknown }; dir: string }[]) {
+  return orderBy.map((o) => {
+    const node = JSON.stringify(o.expr.toOperationNode());
+    if (node.includes('CASE')) return 'BranchCode';
+    const names = [...node.matchAll(/"name":"(\w+)"/g)].map((m) => m[1]);
+    return names[names.length - 1];
+  });
+}
 
 describe('Phân bổ PO (service)', () => {
-  it('dải lọc: Brand, Season so bằng; mã hàng tìm trong StyleNo, StyleName; PO, SO; ĐVCS chỉ của nhà máy đã gắn', async () => {
-    const { service, feed } = make();
-    const res = await service.list(user, query({ customer: ' B1 ', season: 'S1', style: 'ST', q: 'PO', cf: JSON.stringify({ branchCode: { in: ['A01', null] } }) }));
-    const [c, page, pageSize, sort] = feed.osmPoPage.mock.calls[0];
-    expect(c.equals).toEqual([
-      { field: 'brand', value: 'B1' },
-      { field: 'season', value: 'S1' },
+  it('danh sách: ô tìm PO, SO; mặc định ETD-Revised mới lên trước, thứ tự phụ theo mọi cột xem được; STT liên tục theo trang', async () => {
+    const { service, repo } = make();
+    const res = await service.list(user, query({ q: 'PO' }));
+    const opts = repo.list.mock.calls[0][1];
+    expect(opts).toMatchObject({ page: 2, pageSize: 100, q: 'PO', searchExclude: [] });
+    expect(orderCols(opts.orderBy)).toEqual([
+      'EtdRevisedDate',
+      'EtdActualDate',
+      'Brand',
+      'Season',
+      'PoNo',
+      'SoNo',
+      'ShipMode',
+      'StyleName',
+      'StyleNo',
+      'Color',
+      'ProductionFactoryCode',
+      'BranchCode',
+      'OsmFactoryCode',
+      'IsFactoryManual',
+      'IsInOsm',
     ]);
-    expect(c.contains).toEqual([
-      { text: 'ST', fields: ['styleNo', 'styleName'] },
-      { text: 'PO', fields: ['po', 'so'] },
+    expect(opts.orderBy[0].dir).toBe('desc');
+    expect(res.items.map((r) => [r.id, r.rowNo])).toEqual([
+      [11, 101],
+      [12, 102],
     ]);
-    expect(c.factoryBranches).toEqual([{ code: 'VIET DUC', branchCode: 'A01' }]);
-    expect(c.filters).toEqual([{ field: 'branchCode', mode: 'in', values: ['A01', null] }]);
-    expect([page, pageSize]).toEqual([2, 100]);
-    // Mặc định ETD-Revised mới lên trước, thứ tự phụ theo mọi cột còn lại
-    expect(sort.map((s) => s.field)).toEqual(ALL);
-    expect(sort[0]).toEqual({ field: 'etdRevised', dir: 'desc' });
-    // STT liên tục theo trang (khóa dòng của lưới), ngày dạng YYYY-MM-DD
-    expect(res.items.map((r) => r.rowNo)).toEqual([101, 102]);
-    expect(res.items[0]).toMatchObject({ etdActual: '2026-10-01', etdRevised: null, branchCode: 'A01' });
+    expect(res.items[0]).toMatchObject({ etdActual: '2026-10-01', etdRevised: null, factoryName: 'VIET DUC', osmFactoryName: 'VIET DUC', isFactoryManual: false, isInOsm: true, branchCode: 'A01' });
+    expect(res.items[1]).toMatchObject({ factoryName: 'MEKO', osmFactoryName: 'X', isFactoryManual: true, isInOsm: false, branchCode: null });
     expect(res).toMatchObject({ syncedAt: new Date('2026-10-12T03:00:00Z'), sourceActive: true });
   });
 
-  it('trường bị Ẩn/Che: bỏ lọc, tìm, sắp xếp theo trường đó; mã hàng chỉ tìm ở trường còn xem được', async () => {
-    const { service, feed } = make({ brand: 'HIDDEN', styleName: 'MASKED', po: 'HIDDEN', so: 'MASKED', color: 'MASKED' });
-    await service.list(user, query({ customer: 'B1', style: 'ST', q: 'PO', sort: 'color:asc', cf: JSON.stringify({ color: { in: ['Navy'] }, shipMode: { in: ['SEA'] } }) }));
-    const [c, , , sort] = feed.osmPoPage.mock.calls[0];
-    expect(c.equals).toEqual([]);
-    expect(c.contains).toEqual([{ text: 'ST', fields: ['styleNo'] }]);
-    expect(c.filters).toEqual([{ field: 'shipMode', mode: 'in', values: ['SEA'] }]);
-    // Cột không xem được không quyết định thứ tự: không là cột sắp xếp, không ở thứ tự phụ
-    expect(sort.map((s) => s.field)).toEqual(['etdRevised', 'etdActual', 'season', 'shipMode', 'styleNo', 'factoryName', 'branchCode']);
+  it('trường bị Ẩn/Che: bỏ khỏi ô tìm và thứ tự; sắp xếp theo trường lạ hoặc bị che thì theo mặc định', async () => {
+    const { service, repo } = make({ po: 'HIDDEN', so: 'MASKED', color: 'MASKED' });
+    await service.list(user, query({ q: 'PO', sort: 'color:asc' }));
+    const opts = repo.list.mock.calls[0][1];
+    expect(opts.searchExclude).toEqual(['PoNo', 'SoNo']);
+    expect(orderCols(opts.orderBy)).not.toEqual(expect.arrayContaining(['PoNo', 'SoNo', 'Color']));
+    expect(orderCols(opts.orderBy)[0]).toBe('EtdRevisedDate');
+    await service.list(user, query({ sort: 'Brand; DROP TABLE x:asc' }));
+    expect(orderCols(repo.list.mock.calls[1][1].orderBy)[0]).toBe('EtdRevisedDate');
+    await service.list(user, query({ sort: 'branchCode:asc' }));
+    expect(orderCols(repo.list.mock.calls[2][1].orderBy)[0]).toBe('BranchCode');
+    expect(repo.list.mock.calls[2][1].orderBy[0].dir).toBe('asc');
   });
 
   it('cột sắp xếp mặc định bị Ẩn/Che thì xếp theo cột mặc định kế tiếp xem được', async () => {
     const a = make({ etdRevised: 'HIDDEN' });
-    await a.service.list(user, query({ sort: 'etdRevised:desc' }));
-    expect(a.feed.osmPoPage.mock.calls[0][3][0]).toEqual({ field: 'etdActual', dir: 'desc' });
+    await a.service.list(user, query());
+    expect(orderCols(a.repo.list.mock.calls[0][1].orderBy)[0]).toBe('EtdActualDate');
     const b = make({ etdRevised: 'MASKED', etdActual: 'HIDDEN' });
     await b.service.list(user, query());
-    expect(b.feed.osmPoPage.mock.calls[0][3][0]).toEqual({ field: 'brand', dir: 'asc' });
-    expect(b.feed.osmPoPage.mock.calls[0][3].map((s) => s.field)).not.toEqual(expect.arrayContaining(['etdRevised']));
+    expect(orderCols(b.repo.list.mock.calls[0][1].orderBy)[0]).toBe('Brand');
+    expect(b.repo.list.mock.calls[0][1].orderBy[0].dir).toBe('asc');
   });
 
-  it('sắp xếp theo trường của danh sách trắng; trường lạ theo mặc định', async () => {
-    const { service, feed } = make();
-    await service.list(user, query({ sort: 'po:asc' }));
-    await service.list(user, query({ sort: 'Brand; DROP TABLE x:asc' }));
-    expect(feed.osmPoPage.mock.calls[0][3][0]).toEqual({ field: 'po', dir: 'asc' });
-    expect(feed.osmPoPage.mock.calls[1][3][0]).toEqual({ field: 'etdRevised', dir: 'desc' });
-  });
-
-  it('Đơn vị cơ sở suy ra từ Nhà máy SX: Nhà máy SX bị Ẩn thì không có ĐVCS, bị Che thì ĐVCS cũng bị che, không lọc, xếp, hỏi giá trị được', async () => {
+  it('trường suy ra từ Nhà máy SX: Nhà máy SX bị Ẩn thì không có, bị Che thì cũng che; không lọc, xếp, hỏi giá trị theo chúng được', async () => {
     const hidden = make({ factoryName: 'HIDDEN' });
-    const res = await hidden.service.list(user, query({ sort: 'branchCode:asc', cf: JSON.stringify({ branchCode: { in: ['A01'] } }) }));
-    expect(res.items.every((r) => !('branchCode' in r))).toBe(true);
-    const [c, , , sort] = hidden.feed.osmPoPage.mock.calls[0];
-    expect(c.filters).toEqual([]);
-    expect(sort.map((s) => s.field)).not.toContain('branchCode');
-    await expect(hidden.service.values(user, query({ field: 'branchCode' }))).rejects.toMatchObject({ code: 'FIELD_NOT_READABLE' });
+    const res = await hidden.service.list(user, query({ sort: 'branchCode:asc' }));
+    for (const f of ['branchCode', 'osmFactoryName', 'isFactoryManual', 'isInOsm']) expect(res.items.every((r) => !(f in r))).toBe(true);
+    expect(orderCols(hidden.repo.list.mock.calls[0][1].orderBy)).not.toEqual(expect.arrayContaining(['BranchCode', 'OsmFactoryCode', 'IsFactoryManual', 'IsInOsm']));
+    for (const field of ['branchCode', 'isFactoryManual', 'osmFactoryName']) {
+      await expect(hidden.service.values(user, query({ field }))).rejects.toMatchObject({ code: 'FIELD_NOT_READABLE' });
+    }
     const exported = (await hidden.service.export(user, query())) as unknown as Record<string, unknown>[];
-    expect(hidden.exporter.csv.mock.calls[0][2].map((col) => col.key)).not.toContain('branchName');
+    expect(hidden.exporter.csv.mock.calls[0][2].map((col) => col.key)).toEqual(['brand', 'season', 'po', 'so', 'shipMode', 'styleName', 'styleNo', 'color', 'etdActual', 'etdRevised', 'factoryName']);
     expect(exported[0]).not.toHaveProperty('branchCode');
 
     const masked = make({ factoryName: 'MASKED' });
-    expect((await masked.service.list(user, query())).items.map((r) => r.branchCode)).toEqual(['***', null]);
-    expect(((await masked.service.export(user, query())) as unknown as Record<string, unknown>[]).map((r) => r.branchName)).toEqual(['***', null]);
+    const items = (await masked.service.list(user, query())).items;
+    expect(items.map((r) => [r.branchCode, r.osmFactoryName, r.isFactoryManual, r.isInOsm])).toEqual([
+      ['***', '***', '***', '***'],
+      [null, '***', '***', '***'],
+    ]);
+    expect(((await masked.service.export(user, query())) as unknown as Record<string, unknown>[]).map((r) => [r.branchName, r.manualText])).toEqual([
+      ['***', '***'],
+      [null, '***'],
+    ]);
   });
 
-  it('popup lọc: chỉ trường của danh sách trắng và xem được; ô trống là null', async () => {
-    const { service, feed } = make({ factoryName: 'MASKED' });
-    await expect(service.values(user, query({ field: 'factoryName' }))).rejects.toMatchObject({ code: 'FIELD_NOT_READABLE' });
+  it('popup lọc: chỉ trường của danh sách trắng và xem được; ô trống là null; dấu nhập tay là số', async () => {
+    const { service, repo } = make({ color: 'MASKED' });
+    await expect(service.values(user, query({ field: 'color' }))).rejects.toMatchObject({ code: 'FIELD_NOT_READABLE' });
     await expect(service.values(user, query({ field: 'SyncRowId' }))).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
-    expect(await service.values(user, query({ field: 'color', search: 'N' }))).toEqual({ values: ['A01', null], truncated: false });
-    expect(feed.osmPoValues).toHaveBeenCalledWith(expect.anything(), 'color', 'N', 500);
+    expect(await service.values(user, query({ field: 'branchCode', search: 'A' }))).toEqual({ values: ['A01', null], truncated: false });
+    expect(repo.distinctValues.mock.calls[0][2]).toMatchObject({ search: 'A', limit: 500 });
+    repo.distinctValues.mockResolvedValueOnce({ rows: [true, false], truncated: false });
+    expect((await service.values(user, query({ field: 'isFactoryManual' }))).values).toEqual([1, 0]);
   });
 
-  it('gợi ý Brand, Season rỗng khi cột bị Ẩn/Che', async () => {
-    expect(await make().service.options(user)).toEqual({ brands: ['B1'], seasons: ['S1'] });
-    expect(await make({ brand: 'MASKED' }).service.options(user)).toEqual({ brands: [], seasons: ['S1'] });
+  it('gợi ý Brand, Season rỗng khi cột bị Ẩn/Che; nhà máy đang dùng (kèm ĐVCS) cho popup Đổi nhà máy SX', async () => {
+    expect(await make().service.options(user)).toEqual({
+      brands: ['B1'],
+      seasons: ['S1'],
+      factories: [
+        { code: 'VIET DUC', name: 'Việt Đức', branchCode: 'A01' },
+        { code: 'MEKO', name: 'Meko', branchCode: null },
+      ],
+    });
+    expect(await make({ brand: 'MASKED', factoryName: 'HIDDEN' }).service.options(user)).toEqual({ brands: [], seasons: ['S1'], factories: [] });
   });
 
-  it('xuất file ghi tên ĐVCS; nhà máy chưa gắn ĐVCS thì để trống', async () => {
-    const { service, exporter } = make();
+  it('xuất file ghi tên ĐVCS, cột Nhập tay; quá 50.000 dòng thì báo lọc bớt', async () => {
+    const { service, repo, exporter } = make();
     const rows = (await service.export(user, query())) as unknown as Record<string, unknown>[];
-    expect(rows.map((r) => r.branchName)).toEqual(['Vietsun Đà Nẵng', null]);
+    expect(rows.map((r) => [r.branchName, r.manualText])).toEqual([
+      ['Vietsun Đà Nẵng', null],
+      [null, 'Nhập tay, không còn trong OSM'],
+    ]);
     expect(exporter.csv.mock.calls[0][1]).toBe('order.poallocation');
-    expect(exporter.csv.mock.calls[0][2].map((col) => col.key)).toContain('branchName');
+    expect(repo.listAll.mock.calls[0][1]).toMatchObject({ maxRows: 50_000 });
+    repo.countFor.mockResolvedValueOnce(50_001);
+    await expect(service.export(user, query())).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('đổi Nhà máy SX: A00 bị từ chối trước khi đọc gì; nhà máy phải đang dùng; xem trước không ghi', async () => {
+    const { service, repo, audit } = make();
+    await expect(service.setFactory(aggregate, { ids: [11], factoryName: 'MEKO' })).rejects.toMatchObject({ code: 'AGGREGATE_READ_ONLY' });
+    expect(repo.withWriteLock).not.toHaveBeenCalled();
+    await expect(service.setFactory(user, { ids: [11], factoryName: 'CU' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await expect(service.setFactory(user, { ids: [11], factoryName: 'KHONG CO' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(await service.setFactory(user, { ids: [11, 11], dryRun: true })).toEqual({ rows: 2, keys: 1, removed: 0, dryRun: true });
+    expect(repo.target.mock.calls[0][1]).toEqual([11]);
+    expect(repo.setManual).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('đổi Nhà máy SX: dòng của ĐVCS khác, dòng không còn, ghi lệch số dòng thì báo lỗi, không ghi nhật ký', async () => {
+    const { service, repo, audit } = make();
+    repo.target.mockResolvedValueOnce({ found: 1, keys: 1, rows: 3, groups: [], otherBranch: 1, writable: 2 });
+    await expect(service.setFactory(user, { ids: [11], factoryName: 'MEKO' })).rejects.toMatchObject({ code: 'FACTORY_OF_OTHER_BRANCH' });
+    repo.target.mockResolvedValueOnce({ found: 1, keys: 2, rows: 3, groups: [], otherBranch: 0, writable: 3 });
+    await expect(service.setFactory(user, { ids: [11, 12], factoryName: 'MEKO' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    repo.setManual.mockResolvedValueOnce(1);
+    await expect(service.setFactory(user, { ids: [11], factoryName: 'MEKO' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('đổi Nhà máy SX: lưu mã của danh mục, "Theo OSM" bỏ nhập tay; nhật ký có khóa, nhà máy trước và sau', async () => {
+    const { service, repo, audit } = make();
+    expect(await service.setFactory(user, { ids: [11], factoryName: 'meko' })).toEqual({ rows: 2, keys: 1, removed: 0, dryRun: false });
+    expect(repo.setManual.mock.calls[0].slice(1, 3)).toEqual([[11], 'MEKO']);
+    expect(audit.log).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        username: 'u',
+        branchCode: 'A01',
+        entityType: 'PoAllocation',
+        actionCode: 'PO_ALLOCATION_FACTORY',
+        oldValue: { groups: [{ po: 'PO1', so: null, styleNo: 'ST1', color: 'Navy', factory: 'VIET DUC', manual: false, rows: 2 }] },
+        newValue: { factory: 'MEKO', manual: true, rows: 2, keys: 1, removed: 0 },
+      }),
+    );
+    repo.resetToOsm.mockResolvedValueOnce({ updated: 1, removed: 1 });
+    expect(await service.setFactory(user, { ids: [11], factoryName: null })).toEqual({ rows: 2, keys: 1, removed: 1, dryRun: false });
+    expect(audit.log).toHaveBeenLastCalledWith(expect.objectContaining({ newValue: { factory: null, manual: false, rows: 2, keys: 1, removed: 1 } }));
   });
 });

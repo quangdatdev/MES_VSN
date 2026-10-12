@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { sql, type Expression, type ExpressionBuilder, type Kysely, type SelectQueryBuilder, type SqlBool } from 'kysely';
+import { sql, type Expression, type ExpressionBuilder, type Kysely, type RawBuilder, type SelectQueryBuilder, type SqlBool } from 'kysely';
 import { Errors } from '../../common/app.exception';
 import type { AuthUser } from '../auth/auth.types';
 import type { Condition, Grant, UserAccess } from '../permission/permission.service';
@@ -38,6 +38,19 @@ export interface ListOptions {
    * (danh sách mã cách nhau dấu phẩy: chỉ cần một mã thuộc ĐVCS). Danh sách nhà máy lấy từ quyền của phiên, không từ client.
    */
   assignedFactories?: boolean;
+  /**
+   * Thứ tự theo biểu thức máy chủ dựng (cột tính, ví dụ ĐVCS suy từ Nhà máy SX), thay cho `sort` và danh sách trắng `sortable`.
+   * Biểu thức do module dựng từ danh sách trắng của màn, không nhận từ client; luôn thêm Id cuối để phân trang ổn định.
+   */
+  orderBy?: { expr: RawBuilder<unknown>; dir: 'asc' | 'desc' }[];
+}
+
+/**
+ * Danh mục Nhà máy SX (mã → ĐVCS quản lý) cho bảng khai `factoryBranchWrite`. Repository của module trả CatalogLookupService
+ * của nền tảng (ADR 0013), không tự dựng danh sách.
+ */
+export interface FactoryDirectory {
+  productionFactories(): Promise<{ code: string; branchCode: string | null }[]>;
 }
 
 /** Tùy chọn của getById */
@@ -56,6 +69,8 @@ export const withoutSystemColumns = (values: Record<string, unknown>, extra: str
 };
 const MAX_PAGE_SIZE = 200;
 const MAX_EXPORT_ROWS = 10_000;
+/** Trần của `maxRows` khi xuất file (màn có giới hạn riêng lớn hơn mặc định, ví dụ Phân bổ PO 50.000 dòng) */
+const MAX_EXPORT_ROWS_CAP = 100_000;
 /**
  * Số Id mỗi câu khi ghi nhiều dòng: SQL Server giới hạn 2100 tham số mỗi câu, điều kiện phạm vi (nhà máy, chuyền, xưởng
  * của mọi phép gán) cũng chiếm tham số nên để dư.
@@ -154,6 +169,20 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   protected readonly usedBy: { table: string; column: string } | null = null;
   /** Cột mã nhà máy SX của bảng, cho tùy chọn `assignedFactories` (ADR 0013). Không khai báo thì tùy chọn đó bị từ chối. */
   protected readonly productionFactoryColumn: string | null = null;
+  /**
+   * Bảng dùng chung (SHARED) không có cột ĐVCS, ĐVCS giữ dòng suy từ Nhà máy SX của dòng (cột `productionFactoryColumn`, danh sách
+   * mã cách nhau dấu phẩy), ví dụ Phân bổ PO (Phase 5.10 Q2). Đọc không lọc ĐVCS. Sửa, xóa chỉ dòng mà không mã nhà máy nào đã
+   * gắn ĐVCS khác, tức mọi mã thuộc nhà máy SX của phiên (UserAccess.productionFactories), hoặc dòng chưa có nhà máy, hoặc nhà
+   * máy chưa gắn ĐVCS, chưa có trong danh mục; dòng khác trả 404 như không tồn tại. Đơn vị tổng hợp không ghi được. Cần
+   * `factoryDirectory()`. Nhà máy đã gắn ĐVCS của phiên nhưng đang ngừng không nằm trong nhà máy SX của phiên: dòng đó cũng không
+   * sửa được (đóng an toàn).
+   */
+  protected readonly factoryBranchWrite: boolean = false;
+
+  /** Danh mục Nhà máy SX cho `factoryBranchWrite`; lớp con khai tùy chọn đó thì trả CatalogLookupService */
+  protected factoryDirectory(): FactoryDirectory | null {
+    return null;
+  }
 
   // Kysely<any>: mỗi module truyền database riêng; tên bảng chỉ biết lúc chạy qua `table`.
   constructor(
@@ -183,6 +212,40 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
     const col = alias ? `${alias}.${this.productionFactoryColumn}` : this.productionFactoryColumn;
     if (!factories.length) return qb.where(FALSE);
     return qb.where(sql<SqlBool>`EXISTS (SELECT 1 FROM STRING_SPLIT(${sql.ref(col)}, ',') f WHERE f.value IN (${sql.join(factories)}))`);
+  }
+
+  /**
+   * Mã nhà máy đã gắn một ĐVCS mà không thuộc nhà máy SX của phiên (`factoryBranchWrite`). Danh mục lấy từ nền tảng, nhà máy
+   * của phiên từ quyền của phiên; so không phân biệt hoa thường như collation của mã.
+   */
+  private async otherBranchFactories(scope: Scope): Promise<string[]> {
+    const directory = this.factoryDirectory();
+    if (!this.productionFactoryColumn || !directory) throw new Error(`${this.resource} khai factoryBranchWrite nhưng thiếu productionFactoryColumn hoặc factoryDirectory()`);
+    const own = new Set(scope.access.productionFactories.map((c) => c.toUpperCase()));
+    return (await directory.productionFactories()).filter((f) => f.branchCode && !own.has(f.code.toUpperCase())).map((f) => f.code);
+  }
+
+  /** Dòng có ít nhất một mã nhà máy (cột danh sách, bỏ khoảng trắng quanh dấu phẩy) nằm trong `codes` (không rỗng) */
+  private factoryAmong(codes: string[], alias?: string) {
+    const col = alias ? `${alias}.${this.productionFactoryColumn}` : this.productionFactoryColumn!;
+    return sql<SqlBool>`EXISTS (SELECT 1 FROM STRING_SPLIT(${sql.ref(col)}, ',') f WHERE LTRIM(RTRIM(f.value)) IN (${sql.join(codes)}))`;
+  }
+
+  /** Điều kiện ghi của `factoryBranchWrite`: không mã nhà máy nào của dòng đã gắn ĐVCS khác; đơn vị tổng hợp không ghi dòng nào */
+  private async factoryWritable<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, alias?: string): Promise<Q> {
+    if (scope.isAggregate) return qb.where(FALSE);
+    const others = await this.otherBranchFactories(scope);
+    return others.length ? qb.where(sql<SqlBool>`NOT ${this.factoryAmong(others, alias)}`) : qb;
+  }
+
+  /**
+   * Dòng không ghi được vì có nhà máy đã gắn ĐVCS khác (`factoryBranchWrite`), để lớp con đếm và báo lý do cho người dùng; không
+   * dùng để trả dòng. Ghép sau `scoped(..., 'view')`.
+   */
+  protected async otherBranchFactoryRows<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, alias?: string): Promise<Q> {
+    if (!this.factoryBranchWrite) throw new Error(`${this.resource} không khai factoryBranchWrite`);
+    const others = await this.otherBranchFactories(scope);
+    return others.length ? qb.where(this.factoryAmong(others, alias)) : qb.where(FALSE);
   }
 
   /** Dòng có trong bảng `usedBy` của ĐVCS phiên (đơn vị tổng hợp: của bất kỳ ĐVCS nào). */
@@ -234,6 +297,8 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
         ? qb.where((eb: ExpressionBuilder<any, any>) => eb.or([eb(col('BranchCode'), '=', scope.branchCode), usedBy]))
         : qb.where(col('BranchCode'), '=', scope.branchCode);
     }
+    // Ghi dòng dùng chung mà ĐVCS giữ dòng suy từ Nhà máy SX
+    if (this.factoryBranchWrite && WRITE_ACTIONS.has(action)) qb = await this.factoryWritable(qb, scope, alias);
 
     const grants = this.grantsFor(scope, action);
     if (grants.length === 0) return qb.where(FALSE);
@@ -269,7 +334,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 
   async assertWritable(scope: Scope) {
     const info = await this.info();
-    if ((info.scope === 'BRANCH' || this.originBranch) && scope.isAggregate) throw Errors.aggregateReadOnly();
+    if ((info.scope === 'BRANCH' || this.originBranch || this.factoryBranchWrite) && scope.isAggregate) throw Errors.aggregateReadOnly();
   }
 
   /** Câu SELECT Id của các dòng trong phạm vi của hành động. */
@@ -316,10 +381,14 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
     return { rows: rows.slice(0, limit).map((r) => r.v), truncated: rows.length > limit };
   }
 
-  /** Toàn bộ dòng khớp điều kiện, cho xuất file (mặc định cần quyền export). */
-  async listAll(scope: Scope, opts: Omit<ListOptions, 'page' | 'pageSize'>, action: DataAction = 'export'): Promise<R[]> {
-    const rows = await this.filtered(this.db.selectFrom(this.table), scope, { ...opts, page: 1, pageSize: MAX_EXPORT_ROWS }, action);
-    return (await this.ordered(rows, opts).offset(0).fetch(MAX_EXPORT_ROWS).execute()) as R[];
+  /**
+   * Toàn bộ dòng khớp điều kiện, cho xuất file (mặc định cần quyền export). Tối đa 10.000 dòng; màn có giới hạn riêng truyền
+   * `maxRows` (trần 100.000) và tự báo người dùng khi vượt.
+   */
+  async listAll(scope: Scope, opts: Omit<ListOptions, 'page' | 'pageSize'> & { maxRows?: number }, action: DataAction = 'export'): Promise<R[]> {
+    const max = opts.maxRows ? Math.min(Math.max(1, Math.trunc(opts.maxRows)), MAX_EXPORT_ROWS_CAP) : MAX_EXPORT_ROWS;
+    const rows = await this.filtered(this.db.selectFrom(this.table), scope, { ...opts, page: 1, pageSize: max }, action);
+    return (await this.ordered(rows, opts).offset(0).fetch(max).execute()) as R[];
   }
 
   /**
@@ -344,7 +413,13 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
    * `sort`: "Cột:chiều", hoặc nhiều cặp cách nhau dấu phẩy ("BranchCode:asc,LineCode:asc"). Cột ngoài danh sách trắng bị
    * bỏ; không còn cột nào thì theo Id. Luôn thêm Id cuối cùng để thứ tự ổn định khi phân trang.
    */
-  private ordered(qb: any, opts: Pick<ListOptions, 'sort' | 'select'>) {
+  private ordered(qb: any, opts: Pick<ListOptions, 'sort' | 'select' | 'orderBy'>) {
+    if (opts.orderBy?.length) {
+      let out = qb.selectAll(this.table);
+      if (opts.select) out = out.select(opts.select);
+      for (const o of opts.orderBy) out = out.orderBy(o.expr, o.dir === 'asc' ? 'asc' : 'desc');
+      return out.orderBy(`${this.table}.Id`, 'desc');
+    }
     const parts = (opts.sort ?? this.defaultSort).split(',').slice(0, 6).map((p) => p.split(':'));
     const valid = parts.filter(([field]) => this.sortable.includes(field)).map(([field, dir]) => [field, dir === 'asc' ? 'asc' : 'desc'] as const);
     const order = valid.length ? valid : ([['Id', parts[0]?.[1] === 'asc' ? 'asc' : 'desc']] as const);
@@ -435,6 +510,8 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   }
 
   async create(scope: Scope, values: Record<string, unknown>, db: Kysely<any> = this.db): Promise<R> {
+    // Luật ĐVCS theo nhà máy chỉ xét dòng đã có: chưa có màn nào tạo dòng trên bảng dạng này (dòng do hệ thống chép từ nguồn)
+    if (this.factoryBranchWrite) throw new Error(`${this.resource}: bảng khai factoryBranchWrite không tạo dòng qua create()`);
     await this.assertWritable(scope);
     const branch = (await this.info()).scope === 'BRANCH' || this.originBranch ? { BranchCode: scope.branchCode } : {};
     const row = { ...withoutSystemColumns(values), ...branch, CreatedBy: scope.userId };

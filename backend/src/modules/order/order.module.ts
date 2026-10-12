@@ -21,12 +21,17 @@ import {
   SalesOrderRepository,
   ShipmentPlanRepository,
 } from './order.repositories';
+import { PoAllocationRefreshService } from './po-allocation-refresh.service';
+import { PoAllocationRefreshRepository, PoAllocationRepository } from './po-allocation.repository';
 import { PoAllocationService } from './po-allocation.service';
 import { SalesOrderService } from './sales-order.service';
 import { ScheduleFeed } from './schedule-feed.service';
 import { ShipmentService } from './shipment.service';
 
-/** Module Đơn hàng: 5 màn theo mô tả giao diện của BA, database MES_Order (ADR 0006), và màn Phân bổ PO đọc dữ liệu OSM đã chép. Chỉ xuất ScheduleFeed cho module khác. */
+/**
+ * Module Đơn hàng: 5 màn theo mô tả giao diện của BA, database MES_Order (ADR 0006), và màn Phân bổ PO (bảng làm việc chép từ dữ
+ * liệu OSM đã đồng bộ, Nhà máy SX sửa tay được). Chỉ xuất ScheduleFeed cho module khác.
+ */
 @Module({
   controllers: [SalesOrderController, PoAllocationController, ShipmentController, CutRatioController, LinePlanController, ColorSizeController],
   providers: [
@@ -44,6 +49,8 @@ import { ShipmentService } from './shipment.service';
     LinePlanAllocationRepository,
     LineAllocationRepository,
     LineColorSizeRepository,
+    PoAllocationRepository,
+    PoAllocationRefreshRepository,
     SalesOrderService,
     PoAllocationService,
     CutRatioService,
@@ -54,6 +61,7 @@ import { ShipmentService } from './shipment.service';
     BravoOrderImportRepository,
     BravoOrderImportService,
     OsmFactoryService,
+    PoAllocationRefreshService,
   ],
   // API công khai cho module khác (module May đọc dàn chuyền, ADR 0009)
   exports: [ScheduleFeed],

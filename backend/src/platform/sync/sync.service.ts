@@ -6,7 +6,6 @@ import type { AuthUser } from '../auth/auth.types';
 import { UserDirectoryService } from '../org/user-directory.service';
 import { SyncStartDto } from './sync.dto';
 import { SYNC_RUN_TIMEOUT_MS } from './sync.db';
-import type { OsmPoCriteria, OsmPoField, OsmPoSort } from './osm-po-source';
 import { SyncRepository, isConnectionLost, isNotMigrated } from './sync.repository';
 
 /** Mốc và mốc lọc là giờ của nguồn (BRAVO), lưu không kèm múi giờ: trả về dạng "YYYY-MM-DDTHH:mm:ss", không có Z. */
@@ -243,27 +242,17 @@ export class SyncService implements OnModuleInit {
     }
   }
 
-  /** Phân bổ PO theo OSM (task 5.9.12): một trang; chưa đồng bộ thì trang rỗng, `syncedAt` null */
-  osmPoPage(c: OsmPoCriteria, page: number, pageSize: number, sort: OsmPoSort[]) {
-    return this.ready(() => this.repo.osmPoPage(c, page, pageSize, sort));
+  /**
+   * Phân bổ PO theo OSM: mọi dòng khác nhau của bảng chép, cho bước làm mới bảng Phân bổ PO của module Đơn hàng (task 5.10.2);
+   * null khi chưa có bảng chép
+   */
+  osmPoSource() {
+    return this.ready(() => this.repo.osmPoSource());
   }
 
-  /** Phân bổ PO theo OSM: giá trị của một trường cho popup lọc theo cột */
-  osmPoValues(c: OsmPoCriteria, field: OsmPoField, search: string | undefined, limit: number) {
-    return this.ready(() => this.repo.osmPoValues(c, field, search, limit));
-  }
-
-  /** Phân bổ PO theo OSM: mọi dòng khớp điều kiện, cho xuất file */
-  osmPoAll(c: OsmPoCriteria, sort: OsmPoSort[]) {
-    return this.ready(() => this.repo.osmPoAll(c, sort));
-  }
-
-  /** Phân bổ PO theo OSM: các Brand, Season đang có */
-  osmPoOptions() {
-    return this.ready(async () => {
-      const [brands, seasons] = await Promise.all([this.repo.osmPoDistinct('brand'), this.repo.osmPoDistinct('season')]);
-      return { brands, seasons };
-    });
+  /** Nguồn đồng bộ Phân bổ PO theo OSM đang bật chưa (máy chưa khai database OSM thì migrate tắt nguồn) */
+  osmPoSourceActive() {
+    return this.ready(() => this.repo.osmPoSourceActive());
   }
 
   /** Một trang dữ liệu của bảng chép danh mục. Bảng lấy theo mã nguồn trong SyncSource, không nhận tên bảng từ client. */
