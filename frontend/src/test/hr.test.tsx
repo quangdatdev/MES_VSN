@@ -46,6 +46,7 @@ const dept = (id: number, code: string, name: string, parentId: number | null, p
   dissolvedDate: null,
   sortOrder: id * 10,
   isActive: true,
+  isProductionWorkshop: false,
   activeEmployees: 0,
   createdAt: '2026-10-11T00:00:00Z',
   modifiedAt: null,
@@ -196,13 +197,22 @@ describe('Cây phòng ban, chức danh theo phòng ban (hàm thuần)', () => {
 describe('Sơ đồ tổ chức', () => {
   let items: Department[];
   const posts: unknown[] = [];
+  const puts: unknown[] = [];
   beforeEach(() => {
     signIn(HR_ALL);
     view.mobile = false;
     items = [...DEPTS];
     posts.length = 0;
+    puts.length = 0;
     vi.mocked(api).mockReset();
     vi.mocked(api).mockImplementation((async (path: string, opts?: { method?: string; body?: unknown }) => {
+      if (opts?.method === 'PUT' && path.startsWith('/hr/departments/')) {
+        puts.push(opts.body);
+        const id = Number(path.split('/').pop());
+        const saved = { ...items.find((d) => d.id === id)!, ...(opts.body as Partial<Department>) };
+        items = items.map((d) => (d.id === id ? saved : d));
+        return saved;
+      }
       if (opts?.method === 'POST' && path === '/hr/departments') {
         posts.push(opts.body);
         const b = opts.body as { code: string; name: string; departmentTypeId: number; parentId: number | null };
@@ -303,6 +313,94 @@ describe('Sơ đồ tổ chức', () => {
     fireEvent.click(node(2)!.querySelector('.hr-tree-row')!);
     expect(await screen.findByText('Bỏ các thay đổi chưa lưu?')).toBeInTheDocument();
     await keepEditing();
+  });
+
+  // ---------- Ô tích "Xưởng sản xuất" (phase 5.10, task 5.10.8): giao diện chỉ phản chiếu, máy chủ cưỡng chế ----------
+  const LINE = () => dept(6, 'NM1-C01', 'Chuyền 01', 4, '/VSN/NM1/NM1-C01/', 5, { branchCode: 'A01', isProductionWorkshop: true });
+  const workshopBox = () => screen.findByRole('checkbox', { name: 'Xưởng sản xuất' });
+
+  it('ô tích "Xưởng sản xuất": thiếu quyền sửa Phân quyền thì khóa, nói lý do ngay dưới ô', async () => {
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Nhà máy 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    const box = await workshopBox();
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked();
+    expect(screen.getByText(/Hiện trong ô chọn Chuyền may của đơn vị cơ sở đã chọn/)).toBeInTheDocument();
+    expect(screen.getByText(/Cần thêm quyền sửa Phân quyền/)).toBeInTheDocument();
+    // Mô tả của ô tích hiện sẵn: không nằm trong .hr-cell (CSS ẩn mô tả, chỉ để trình đọc màn hình đọc, chú thích hiện bằng Tooltip)
+    expect(screen.getByText(/Hiện trong ô chọn Chuyền may/).closest('.hr-cell')).toBeNull();
+    expect(box).toHaveAccessibleDescription(/Cần thêm quyền sửa Phân quyền/);
+  });
+
+  it('đủ quyền: chưa chọn đơn vị cơ sở thì ô tích khóa; chọn rồi tích được, lưu chỉ gửi phần đã đổi, cây hiện dấu Xưởng SX', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=KT');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Phòng Kế toán' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    const box = await workshopBox();
+    expect(box).toBeDisabled();
+    expect(screen.getByText(/Chọn đơn vị cơ sở trước/)).toBeInTheDocument();
+    expect(screen.queryByText(/Cần thêm quyền sửa Phân quyền/)).toBeNull();
+
+    fireEvent.click(inputOf(/Đơn vị cơ sở/));
+    fireEvent.click(await screen.findByRole('option', { name: 'A01 – Nhà máy 1' }));
+    await waitFor(() => expect(box).toBeEnabled());
+    fireEvent.click(box);
+    expect(box).toBeChecked();
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ branchCode: 'A01', isProductionWorkshop: true });
+    expect((await screen.findAllByTitle('Xưởng sản xuất: hiện trong ô chọn Chuyền may của đơn vị cơ sở A01')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(within(node(3)!).getByText('Xưởng SX')).toBeInTheDocument());
+    expect(within(node(2)!.querySelector('.hr-tree-row')!).queryByText('Xưởng SX')).toBeNull();
+  });
+
+  it('đang tích mà xóa đơn vị cơ sở: báo lỗi ở ô đơn vị cơ sở, không gửi; bỏ tích thì hết lỗi', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    items = [...DEPTS, LINE()];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-C01');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Chuyền 01' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Giải thể' })).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    const box = await workshopBox();
+    expect(box).toBeChecked();
+    expect(box).toBeEnabled();
+    // Nút xóa giá trị của ô chọn (không là điểm dừng của Tab nên tìm theo DOM)
+    fireEvent.click(inputOf(/Đơn vị cơ sở/).closest('.mantine-Input-wrapper')!.querySelector('button')!);
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue(''));
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+    expect(await screen.findByText('Bộ phận tích "Xưởng sản xuất" phải có đơn vị cơ sở.')).toBeInTheDocument();
+    expect(puts).toHaveLength(0);
+    // Đang tích thì vẫn bỏ tích được dù chưa có đơn vị cơ sở
+    expect(box).toBeEnabled();
+    fireEvent.click(box);
+    expect(screen.queryByText('Bộ phận tích "Xưởng sản xuất" phải có đơn vị cơ sở.')).toBeNull();
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ branchCode: null, isProductionWorkshop: false });
+  });
+
+  it('bộ phận đã tích, người thiếu quyền sửa Phân quyền: có dấu trên cây, đầu khung; Giải thể khóa; ô đơn vị cơ sở chỉ đọc; đổi tên vẫn lưu', async () => {
+    items = [...DEPTS, LINE()];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-C01');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Chuyền 01' })).toBeInTheDocument();
+    expect(screen.getAllByTitle('Xưởng sản xuất: hiện trong ô chọn Chuyền may của đơn vị cơ sở A01')).toHaveLength(2);
+    expect(within(screen.getByRole('article')).getByText('Xưởng sản xuất')).toBeInTheDocument();
+    expect(within(node(6)!).getByText('Xưởng SX')).toBeInTheDocument();
+    expect(within(node(5)!).queryByText('Xưởng SX')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Giải thể' })).toHaveAttribute('aria-disabled', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    const box = await workshopBox();
+    expect(box).toBeChecked();
+    expect(box).toBeDisabled();
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveAttribute('readonly');
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Chuyền 01 mới' } });
+    fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ name: 'Chuyền 01 mới' });
   });
 });
 

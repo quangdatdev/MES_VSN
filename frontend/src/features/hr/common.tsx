@@ -1,5 +1,5 @@
 import { Alert, Anchor, Badge, Button, Group, Select, Text, Tooltip, type ComboboxItem, type OptionsFilter, type SelectProps } from '@mantine/core';
-import { IconAlertTriangle } from '@tabler/icons-react';
+import { IconAlertTriangle, IconNeedleThread } from '@tabler/icons-react';
 import { cloneElement, useCallback, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type RefObject } from 'react';
 import { ApiError } from '../../lib/api';
 import { fmtDate } from '../../lib/format';
@@ -221,6 +221,27 @@ export function Trail({ items, onPick }: { items: { id: number; name: string }[]
         </span>
       ))}
     </nav>
+  );
+}
+
+const NO_SHRINK = { flexShrink: 0 } as const;
+
+/**
+ * Dấu bộ phận tích "Xưởng sản xuất" (là một chuyền may): chữ kèm biểu tượng kim chỉ như menu May, không chỉ bằng màu.
+ * `short` cho dòng cây (hẹp, lặp nhiều lần nên giải thích bằng `title`, không dùng Tooltip).
+ */
+export function WorkshopBadge({ branchCode, short }: { branchCode: string | null; short?: boolean }) {
+  return (
+    <Badge
+      size={short ? 'xs' : 'sm'}
+      variant="light"
+      color="teal"
+      leftSection={<IconNeedleThread size={short ? 11 : 12} stroke={1.8} aria-hidden />}
+      style={NO_SHRINK}
+      title={`Xưởng sản xuất: hiện trong ô chọn Chuyền may${branchCode ? ` của đơn vị cơ sở ${branchCode}` : ''}`}
+    >
+      {short ? 'Xưởng SX' : 'Xưởng sản xuất'}
+    </Badge>
   );
 }
 

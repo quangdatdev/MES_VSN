@@ -777,7 +777,7 @@ export default function PrepPlanPage() {
                 w={170}
               />
             )}
-            {readable(policy, 'lineCode') && <TreeSelect label="Tổ SX" placeholder="Tất cả" options={lineChoices} value={filter.line || null} onChange={(v) => set({ line: v ?? '' })} clearable unit="tổ" nothingFoundMessage="Không có tổ khớp. Gõ tên, số tổ hoặc tên xưởng." emptyMessage="Chưa có tổ nào." w={170} />}
+            {readable(policy, 'lineCode') && <TreeSelect label="Tổ SX" placeholder="Tất cả" options={lineChoices} value={filter.line || null} onChange={(v) => set({ line: v ?? '' })} clearable unit="tổ" nothingFoundMessage="Không có tổ khớp. Gõ tên, mã tổ hoặc tên bộ phận." emptyMessage="Chưa có tổ nào." w={170} />}
             {readable(policy, 'styleCode') && (
               <DebouncedTextInput label="Mã hàng" placeholder="Gõ một phần mã" leftSection={<IconSearch size={14} />} value={filter.style} onChange={(v) => set({ style: v })} w={170} />
             )}

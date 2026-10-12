@@ -22,6 +22,8 @@ export interface LineInfo {
 export class OrgService {
   private cache: { at: number; lines: LineInfo[] } | null = null;
   private source: LineSource | null = null;
+  /** Tăng mỗi lần invalidate(): lần đọc bắt đầu trước đó (có thể đọc dữ liệu trước khi đổi) không được ghi vào cache */
+  private generation = 0;
   private static readonly TTL_MS = 30_000;
 
   /** Module Nhân sự đăng ký nguồn chuyền lúc khởi động; đăng ký lại thì thay nguồn cũ. */
@@ -36,14 +38,20 @@ export class OrgService {
    */
   private async all(): Promise<LineInfo[]> {
     if (this.cache && Date.now() - this.cache.at < OrgService.TTL_MS) return this.cache.lines;
+    const gen = this.generation;
     const lines = this.source ? await this.source.loadLines() : [];
-    this.cache = { at: Date.now(), lines };
+    // Bỏ tích một chuyền xong mà lần đọc cũ ghi đè cache thì chuyền đó còn trong phạm vi quyền thêm 30 giây
+    if (gen === this.generation) this.cache = { at: Date.now(), lines };
     return lines;
   }
 
-  /** Gọi sau khi tích, bỏ tích, giải thể, khôi phục, đổi ĐVCS của bộ phận chuyền để ô chọn chuyền thấy ngay. */
+  /**
+   * Gọi sau khi ghi bộ phận (tích, bỏ tích, đổi ĐVCS, giải thể, khôi phục, đổi tên, đổi cha) để ô chọn chuyền thấy ngay.
+   * Cache theo từng tiến trình: tiến trình khác thấy sau tối đa TTL_MS.
+   */
   invalidate() {
     this.cache = null;
+    this.generation++;
   }
 
   /**

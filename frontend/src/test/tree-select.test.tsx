@@ -1,9 +1,10 @@
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { TreeSelect } from '../components/TreeSelect';
-import { type GroupedOption } from '../lib/lines';
+import { lineNameLabel, lineOptions, type GroupedOption } from '../lib/lines';
+import type { LineInfo } from '../lib/types';
 import { theme } from '../theme/theme';
 
 // Xưởng 01: L01, L02; Xưởng 02: L03, L04; L09 thẳng dưới nhà máy
@@ -170,5 +171,55 @@ describe('Ô chọn dạng cây (TreeSelect)', () => {
       { value: 'A01-L02', label: 'Chuyền 02', groups: ['Nhà máy A01'] },
     ]);
     expect(rowNames(list())).toEqual(['Nhà máy A01 2 chuyền, đang mở', 'Xưởng 01 1 chuyền, đang thu gọn', 'Chuyền 02']);
+  });
+});
+
+// Phase 5.10: chuyền là bộ phận tích "Xưởng sản xuất"; ô chọn gom theo bộ phận cha, mã bộ phận không có dạng cố định A01-L03
+describe('Lựa chọn chuyền theo bộ phận cha (lineOptions, lineNameLabel)', () => {
+  const line = (code: string, name: string, parent: [code: string, name: string] | null, branchCode = 'A01'): LineInfo => ({
+    code,
+    name,
+    branchCode,
+    isActive: true,
+    workshopCode: parent?.[0] ?? null,
+    workshopName: parent?.[1] ?? null,
+  });
+  const MAY: [string, string] = ['NM1-MAY', 'Bộ phận may'];
+  const lines = [line('NM1-C01', 'Chuyền 01', MAY), line('NM1-C02', 'Chuyền 02', MAY), line('MAU', 'Chuyền mẫu', null)];
+
+  it('gom theo bộ phận cha, chuyền ở gốc cây đứng ngoài nhóm; tìm được theo mã bộ phận cha', () => {
+    expect(lineOptions(lines).map((o) => [o.value, o.label, o.groups ?? null, o.keywords ?? null])).toEqual([
+      ['NM1-C01', 'Chuyền 01 (NM1-C01)', ['Bộ phận may'], 'NM1-MAY'],
+      ['NM1-C02', 'Chuyền 02 (NM1-C02)', ['Bộ phận may'], 'NM1-MAY'],
+      ['MAU', 'Chuyền mẫu (MAU)', null, null],
+    ]);
+    // Không có bộ phận cha nào: danh sách phẳng
+    expect(lineOptions([line('L1', 'Chuyền 1', null), line('L2', 'Chuyền 2', null)]).every((o) => !o.groups)).toBe(true);
+  });
+
+  it('hai bộ phận cha trùng tên trong một ĐVCS: nhóm kèm mã; xem nhiều ĐVCS thì thêm cấp chi nhánh', () => {
+    const twin = [line('NM1-C01', 'Chuyền 01', MAY), line('NM2-C01', 'Chuyền 01', ['NM2-MAY', 'Bộ phận may'])];
+    expect(lineOptions(twin).map((o) => o.groups)).toEqual([['Bộ phận may (NM1-MAY)'], ['Bộ phận may (NM2-MAY)']]);
+    const branches = [line('NM1-C01', 'Chuyền 01', MAY), line('NM2-C01', 'Chuyền 01', ['NM2-MAY', 'Bộ phận may'], 'A02')];
+    expect(lineOptions(branches, undefined, (c) => (c === 'A01' ? 'Nhà máy 1' : c)).map((o) => o.groups)).toEqual([
+      ['Nhà máy 1 (A01)', 'Bộ phận may'],
+      ['Chi nhánh A02', 'Bộ phận may'],
+    ]);
+  });
+
+  it('nhãn ngắn của ô đã chọn (cột Chuyền ở Xếp chuyền): tên chuyền, không cắt mã; trùng tên thì kèm mã', () => {
+    expect(lineOptions(lines, lineNameLabel(lines)).map((o) => o.label)).toEqual(['Chuyền 01', 'Chuyền 02', 'Chuyền mẫu']);
+    const twin = [...lines, line('NM2-C01', 'Chuyền 01', ['NM2-MAY', 'Tổ may 2'])];
+    expect(lineOptions(twin, lineNameLabel(twin)).map((o) => o.label)).toEqual(['Chuyền 01 (NM1-C01)', 'Chuyền 02', 'Chuyền mẫu', 'Chuyền 01 (NM2-C01)']);
+  });
+
+  it('ô chọn: mọi chuyền chung một bộ phận cha thì nhóm mở sẵn; gõ tên bộ phận cha ra các chuyền của nó', () => {
+    const one = lines.slice(0, 2);
+    expect(rowNames(setup(null, lineOptions(one, lineNameLabel(one))).list())).toEqual(['Bộ phận may 2 chuyền, đang mở', 'Chuyền 01', 'Chuyền 02']);
+    cleanup();
+    const { list, input } = setup(null, lineOptions(lines, lineNameLabel(lines)));
+    expect(rowNames(list())).toEqual(['Bộ phận may 2 chuyền, đang thu gọn', 'Chuyền mẫu']);
+    fireEvent.change(input, { target: { value: 'bo phan may' } });
+    expect(rowNames(list())).toEqual(['Bộ phận may 2 chuyền, đang mở', 'Chuyền 01', 'Chuyền 02']);
   });
 });

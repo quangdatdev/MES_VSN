@@ -73,13 +73,14 @@ export interface FieldPoliciesResponse {
   resources: Record<string, Record<string, AccessLevel>>;
 }
 
+/** Chuyền may (GET /me/lines): bộ phận tích "Xưởng sản xuất" ở Sơ đồ tổ chức (phase 5.10); mã chuyền là mã bộ phận */
 export interface LineInfo {
   code: string;
   name: string;
   branchCode: string;
-  /** false: chuyền đã ngừng dùng (chỉ gặp ở dữ liệu đã xếp, ví dụ hàng của bảng dàn chuyền) */
+  /** false: bộ phận đã bỏ tích hoặc giải thể (chỉ gặp ở dữ liệu đã xếp, ví dụ hàng của bảng dàn chuyền) */
   isActive?: boolean;
-  /** Xưởng của chuyền (Danh mục hệ thống › Chuyền may); null: chuyền nằm thẳng dưới nhà máy */
+  /** Bộ phận cha của chuyền, để ô chọn gom nhóm; null: chuyền nằm ở gốc cây phòng ban */
   workshopCode?: string | null;
   workshopName?: string | null;
 }

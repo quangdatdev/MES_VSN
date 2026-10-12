@@ -21,6 +21,8 @@ export interface Department {
   dissolvedDate: string | null;
   sortOrder: number;
   isActive: boolean;
+  /** Tích "Xưởng sản xuất": bộ phận là một chuyền may trong ô chọn Chuyền may của ĐVCS của nó (phase 5.10) */
+  isProductionWorkshop: boolean;
   /** Nhân viên đang làm, chỉ tính trực tiếp trong phòng ban */
   activeEmployees: number;
   createdAt: string;
