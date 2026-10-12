@@ -78,7 +78,7 @@ export interface LineInfo {
   code: string;
   name: string;
   branchCode: string;
-  /** false: bộ phận đã bỏ tích hoặc giải thể (chỉ gặp ở dữ liệu đã xếp, ví dụ hàng của bảng dàn chuyền) */
+  /** false: bộ phận chuyền đã giải thể (chỉ gặp ở dữ liệu đã xếp, ví dụ hàng của bảng dàn chuyền); bỏ tích thì không còn là chuyền */
   isActive?: boolean;
   /** Bộ phận cha của chuyền, để ô chọn gom nhóm; null: chuyền nằm ở gốc cây phòng ban */
   workshopCode?: string | null;
