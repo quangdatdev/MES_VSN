@@ -1,7 +1,8 @@
 interface Props {
   /** full: logo đầy đủ chữ VIETSUN; mark: chỉ hình mặt trời (nền trong suốt, dùng được trên nền sáng và tối) */
   variant?: 'full' | 'mark';
-  height?: number;
+  /** Số (px) hoặc giá trị CSS, ví dụ biến CSS để logo co theo khung hình */
+  height?: number | string;
   /** auto: theo chế độ sáng/tối của ứng dụng; dark: luôn bản chữ trắng (nền màn đăng nhập luôn tối) */
   tone?: 'auto' | 'dark';
   className?: string;

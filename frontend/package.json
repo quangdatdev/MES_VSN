@@ -11,6 +11,7 @@
     "perf": "vitest run --config vitest.perf.config.ts"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/source-sans-3": "^5.3.0",
     "@mantine/core": "^9.7.1",

@@ -818,66 +818,94 @@ a.text-link:hover {
   }
 }
 
-/* ===== Đăng nhập (quyết định 12.3): nền tối có ảnh nhà máy, mặt trời của logo mọc ở mép trái, thẻ đăng nhập bên phải.
-   Nền luôn tối ở cả hai chế độ màu; thẻ theo chế độ màu của ứng dụng. Ảnh nền thay ở frontend/public/login-bg.webp. ===== */
+/* ===== Đăng nhập (quyết định 12.3): nền xám than có ảnh nhà máy, mặt trời của logo mọc ở mép trái, thẻ đăng nhập bên phải.
+   Nền luôn tối ở cả hai chế độ màu; thẻ theo chế độ màu của ứng dụng. Ảnh nền thay ở frontend/public/login-bg.webp.
+   Cỡ theo ảnh mẫu ở màn 1672×941. Màn thấp hơn (laptop 1366×768, 1920×1080 phóng 125%) thì thu nhỏ theo chiều cao để thẻ
+   nằm gọn trong màn, không phải cuộn. ===== */
 .login-shell {
+  /* 0px khi màn cao từ 640px trở xuống, 1px khi cao từ 940px: mỗi cỡ dưới đây là "cỡ gọn + chênh lệch × --login-fit",
+     nội suy liên tục giữa bản gọn và bản đúng ảnh mẫu thay cho nhiều mốc media query.
+     svh (chiều cao khi thanh địa chỉ đang hiện): máy tính bảng cuộn ẩn thanh địa chỉ thì thẻ không đổi cỡ theo */
+  --login-fit: calc(clamp(0px, 100svh - 640px, 300px) / 300);
+  --login-edge: clamp(20px, 5vw, 96px);
+  /* Đường kính đĩa mặt trời: theo chiều cao màn, không quá 1/3 chiều ngang để còn chỗ cho khẩu hiệu */
+  --login-sun: min(60svh, 34vw);
+  /* Font Inter riêng màn đăng nhập (quyết định 12.4): đặt lại biến font của Mantine để ô nhập, nút, tiêu đề trong thẻ cũng theo */
+  --mantine-font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mantine-font-family-headings: var(--mantine-font-family);
+  /* Nút chính chữ trắng: cam đậm hơn cam logo để đạt 3,3:1 (quyết định 12.4) */
+  --login-cta: #d9730d;
+  --login-cta-hover: #c2660b;
   position: relative;
   isolation: isolate;
   min-height: 100dvh;
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
-  grid-template-rows: auto 1fr auto;
-  grid-template-areas:
-    'top top'
-    'hero main'
-    'foot foot';
+  grid-template-columns: minmax(0, 1fr) minmax(0, 530px);
+  grid-template-areas: 'hero main';
   column-gap: clamp(32px, 5vw, 96px);
-  padding: 0 clamp(24px, 6vw, 112px);
+  /* Trên, dưới chừa chỗ cho đồng hồ, chân trang (đặt tuyệt đối); thẻ lùi vào xa mép phải hơn đồng hồ như ảnh mẫu */
+  padding: calc(60px + 36 * var(--login-fit)) calc(var(--login-edge) + clamp(0px, 4.5vw, 78px)) calc(56px + 36 * var(--login-fit))
+    var(--login-edge);
   overflow: hidden;
-  background: #1d1e20;
+  background: #2e2f31;
   color: #fff;
+  font-family: var(--mantine-font-family);
 }
-/* Lớp tối đặt trên ảnh: bên trái đậm hơn để chữ trắng đọc rõ, có quầng cam quanh mặt trời */
+/* Lớp phủ trên ảnh: xám than, sáng dần về góc phải trên, tối dần xuống chân; quầng cam quanh mặt trời */
 .login-backdrop {
   position: absolute;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(circle at 0% 55%, rgba(243, 152, 48, 0.22), transparent 42%),
-    linear-gradient(90deg, rgba(24, 25, 27, 0.94) 0%, rgba(24, 25, 27, 0.78) 48%, rgba(24, 25, 27, 0.9) 100%),
+    radial-gradient(circle at 0% 58%, rgba(243, 152, 48, 0.1), transparent 34%),
+    radial-gradient(ellipse 75% 65% at 100% 0%, rgba(96, 97, 101, 0.6), transparent 70%),
+    linear-gradient(180deg, transparent 50%, rgba(24, 24, 26, 0.6) 100%),
+    linear-gradient(90deg, rgba(40, 40, 42, 0.86), rgba(50, 51, 54, 0.8)),
     url('/login-bg.webp') center / cover no-repeat,
-    #1d1e20;
+    #2e2f31;
 }
-/* Mặt trời trên chữ U của logo: vòng kim loại dày ở mép dưới trái bao lõi cam, thêm một cung cam mảnh bên ngoài */
+/* Mặt trời trên chữ U của logo: vành cam ở trên chuyển bạc ở dưới, lõi cam nắng chiếu từ trên đổ bóng sang phải,
+   một cung cam mảnh bao ngoài */
 .login-sun {
   position: absolute;
-  top: 54%;
+  top: 58%;
   left: 0;
-  width: min(70vh, 640px);
+  width: var(--login-sun);
   aspect-ratio: 1;
   border-radius: 50%;
-  transform: translate(-56%, -50%);
-  background: linear-gradient(205deg, #f4f4f5 0%, #c3c4c6 26%, #7c7d80 58%, #3a3b3d 100%);
-  box-shadow: 0 0 140px 30px rgba(243, 152, 48, 0.3);
+  transform: translate(-55%, -50%);
+  /* Vành trong mờ như kính: thấy ảnh nền phía sau, sáng dần ra mép ngoài */
+  background:
+    radial-gradient(closest-side, transparent 72%, rgba(255, 236, 200, 0.16) 100%),
+    linear-gradient(180deg, rgba(255, 186, 66, 0.96) 0%, rgba(250, 162, 42, 0.92) 18%, rgba(214, 134, 50, 0.78) 34%, rgba(168, 112, 66, 0.6) 50%, rgba(124, 108, 96, 0.58) 64%, rgba(150, 150, 152, 0.66) 82%, rgba(196, 196, 198, 0.72) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 214, 150, 0.35),
+    0 calc(var(--login-sun) * -0.015) calc(var(--login-sun) * 0.1) rgba(243, 152, 48, 0.3);
   animation: login-sunrise 1400ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .login-sun::before {
   content: '';
   position: absolute;
-  inset: 5% 4% 11% 9%;
+  top: 19%;
+  left: 12%;
+  width: 65%;
+  aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle at 62% 34%, #ffe3b0 0%, #ffb44f 20%, #f39830 44%, #e07b12 70%, #b35a08 100%);
-  box-shadow: inset -14px -20px 44px rgba(110, 45, 0, 0.35);
+  background: linear-gradient(180deg, #ffd66a 0%, #f7a02a 7%, #f3911e 24%, #dc7c17 36%, #b8640f 50%, #8e5216 66%, #6e4419 100%);
+  box-shadow:
+    inset 0 calc(var(--login-sun) * 0.01) calc(var(--login-sun) * 0.02) rgba(255, 226, 140, 0.8),
+    calc(var(--login-sun) * 0.02) calc(var(--login-sun) * 0.012) calc(var(--login-sun) * 0.05) rgba(70, 32, 6, 0.75);
 }
+/* Cung chạy từ đỉnh vòng qua bên phải, tắt trước khi chạm chữ chân trang */
 .login-sun::after {
   content: '';
   position: absolute;
-  inset: -14%;
+  inset: -18.75%;
   border-radius: 50%;
-  border: 1.5px solid rgba(243, 152, 48, 0.7);
-  -webkit-mask-image: linear-gradient(90deg, transparent 52%, #000 74%);
-  mask-image: linear-gradient(90deg, transparent 52%, #000 74%);
+  border: 2px solid rgba(240, 140, 40, 0.85);
+  -webkit-mask-image: conic-gradient(#000 0deg 110deg, transparent 145deg);
+  mask-image: conic-gradient(#000 0deg 110deg, transparent 145deg);
 }
 @keyframes login-sunrise {
   from {
@@ -886,17 +914,22 @@ a.text-link:hover {
   }
   to {
     opacity: 1;
-    transform: translate(-56%, -50%);
+    transform: translate(-55%, -50%);
   }
 }
 
+/* Logo, đồng hồ đặt tuyệt đối ở hai góc trên: thẻ đăng nhập được dùng gần hết chiều cao màn */
 .login-top {
-  grid-area: top;
+  --login-logo-h: calc(56px + 34 * var(--login-fit));
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 36px 0 24px;
+  padding: calc(20px + 18 * var(--login-fit)) var(--login-edge) 0;
 }
 .login-clock {
   display: flex;
@@ -904,7 +937,7 @@ a.text-link:hover {
   gap: 10px;
   margin: 0;
   color: #c9cacc;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -916,12 +949,12 @@ a.text-link:hover {
   background: rgba(255, 255, 255, 0.35);
 }
 
-/* Khẩu hiệu: lùi vào để không đè lên mặt trời */
+/* Khẩu hiệu: lùi qua cung ngoài của mặt trời, cao hơn tâm màn một chút như ảnh mẫu */
 .login-hero {
   grid-area: hero;
   align-self: center;
-  padding-left: clamp(0px, 20vw, 360px);
-  max-width: 640px;
+  padding-left: max(0px, calc(var(--login-sun) * 0.64 + 56px - var(--login-edge)));
+  margin-bottom: calc(24px + 24 * var(--login-fit));
 }
 /* Viết hoa bằng CSS (ngoại lệ riêng màn đăng nhập, Q4): chữ gốc viết thường nên trình đọc màn hình đọc đúng */
 .login-kicker,
@@ -934,11 +967,11 @@ a.text-link:hover {
   display: flex;
   align-items: center;
   gap: 28px;
-  margin: 0 0 22px;
+  margin: 0 0 calc(16px + 10 * var(--login-fit));
   color: #c9cacc;
   font-size: 15px;
   line-height: 20px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.22em;
 }
 .login-kicker::before {
   content: '';
@@ -946,63 +979,89 @@ a.text-link:hover {
   height: 2px;
   background: var(--brand);
 }
-.login-headline {
-  display: flex;
-  flex-direction: column;
+/* Khẩu hiệu công ty: mỗi giá trị một dòng, chữ đầu cam như bộ nhận diện Vietsun; các chữ đầu thẳng cột thành T-P-I-S */
+.login-values {
   margin: 0;
-  font-size: 44px;
-  line-height: 54px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-}
-.login-headline-accent {
-  color: var(--brand);
+  padding: 0;
+  list-style: none;
+  color: #f2f2f3;
+  font-size: clamp(28px, 2.6vw, 44px);
+  line-height: 1.2;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
-.login-lede {
-  max-width: 34em;
-  margin: 24px 0 0;
-  color: #c9cacc;
-  font-size: 16px;
-  line-height: 26px;
+.login-values-initial {
+  color: var(--brand);
+  font-weight: 700;
 }
 
+/* position: thẻ nằm trên lớp logo, đồng hồ (đặt tuyệt đối) nếu hai lớp chạm nhau ở màn thấp */
 .login-main {
   grid-area: main;
   align-self: center;
-  padding: 8px 0 24px;
+  position: relative;
 }
 .login-card {
+  --login-logo-h: calc(44px + 40 * var(--login-fit));
+  --login-gap: calc(12px + 10 * var(--login-fit));
   box-sizing: border-box;
   width: 100%;
-  padding: 44px 48px 24px;
+  padding: calc(22px + 14 * var(--login-fit)) clamp(24px, 4vw, 66px) calc(16px + 16 * var(--login-fit));
   border-radius: 8px;
   border: 1px solid var(--app-line);
-  background: var(--app-surface);
+  background: var(--app-section);
   color: var(--app-ink);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
 }
 .login-card-logo {
   justify-content: center;
 }
+/* Đang chọn ĐVCS, đang báo lỗi (khung báo hay lỗi dưới ô), form dài thêm: bỏ logo trong thẻ (góc trái đã có) và dòng chân thẻ
+   để thẻ vẫn vừa màn */
+.login-card:has(.login-reveal, [role='alert'], [aria-invalid='true']) :is(.login-card-logo, .login-card-foot) {
+  display: none;
+}
+.login-card:has(.login-reveal, [role='alert'], [aria-invalid='true']) .login-system {
+  margin-top: 0;
+}
 .login-system {
-  margin: 32px 0 14px;
+  margin: calc(18px + 38 * var(--login-fit)) 0 calc(8px + 10 * var(--login-fit));
   color: var(--app-ink-soft);
-  font-size: 14px;
+  font-size: calc(13px + 2 * var(--login-fit));
   line-height: 20px;
+  letter-spacing: 0.08em;
+}
+.login-intro {
+  margin-bottom: calc(2px + 8 * var(--login-fit));
+}
+.login-card .login-title {
+  font-size: calc(24px + 7 * var(--login-fit));
+  line-height: 1.22;
   font-weight: 600;
-  letter-spacing: 0.1em;
+}
+.login-subtitle {
+  margin-top: calc(4px + 4 * var(--login-fit));
+  font-size: calc(14px + 1 * var(--login-fit));
 }
 .login-card .mantine-Input-wrapper {
-  --input-height-md: 46px;
+  --input-height-md: calc(42px + 6 * var(--login-fit));
+}
+/* Thẻ và ô nhập cùng nền xám nhạt như ảnh mẫu, ô trắng lại khi đang gõ; viền ô vẫn theo luật 3:1 chung */
+.login-card .mantine-Input-input {
+  --input-bg: var(--app-section);
+}
+.login-card .mantine-Input-input:focus,
+.login-card .mantine-Input-input:focus-within {
+  --input-bg: var(--app-surface);
 }
 .login-card .mantine-InputWrapper-label {
   margin-bottom: 6px;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: calc(14px + 1 * var(--login-fit));
+  font-weight: 500;
 }
 .login-card .mantine-Button-root {
-  --button-height-md: 48px;
+  --button-height-md: calc(44px + 6 * var(--login-fit));
 }
 .login-submit {
   letter-spacing: 0.06em;
@@ -1013,15 +1072,15 @@ a.text-link:hover {
   flex-shrink: 0;
   color: var(--brand-ink);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .login-card-foot {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin: 28px 0 0;
-  padding-top: 20px;
+  margin: calc(14px + 14 * var(--login-fit)) 0 0;
+  padding-top: calc(12px + 12 * var(--login-fit));
   border-top: 1px solid var(--app-line);
   color: var(--app-ink-soft);
   font-size: 13px;
@@ -1049,12 +1108,15 @@ a.text-link:hover {
 }
 
 .login-footer {
-  grid-area: foot;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 0 32px;
+  padding: 0 var(--login-edge) calc(20px + 30 * var(--login-fit));
 }
 .login-meta {
   display: flex;
@@ -1063,16 +1125,16 @@ a.text-link:hover {
   gap: 8px 0;
   margin: 0;
   color: #a6a8ab;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 16px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.16em;
 }
 .login-meta span + span::before {
   content: '';
   display: inline-block;
   width: 1px;
   height: 12px;
-  margin: 0 18px;
+  margin: 0 14px;
   vertical-align: -2px;
   background: rgba(255, 255, 255, 0.35);
 }
@@ -1082,7 +1144,7 @@ a.text-link:hover {
   gap: 16px;
   margin: 0;
   color: #c9cacc;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 18px;
   letter-spacing: 0.08em;
 }
@@ -1093,59 +1155,82 @@ a.text-link:hover {
   background: var(--brand);
 }
 
-/* Màn vừa: bỏ đoạn mô tả, khẩu hiệu nhỏ lại */
-@media (max-width: 1100px) {
+/* Màn ngang vừa: thẻ hẹp lại, mặt trời nhỏ theo chiều ngang để khẩu hiệu còn chỗ */
+@media (max-width: 1280px) {
   .login-shell {
+    --login-sun: min(60svh, 24vw);
     grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
-  }
-  .login-hero {
-    padding-left: clamp(0px, 16vw, 220px);
-  }
-  .login-lede {
-    display: none;
-  }
-  .login-headline {
-    font-size: 34px;
-    line-height: 42px;
-  }
-  .login-card {
-    padding: 36px 32px 20px;
+    padding-right: var(--login-edge);
   }
 }
-/* Điện thoại: một cột; logo, khẩu hiệu ngắn ở trên, thẻ đăng nhập ngay dưới, mặt trời nhỏ lấp ló góc phải */
-@media (max-width: 860px) {
+/* Màn thấp (laptop 1280×720 phóng 125%, cửa sổ không phóng hết): bỏ logo trong thẻ (góc trái đã có), dòng chân thẻ.
+   Không kèm min-width: màn phóng to có chiều rộng lẻ (960,5px) sẽ lọt khe giữa hai mốc; bố cục một cột bên dưới tự ghi đè */
+@media (max-height: 640px) {
   .login-shell {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr auto;
+    padding-top: 48px;
+    padding-bottom: 40px;
+  }
+  .login-card-logo,
+  .login-card-foot {
+    display: none;
+  }
+  .login-system {
+    margin-top: 0;
+  }
+}
+@media (max-height: 520px) {
+  .login-system {
+    display: none;
+  }
+}
+/* Máy tính bảng dọc, điện thoại: một cột giữa màn; logo, khẩu hiệu ngắn ở trên, thẻ đăng nhập ngay dưới,
+   mặt trời nhỏ lấp ló góc phải. Hai hàng 1fr đẩy khẩu hiệu và thẻ vào giữa khi màn còn trống */
+@media (max-width: 960px) {
+  .login-shell {
+    --login-fit: 0px;
+    --login-sun: 200px;
+    grid-template-columns: minmax(0, 480px);
+    grid-template-rows: auto 1fr auto auto 1fr auto;
     grid-template-areas:
       'top'
+      '.'
       'hero'
       'main'
+      '.'
       'foot';
+    justify-content: center;
     padding: 0 16px;
   }
-  .login-top {
-    padding: 20px 0 12px;
+  .login-top,
+  .login-footer {
+    position: static;
   }
-  /* !important: chiều cao logo đặt trong style của ảnh (BrandMark) */
-  .login-top .brand-img {
-    height: 40px !important;
+  .login-top {
+    --login-logo-h: 40px;
+    grid-area: top;
+    align-items: center;
+    padding: 20px 0 12px;
   }
   .login-hero {
     padding: 4px 0 20px;
+    margin: 0;
   }
   .login-kicker {
     display: none;
   }
-  .login-headline {
-    font-size: 24px;
+  /* Một cột: bốn giá trị nằm ngang, tự xuống dòng, để không đẩy thẻ đăng nhập xuống quá thấp */
+  .login-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 14px;
+    font-size: 22px;
     line-height: 30px;
   }
+  /* Mặt trời chỉ lấp ló góc trên, sau thanh logo: thấp hơn sẽ đè lên khẩu hiệu (chữ trắng trên cam, bạc khó đọc) */
   .login-sun {
-    top: -40px;
+    top: -90px;
     left: auto;
-    right: -110px;
-    width: 240px;
+    right: -90px;
     transform: none;
     animation: none;
     opacity: 0.9;
@@ -1158,10 +1243,8 @@ a.text-link:hover {
     padding: 0 0 16px;
   }
   .login-card {
+    --login-logo-h: 52px;
     padding: 28px 20px 18px;
-  }
-  .login-card-logo .brand-img {
-    height: 52px !important;
   }
   .login-system {
     margin-top: 22px;
@@ -1169,6 +1252,7 @@ a.text-link:hover {
     letter-spacing: 0.06em;
   }
   .login-footer {
+    grid-area: foot;
     flex-direction: column;
     padding: 8px 0 24px;
   }
@@ -1176,10 +1260,33 @@ a.text-link:hover {
     display: none;
   }
 }
-@media (max-width: 480px) {
+/* Một cột trên màn thấp (điện thoại nhỏ, máy tính bảng xoay ngang): bỏ logo trong thẻ (thanh trên đã có), rồi đến khẩu hiệu */
+@media (max-width: 960px) and (max-height: 760px) {
+  .login-card-logo {
+    display: none;
+  }
+  .login-system {
+    margin-top: 0;
+  }
+}
+@media (max-width: 960px) and (max-height: 680px) {
+  .login-hero {
+    display: none;
+  }
+}
+/* Màn thấp mà form đang dài thêm (chọn ĐVCS, báo lỗi): bỏ cả dòng tên hệ thống trong thẻ */
+@media (max-height: 640px) {
+  .login-card:has(.login-reveal, [role='alert'], [aria-invalid='true']) .login-system {
+    display: none;
+  }
+}
+/* Màn hẹp: đồng hồ sẽ đè lên mặt trời ở góc phải */
+@media (max-width: 720px) {
   .login-clock {
     display: none;
   }
+}
+@media (max-width: 480px) {
   /* Một dòng ở 360px: bỏ mục trùng với thẻ đăng nhập, vạch ngăn không rơi xuống đầu dòng */
   .login-meta {
     letter-spacing: 0.12em;

@@ -113,6 +113,17 @@ describe('Màn đăng nhập', () => {
     expect(screen.getByText(/^(Chủ nhật|Thứ [2-7]), \d{2}\/\d{2}\/\d{4}$/)).toBeInTheDocument();
   });
 
+  it('nút mắt: mắt gạch chéo khi mật khẩu đang ẩn như ảnh mẫu, bấm thì hiện mật khẩu; nhãn tiếng Việt', () => {
+    renderLogin();
+    const eye = screen.getByRole('button', { name: 'Hiện hoặc ẩn mật khẩu' });
+    expect(passwordBox().type).toBe('password');
+    expect(eye.querySelector('.tabler-icon-eye-off')).not.toBeNull();
+    // Mantine đổi trạng thái lúc nhấn chuột xuống (ô mật khẩu không mất focus), không phải lúc click
+    fireEvent.mouseDown(eye);
+    expect(passwordBox().type).toBe('text');
+    expect(eye.querySelector('.tabler-icon-eye')).not.toBeNull();
+  });
+
   it('sai mật khẩu: báo rõ, ở lại bước mật khẩu', async () => {
     serve([A01], { loginError: new ApiError(401, 'INVALID_CREDENTIALS', 'Sai.') });
     renderLogin();

@@ -1,4 +1,13 @@
-import { Alert, Anchor, Button, Checkbox, Group, PasswordInput, Popover, Select, Stack, Text, TextInput, Title, type SelectProps } from '@mantine/core';
+// Font Inter chỉ cho màn đăng nhập (quyết định 12.4): chỉ bộ chữ Latin và tiếng Việt, trình duyệt tải khi màn này hiện chữ
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-500.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/inter/latin-700.css';
+import '@fontsource/inter/vietnamese-400.css';
+import '@fontsource/inter/vietnamese-500.css';
+import '@fontsource/inter/vietnamese-600.css';
+import '@fontsource/inter/vietnamese-700.css';
+import { Alert, Anchor, Button, Checkbox, Group, PasswordInput, Popover, Select, Stack, Text, TextInput, Title, type ButtonProps, type SelectProps } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDocumentTitle } from '@mantine/hooks';
 import {
@@ -8,6 +17,7 @@ import {
   IconCircleCheck,
   IconClock,
   IconEye,
+  IconEyeOff,
   IconLock,
   IconShieldCheck,
   IconUser,
@@ -21,6 +31,9 @@ import { lastBranchCode, login, logout, selectBranch } from '../../store/auth';
 import { useSession } from '../../store/session';
 
 const REMEMBER_KEY = 'mes.username';
+
+/** Khẩu hiệu công ty (giá trị cốt lõi), chữ đầu màu cam theo bộ nhận diện Vietsun */
+const CORE_VALUES = ['Trust', 'Passion', 'Innovation', 'Sustainability'];
 
 type Problem = { title: string; text: string };
 
@@ -110,21 +123,26 @@ export function LoginPage() {
       <div className="login-backdrop" aria-hidden="true">
         <div className="login-sun" />
       </div>
+      {/* Chiều cao logo theo biến CSS: co theo chiều cao màn (global.css) */}
       <header className="login-top">
-        <BrandMark tone="dark" height={56} />
+        <BrandMark tone="dark" height="var(--login-logo-h)" />
         <LoginClock />
       </header>
-      <section className="login-hero" aria-label="Giới thiệu hệ thống">
+      <section className="login-hero" aria-label="Khẩu hiệu Vietsun">
         <p className="login-kicker">MES System</p>
-        <p className="login-headline">
-          <span>Kết nối dữ liệu</span>
-          <span className="login-headline-accent">Kiến tạo hiệu quả</span>
-        </p>
-        <p className="login-lede">Hệ thống quản lý sản xuất MES giúp tối ưu quy trình, nâng cao năng suất và đồng hành cùng sự phát triển của VIETSUN.</p>
+        {/* lang="en": trình đọc màn hình đọc đúng giọng tiếng Anh */}
+        <ul className="login-values" lang="en">
+          {CORE_VALUES.map((value) => (
+            <li key={value}>
+              <span className="login-values-initial">{value[0]}</span>
+              {value.slice(1)}
+            </li>
+          ))}
+        </ul>
       </section>
       <main className="login-main">
         <div className="login-card">
-          <BrandMark height={64} className="login-card-logo" />
+          <BrandMark height="var(--login-logo-h)" className="login-card-logo" />
           <p className="login-system">MES - Manufacturing Execution System</p>
           <LoginForm />
           <p className="login-card-foot">
@@ -143,6 +161,26 @@ export function LoginPage() {
       </footer>
     </div>
   );
+}
+
+/**
+ * Nút chính màn đăng nhập: chữ trắng như ảnh mẫu trên cam đậm hơn cam logo (3,3:1, chữ to đậm đạt chuẩn chữ lớn), quyết định 12.4.
+ * Theme gắn màu nút chính bằng biến CSS inline (chữ đen), nên ghi đè qua `vars` của nút, không qua class.
+ */
+const submitVars: ButtonProps['vars'] = () => ({
+  root: {
+    '--button-bg': 'var(--login-cta)',
+    '--button-hover': 'var(--login-cta-hover)',
+    '--button-color': '#ffffff',
+    '--button-bd': '1px solid var(--login-cta-hover)',
+    // Từ 18,67px chữ đậm mới là "chữ lớn" (ngưỡng 3:1)
+    '--button-fz': '19px',
+  },
+});
+
+/** Như ảnh mẫu: mắt gạch chéo khi mật khẩu đang ẩn. Khai báo ngoài form để không gắn lại biểu tượng sau mỗi phím gõ */
+function PasswordEye({ reveal }: { reveal: boolean }) {
+  return reveal ? <IconEye size={18} stroke={1.6} /> : <IconEyeOff size={18} stroke={1.6} />;
 }
 
 /** Hệ thống chưa tự đặt lại mật khẩu được (cần backend): chỉ hướng dẫn người dùng tìm quản trị viên. */
@@ -283,10 +321,10 @@ function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} noValidate>
-      <Stack gap="md">
-        <div>
-          <Title order={1} fz={28} lh="36px">Chào mừng trở lại</Title>
-          <Text c="dimmed" size="md" mt={6}>
+      <Stack gap="var(--login-gap)">
+        <div className="login-intro">
+          <Title order={1} className="login-title">Chào mừng trở lại</Title>
+          <Text c="dimmed" className="login-subtitle">
             {picking && name ? `Xin chào, ${name}. Chọn đơn vị cơ sở để vào làm việc.` : 'Đăng nhập để tiếp tục công việc của bạn.'}
           </Text>
         </div>
@@ -320,7 +358,9 @@ function LoginForm() {
           autoFocus={!!initialUsername}
           readOnly={picking}
           placeholder={picking ? '••••••••' : 'Nhập mật khẩu'}
-          visibilityToggleButtonProps={picking ? { disabled: true } : undefined}
+          // Prop này thay cả mặc định của theme: phải nhắc lại nhãn, không thì trình đọc màn hình đọc nhãn tiếng Anh
+          visibilityToggleButtonProps={picking ? { disabled: true, 'aria-label': 'Hiện hoặc ẩn mật khẩu' } : undefined}
+          visibilityToggleIcon={PasswordEye}
           {...form.getInputProps('password')}
         />
 
@@ -361,9 +401,9 @@ function LoginForm() {
           size="md"
           loading={loading}
           fullWidth
-          mt={4}
           className="login-submit"
-          rightSection={<IconArrowRight size={18} stroke={2} aria-hidden />}
+          vars={submitVars}
+          rightSection={<IconArrowRight size={20} stroke={2} aria-hidden />}
           autoFocus={picking && code !== null}
         >
           {picking ? 'Vào làm việc' : 'Đăng nhập'}
