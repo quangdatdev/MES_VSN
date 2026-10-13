@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { ModalsProvider } from '@mantine/modals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -150,8 +150,7 @@ function Url() {
   return <output data-testid="url">{l.search}</output>;
 }
 
-function renderPage(ui: ReactNode, path: string) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(ui: ReactNode, path: string, qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <MantineProvider theme={theme} env="test">
       <ModalsProvider>
@@ -204,6 +203,8 @@ describe('Sơ đồ tổ chức', () => {
   const restores: string[] = [];
   /** Lần ghi kế tiếp: máy chủ lưu bộ phận nhưng chưa cập nhật được phân quyền theo chuyền */
   let failLineScope = false;
+  /** Tải danh mục của form (loại phòng ban, ĐVCS) lỗi */
+  let failOptions = false;
   beforeEach(() => {
     signIn(HR_ALL);
     view.mobile = false;
@@ -214,6 +215,7 @@ describe('Sơ đồ tổ chức', () => {
     asked.length = 0;
     restores.length = 0;
     failLineScope = false;
+    failOptions = false;
     vi.mocked(api).mockReset();
     vi.mocked(api).mockImplementation((async (path: string, opts?: { method?: string; body?: unknown }) => {
       if (path.startsWith('/hr/departments/line-holders')) {
@@ -245,7 +247,8 @@ describe('Sơ đồ tổ chức', () => {
         return created;
       }
       if (path.startsWith('/hr/departments/tree')) return { items };
-      if (path === '/hr/departments/options')
+      if (path === '/hr/departments/options') {
+        if (failOptions) throw new TypeError('Failed to fetch');
         return {
           types: TYPES,
           factories: [
@@ -253,6 +256,7 @@ describe('Sơ đồ tổ chức', () => {
             { code: 'A02', name: 'Nhà máy 2' },
           ],
         };
+      }
       if (path.startsWith('/hr/departments/manager-options')) return [];
       throw new Error(`Chưa giả lập ${path}`);
     }) as unknown as typeof api);
@@ -518,6 +522,205 @@ describe('Sơ đồ tổ chức', () => {
     expect(restores).toEqual([]);
     fireEvent.click(within(ask).getByRole('button', { name: 'Khôi phục' }));
     await waitFor(() => expect(restores).toEqual(['NM1-C02']));
+  });
+
+  // ---------- Đơn vị cơ sở mặc định theo phòng ban cha, chọn tay lại được ----------
+  const NM2 = () => dept(7, 'NM2', 'Nhà máy 2', 1, '/VSN/NM2/', 4, { branchCode: 'A02' });
+  const submitForm = () => fireEvent.click(document.querySelector<HTMLButtonElement>('form button[type="submit"]')!);
+  async function pickParent(name: RegExp) {
+    fireEvent.click(inputOf(/Phòng ban cha/));
+    fireEvent.click(await screen.findByRole('option', { name }));
+  }
+
+  it('sửa phòng ban chưa có đơn vị cơ sở: điền sẵn của phòng ban cha, ô tích mở; Hủy không hỏi; lưu được ngay', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-MAY');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Bộ phận may' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    const box = await workshopBox();
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A01 – Nhà máy 1');
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveAccessibleDescription('Mặc định lấy theo phòng ban cha Nhà máy 1; chọn lại được.');
+    expect(box).toBeEnabled();
+    expect(screen.queryByText(/Chọn đơn vị cơ sở trước/)).toBeNull();
+
+    // Người dùng chưa sửa gì: Hủy đóng form luôn
+    fireEvent.click(screen.getByRole('button', { name: 'Hủy' }));
+    await waitFor(() => expect(document.querySelector('form')).toBeNull());
+    expect(screen.queryByText('Bỏ các thay đổi chưa lưu?')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    submitForm();
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ branchCode: 'A01' });
+  });
+
+  it('phòng ban cha thuộc đơn vị cơ sở đã ngừng dùng: không điền sẵn, không có gì để lưu', async () => {
+    items = [...DEPTS, dept(7, 'NM9', 'Nhà máy 9', 1, '/VSN/NM9/', 4, { branchCode: 'A09' }), dept(8, 'NM9-MAY', 'Bộ phận may 9', 7, '/VSN/NM9/NM9-MAY/', 5)];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM9-MAY');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Bộ phận may 9' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('');
+    expect(document.querySelector('form button[type="submit"]')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('thêm phòng ban: đơn vị cơ sở đổi theo phòng ban cha; chọn tay rồi thì đổi cha không đổi theo', async () => {
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Nhà máy 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Thao tác với Nhà máy 1' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Thêm phòng ban con' }));
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A01 – Nhà máy 1'));
+
+    await pickParent(/Khối văn phòng/);
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue(''));
+    await pickParent(/^Nhà máy 1/);
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A01 – Nhà máy 1'));
+
+    fireEvent.click(inputOf(/Đơn vị cơ sở/));
+    fireEvent.click(await screen.findByRole('option', { name: 'A02 – Nhà máy 2' }));
+    await pickParent(/Khối văn phòng/);
+    await waitFor(() => expect(screen.getByText('Thuộc Công ty Vietsun › Khối văn phòng')).toBeInTheDocument());
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A02 – Nhà máy 2');
+
+    fireEvent.change(inputOf(/Mã phòng ban/), { target: { value: 'VP-HC' } });
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Phòng Hành chính' } });
+    fireEvent.click(inputOf(/Loại phòng ban/));
+    fireEvent.click(await screen.findByRole('option', { name: 'Phòng' }));
+    submitForm();
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({ code: 'VP-HC', parentId: 2, branchCode: 'A02' });
+  });
+
+  it('chuyển chuyền sang phòng ban cha của đơn vị cơ sở khác: đơn vị cơ sở đổi theo, báo trước hệ quả ở đơn vị cơ sở cũ', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    items = [...DEPTS, NM2(), LINE()];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-C01');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Chuyền 01' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    await pickParent(/^Nhà máy 2/);
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A02 – Nhà máy 2'));
+    submitForm();
+
+    const ask = await dialog();
+    expect(ask).toHaveTextContent('Chuyền chuyển sang đơn vị cơ sở A02');
+    fireEvent.click(within(ask).getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ parentId: 7, branchCode: 'A02' });
+  });
+
+  it('phòng ban có đơn vị cơ sở khác phòng ban cha (đã chọn tay từ trước): đổi cha không đổi đơn vị cơ sở', async () => {
+    items = [...DEPTS, dept(8, 'VP-DP', 'Phòng điều phối', 2, '/VSN/VP/VP-DP/', 3, { branchCode: 'A02' })];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=VP-DP');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Phòng điều phối' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    await pickParent(/^Nhà máy 1/);
+    await waitFor(() => expect(screen.getByText('Thuộc Công ty Vietsun › Nhà máy 1')).toBeInTheDocument());
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A02 – Nhà máy 2');
+    submitForm();
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ parentId: 4 });
+  });
+
+  it('chuyển sang phòng ban cha không có đơn vị cơ sở: giữ đơn vị cơ sở đã lưu, chuyền không bị bắt chọn lại', async () => {
+    signIn([...HR_ALL, 'admin.permission:update']);
+    items = [...DEPTS, LINE()];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-C01');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Chuyền 01' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    await pickParent(/Khối văn phòng/);
+    await waitFor(() => expect(screen.getByText('Thuộc Công ty Vietsun › Khối văn phòng')).toBeInTheDocument());
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A01 – Nhà máy 1');
+    submitForm();
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ parentId: 2 });
+  });
+
+  it('thêm phòng ban: xóa tay đơn vị cơ sở rồi đổi cha thì vẫn để trống', async () => {
+    items = [...DEPTS, NM2()];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Nhà máy 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Thao tác với Nhà máy 1' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Thêm phòng ban con' }));
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A01 – Nhà máy 1'));
+    fireEvent.click(inputOf(/Đơn vị cơ sở/).closest('.mantine-Input-wrapper')!.querySelector('button')!);
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue(''));
+    await pickParent(/^Nhà máy 2/);
+    await waitFor(() => expect(screen.getByText('Thuộc Công ty Vietsun › Nhà máy 2')).toBeInTheDocument());
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('');
+  });
+
+  it('đổi đơn vị cơ sở của phòng ban có con: báo trước các phòng ban con giữ đơn vị cơ sở hiện tại', async () => {
+    items = [
+      ...DEPTS,
+      NM2(),
+      dept(8, 'NM1-X1', 'Xưởng 1', 4, '/VSN/NM1/NM1-X1/', 3, { branchCode: 'A01' }),
+      dept(10, 'NM1-X1-T1', 'Tổ 1', 8, '/VSN/NM1/NM1-X1/NM1-X1-T1/', 5, { branchCode: 'A01' }),
+    ];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-X1');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Xưởng 1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    await pickParent(/^Nhà máy 2/);
+    await waitFor(() => expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A02 – Nhà máy 2'));
+    submitForm();
+
+    const ask = await dialog();
+    expect(ask).toHaveTextContent('Chỉ Xưởng 1 chuyển sang đơn vị cơ sở A02; các phòng ban con giữ đơn vị cơ sở hiện tại, cần đổi thì sửa từng phòng ban.');
+    fireEvent.click(within(ask).getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ parentId: 7, branchCode: 'A02' });
+  });
+
+  it('cache bị xóa khi đang sửa (đổi đơn vị cơ sở ở tab khác): form giữ phần đang nhập', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=KT', qc);
+    expect(await screen.findByRole('heading', { level: 2, name: 'Phòng Kế toán' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await waitFor(() => expect(inputOf(/Tên phòng ban/)).toHaveValue('Phòng Kế toán'));
+    const optionLoads = () => vi.mocked(api).mock.calls.filter(([p]) => p === '/hr/departments/options').length;
+    expect(optionLoads()).toBe(1);
+
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Phòng A' } });
+    act(() => qc.clear());
+    // Trang dựng lại (đổi cờ đang sửa) sau khi cache trống
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Phòng Kế toán' } });
+    fireEvent.change(inputOf(/Tên phòng ban/), { target: { value: 'Phòng B' } });
+    await waitFor(() => expect(optionLoads()).toBe(2));
+    expect(inputOf(/Tên phòng ban/)).toHaveValue('Phòng B');
+  });
+
+  it('tải danh mục của form lỗi: báo lỗi kèm Thử lại, không dựng form trống; Hủy về khung xem', async () => {
+    failOptions = true;
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=KT');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Phòng Kế toán' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    expect(await screen.findByText('Không tải được loại phòng ban, đơn vị cơ sở. Kiểm tra kết nối rồi thử lại.')).toBeInTheDocument();
+    expect(document.querySelector('form')).toBeNull();
+
+    failOptions = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
+    await waitFor(() => expect(inputOf(/Tên phòng ban/)).toHaveValue('Phòng Kế toán'));
+    fireEvent.click(screen.getByRole('button', { name: 'Hủy' }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Phòng Kế toán' })).toBeInTheDocument();
+    expect(document.querySelector('form')).toBeNull();
+  });
+
+  it('chuyền may, người thiếu quyền sửa Phân quyền: đổi phòng ban cha không đổi đơn vị cơ sở', async () => {
+    items = [...DEPTS, NM2(), LINE()];
+    renderPage(<OrgChartPage />, '/hr/org-chart?dept=NM1-C01');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Chuyền 01' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    await workshopBox();
+    await pickParent(/^Nhà máy 2/);
+    await waitFor(() => expect(screen.getByText('Thuộc Công ty Vietsun › Nhà máy 2')).toBeInTheDocument());
+    expect(inputOf(/Đơn vị cơ sở/)).toHaveValue('A01 – Nhà máy 1');
+    submitForm();
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ parentId: 7 });
   });
 
   it('máy chủ đã lưu nhưng chưa cập nhật được phân quyền: hiện bộ phận đã lưu (form đóng), không coi như chưa lưu', async () => {

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hướng dẫn chạy MES</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --card: #ffffff; --text: #111827; --muted: #4b5563; --line: #e5e7eb;
+    --brand: #f39830; --brand-ink: #a4560a; --code-bg: #1f2937; --code-text: #f9fafb;
+    --warn-bg: #fff7ed; --warn-line: #fdba74; --ok-bg: #ecfdf5; --ok-line: #6ee7b7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111315; --card: #1b1d20; --text: #e5e7eb; --muted: #9ca3af; --line: #2f3236;
+      --brand-ink: #f8b968; --code-bg: #0b0d0f; --warn-bg: #2a1d10; --warn-line: #9a5a17;
+      --ok-bg: #0f241c; --ok-line: #23704f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  header { background: #2b2c2d; color: #fff; padding: 20px 16px; border-bottom: 4px solid var(--brand); }
+  header h1 { margin: 0 auto; max-width: 860px; font-size: 22px; }
+  header p { margin: 4px auto 0; max-width: 860px; color: #d1d5db; font-size: 14px; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; }
+  nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  nav a { flex: 1 1 260px; text-decoration: none; color: var(--text); background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--brand); border-radius: 10px; padding: 14px 16px; }
+  nav a b { display: block; font-size: 18px; }
+  nav a span { color: var(--muted); font-size: 14px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  h2 { margin: 0 0 4px; font-size: 21px; }
+  h2 + p { margin-top: 0; color: var(--muted); }
+  ol.steps { list-style: none; padding: 0; margin: 16px 0 0; counter-reset: s; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 0 0 18px 48px; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--brand); color: #111; font-weight: 700; display: grid; place-items: center; }
+  ol.steps > li > b { display: block; font-size: 17px; margin-bottom: 2px; }
+  .cmd { position: relative; margin: 8px 0; }
+  .cmd pre { margin: 0; background: var(--code-bg); color: var(--code-text); padding: 12px 84px 12px 14px; border-radius: 8px; overflow-x: auto; font: 14px/1.5 Consolas, "Cascadia Mono", monospace; }
+  .cmd button { position: absolute; top: 8px; right: 8px; border: 0; border-radius: 6px; padding: 4px 10px; background: var(--brand); color: #111; font: 600 13px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+  .cmd button:focus-visible { outline: 3px solid #007185; outline-offset: 2px; }
+  code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 0.92em; background: var(--line); padding: 1px 5px; border-radius: 4px; }
+  .note { border-radius: 8px; padding: 10px 14px; margin: 10px 0; border: 1px solid var(--warn-line); background: var(--warn-bg); }
+  .ok { border-color: var(--ok-line); background: var(--ok-bg); }
+  .muted { color: var(--muted); font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td { border-top: 1px solid var(--line); padding: 8px 6px; vertical-align: top; }
+  td:first-child { width: 42%; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--brand-ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hướng dẫn chạy MES trên máy chủ</h1>
+  <p>Mã nguồn ở <b>D:\MES</b>. Web chạy từ <b>D:\MES-run</b>. Mở PowerShell, chạy các lệnh dưới đây.</p>
+</header>
+<main>
+  <nav>
+    <a href="#cai-moi"><b>1. Cài đặt mới</b><span>Làm một lần, lần đầu chuyển sang cách chạy mới</span></a>
+    <a href="#cap-nhat"><b>2. Có code mới (git pull)</b><span>Làm mỗi lần cập nhật</span></a>
+  </nav>
+
+  <section id="cai-moi">
+    <h2>1. Cài đặt mới</h2>
+    <p>Làm một lần. Nên làm ngoài giờ: web sẽ dừng khoảng 1 phút.</p>
+    <ol class="steps">
+      <li>
+        <b>Sao lưu 5 database</b>
+        MES_Core, MES_Order, MES_Sewing, MES_Hr, MES_Sync.
+      </li>
+      <li>
+        <b>Lấy code mới</b>
+        <div class="cmd"><pre>cd D:\MES
+git pull</pre><button type="button">Chép</button></div>
+      </li>
+      <li>
+        <b>Tạo thư mục chạy, chép file cấu hình</b>
+        <div class="cmd"><pre>mkdir D:\MES-run\shared
+copy D:\MES\backend\.env D:\MES-run\shared\.env</pre><button type="button">Chép</button></div>
+      </li>
+      <li>
+        <b>Chạy</b>
+        <div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run</pre><button type="button">Chép</button></div>
+        Khi hỏi <code>Đã sao lưu 5 database chưa?</code> thì gõ <code>y</code> rồi Enter.
+        Chờ vài phút tới khi thấy dòng <code>Đang chạy: ...</code> là xong.
+        <div class="note">Script tự dừng app pm2 cũ tên <code>mes</code> và tạo app mới. Nếu app cũ tên khác (xem bằng <code>pm2 ls</code>), thêm <code>--replace &lt;tên app cũ&gt;</code> vào cuối lệnh.</div>
+      </li>
+      <li>
+        <b>Kiểm tra</b>
+        <div class="cmd"><pre>pm2 ls</pre><button type="button">Chép</button></div>
+        Thấy app <code>mes</code>, cột status là <code>online</code>. Mở web, đăng nhập thử.
+        <div class="note ok">Nếu trước đây máy chủ đã tự bật pm2 khi khởi động lại máy thì giữ nguyên, không cần làm gì thêm.</div>
+      </li>
+    </ol>
+    <details>
+      <summary>Máy chủ mới hoàn toàn (chưa có gì)?</summary>
+      <p>Trước bước 1, làm thêm:</p>
+      <ul>
+        <li>Cài Node.js 22, Git, SQL Server (5 database và tài khoản SQL đã có).</li>
+        <li>Cài pm2: <code>npm install -g pm2@7.0.4</code></li>
+        <li>Lấy mã nguồn: <code>git clone &lt;địa chỉ repo&gt; D:\MES</code></li>
+        <li>Ở bước 3: không có file để chép, tạo <code>D:\MES-run\shared\.env</code> theo mẫu <code>D:\MES\backend\.env.example</code> (mật khẩu DB, JWT_SECRET...).</li>
+      </ul>
+    </details>
+  </section>
+
+  <section id="cap-nhat">
+    <h2>2. Có code mới (git pull về để chạy)</h2>
+    <p>Làm mỗi lần có bản mới. Không cần dừng pm2, không cần npm ci, không cần build tay.</p>
+    <ol class="steps">
+      <li>
+        <b>Chạy một lệnh</b>
+        <div class="cmd"><pre>cd D:\MES
+node deploy\deploy.cjs --root D:\MES-run</pre><button type="button">Chép</button></div>
+        Script tự <code>git pull</code>, cài gói, build. Trong lúc đó web vẫn chạy bình thường.
+      </li>
+      <li>
+        <b>Nếu script hỏi "Đã sao lưu 5 database chưa?"</b>
+        Nghĩa là bản mới có thay đổi database. Sao lưu 5 database rồi gõ <code>y</code>, Enter.
+        <div class="note">Lúc này web sẽ dừng khoảng 20–60 giây. Nên làm ngoài giờ.<br>
+        Nếu người viết code báo bản này <b>chỉ thêm bảng, thêm cột</b> thì thêm <code>--online-migrate</code> vào cuối lệnh ở bước 1: web không dừng.</div>
+        Không hỏi gì thì web không dừng chút nào.
+      </li>
+      <li>
+        <b>Xong</b>
+        Thấy dòng <code>Đang chạy: ...</code> là xong. Báo người dùng bấm F5.
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Khi có vấn đề</h2>
+    <table>
+      <tr><td>Script báo <code>... đã quay về ...</code></td><td>Bản mới bị lỗi, script đã tự chạy lại bản cũ. Web vẫn dùng được. Gửi file <code>D:\MES-run\logs\mes-error.log</code> cho người viết code.</td></tr>
+      <tr><td>Muốn quay lại bản trước</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --rollback</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td>Xem đang chạy bản nào</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --status</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td>Sửa cấu hình (mật khẩu DB, cổng...)</td><td>Sửa file <code>D:\MES-run\shared\.env</code>, rồi chạy:<div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --sync-env</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td>Script báo <code>Cảnh báo: ... cho Everyone, Authenticated Users, Users truy cập</code></td><td>Thư mục <code>D:\MES-run</code> (chứa mật khẩu DB) đang mở cho mọi người đọc. Mở PowerShell bằng quyền quản trị, chạy lệnh <code>icacls</code> mà script in ra.</td></tr>
+      <tr><td>Thông báo khác</td><td>Đọc dòng <code>Lỗi:</code> script in ra, thường có ghi cách xử lý. Chi tiết: tài liệu <code>11-van-hanh.md</code>, mục Cập nhật bản mới lên máy chủ.</td></tr>
+    </table>
+    <p class="muted">Chạy các lệnh bằng đúng tài khoản Windows đang chạy pm2. Không sửa file trong <code>D:\MES-run\current</code>, không xóa file <code>.mes-deploy</code>.</p>
+  </section>
+</main>
+<script>
+  // Nút "Chép": file mở trực tiếp (file://) có thể không dùng được clipboard API, nên có cách dự phòng
+  document.querySelectorAll('.cmd button').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.previousElementSibling.textContent;
+      let ok = false;
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch {
+        const area = document.createElement('textarea');
+        area.value = text;
+        document.body.appendChild(area);
+        area.select();
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        area.remove();
+      }
+      btn.textContent = ok ? 'Đã chép' : 'Bôi đen để chép';
+      setTimeout(() => { btn.textContent = 'Chép'; }, 1500);
+    });
+  });
+</script>
+</body>
+</html>

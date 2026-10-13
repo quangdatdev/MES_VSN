@@ -38,7 +38,13 @@ export function useDepartment(id: number | null) {
 export const fetchLineHolders = (code: string) => api<LineHolders>(`/hr/departments/line-holders${qs({ code })}`);
 
 export function useDepartmentOptions() {
-  return useQuery({ queryKey: HR_KEYS.deptOptions, queryFn: () => api<DepartmentOptions>('/hr/departments/options'), staleTime: 60_000 });
+  return useQuery({
+    queryKey: HR_KEYS.deptOptions,
+    queryFn: () => api<DepartmentOptions>('/hr/departments/options'),
+    staleTime: 60_000,
+    // Form phòng ban chờ danh mục này mới dựng: cache bị xóa (đổi ĐVCS ở tab khác) thì giữ danh mục cũ, không gỡ form đang sửa dở
+    placeholderData: keepPreviousData,
+  });
 }
 
 /** Ô Người quản lý: tìm trên máy chủ (20 người đang làm); người đang chọn luôn có trong danh sách */

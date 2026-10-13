@@ -1,4 +1,4 @@
-import { Badge, Button, Checkbox, Group, NumberInput, Select, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Badge, Button, Checkbox, Group, NumberInput, Select, Skeleton, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,9 +13,9 @@ import { fmtDate, today } from '../../lib/format';
 import { toastError, toastOk } from '../../lib/notify';
 import { useCan } from '../../shell/permissions';
 import { fetchLineHolders, HR_KEYS, useDepartmentOptions, useManagerOptions } from './api';
-import { DepartmentSelect, DissolvedBadge, Fact, FieldCell, Trail, WorkshopBadge } from './common';
+import { DepartmentSelect, DissolvedBadge, Fact, FieldCell, LoadError, Trail, WorkshopBadge } from './common';
 import { ancestorsOf, subtreeIds, type FlatDept } from './tree';
-import type { Department, LineHolders } from './types';
+import type { Department, DepartmentOptions, LineHolders } from './types';
 
 /** `seq`: số lượt bấm thêm, làm khóa của form (chọn lại đúng thao tác thêm thì form dựng lại từ đầu) */
 export type PanelMode = { kind: 'view' } | { kind: 'edit' } | { kind: 'create'; parentId: number | null; typeId: number | null; seq: number };
@@ -57,6 +57,10 @@ function holdersNote(code: string, holders: LineHolders['holders']) {
 /** Đổi ĐVCS của chuyền: dữ liệu đã xếp ở ĐVCS cũ còn mã, còn tên, nhưng bảng dàn chuyền, ô chọn của ĐVCS cũ không còn chuyền này */
 const moveNote = (from: string, to: string) =>
   `Chuyền chuyển sang đơn vị cơ sở ${to}: kế hoạch đã xếp vào chuyền này ở ${from} vẫn giữ mã chuyền nhưng không còn hàng trên bảng dàn chuyền của ${from}, và ô chọn Chuyền may của ${from} không còn chuyền này.`;
+
+/** Đổi ĐVCS của phòng ban có con (chọn tay hoặc theo cha mới): máy chủ không lan xuống, con giữ ĐVCS của mình */
+const childrenNote = (name: string, to: string | null) =>
+  `Chỉ ${name} ${to ? `chuyển sang đơn vị cơ sở ${to}` : 'bỏ đơn vị cơ sở'}; các phòng ban con giữ đơn vị cơ sở hiện tại, cần đổi thì sửa từng phòng ban.`;
 
 /** Hỏi lại trước thao tác làm đổi chuyền may khi có điều cần báo; không có thì làm ngay */
 function confirmLineChange(notes: string[], title: string, confirmLabel: string, run: () => void) {
@@ -265,11 +269,47 @@ interface FormProps {
   onSaved: (dept: Department) => Promise<void>;
 }
 
-/** Form thêm, sửa phòng ban (thay khung xem ngay tại chỗ) */
-function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, onSaved }: FormProps) {
+/**
+ * Chờ có danh sách ĐVCS đang dùng rồi mới dựng form: ĐVCS ban đầu lấy theo phòng ban cha, mà ĐVCS đã tắt thì máy chủ từ chối,
+ * nên chỉ lấy khi ĐVCS của cha còn dùng. Tải lỗi thì cho thử lại, không dựng form với danh sách rỗng.
+ */
+function DepartmentForm(props: FormProps) {
   const options = useDepartmentOptions();
+  if (options.data) return <DepartmentFormBody {...props} types={options.data.types} factories={options.data.factories} />;
+  return (
+    <div className="hr-panel" aria-busy={options.isPending || undefined}>
+      {options.isError ? (
+        <Stack gap="sm" align="flex-start">
+          <LoadError error={options.error} what="loại phòng ban, đơn vị cơ sở" onRetry={() => options.refetch()} retrying={options.isFetching} />
+          <Button variant="default" onClick={props.onCancel}>
+            Hủy
+          </Button>
+        </Stack>
+      ) : (
+        <>
+          <Skeleton h={22} w="45%" />
+          <Skeleton h={220} mt="lg" />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Form thêm, sửa phòng ban (thay khung xem ngay tại chỗ) */
+function DepartmentFormBody({ dept, mode, items, canChangeLines, types, factories, onCancel, onDirty, onSaved }: FormProps & DepartmentOptions) {
   const creating = mode.kind === 'create';
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  // Chuyền may: ĐVCS của bộ phận đang tích chỉ người có quyền sửa Phân quyền đổi được
+  const branchLocked = !!dept?.isProductionWorkshop && !canChangeLines;
+  const parentBranch = (parentId: number | null) => {
+    const code = parentId == null ? null : (byId.get(parentId)?.branchCode ?? null);
+    return code && factories.some((f) => f.code === code) ? code : null;
+  };
+  // ĐVCS mặc định theo phòng ban cha, đổi cha thì đổi theo, tới khi người dùng tự chọn. Phòng ban đang có ĐVCS khác cha là
+  // đã chọn tay từ trước: giữ nguyên
+  const [followParent, setFollowParent] = useState(
+    () => !branchLocked && (!dept || dept.branchCode == null || dept.branchCode === (dept.parentId == null ? null : byId.get(dept.parentId)?.branchCode)),
+  );
   const form = useForm({
     initialValues: {
       code: dept?.code ?? '',
@@ -278,7 +318,8 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
       departmentTypeId: dept ? String(dept.departmentTypeId) : mode.kind === 'create' && mode.typeId ? String(mode.typeId) : null,
       parentId: dept ? dept.parentId : mode.kind === 'create' ? mode.parentId : null,
       managerEmployeeId: dept?.managerEmployeeId ?? null,
-      branchCode: dept?.branchCode ?? (mode.kind === 'create' && mode.parentId ? (byId.get(mode.parentId)?.branchCode ?? null) : null),
+      // Sửa phòng ban chưa có ĐVCS: ĐVCS của cha điền sẵn là thay đổi chưa lưu (lưu được ngay; Hủy thì không hỏi vì người dùng chưa sửa gì)
+      branchCode: dept?.branchCode ?? parentBranch(dept ? dept.parentId : mode.kind === 'create' ? mode.parentId : null),
       establishedDate: dept?.establishedDate ?? '',
       sortOrder: (dept?.sortOrder ?? '') as number | '',
       isProductionWorkshop: dept?.isProductionWorkshop ?? false,
@@ -291,11 +332,6 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
       branchCode: (v, values) => (values.isProductionWorkshop && !v ? 'Bộ phận tích "Xưởng sản xuất" phải có đơn vị cơ sở.' : null),
     },
   });
-  const dirty = form.isDirty();
-  useEffect(() => onDirty(dirty), [dirty, onDirty]);
-  useEffect(() => () => onDirty(false), [onDirty]);
-
-  const types = options.data?.types ?? [];
   const type = types.find((t) => String(t.id) === form.values.departmentTypeId);
   const hasChildren = !!dept && items.some((i) => i.parentId === dept.id);
   const typeError = type?.isFinalLevel && hasChildren ? `Loại ${type.name} là cấp cuối, mà phòng ban này đang có phòng ban con.` : null;
@@ -303,35 +339,44 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
   const own = useMemo(() => (dept ? subtreeIds(items, dept.id) : new Set<number>()), [dept, items]);
   const skip = useCallback((d: FlatDept) => own.has(d.id) || !!byId.get(d.id)?.isFinalLevel, [own, byId]);
 
+  const toBody = (v: typeof form.values) => ({
+    name: v.name.trim(),
+    nameEn: v.nameEn.trim() || null,
+    departmentTypeId: Number(v.departmentTypeId),
+    parentId: v.parentId,
+    managerEmployeeId: v.managerEmployeeId,
+    branchCode: v.branchCode,
+    establishedDate: v.establishedDate || null,
+    ...(v.sortOrder === '' ? {} : { sortOrder: v.sortOrder }),
+    isProductionWorkshop: v.isProductionWorkshop,
+  });
+  // Chỉ gửi phần đã đổi so với dữ liệu đã lưu (không so với giá trị ban đầu của form: ĐVCS điền sẵn theo cha cũng là thay đổi):
+  // máy chủ không phải kiểm lại cha, người quản lý khi không đụng tới
+  const changedOf = (v: typeof form.values) => {
+    const before: Record<string, unknown> = {
+      name: dept!.name,
+      nameEn: dept!.nameEn,
+      departmentTypeId: dept!.departmentTypeId,
+      parentId: dept!.parentId,
+      managerEmployeeId: dept!.managerEmployeeId,
+      branchCode: dept!.branchCode,
+      establishedDate: dept!.establishedDate,
+      sortOrder: dept!.sortOrder,
+      isProductionWorkshop: dept!.isProductionWorkshop,
+    };
+    return Object.fromEntries(Object.entries(toBody(v)).filter(([k, x]) => x !== before[k]));
+  };
+  const unchanged = !creating && Object.keys(changedOf(form.values)).length === 0;
+  // Hỏi trước khi bỏ chỉ khi người dùng đã sửa (ĐVCS điền sẵn thì không) và còn khác dữ liệu đã lưu, khớp với nút Lưu
+  const dirty = form.isDirty() && !unchanged;
+  useEffect(() => onDirty(dirty), [dirty, onDirty]);
+  useEffect(() => () => onDirty(false), [onDirty]);
+
   const save = useMutation({
-    mutationFn: (v: typeof form.values) => {
-      const body = {
-        name: v.name.trim(),
-        nameEn: v.nameEn.trim() || null,
-        departmentTypeId: Number(v.departmentTypeId),
-        parentId: v.parentId,
-        managerEmployeeId: v.managerEmployeeId,
-        branchCode: v.branchCode,
-        establishedDate: v.establishedDate || null,
-        ...(v.sortOrder === '' ? {} : { sortOrder: v.sortOrder }),
-        isProductionWorkshop: v.isProductionWorkshop,
-      };
-      if (creating) return api<Department>('/hr/departments', { method: 'POST', body: { code: v.code.trim().toUpperCase(), ...body } });
-      // Chỉ gửi phần đã đổi: máy chủ không phải kiểm lại cha, người quản lý khi không đụng tới
-      const before: Record<string, unknown> = {
-        name: dept!.name,
-        nameEn: dept!.nameEn,
-        departmentTypeId: dept!.departmentTypeId,
-        parentId: dept!.parentId,
-        managerEmployeeId: dept!.managerEmployeeId,
-        branchCode: dept!.branchCode,
-        establishedDate: dept!.establishedDate,
-        sortOrder: dept!.sortOrder,
-        isProductionWorkshop: dept!.isProductionWorkshop,
-      };
-      const changed = Object.fromEntries(Object.entries(body).filter(([k, x]) => x !== before[k]));
-      return api<Department>(`/hr/departments/${dept!.id}`, { method: 'PUT', body: changed });
-    },
+    mutationFn: (v: typeof form.values) =>
+      creating
+        ? api<Department>('/hr/departments', { method: 'POST', body: { code: v.code.trim().toUpperCase(), ...toBody(v) } })
+        : api<Department>(`/hr/departments/${dept!.id}`, { method: 'PUT', body: changedOf(v) }),
     onSuccess: async (d) => {
       toastOk(creating ? `Đã thêm phòng ban ${d.name}.` : `Đã lưu phòng ban ${d.name}.`);
       onDirty(false);
@@ -352,7 +397,8 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
   const [checking, setChecking] = useState(false);
   /**
    * Trước khi lưu: thêm hay tích bộ phận làm mã thành chuyền đang dùng thì hỏi máy chủ ai đang được giao phạm vi chuyền mã này;
-   * đổi ĐVCS của chuyền thì báo hệ quả ở ĐVCS cũ. Có điều cần báo thì hỏi lại, không thì lưu ngay.
+   * đổi ĐVCS của chuyền thì báo hệ quả ở ĐVCS cũ; đổi ĐVCS của phòng ban có con thì báo con không đổi theo. Có điều cần báo thì
+   * hỏi lại, không thì lưu ngay.
    */
   const submit = async (v: typeof form.values) => {
     if (typeError) return;
@@ -373,16 +419,25 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
       }
     }
     if (moving) notes.push(moveNote(dept!.branchCode!, v.branchCode!));
+    if (!creating && hasChildren && v.branchCode !== dept!.branchCode) notes.push(childrenNote(dept!.name, v.branchCode));
     const label = creating ? 'Thêm phòng ban' : 'Lưu thay đổi';
     confirmLineChange(notes, creating ? `Thêm ${v.name.trim()}?` : `Lưu thay đổi của ${dept!.name}?`, label, () => save.mutate(v));
   };
 
   const parentPath = form.values.parentId == null ? [] : [...ancestorsOf(byId, form.values.parentId), byId.get(form.values.parentId)].filter(Boolean);
-  const factories = options.data?.factories ?? [];
   const cancel = () => confirmDiscard(dirty, onCancel);
-  // Chuyền may: ĐVCS của bộ phận đang tích chỉ người có quyền sửa Phân quyền đổi được; ô tích khóa khi thiếu quyền, hoặc khi
-  // chưa tích mà chưa chọn ĐVCS (đang tích mà xóa ĐVCS thì vẫn bỏ tích được)
-  const branchLocked = !!dept?.isProductionWorkshop && !canChangeLines;
+  // Cha mới không có ĐVCS dùng được thì ô về giá trị đã lưu (thêm mới: trống): không xóa ngầm ĐVCS đã lưu
+  const pickParent = (id: number | null) => {
+    form.setFieldValue('parentId', id);
+    if (followParent) form.setFieldValue('branchCode', parentBranch(id) ?? dept?.branchCode ?? null);
+  };
+  const parent = form.values.parentId == null ? undefined : byId.get(form.values.parentId);
+  const branchHint = branchLocked
+    ? lineLock('đổi đơn vị cơ sở')
+    : followParent && parent && parentBranch(parent.id)
+      ? `Mặc định lấy theo phòng ban cha ${parent.name}; chọn lại được.`
+      : 'Phòng ban của một đơn vị cơ sở (bộ phận cắt, may...).';
+  // Ô tích khóa khi thiếu quyền, hoặc khi chưa tích mà chưa chọn ĐVCS (đang tích mà xóa ĐVCS thì vẫn bỏ tích được)
   const workshop = form.values.isProductionWorkshop;
   const workshopLock = !canChangeLines ? WORKSHOP_NEED_ADMIN : !workshop && !form.values.branchCode ? WORKSHOP_NEED_BRANCH : null;
 
@@ -401,7 +456,7 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
           <Button variant="default" onClick={cancel}>
             Hủy
           </Button>
-          <ActionButton type="submit" loading={save.isPending || checking} blockedReason={!creating && !dirty ? 'Chưa có thay đổi nào.' : typeError}>
+          <ActionButton type="submit" loading={save.isPending || checking} blockedReason={unchanged ? 'Chưa có thay đổi nào.' : typeError}>
             {creating ? 'Thêm phòng ban' : 'Lưu thay đổi'}
           </ActionButton>
         </Group>
@@ -441,15 +496,17 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
             label="Phòng ban cha"
             placeholder="Không có (phòng ban gốc)"
             clearable
+            // Bấm lại đúng cha đang chọn không biến thành phòng ban gốc (ĐVCS đổi theo); bỏ cha bằng nút xóa
+            allowDeselect={false}
             departments={items}
             skip={skip}
             value={form.values.parentId}
-            onChange={(id) => form.setFieldValue('parentId', id)}
+            onChange={pickParent}
             nothingFoundMessage="Không có phòng ban khớp."
           />
         </FieldCell>
         <ManagerSelect value={form.values.managerEmployeeId} current={dept} onChange={(id) => form.setFieldValue('managerEmployeeId', id)} />
-        <FieldCell hint={branchLocked ? lineLock('đổi đơn vị cơ sở') : 'Phòng ban của một đơn vị cơ sở (bộ phận cắt, may...).'}>
+        <FieldCell hint={branchHint}>
           <Select
             label="Đơn vị cơ sở"
             placeholder="Không thuộc đơn vị cơ sở nào"
@@ -458,6 +515,10 @@ function DepartmentForm({ dept, mode, items, canChangeLines, onCancel, onDirty, 
             className={branchLocked ? 'field-readonly' : undefined}
             data={factories.map((f) => ({ value: f.code, label: `${f.code} – ${f.name}` }))}
             {...form.getInputProps('branchCode')}
+            onChange={(v) => {
+              setFollowParent(false);
+              form.setFieldValue('branchCode', v);
+            }}
           />
         </FieldCell>
         <FieldCell>

@@ -1,4 +1,5 @@
 import { lazy, type ComponentType } from 'react';
+import { withChunkRecovery } from '../lib/chunkReload';
 
 type PageModule = Promise<{ default: ComponentType }>;
 
@@ -27,9 +28,9 @@ const loaders: Record<string, () => PageModule> = {
 
 /**
  * Đăng ký màn hình thật theo đường dẫn menu. Đường dẫn nào chưa đăng ký sẽ hiện trang giữ chỗ (ModulePage).
- * Mỗi màn nạp lười (React.lazy) để không làm nặng lần tải đầu.
+ * Mỗi màn nạp lười (React.lazy) để không làm nặng lần tải đầu. Không tải được code (đã triển khai bản mới) thì tải lại trang.
  */
-export const pages: Record<string, ComponentType> = Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(load)]));
+export const pages: Record<string, ComponentType> = Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(withChunkRecovery(load))]));
 
 /**
  * Tải trước code của một màn mà chưa vẽ: lúc mở trang (song song với khôi phục phiên, nạp quyền) và khi rê chuột hoặc Tab
