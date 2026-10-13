@@ -1,23 +1,26 @@
-/* Token theo docs/nguon/orange-cart-DESIGN.md, màu chủ đạo lấy từ logo Vietsun (ADR 0003). Cam #F39830 chỉ dùng làm nền/vạch, không dùng cho chữ trên nền trắng. */
+/* Token theo mẫu giao diện 12/10/2026 (quyết định 12.3): thanh trên, nền trang sáng, thanh bên xám than, cam logo Vietsun làm màu chủ đạo.
+   Cam #F39830 chỉ làm nền/vạch, không làm chữ trên nền trắng (2,3:1): chữ màu cam dùng --brand-ink. */
 :root {
-  --app-bg: #ffffff;
+  --app-bg: #f3f4f6;
   --app-surface: #ffffff;
-  --app-section: #f0f2f2;
-  --app-row-hover: #f7fafa;
-  --app-line: #d5d9d9;
-  --app-line-strong: #bbbfbf;
-  --app-input-line: #888c8c;
-  --app-ink: #0f1111;
-  --app-ink-soft: #565959;
+  --app-section: #f7f8fa;
+  --app-row-hover: #f5f7fa;
+  --app-line: #e5e7eb;
+  --app-line-strong: #d1d5db;
+  --app-input-line: #8a9099;
+  --app-ink: #111827;
+  --app-ink-soft: #4b5563;
+  --app-topbar: #ffffff;
+  --app-topbar-ink: #111827;
+  --app-tabbar: #f3f4f6;
   --app-nav: #2b2c2d;
-  --app-subnav: #3f4041;
+  --app-subnav: #3a3b3d;
   --app-nav-ink: #ffffff;
   --app-nav-ink-soft: #cccccc;
   --brand: #f39830;
   --brand-hover: #e0851d;
   --brand-soft: #fff5ea;
-  --search-btn: #f8b562;
-  --search-btn-hover: #f39830;
+  --brand-ink: #a4560a;
   --link: #007185;
   --link-hover: #c7511f;
   --focus-glow: #c8f3fa;
@@ -26,8 +29,8 @@
   --error: #b12704;
   --field-required-bg: #fff3c4;
   --field-required-line: #9a7400;
-  --elev-1: 0 2px 5px rgba(15, 17, 17, 0.08);
-  --elev-2: 0 0 6px rgba(15, 17, 17, 0.15);
+  --elev-1: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --elev-2: 0 0 6px rgba(17, 24, 39, 0.15);
 }
 
 /* Mantine khai báo các biến cỡ ngay trên class của component nên phải ghi đè ở đó */
@@ -71,9 +74,13 @@
   --app-input-line: #6b7889;
   --app-ink: #e3e6e6;
   --app-ink-soft: #a2abb3;
+  --app-topbar: #151c24;
+  --app-topbar-ink: #e3e6e6;
+  --app-tabbar: #0f1418;
   --app-nav: #131a22;
   --app-subnav: #1f2a36;
   --brand-soft: #2b2110;
+  --brand-ink: #ffb35c;
   --link: #4fc3d6;
   --link-hover: #ffb35c;
   --focus-glow: rgba(79, 195, 214, 0.35);
@@ -140,10 +147,16 @@ a.text-link:hover {
   outline: 2px solid var(--link);
   outline-offset: 2px;
 }
-/* Nền xám than (thanh bên, thanh trên, dải menu con): viền xanh khó thấy, mục đang mở còn đè mất quầng sáng. Dùng viền trắng. */
-:is(.rail, .topbar, .tabbar) .focus-ring:focus-visible {
+/* Thanh bên xám than: viền xanh khó thấy, mục đang mở còn đè mất quầng sáng. Dùng viền trắng.
+   Nút rút gọn nằm đè mép thanh bên, nửa ngoài trên nền sáng, nên giữ vòng xanh. */
+.rail .focus-ring:not(.rail-toggle):focus-visible {
   outline: 2px solid #fff;
   outline-offset: 1px;
+}
+/* Dải menu con cuộn ngang (overflow) cắt mất phần vòng focus nằm ngoài tab: vẽ vòng vào trong */
+.tabbar .focus-ring:focus-visible {
+  outline-offset: -3px;
+  box-shadow: none;
 }
 
 /* Ô nhập: viền xám đậm, focus viền xanh + quầng xanh lơ 3px. Trạng thái lỗi của Mantine vẫn thắng. */
@@ -158,10 +171,12 @@ a.text-link:hover {
   box-shadow: 0 0 0 3px var(--focus-glow);
 }
 
-/* ===== Khung ứng dụng: thanh bên + thanh trên cùng màu xám than, dải menu con, vùng nội dung ===== */
+/* ===== Khung ứng dụng (quyết định 12.3): thanh trên sáng chạy hết chiều ngang; bên dưới là thanh bên xám than,
+   dải menu con và vùng nội dung là thẻ trắng trên nền xám ===== */
 .app {
   height: 100dvh;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 /* Lối tắt cho người dùng bàn phím: ẩn đến khi Tab tới, nằm trên cùng */
@@ -171,9 +186,9 @@ a.text-link:hover {
   top: 8px;
   left: 8px;
   padding: 8px 14px;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #fff;
-  color: #0f1111;
+  color: #111827;
   font-weight: 700;
   text-decoration: none;
   transform: translateY(-200%);
@@ -186,25 +201,31 @@ a.text-link:hover {
 .app-main:focus {
   outline: none;
 }
+.app-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .app-body {
   flex: 1;
   min-width: 0;
-  /* Điện thoại xếp dọc (column-reverse): thiếu dòng này thì nội dung dài tràn lên trên, mất thanh trên và tiêu đề */
+  /* Điện thoại xếp dọc (column-reverse): thiếu dòng này thì nội dung dài tràn lên trên, mất dải menu con và tiêu đề */
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: var(--app-bg);
 }
 
 .rail {
   position: relative;
   z-index: 30;
-  width: 224px;
+  width: 240px;
   flex-shrink: 0;
   background: var(--app-nav);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 8px 8px 12px;
+  padding: 12px 10px;
   transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .rail-group {
@@ -212,69 +233,32 @@ a.text-link:hover {
   flex-direction: column;
   gap: 4px;
 }
-.rail-divider {
-  height: 1px;
-  background: rgba(255, 255, 255, 0.12);
-  margin: 6px 4px;
-}
 .rail-item {
   position: relative;
-  height: 40px;
-}
-.rail-item-brand {
-  height: 56px;
-  display: flex;
-  align-items: center;
-}
-.rail-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 2px;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  color: #fff;
-  text-decoration: none;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.rail-brand:hover {
-  border-color: #fff;
-}
-/* flex (không phải block): khung logo không bị khoảng dòng chữ kéo cao, logo nằm giữa ô */
-.rail-logo-full {
-  display: flex;
-}
-.rail-logo-mark {
-  display: none;
-}
-.rail[data-collapsed='true'] .rail-logo-full {
-  display: none;
-}
-.rail[data-collapsed='true'] .rail-logo-mark {
-  display: flex;
+  height: 44px;
 }
 
-/* Hover kiểu thanh điều hướng thương mại: viền trắng 1px, không đổ bóng */
+/* Mục nhóm: nền sáng lên khi rê chuột; nhóm đang mở có nền riêng, vạch cam bên trái, biểu tượng cam, chữ đậm */
 .rail-btn {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  height: 40px;
-  padding: 0 0 0 10px;
-  border-radius: 2px;
-  border: 1px solid transparent;
+  height: 44px;
+  padding: 0 10px 0 14px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--app-nav-ink);
   font: inherit;
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
-  transition: background-color 120ms, border-color 120ms, width 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 120ms, width 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .rail-btn > svg {
   flex-shrink: 0;
@@ -282,7 +266,7 @@ a.text-link:hover {
   transition: color 120ms;
 }
 .rail-btn:hover {
-  border-color: #fff;
+  background: rgba(255, 255, 255, 0.07);
 }
 .rail-btn:hover > svg {
   color: #fff;
@@ -290,25 +274,38 @@ a.text-link:hover {
 .rail-btn[data-active='true'] {
   background: var(--app-subnav);
   font-weight: 700;
-  box-shadow: inset 3px 0 0 var(--brand);
 }
-.rail-btn[data-active='true'] > svg {
+.rail-btn[data-active='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand);
+}
+.rail-btn[data-active='true'] > svg:first-child {
   color: var(--brand);
 }
 .rail-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: opacity 150ms;
 }
 
-/* Nút rút gọn/mở rộng: nút tròn nhỏ nằm trên mép phải thanh bên, ngang hàng logo */
+/* Nút rút gọn/mở rộng: nút tròn nhỏ nằm trên mép phải thanh bên, ngang hàng nhóm đầu tiên */
 .rail-toggle {
   position: absolute;
-  top: 24px;
+  top: 22px;
   right: -12px;
   width: 24px;
   height: 24px;
   padding: 0;
   border-radius: 999px;
-  border: 1px solid var(--app-line);
+  border: 1px solid var(--app-line-strong);
   background: var(--app-surface);
   color: var(--app-ink);
   box-shadow: var(--elev-1);
@@ -320,7 +317,7 @@ a.text-link:hover {
 .rail-toggle:hover {
   background: var(--brand);
   border-color: var(--brand-hover);
-  color: #0f1111;
+  color: #111827;
 }
 
 /* Rút gọn: chỉ còn icon; rê chuột vào thì ô dài ra phía dưới, tên hiện ngay dưới icon */
@@ -330,42 +327,36 @@ a.text-link:hover {
 .rail[data-collapsed='true'] .rail-item {
   width: 100%;
 }
-.rail[data-collapsed='true'] .rail-item-brand {
-  justify-content: center;
-}
 .rail[data-collapsed='true'] .rail-btn {
   position: absolute;
   left: 0;
   top: 0;
   width: 100%;
-  height: 40px;
-  padding: 9px 0 0;
+  height: 44px;
+  padding: 12px 0 0;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
-  transition: background-color 120ms, border-color 120ms, height 180ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-.rail[data-collapsed='true'] .rail-btn[data-active='true'] {
-  box-shadow: inset 0 -3px 0 var(--brand);
+  transition: background-color 120ms, height 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .rail[data-collapsed='true'] .rail-label {
+  flex: none;
   max-width: 100%;
   font-size: 12px;
   line-height: 14px;
   font-weight: 600;
   opacity: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
+.rail[data-collapsed='true'] .rail-caret {
+  display: none;
+}
+/* Ô dài ra đè lên ô dưới: nền đặc */
 .rail[data-collapsed='true'] .rail-btn:hover,
 .rail[data-collapsed='true'] .rail-btn:focus-visible {
-  height: 60px;
-  background: var(--app-nav);
-  z-index: 2;
-}
-.rail[data-collapsed='true'] .rail-btn[data-active='true']:hover {
+  height: 64px;
   background: var(--app-subnav);
+  z-index: 2;
 }
 .rail[data-collapsed='true'] .rail-btn:hover .rail-label,
 .rail[data-collapsed='true'] .rail-btn:focus-visible .rail-label {
@@ -395,54 +386,110 @@ a.text-link:hover {
   }
 }
 
-/* Thanh trên cùng: xám than, ô tìm kiếm chiếm phần lớn chiều ngang */
+/* Thanh trên: nền sáng, viền dưới mảnh; ô logo rộng bằng thanh bên để logo thẳng cột với menu */
 .topbar {
-  height: 56px;
+  position: relative;
+  z-index: 40;
+  height: 64px;
   flex-shrink: 0;
-  background: var(--app-nav);
-  color: var(--app-nav-ink);
-  padding: 0 12px 0 20px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 0 16px 0 0;
+  background: var(--app-topbar);
+  color: var(--app-topbar-ink);
+  border-bottom: 1px solid var(--app-line);
 }
+.topbar-brand {
+  flex-shrink: 0;
+  width: 240px;
+  height: 100%;
+  box-sizing: border-box;
+  padding-left: 24px;
+  display: flex;
+  align-items: center;
+}
+.brand-img {
+  display: block;
+}
+.brand-logo {
+  display: flex;
+}
+/* Logo theo chế độ màu: chữ xám nền trắng ở chế độ sáng, chữ trắng nền trong suốt ở chế độ tối */
+.brand-logo .brand-logo-dark,
+:root[data-mantine-color-scheme='dark'] .brand-logo .brand-logo-light {
+  display: none;
+}
+:root[data-mantine-color-scheme='dark'] .brand-logo .brand-logo-dark {
+  display: block;
+}
+.topbar-brand .topbar-logo-mark {
+  display: none;
+}
+/* Nhãn hệ thống: viên cam, chữ đen (chữ trắng trên cam chỉ đạt 2,3:1) */
 .brand-chip {
-  padding: 2px 6px;
-  border-radius: 2px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
   background: var(--brand);
-  color: #0f1111;
-  font-size: 13px;
-  line-height: 16px;
+  color: #111827;
+  font-size: 14px;
+  line-height: 18px;
   font-weight: 700;
   white-space: nowrap;
+}
+.topbar-sep {
+  flex-shrink: 0;
+  width: 1px;
+  height: 28px;
+  background: var(--app-line);
+}
+.topbar-tools {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .nav-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: 44px;
-  padding: 2px 8px;
-  border-radius: 2px;
+  padding: 4px 10px;
+  border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--app-nav-ink);
+  color: var(--app-topbar-ink);
   font: inherit;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
+  transition: background-color 120ms, border-color 120ms;
 }
 .nav-btn:hover {
-  border-color: #fff;
+  background: var(--app-bg);
 }
 .nav-btn > svg {
   flex-shrink: 0;
 }
-/* Nút nhà máy mở danh sách để chọn tại chỗ: mũi tên báo là ô chọn; đang mở thì viền sáng như khi rê chuột */
-.nav-branch-caret {
-  color: var(--app-nav-ink-soft);
+/* Nút ĐVCS mở danh sách chọn tại chỗ: ô xám nhạt, mũi tên báo là ô chọn; đang mở thì viền đậm như khi rê chuột */
+.nav-branch {
+  min-width: 0;
+  background: var(--app-bg);
+  border-color: var(--app-line);
 }
+.nav-branch:hover,
 .nav-branch[aria-expanded='true'] {
-  border-color: #fff;
+  border-color: var(--app-input-line);
+}
+.nav-branch-icon,
+.nav-branch-caret {
+  color: var(--app-ink-soft);
 }
 .nav-btn-stack {
   display: flex;
@@ -452,7 +499,7 @@ a.text-link:hover {
 .nav-btn-small {
   font-size: 12px;
   line-height: 14px;
-  color: var(--app-nav-ink-soft);
+  color: var(--app-ink-soft);
 }
 .nav-btn-main {
   font-size: 14px;
@@ -463,84 +510,113 @@ a.text-link:hover {
   max-width: 200px;
 }
 .nav-icon-btn {
-  min-height: 44px;
+  min-height: 40px;
   width: 40px;
   justify-content: center;
   padding: 0;
 }
+.nav-search-icon {
+  display: none;
+}
+.nav-account {
+  gap: 10px;
+  padding: 2px 8px 2px 2px;
+}
+.nav-avatar {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--app-bg);
+  border: 1px solid var(--app-line);
+  color: var(--app-ink-soft);
+}
+.nav-account-caret {
+  color: var(--app-ink-soft);
+}
 
+/* Ô tìm màn hình (mở Spotlight): kính lúp bên trái, phím tắt bên phải */
 .searchbar {
   flex: 1;
   min-width: 0;
-  max-width: 760px;
-  height: 40px;
-  margin: 0 8px;
-  display: flex;
-  border-radius: 4px;
-  overflow: hidden;
-  background: #fff;
-  border: 0;
-  padding: 0;
-  cursor: text;
-  font: inherit;
-}
-.searchbar:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--brand);
-}
-.searchbar-scope {
+  max-width: 620px;
+  height: 42px;
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  background: #f3f3f3;
-  border-right: 1px solid #cdcdcd;
-  color: #555;
-  font-size: 12px;
-  white-space: nowrap;
+  gap: 10px;
+  padding: 0 8px 0 14px;
+  border: 1px solid var(--app-line-strong);
+  border-radius: 8px;
+  background: var(--app-surface);
+  color: var(--app-ink-soft);
+  font: inherit;
+  cursor: text;
+  transition: border-color 120ms;
+}
+.searchbar:hover {
+  border-color: var(--app-input-line);
+}
+.searchbar-icon {
+  flex-shrink: 0;
 }
 .searchbar-text {
   flex: 1;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  color: #6f7373;
+  text-align: left;
   font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .searchbar-key {
-  align-self: center;
-  margin-right: 8px;
+  flex-shrink: 0;
   padding: 1px 6px;
-  border: 1px solid #d5d9d9;
+  border: 1px solid var(--app-line-strong);
   border-radius: 4px;
-  color: #6f7373;
+  background: var(--app-section);
+  font-family: inherit;
   font-size: 12px;
   line-height: 16px;
 }
-.searchbar-go {
-  width: 46px;
+
+/* Sáng/tối: hai nút cạnh nhau; chế độ đang dùng có nền cam nhạt, không chỉ khác màu biểu tượng */
+.scheme-toggle {
+  display: inline-flex;
+  gap: 2px;
+}
+.scheme-btn {
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  background: var(--search-btn);
-  color: #0f1111;
-  transition: background-color 120ms;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-ink-soft);
+  cursor: pointer;
+  transition: background-color 120ms, color 120ms;
 }
-.searchbar:hover .searchbar-go {
-  background: var(--search-btn-hover);
+.scheme-btn:hover {
+  background: var(--app-bg);
+  color: var(--app-ink);
+}
+.scheme-btn[aria-pressed='true'] {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
 }
 
-/* Dải menu con: nền xám than nhạt, chữ trắng 14px, mục đang mở có vạch cam */
+/* Dải menu con: nền sáng như nền trang; tab đang mở chữ cam đậm (cam sáng làm chữ chỉ 2,3:1) và vạch cam */
 .tabbar {
   flex-shrink: 0;
-  height: 40px;
-  background: var(--app-subnav);
-  padding: 0 12px;
+  height: 48px;
+  background: var(--app-tabbar);
+  padding: 0 16px;
   display: flex;
   align-items: stretch;
-  gap: 2px;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -551,48 +627,86 @@ a.text-link:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 4px 0;
-  padding: 0 9px;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  color: #fff;
+  padding: 0 12px;
+  color: var(--app-ink);
   font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
   text-decoration: none;
   user-select: none;
+  transition: color 120ms, box-shadow 120ms;
 }
 .tab:hover {
-  border-color: #fff;
+  color: var(--brand-ink);
+  box-shadow: inset 0 -3px 0 var(--app-line-strong);
 }
 .tab[aria-current='page'] {
+  color: var(--brand-ink);
   font-weight: 700;
   box-shadow: inset 0 -3px 0 var(--brand);
-  border-radius: 2px 2px 0 0;
 }
 .tab-group-name {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-right: 6px;
-  padding-right: 12px;
-  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  margin-right: 4px;
+  padding-right: 16px;
   font-size: 14px;
   font-weight: 700;
-  color: #fff;
+  color: var(--app-ink);
   white-space: nowrap;
 }
+.tab-group-name::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 15px;
+  bottom: 15px;
+  width: 1px;
+  background: var(--app-line-strong);
+}
 
+/* Vùng nội dung là thẻ trắng: chính vùng cuộn mang khung thẻ nên màn dùng height: 100% (WorkPage) vẫn kéo kín */
 .app-main {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: var(--app-bg);
-  padding: 16px 18px 24px;
+  margin: 0 16px 16px;
+  padding: 18px 20px 24px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  box-shadow: var(--elev-1);
+}
+
+/* ===== Màn vừa: thanh trên bớt dần phần phụ để không tràn ===== */
+@media (max-width: 1280px) {
+  .topbar-brand {
+    width: auto;
+    padding: 0 4px 0 20px;
+  }
+}
+@media (max-width: 1100px) {
+  .nav-account .nav-btn-stack,
+  .nav-account-caret {
+    display: none;
+  }
+  .nav-account {
+    padding: 2px;
+  }
+}
+@media (max-width: 960px) {
+  .searchbar {
+    display: none;
+  }
+  .nav-search-icon {
+    display: inline-flex;
+  }
 }
 
 /* ===== Điện thoại: thanh bên chuyển xuống đáy màn hình ===== */
 @media (max-width: 767px) {
-  .app {
+  .app-frame {
     flex-direction: column-reverse;
   }
   .rail,
@@ -613,6 +727,7 @@ a.text-link:hover {
   .rail .rail-item,
   .rail[data-collapsed='true'] .rail-item {
     width: 44px;
+    height: 40px;
   }
   .rail .rail-btn,
   .rail[data-collapsed='true'] .rail-btn,
@@ -624,132 +739,289 @@ a.text-link:hover {
     flex-direction: row;
     justify-content: center;
   }
-  .rail .rail-btn[data-active='true'],
-  .rail[data-collapsed='true'] .rail-btn[data-active='true'] {
-    box-shadow: inset 0 3px 0 var(--brand);
+  .rail .rail-btn[data-active='true']::before {
+    left: 10px;
+    right: 10px;
+    top: 0;
+    bottom: auto;
+    width: auto;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
   }
-  .rail-divider,
-  .rail-item-brand,
   .rail-label,
+  .rail-caret,
   .rail-toggle {
     display: none;
   }
   .topbar {
     height: 52px;
-    padding: 0 6px 0 10px;
-    gap: 4px;
+    padding: 0 6px 0 0;
+    gap: 6px;
   }
-  .searchbar {
+  .topbar-brand {
+    padding: 0 2px 0 10px;
+  }
+  .topbar-brand .topbar-logo-full,
+  .topbar-sep {
     display: none;
+  }
+  .topbar-brand .topbar-logo-mark {
+    display: block;
+  }
+  .brand-chip {
+    height: 32px;
+    padding: 0 8px;
+    gap: 4px;
+    font-size: 13px;
+  }
+  .brand-chip svg {
+    display: none;
+  }
+  .topbar-tools {
+    gap: 2px;
+  }
+  /* Chỉ còn nút chuyển sang chế độ kia, đủ chỗ cho nút tài khoản */
+  .scheme-btn[aria-pressed='true'] {
+    display: none;
+  }
+  .nav-branch {
+    padding: 2px 8px;
   }
   .nav-btn-main {
     max-width: 120px;
   }
-  .nav-account .nav-btn-stack {
-    display: none;
+  .tabbar {
+    height: 44px;
+    padding: 0 8px;
   }
   .app-main {
+    margin: 0;
     padding: 12px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 /* Điện thoại hẹp (360px): bỏ nhãn phụ để thanh trên không tràn, nút tài khoản (có Đăng xuất) luôn nhìn thấy */
 @media (max-width: 400px) {
   .brand-chip,
-  .nav-branch .nav-btn-small {
+  .nav-branch .nav-btn-small,
+  .nav-branch-icon {
     display: none;
   }
   .nav-branch .nav-btn-main {
     max-width: 110px;
   }
 }
-@media (min-width: 768px) {
-  .nav-search-icon,
-  .nav-account-icon {
-    display: none;
-  }
-}
 
-/* ===== Đăng nhập ===== */
-/* Bên trái: nền xám than, mặt trời trong logo mọc từ mép dưới. Bên phải: logo trên nền trắng như bản gốc, form gọn. */
+/* ===== Đăng nhập (quyết định 12.3): nền tối có ảnh nhà máy, mặt trời của logo mọc ở mép trái, thẻ đăng nhập bên phải.
+   Nền luôn tối ở cả hai chế độ màu; thẻ theo chế độ màu của ứng dụng. Ảnh nền thay ở frontend/public/login-bg.webp. ===== */
 .login-shell {
+  position: relative;
+  isolation: isolate;
   min-height: 100dvh;
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-  background: var(--app-bg);
-}
-.login-art {
-  position: relative;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    'top top'
+    'hero main'
+    'foot foot';
+  column-gap: clamp(32px, 5vw, 96px);
+  padding: 0 clamp(24px, 6vw, 112px);
   overflow: hidden;
-  background: var(--app-nav);
+  background: #1d1e20;
   color: #fff;
-  padding: 56px 56px 0;
 }
-.login-art-title,
-.login-art-sub {
-  position: relative;
-  z-index: 1;
+/* Lớp tối đặt trên ảnh: bên trái đậm hơn để chữ trắng đọc rõ, có quầng cam quanh mặt trời */
+.login-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 0% 55%, rgba(243, 152, 48, 0.22), transparent 42%),
+    linear-gradient(90deg, rgba(24, 25, 27, 0.94) 0%, rgba(24, 25, 27, 0.78) 48%, rgba(24, 25, 27, 0.9) 100%),
+    url('/login-bg.webp') center / cover no-repeat,
+    #1d1e20;
 }
-.login-art-title {
-  margin: 0;
-  font-size: 44px;
-  line-height: 48px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.login-art-sub {
-  margin: 8px 0 0;
-  font-size: 18px;
-  line-height: 24px;
-  color: var(--app-nav-ink-soft);
-}
-/* Vòng xám kim loại bao lõi cam: hình mặt trời trên chữ U của logo, mọc từ mép dưới */
+/* Mặt trời trên chữ U của logo: vòng kim loại dày ở mép dưới trái bao lõi cam, thêm một cung cam mảnh bên ngoài */
 .login-sun {
   position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: min(620px, 82%);
+  top: 54%;
+  left: 0;
+  width: min(70vh, 640px);
   aspect-ratio: 1;
   border-radius: 50%;
-  transform: translate(-50%, 54%);
-  background: radial-gradient(circle at 50% 14%, #ededee 0%, #a9a9aa 28%, #686869 52%, #4d4e4e 74%);
-  box-shadow: 0 0 120px 0 rgba(243, 152, 48, 0.16);
+  transform: translate(-56%, -50%);
+  background: linear-gradient(205deg, #f4f4f5 0%, #c3c4c6 26%, #7c7d80 58%, #3a3b3d 100%);
+  box-shadow: 0 0 140px 30px rgba(243, 152, 48, 0.3);
   animation: login-sunrise 1400ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .login-sun::before {
   content: '';
   position: absolute;
-  inset: 9%;
+  inset: 5% 4% 11% 9%;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 26%, #f9b866 0%, #f39830 42%, #dc7e16 100%);
-  box-shadow: inset 0 8px 22px rgba(0, 0, 0, 0.28);
+  background: radial-gradient(circle at 62% 34%, #ffe3b0 0%, #ffb44f 20%, #f39830 44%, #e07b12 70%, #b35a08 100%);
+  box-shadow: inset -14px -20px 44px rgba(110, 45, 0, 0.35);
+}
+.login-sun::after {
+  content: '';
+  position: absolute;
+  inset: -14%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(243, 152, 48, 0.7);
+  -webkit-mask-image: linear-gradient(90deg, transparent 52%, #000 74%);
+  mask-image: linear-gradient(90deg, transparent 52%, #000 74%);
 }
 @keyframes login-sunrise {
   from {
-    transform: translate(-50%, 76%);
+    opacity: 0;
+    transform: translate(-70%, -50%);
   }
   to {
-    transform: translate(-50%, 54%);
+    opacity: 1;
+    transform: translate(-56%, -50%);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .login-sun {
-    animation: none;
-  }
+
+.login-top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 36px 0 24px;
 }
+.login-clock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: #c9cacc;
+  font-size: 14px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.login-clock-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 8px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* Khẩu hiệu: lùi vào để không đè lên mặt trời */
+.login-hero {
+  grid-area: hero;
+  align-self: center;
+  padding-left: clamp(0px, 20vw, 360px);
+  max-width: 640px;
+}
+/* Viết hoa bằng CSS (ngoại lệ riêng màn đăng nhập, Q4): chữ gốc viết thường nên trình đọc màn hình đọc đúng */
+.login-kicker,
+.login-system,
+.login-meta,
+.login-submit {
+  text-transform: uppercase;
+}
+.login-kicker {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  margin: 0 0 22px;
+  color: #c9cacc;
+  font-size: 15px;
+  line-height: 20px;
+  letter-spacing: 0.3em;
+}
+.login-kicker::before {
+  content: '';
+  width: 52px;
+  height: 2px;
+  background: var(--brand);
+}
+.login-headline {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-size: 44px;
+  line-height: 54px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.login-headline-accent {
+  color: var(--brand);
+  font-weight: 600;
+}
+.login-lede {
+  max-width: 34em;
+  margin: 24px 0 0;
+  color: #c9cacc;
+  font-size: 16px;
+  line-height: 26px;
+}
+
 .login-main {
-  display: grid;
-  place-items: center;
-  padding: 48px 24px;
+  grid-area: main;
+  align-self: center;
+  padding: 8px 0 24px;
 }
-.login-panel {
+.login-card {
+  box-sizing: border-box;
   width: 100%;
-  max-width: 360px;
+  padding: 44px 48px 24px;
+  border-radius: 8px;
+  border: 1px solid var(--app-line);
+  background: var(--app-surface);
+  color: var(--app-ink);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
 }
-.login-panel .mantine-Input-wrapper {
-  --input-height-md: 40px;
+.login-card-logo {
+  justify-content: center;
 }
-.login-panel .mantine-Button-root {
-  --button-height-md: 40px;
+.login-system {
+  margin: 32px 0 14px;
+  color: var(--app-ink-soft);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.login-card .mantine-Input-wrapper {
+  --input-height-md: 46px;
+}
+.login-card .mantine-InputWrapper-label {
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.login-card .mantine-Button-root {
+  --button-height-md: 48px;
+}
+.login-submit {
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+/* Liên kết cam đậm: cam logo làm chữ trên nền trắng chỉ đạt 2,3:1 */
+.login-forgot {
+  flex-shrink: 0;
+  color: var(--brand-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.login-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 28px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--app-line);
+  color: var(--app-ink-soft);
+  font-size: 13px;
+  line-height: 18px;
 }
 /* Đúng mật khẩu: ô Đơn vị cơ sở mở ra ngay dưới ô mật khẩu, cùng form */
 .login-reveal {
@@ -766,57 +1038,153 @@ a.text-link:hover {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .login-sun,
   .login-reveal {
     animation: none;
   }
 }
-.login-logo {
-  display: block;
-  height: 56px;
-  width: auto;
-  margin-bottom: 40px;
+
+.login-footer {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0 32px;
 }
-/* Chữ xám của logo không đọc được trên nền tối: đặt logo trên nền trắng */
-:root[data-mantine-color-scheme='dark'] .login-logo {
-  box-sizing: content-box;
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: #fff;
+.login-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 0;
+  margin: 0;
+  color: #a6a8ab;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.2em;
 }
+.login-meta span + span::before {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin: 0 18px;
+  vertical-align: -2px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.login-slogan {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  color: #c9cacc;
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: 0.08em;
+}
+.login-slogan::after {
+  content: '';
+  width: 32px;
+  height: 2px;
+  background: var(--brand);
+}
+
+/* Màn vừa: bỏ đoạn mô tả, khẩu hiệu nhỏ lại */
+@media (max-width: 1100px) {
+  .login-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  }
+  .login-hero {
+    padding-left: clamp(0px, 16vw, 220px);
+  }
+  .login-lede {
+    display: none;
+  }
+  .login-headline {
+    font-size: 34px;
+    line-height: 42px;
+  }
+  .login-card {
+    padding: 36px 32px 20px;
+  }
+}
+/* Điện thoại: một cột; logo, khẩu hiệu ngắn ở trên, thẻ đăng nhập ngay dưới, mặt trời nhỏ lấp ló góc phải */
 @media (max-width: 860px) {
   .login-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+      'top'
+      'hero'
+      'main'
+      'foot';
+    padding: 0 16px;
   }
-  /* Điện thoại: dải tên hệ thống thấp, mặt trời lấp ló bên phải, để form nằm trọn trong màn đầu */
-  .login-art {
-    min-height: 132px;
-    padding: 24px 24px 0;
+  .login-top {
+    padding: 20px 0 12px;
   }
-  .login-art-title {
-    font-size: 28px;
-    line-height: 32px;
+  /* !important: chiều cao logo đặt trong style của ảnh (BrandMark) */
+  .login-top .brand-img {
+    height: 40px !important;
   }
-  .login-art-sub {
-    margin-top: 4px;
-    font-size: 15px;
-    line-height: 20px;
+  .login-hero {
+    padding: 4px 0 20px;
   }
-  /* Nhỏ và lệch hẳn sang phải: điện thoại 320px vẫn không đè lên dòng chữ */
+  .login-kicker {
+    display: none;
+  }
+  .login-headline {
+    font-size: 24px;
+    line-height: 30px;
+  }
   .login-sun {
+    top: -40px;
     left: auto;
-    right: -70px;
-    width: 180px;
-    transform: translateY(58%);
+    right: -110px;
+    width: 240px;
+    transform: none;
     animation: none;
+    opacity: 0.9;
+  }
+  .login-sun::after {
+    display: none;
   }
   .login-main {
-    place-items: start center;
-    padding: 28px 20px 40px;
+    align-self: start;
+    padding: 0 0 16px;
   }
-  .login-logo {
-    height: 44px;
-    margin-bottom: 24px;
+  .login-card {
+    padding: 28px 20px 18px;
+  }
+  .login-card-logo .brand-img {
+    height: 52px !important;
+  }
+  .login-system {
+    margin-top: 22px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+  }
+  .login-footer {
+    flex-direction: column;
+    padding: 8px 0 24px;
+  }
+  .login-slogan {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .login-clock {
+    display: none;
+  }
+  /* Một dòng ở 360px: bỏ mục trùng với thẻ đăng nhập, vạch ngăn không rơi xuống đầu dòng */
+  .login-meta {
+    letter-spacing: 0.12em;
+  }
+  .login-meta span:nth-child(2) {
+    display: none;
+  }
+  .login-meta span + span::before {
+    margin: 0 12px;
   }
 }
 

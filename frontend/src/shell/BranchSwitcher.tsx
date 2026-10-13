@@ -106,7 +106,7 @@ export function BranchSwitcher({ handle }: { handle?: Ref<BranchSwitcherHandle> 
           onClick={() => combobox.toggleDropdown()}
           aria-busy={!!busy || undefined}
         >
-          {busy ? <Loader size={18} color="white" aria-hidden /> : <IconBuildingFactory2 size={20} stroke={1.6} />}
+          {busy ? <Loader size={18} color="gray" aria-hidden /> : <IconBuildingFactory2 size={20} stroke={1.6} className="nav-branch-icon" />}
           <span className="nav-btn-stack">
             <span className="nav-btn-small">{caption}</span>
             <span className="nav-btn-main">{branch.name}</span>

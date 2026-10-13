@@ -1,9 +1,20 @@
-import { Alert, Button, Checkbox, Group, PasswordInput, Select, Stack, Text, TextInput, Title, type SelectProps } from '@mantine/core';
+import { Alert, Anchor, Button, Checkbox, Group, PasswordInput, Popover, Select, Stack, Text, TextInput, Title, type SelectProps } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDocumentTitle } from '@mantine/hooks';
-import { IconAlertCircle, IconBuildingFactory2, IconCircleCheck, IconEye } from '@tabler/icons-react';
-import { useState, type FormEvent } from 'react';
+import {
+  IconAlertCircle,
+  IconArrowRight,
+  IconBuildingFactory2,
+  IconCircleCheck,
+  IconClock,
+  IconEye,
+  IconLock,
+  IconShieldCheck,
+  IconUser,
+} from '@tabler/icons-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BrandMark } from '../../components/BrandMark';
 import { ApiError, endSession } from '../../lib/api';
 import type { Branch } from '../../lib/types';
 import { lastBranchCode, login, logout, selectBranch } from '../../store/auth';
@@ -64,21 +75,89 @@ function ProblemAlert({ problem }: { problem: Problem }) {
   );
 }
 
+const WEEKDAYS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** Ngày giờ theo đồng hồ máy đang dùng. Thành phần riêng: mỗi phút chỉ phần này vẽ lại, form đang nhập không bị ảnh hưởng. */
+function LoginClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    // Hẹn đúng đầu phút sau, không dùng setInterval 60 giây (lệch dần so với đồng hồ hệ thống)
+    const schedule = () => {
+      timer = setTimeout(() => {
+        setNow(new Date());
+        schedule();
+      }, 60_000 - (Date.now() % 60_000));
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <p className="login-clock">
+      <IconClock size={16} stroke={1.7} aria-hidden />
+      <span>{`${WEEKDAYS[now.getDay()]}, ${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`}</span>
+      <span className="login-clock-sep" aria-hidden />
+      <span>{`${pad(now.getHours())}:${pad(now.getMinutes())}`}</span>
+    </p>
+  );
+}
+
+/** Màn đăng nhập theo mẫu giao diện 12/10/2026 (quyết định 12.3): nền tối, mặt trời của logo bên trái, thẻ đăng nhập bên phải. */
 export function LoginPage() {
   return (
     <div className="login-shell">
-      <div className="login-art">
-        <p className="login-art-title">MES Vietsun</p>
-        <p className="login-art-sub">Hệ thống điều hành sản xuất</p>
-        <div className="login-sun" aria-hidden="true" />
+      <div className="login-backdrop" aria-hidden="true">
+        <div className="login-sun" />
       </div>
+      <header className="login-top">
+        <BrandMark tone="dark" height={56} />
+        <LoginClock />
+      </header>
+      <section className="login-hero" aria-label="Giới thiệu hệ thống">
+        <p className="login-kicker">MES System</p>
+        <p className="login-headline">
+          <span>Kết nối dữ liệu</span>
+          <span className="login-headline-accent">Kiến tạo hiệu quả</span>
+        </p>
+        <p className="login-lede">Hệ thống quản lý sản xuất MES giúp tối ưu quy trình, nâng cao năng suất và đồng hành cùng sự phát triển của VIETSUN.</p>
+      </section>
       <main className="login-main">
-        <div className="login-panel">
-          <img src="/logo-vs.png" alt="Vietsun" className="login-logo" />
+        <div className="login-card">
+          <BrandMark height={64} className="login-card-logo" />
+          <p className="login-system">MES - Manufacturing Execution System</p>
           <LoginForm />
+          <p className="login-card-foot">
+            <IconShieldCheck size={16} stroke={1.7} aria-hidden />
+            Hệ thống dành cho sản xuất VIETSUN
+          </p>
         </div>
       </main>
+      <footer className="login-footer">
+        <p className="login-meta">
+          <span>Vietsun Group</span>
+          <span>MES System</span>
+          <span>Version {__APP_VERSION__}</span>
+        </p>
+        <p className="login-slogan">Warming Your Life</p>
+      </footer>
     </div>
+  );
+}
+
+/** Hệ thống chưa tự đặt lại mật khẩu được (cần backend): chỉ hướng dẫn người dùng tìm quản trị viên. */
+function ForgotPassword() {
+  return (
+    <Popover width={280} position="bottom-end" withArrow shadow="md">
+      <Popover.Target>
+        <Anchor component="button" type="button" className="login-forgot" c="var(--brand-ink)">
+          Quên mật khẩu?
+        </Anchor>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Text size="sm">Liên hệ quản trị viên hệ thống để được đặt lại mật khẩu. Đăng nhập lại bằng mật khẩu mới được cấp.</Text>
+      </Popover.Dropdown>
+    </Popover>
   );
 }
 
@@ -206,8 +285,10 @@ function LoginForm() {
     <form onSubmit={onSubmit} noValidate>
       <Stack gap="md">
         <div>
-          <Title order={1} fz={28} lh="34px">Đăng nhập</Title>
-          {picking && name && <Text c="dimmed" size="md" mt={4}>Xin chào, {name}. Chọn đơn vị cơ sở để vào làm việc.</Text>}
+          <Title order={1} fz={28} lh="36px">Chào mừng trở lại</Title>
+          <Text c="dimmed" size="md" mt={6}>
+            {picking && name ? `Xin chào, ${name}. Chọn đơn vị cơ sở để vào làm việc.` : 'Đăng nhập để tiếp tục công việc của bạn.'}
+          </Text>
         </div>
 
         {notice && !error && !picking && (
@@ -221,8 +302,9 @@ function LoginForm() {
         <TextInput
           size="md"
           name="username"
-          label="Tên đăng nhập"
-          withAsterisk
+          label="Tài khoản"
+          placeholder="Nhập tên đăng nhập"
+          leftSection={<IconUser size={18} stroke={1.6} />}
           autoComplete="username"
           autoFocus={!initialUsername}
           readOnly={picking}
@@ -233,11 +315,11 @@ function LoginForm() {
           size="md"
           name="password"
           label="Mật khẩu"
-          withAsterisk
+          leftSection={<IconLock size={18} stroke={1.6} />}
           autoComplete="current-password"
           autoFocus={!!initialUsername}
           readOnly={picking}
-          placeholder={picking ? '••••••••' : undefined}
+          placeholder={picking ? '••••••••' : 'Nhập mật khẩu'}
           visibilityToggleButtonProps={picking ? { disabled: true } : undefined}
           {...form.getInputProps('password')}
         />
@@ -248,7 +330,6 @@ function LoginForm() {
               size="md"
               label="Đơn vị cơ sở"
               placeholder="Chọn đơn vị làm việc"
-              withAsterisk
               autoFocus={code === null}
               data={choices.map((b) => ({ value: b.code, label: b.name }))}
               value={code}
@@ -268,8 +349,23 @@ function LoginForm() {
           </div>
         )}
 
-        {!picking && <Checkbox label="Nhớ tài khoản và mật khẩu" checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />}
-        <Button type="submit" size="md" loading={loading} fullWidth mt={4} autoFocus={picking && code !== null}>
+        {!picking && (
+          <Group justify="space-between" wrap="nowrap" gap="sm">
+            <Checkbox label="Ghi nhớ đăng nhập" checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />
+            <ForgotPassword />
+          </Group>
+        )}
+        {/* Chữ viết hoa bằng CSS (ngoại lệ riêng màn đăng nhập, Q4), mũi tên là biểu tượng: tên đọc vẫn là chữ thường */}
+        <Button
+          type="submit"
+          size="md"
+          loading={loading}
+          fullWidth
+          mt={4}
+          className="login-submit"
+          rightSection={<IconArrowRight size={18} stroke={2} aria-hidden />}
+          autoFocus={picking && code !== null}
+        >
           {picking ? 'Vào làm việc' : 'Đăng nhập'}
         </Button>
         {picking && (

@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+
+// Số phiên bản hiện ở chân màn đăng nhập: lấy từ package.json để không phải sửa tay hai nơi
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 // Dev: frontend chạy cổng 5173, API ở 3000. Proxy giúp cùng origin nên cookie refresh (SameSite=Strict) hoạt động.
 // Thư viện dùng ngay lúc mở trang tách khỏi code ứng dụng: mỗi lần triển khai chỉ sửa code ứng dụng thì trình duyệt
@@ -17,6 +21,7 @@ const VENDOR_GROUPS = [
 
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   build: {
     rolldownOptions: {
       output: { codeSplitting: { groups: VENDOR_GROUPS } },

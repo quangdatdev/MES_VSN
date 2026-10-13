@@ -65,7 +65,7 @@ function renderLogin() {
   );
 }
 
-const usernameBox = () => screen.getByLabelText(/Tên đăng nhập/) as HTMLInputElement;
+const usernameBox = () => screen.getByLabelText(/Tài khoản/) as HTMLInputElement;
 const passwordBox = () => screen.getByLabelText(/Mật khẩu/) as HTMLInputElement;
 /** Đúng mật khẩu, tài khoản nhiều ĐVCS: ô Đơn vị cơ sở mở ra ngay trên form, nút đổi thành Vào làm việc */
 const branchStep = () => screen.findByRole('button', { name: 'Vào làm việc' });
@@ -87,14 +87,30 @@ describe('Màn đăng nhập', () => {
     delete (navigator as { credentials?: unknown }).credentials;
   });
 
-  it('chỉ có tên đăng nhập, mật khẩu, ô nhớ; không còn nút tài khoản mẫu hay chú thích', () => {
+  it('chỉ có tài khoản, mật khẩu, ô ghi nhớ, Quên mật khẩu; không còn nút tài khoản mẫu hay chú thích', () => {
     renderLogin();
     expect(usernameBox()).toBeInTheDocument();
     expect(passwordBox()).toBeInTheDocument();
-    expect(screen.getByLabelText('Nhớ tài khoản và mật khẩu')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ghi nhớ đăng nhập')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'admin' })).not.toBeInTheDocument();
     expect(screen.queryByText(/demo/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Quên mật khẩu/)).not.toBeInTheDocument();
+    // Ô bắt buộc không có dấu * ở riêng màn đăng nhập (quyết định 12.3); thiếu thì vẫn báo dưới ô
+    expect(document.querySelector('.mantine-InputWrapper-required')).toBeNull();
+  });
+
+  it('Quên mật khẩu: chỉ hướng dẫn liên hệ quản trị viên, không gửi form, không gọi máy chủ', async () => {
+    renderLogin();
+    fireEvent.click(screen.getByRole('button', { name: 'Quên mật khẩu?' }));
+    expect(await screen.findByText(/Liên hệ quản trị viên hệ thống để được đặt lại mật khẩu/)).toBeInTheDocument();
+    expect(api).not.toHaveBeenCalled();
+    // Không gửi form: chưa có lỗi "Nhập tên đăng nhập" dưới ô trống
+    expect(screen.queryByText('Nhập tên đăng nhập')).not.toBeInTheDocument();
+  });
+
+  it('chân trang có số phiên bản lấy từ package.json, góc trên có ngày giờ', () => {
+    renderLogin();
+    expect(screen.getByText(`Version ${__APP_VERSION__}`)).toBeInTheDocument();
+    expect(screen.getByText(/^(Chủ nhật|Thứ [2-7]), \d{2}\/\d{2}\/\d{4}$/)).toBeInTheDocument();
   });
 
   it('sai mật khẩu: báo rõ, ở lại bước mật khẩu', async () => {
@@ -141,14 +157,14 @@ describe('Màn đăng nhập', () => {
     signIn();
     await branchStep();
     // Vẫn là form đăng nhập: tên, mật khẩu còn đó nhưng khóa lại; không còn ô nhớ
-    expect(screen.getByRole('heading', { name: 'Đăng nhập' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Chào mừng trở lại' })).toBeInTheDocument();
     expect(document.title).toBe('Đăng nhập – MES Vietsun');
     expect(usernameBox()).toHaveValue('an');
     expect(usernameBox()).toHaveAttribute('readonly');
     expect(passwordBox()).toHaveAttribute('readonly');
     // Mật khẩu không nằm lại trên form trong lúc chọn ĐVCS
     expect(passwordBox()).toHaveValue('');
-    expect(screen.queryByLabelText('Nhớ tài khoản và mật khẩu')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Ghi nhớ đăng nhập')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Đăng nhập' })).not.toBeInTheDocument();
     expect(screen.getByText('Xin chào, Nguyễn Văn An. Chọn đơn vị cơ sở để vào làm việc.')).toBeInTheDocument();
     expect(screen.getByDisplayValue('VDC')).toBeInTheDocument();
@@ -254,7 +270,7 @@ describe('Màn đăng nhập', () => {
 
     useSession.getState().reset('anonymous');
     renderLogin();
-    fireEvent.click(screen.getByLabelText('Nhớ tài khoản và mật khẩu'));
+    fireEvent.click(screen.getByLabelText('Ghi nhớ đăng nhập'));
     signIn('an', 'bi-mat-2');
     await screen.findByText('trang chủ');
     expect(store).toHaveBeenCalledTimes(1);
@@ -266,7 +282,7 @@ describe('Màn đăng nhập', () => {
   it('nhớ tài khoản: lần sau điền sẵn tên; bỏ tích thì quên', async () => {
     serve([A01]);
     const first = renderLogin();
-    fireEvent.click(screen.getByLabelText('Nhớ tài khoản và mật khẩu'));
+    fireEvent.click(screen.getByLabelText('Ghi nhớ đăng nhập'));
     signIn('kehoach.a');
     await screen.findByText('trang chủ');
     expect(localStorage.getItem('mes.username')).toBe('kehoach.a');
@@ -275,8 +291,8 @@ describe('Màn đăng nhập', () => {
     useSession.getState().reset('anonymous');
     renderLogin();
     expect(usernameBox()).toHaveValue('kehoach.a');
-    expect(screen.getByLabelText('Nhớ tài khoản và mật khẩu')).toBeChecked();
-    fireEvent.click(screen.getByLabelText('Nhớ tài khoản và mật khẩu'));
+    expect(screen.getByLabelText('Ghi nhớ đăng nhập')).toBeChecked();
+    fireEvent.click(screen.getByLabelText('Ghi nhớ đăng nhập'));
     signIn('kehoach.a');
     await screen.findByText('trang chủ');
     await waitFor(() => expect(localStorage.getItem('mes.username')).toBeNull());

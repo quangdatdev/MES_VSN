@@ -4,11 +4,11 @@ import { Button, createTheme, type MantineColorsTuple } from '@mantine/core';
 const brand: MantineColorsTuple = [
   '#fff5ea', '#ffe8cf', '#fdd2a3', '#fabb72', '#f7a94e', '#f5a03e', '#f39830', '#e0851d', '#b86a12', '#8f520e',
 ];
-// Shade 5, 6 là hai màu xám của chữ trong logo; 7, 8 là dải menu con và thanh bên/thanh trên
+// Shade 5, 6 là hai màu xám của chữ trong logo; 8 là thanh bên
 const charcoal: MantineColorsTuple = [
   '#f3f3f3', '#e4e4e5', '#c9c9ca', '#a9a9aa', '#888889', '#686869', '#4d4e4e', '#3f4041', '#2b2c2d', '#1a1b1b',
 ];
-// Màu chữ liên kết và trạng thái được chọn (#007185)
+// Màu phụ (#007185): liên kết, hộp thông tin, dòng đang đứng trong ô chọn, vòng focus (quyết định 12.3, Q7)
 const link: MantineColorsTuple = [
   '#e6f6f9', '#c8f3fa', '#9fdfe8', '#6cc6d4', '#3aa9bb', '#1a8ea2', '#007185', '#005f70', '#004c5a', '#003a45',
 ];
@@ -22,8 +22,9 @@ const red: MantineColorsTuple = [
 const orange: MantineColorsTuple = [
   '#fff1e6', '#ffdcc2', '#ffbd8a', '#fb9a52', '#ec7a26', '#dd650d', '#cc5500', '#ab4700', '#8a3900', '#682b00',
 ];
+// Xám trung tính theo mẫu giao diện 12/10/2026: shade 1 là nền trang, 6 là chữ phụ (dimmed), 9 là chữ
 const gray: MantineColorsTuple = [
-  '#f7f8f8', '#f0f2f2', '#e3e6e6', '#d5d9d9', '#888c8c', '#6f7373', '#565959', '#3a3d3d', '#232525', '#0f1111',
+  '#f9fafb', '#f3f4f6', '#e5e7eb', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151', '#1f2937', '#111827',
 ];
 const dark: MantineColorsTuple = [
   '#e3e6e6', '#bcc3c9', '#8d97a1', '#66727e', '#3e4a57', '#2c3744', '#1f2933', '#18212b', '#121a22', '#0b1117',
@@ -36,7 +37,7 @@ export const theme = createTheme({
   primaryColor: 'brand',
   primaryShade: { light: 6, dark: 5 },
   colors: { brand, charcoal, link, teal, red, orange, gray, dark },
-  black: '#0f1111',
+  black: '#111827',
   autoContrast: true,
   luminanceThreshold: 0.35,
   fontFamily: sans,
@@ -46,7 +47,7 @@ export const theme = createTheme({
     fontFamily: sans,
     fontWeight: '700',
     sizes: {
-      h1: { fontSize: '21px', lineHeight: '28px' },
+      h1: { fontSize: '24px', lineHeight: '30px' },
       h2: { fontSize: '18px', lineHeight: '24px' },
       h3: { fontSize: '16px', lineHeight: '22px' },
       h4: { fontSize: '14px', lineHeight: '20px' },
@@ -54,13 +55,13 @@ export const theme = createTheme({
   },
   fontSizes: { xs: '12px', sm: '13px', md: '14px', lg: '16px', xl: '18px' },
   defaultRadius: 'sm',
-  radius: { xs: '2px', sm: '4px', md: '8px', lg: '12px', xl: '16px' },
+  radius: { xs: '2px', sm: '6px', md: '8px', lg: '12px', xl: '16px' },
   shadows: {
-    xs: '0 1px 2px rgba(15,17,17,0.06)',
-    sm: '0 2px 5px rgba(15,17,17,0.08)',
-    md: '0 0 6px rgba(15,17,17,0.15)',
-    lg: '0 4px 14px rgba(15,17,17,0.18)',
-    xl: '0 8px 24px rgba(15,17,17,0.2)',
+    xs: '0 1px 2px rgba(17,24,39,0.06)',
+    sm: '0 2px 5px rgba(17,24,39,0.08)',
+    md: '0 0 6px rgba(17,24,39,0.15)',
+    lg: '0 4px 14px rgba(17,24,39,0.18)',
+    xl: '0 8px 24px rgba(17,24,39,0.2)',
   },
   cursorType: 'pointer',
   // Modal, Drawer, Popover... bỏ hiệu ứng khi máy đặt giảm chuyển động
@@ -68,7 +69,7 @@ export const theme = createTheme({
   components: {
     Button: Button.extend({
       defaultProps: { size: 'sm', radius: 'md' },
-      styles: { root: { fontWeight: 400 } },
+      styles: { root: { fontWeight: 600 } },
       // Nút chính: cam Vietsun, chữ đen (chữ trắng trên cam chỉ đạt 2,3:1). Nút màu khác (đỏ xóa, xám) giữ nguyên.
       vars: (_theme, props) => {
         const variant = props.variant ?? 'filled';
@@ -80,7 +81,7 @@ export const theme = createTheme({
           root: {
             '--button-bg': '#f39830',
             '--button-hover': '#e0851d',
-            '--button-color': '#0f1111',
+            '--button-color': '#111827',
             '--button-bd': '1px solid #e0851d',
           },
         };
@@ -95,9 +96,10 @@ export const theme = createTheme({
     Textarea: { defaultProps: { size: 'sm' } },
     DateInput: { defaultProps: { size: 'sm', clearButtonProps: { 'aria-label': 'Xóa ngày' } } },
     DateTimePicker: { defaultProps: { size: 'sm', clearButtonProps: { 'aria-label': 'Xóa thời điểm' } } },
-    Checkbox: { defaultProps: { color: 'link', radius: 'xs' } },
+    // Cam như mẫu; dấu tích tối (autoContrast) vì dấu trắng trên cam chỉ đạt 2,3:1
+    Checkbox: { defaultProps: { color: 'brand', radius: 'xs' } },
     Switch: { defaultProps: { color: 'teal' } },
-    Pagination: { defaultProps: { color: 'link' } },
+    Pagination: { defaultProps: { color: 'brand' } },
     // Bấm nhầm ra nền mờ không đóng popup (mất phần đang nhập); đóng bằng nút Hủy, dấu x hoặc Esc
     Modal: { defaultProps: { radius: 'md', centered: true, overlayProps: { backgroundOpacity: 0.45 }, closeOnClickOutside: false, closeButtonProps: { 'aria-label': 'Đóng' } } },
     Drawer: { defaultProps: { closeButtonProps: { 'aria-label': 'Đóng' } } },

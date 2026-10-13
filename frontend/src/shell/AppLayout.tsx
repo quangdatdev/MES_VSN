@@ -2,6 +2,7 @@ import { Center, Loader, Menu, Text, Tooltip, useComputedColorScheme, useMantine
 import { useDocumentTitle, useLocalStorage } from '@mantine/hooks';
 import { Spotlight, spotlight, type SpotlightActionData } from '@mantine/spotlight';
 import {
+  IconBuildingFactory2,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
@@ -12,7 +13,7 @@ import {
   IconSearch,
   IconSun,
   IconSwitchHorizontal,
-  IconUserCircle,
+  IconUser,
 } from '@tabler/icons-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -94,6 +95,8 @@ export function AppLayout() {
         <Link to={first} className="rail-btn focus-ring" data-active={active} aria-label={g.name} aria-current={active ? 'true' : undefined} onClick={linkClick(first)} onPointerEnter={() => preloadPage(first)} onFocus={() => preloadPage(first)}>
           <Icon size={20} stroke={1.7} />
           <span className="rail-label">{g.name}</span>
+          {/* Chỉ để trang trí (quyết định 12.3): bấm nhóm vẫn mở màn đầu tiên, màn con nằm ở dải menu con */}
+          <IconChevronRight size={16} stroke={1.8} className="rail-caret" aria-hidden />
         </Link>
       </div>
     );
@@ -112,125 +115,132 @@ export function AppLayout() {
       >
         Bỏ qua tới nội dung chính
       </a>
-      <nav className="rail" data-collapsed={collapsed} aria-label="Nhóm chức năng">
-        <div className="rail-group">
-          <div className="rail-item rail-item-brand">
-            <Link to="/" className="rail-brand focus-ring" aria-label="Trang chủ MES Vietsun" onClick={linkClick('/')}>
-              <span className="rail-logo-full"><BrandMark height={46} /></span>
-              <span className="rail-logo-mark"><BrandMark variant="mark" height={44} /></span>
-            </Link>
-          </div>
-          <div className="rail-divider" />
-          {mainGroups.map(railButton)}
-        </div>
-        <div className="rail-group">{adminGroups.map(railButton)}</div>
-        <Tooltip label={collapsed ? 'Mở rộng menu' : 'Rút gọn menu'} position="right" withArrow>
-          <button type="button" className="rail-toggle focus-ring" onClick={() => setCollapsed((c) => !c)} aria-label={collapsed ? 'Mở rộng menu' : 'Rút gọn menu'}>
-            {collapsed ? <IconChevronRight size={14} stroke={2.2} /> : <IconChevronLeft size={14} stroke={2.2} />}
+
+      {/* Thanh trên sáng, chạy hết chiều ngang, chứa logo (quyết định 12.3) */}
+      <header className="topbar">
+        <Link to="/" className="topbar-brand focus-ring" aria-label="Trang chủ MES Vietsun" onClick={linkClick('/')}>
+          <BrandMark height={50} className="topbar-logo-full" />
+          <BrandMark variant="mark" height={34} className="topbar-logo-mark" />
+        </Link>
+        <span className="brand-chip">
+          <IconBuildingFactory2 size={18} stroke={1.8} aria-hidden />
+          MES - VSN
+        </span>
+
+        <BranchSwitcher handle={switcher} />
+        <span className="topbar-sep" aria-hidden />
+
+        <button type="button" className="searchbar focus-ring" onClick={() => spotlight.open()} aria-keyshortcuts="Control+K">
+          <IconSearch size={18} stroke={1.8} className="searchbar-icon" aria-hidden />
+          <span className="searchbar-text">Tìm màn hình theo tên, ví dụ: "Xếp chuyền"</span>
+          <kbd className="searchbar-key">Ctrl K</kbd>
+        </button>
+
+        <div className="topbar-tools">
+          <button type="button" className="nav-btn nav-icon-btn nav-search-icon focus-ring" onClick={() => spotlight.open()} aria-label="Tìm màn hình">
+            <IconSearch size={20} />
           </button>
-        </Tooltip>
-      </nav>
-
-      <div className="app-body">
-        <header className="topbar">
-          <span className="brand-chip">MES - VSN</span>
-
-          <BranchSwitcher handle={switcher} />
-
-          <button type="button" className="searchbar" onClick={() => spotlight.open()} aria-keyshortcuts="Control+K">
-            <span className="searchbar-scope">Màn hình</span>
-            <span className="searchbar-text">Tìm màn hình theo tên, ví dụ "Xếp chuyền"</span>
-            <kbd className="searchbar-key">Ctrl K</kbd>
-            <span className="searchbar-go"><IconSearch size={20} stroke={2} /></span>
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
-            <button type="button" className="nav-btn nav-icon-btn nav-search-icon focus-ring" onClick={() => spotlight.open()} aria-label="Tìm màn hình">
-              <IconSearch size={20} />
-            </button>
-            <Tooltip label={scheme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'} openDelay={300}>
-              <button
-                type="button"
-                className="nav-btn nav-icon-btn focus-ring"
-                onClick={() => setColorScheme(scheme === 'dark' ? 'light' : 'dark')}
-                aria-label={scheme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
-              >
-                {scheme === 'dark' ? <IconSun size={20} /> : <IconMoon size={20} />}
+          <span className="topbar-sep" aria-hidden />
+          <div className="scheme-toggle" role="group" aria-label="Giao diện sáng hoặc tối">
+            <Tooltip label="Giao diện sáng" openDelay={300}>
+              <button type="button" className="scheme-btn focus-ring" aria-pressed={scheme === 'light'} aria-label="Giao diện sáng" onClick={() => setColorScheme('light')}>
+                <IconSun size={20} stroke={1.8} />
               </button>
             </Tooltip>
-
-            <Menu position="bottom-end" width={240}>
-              <Menu.Target>
-                <button type="button" className="nav-btn nav-account focus-ring" aria-label={`Xin chào ${user?.fullName ?? ''}, mở menu tài khoản`}>
-                  <IconUserCircle size={22} stroke={1.6} className="nav-account-icon" />
-                  <span className="nav-btn-stack">
-                    <span className="nav-btn-small">Xin chào</span>
-                    <span className="nav-btn-main" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.fullName}</span>
-                      <IconChevronDown size={14} style={{ flexShrink: 0 }} />
-                    </span>
-                  </span>
-                </button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>
-                  <Text fw={700} c="var(--app-ink)" size="sm">{user?.fullName}</Text>
-                  <Text size="xs" c="dimmed">{roles.map((r) => r.name).join(', ')}</Text>
-                </Menu.Label>
-                <Menu.Divider />
-                {/* Menu đóng xong (trả focus về nút tài khoản) mới mở danh sách đơn vị cơ sở */}
-                <Menu.Item leftSection={<IconSwitchHorizontal size={15} />} onClick={() => requestAnimationFrame(() => switcher.current?.open())}>
-                  Đổi đơn vị cơ sở
-                </Menu.Item>
-                <Menu.Item
-                  color="red"
-                  leftSection={<IconLogout size={15} />}
-                  onClick={() =>
-                    guardedLeave(async () => {
-                      await logout();
-                      navigate('/login', { replace: true });
-                    })
-                  }
-                >
-                  Đăng xuất
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
+            <Tooltip label="Giao diện tối" openDelay={300}>
+              <button type="button" className="scheme-btn focus-ring" aria-pressed={scheme === 'dark'} aria-label="Giao diện tối" onClick={() => setColorScheme('dark')}>
+                <IconMoon size={20} stroke={1.8} />
+              </button>
+            </Tooltip>
           </div>
-        </header>
+          <span className="topbar-sep" aria-hidden />
 
-        <nav ref={tabbar} className="tabbar" aria-label={activeGroup ? activeGroup.name : 'Trang chủ'}>
-          {activeGroup ? (
-            <>
-              <span className="tab-group-name">{activeGroup.name}</span>
-              {activeGroup.children.filter((c) => c.path).map((c) => {
-                const current = c.path === pathname;
-                return (
-                  <Link key={c.code} to={c.path!} className="tab focus-ring" aria-current={current ? 'page' : undefined} onClick={linkClick(c.path!)} onPointerEnter={() => preloadPage(c.path)} onFocus={() => preloadPage(c.path)}>
-                    {c.name}
-                  </Link>
-                );
-              })}
-            </>
-          ) : (
-            <Link to="/" className="tab focus-ring" aria-current={pathname === '/' ? 'page' : undefined} onClick={linkClick('/')}>
-              <IconHome size={15} />
-              Trang chủ
-            </Link>
-          )}
+          <Menu position="bottom-end" width={240}>
+            <Menu.Target>
+              <button type="button" className="nav-btn nav-account focus-ring" aria-label={`Xin chào ${user?.fullName ?? ''}, mở menu tài khoản`}>
+                <span className="nav-avatar" aria-hidden>
+                  <IconUser size={20} stroke={1.7} />
+                </span>
+                <span className="nav-btn-stack">
+                  <span className="nav-btn-small">Xin chào</span>
+                  <span className="nav-btn-main">{user?.fullName}</span>
+                </span>
+                <IconChevronDown size={16} className="nav-account-caret" aria-hidden />
+              </button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>
+                <Text fw={700} c="var(--app-ink)" size="sm">{user?.fullName}</Text>
+                <Text size="xs" c="dimmed">{roles.map((r) => r.name).join(', ')}</Text>
+              </Menu.Label>
+              <Menu.Divider />
+              {/* Menu đóng xong (trả focus về nút tài khoản) mới mở danh sách đơn vị cơ sở */}
+              <Menu.Item leftSection={<IconSwitchHorizontal size={15} />} onClick={() => requestAnimationFrame(() => switcher.current?.open())}>
+                Đổi đơn vị cơ sở
+              </Menu.Item>
+              <Menu.Item
+                color="red"
+                leftSection={<IconLogout size={15} />}
+                onClick={() =>
+                  guardedLeave(async () => {
+                    await logout();
+                    navigate('/login', { replace: true });
+                  })
+                }
+              >
+                Đăng xuất
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        </div>
+      </header>
+
+      <div className="app-frame">
+        <nav className="rail" data-collapsed={collapsed} aria-label="Nhóm chức năng">
+          <div className="rail-group">{mainGroups.map(railButton)}</div>
+          <div className="rail-group">{adminGroups.map(railButton)}</div>
+          <Tooltip label={collapsed ? 'Mở rộng menu' : 'Rút gọn menu'} position="right" withArrow>
+            <button type="button" className="rail-toggle focus-ring" onClick={() => setCollapsed((c) => !c)} aria-label={collapsed ? 'Mở rộng menu' : 'Rút gọn menu'}>
+              {collapsed ? <IconChevronRight size={14} stroke={2.2} /> : <IconChevronLeft size={14} stroke={2.2} />}
+            </button>
+          </Tooltip>
         </nav>
 
-        <main ref={main} id="main" tabIndex={-1} className="app-main">
-          <PageErrorBoundary resetKey={`${pathname}|${shown}`}>
-            {reopening ? (
-              <Center py="xl">
-                <Loader color="brand" role="status" aria-label="Đang mở lại màn theo đơn vị cơ sở mới" />
-              </Center>
+        <div className="app-body">
+          <nav ref={tabbar} className="tabbar" aria-label={activeGroup ? activeGroup.name : 'Trang chủ'}>
+            {activeGroup ? (
+              <>
+                <span className="tab-group-name">{activeGroup.name}</span>
+                {activeGroup.children.filter((c) => c.path).map((c) => {
+                  const current = c.path === pathname;
+                  return (
+                    <Link key={c.code} to={c.path!} className="tab focus-ring" aria-current={current ? 'page' : undefined} onClick={linkClick(c.path!)} onPointerEnter={() => preloadPage(c.path)} onFocus={() => preloadPage(c.path)}>
+                      {c.name}
+                    </Link>
+                  );
+                })}
+              </>
             ) : (
-              <Outlet key={shown} />
+              <Link to="/" className="tab focus-ring" aria-current={pathname === '/' ? 'page' : undefined} onClick={linkClick('/')}>
+                <IconHome size={15} />
+                Trang chủ
+              </Link>
             )}
-          </PageErrorBoundary>
-        </main>
+          </nav>
+
+          {/* Thẻ trắng trên nền xám: chính vùng cuộn này mang khung thẻ, các màn không phải bọc thêm */}
+          <main ref={main} id="main" tabIndex={-1} className="app-main">
+            <PageErrorBoundary resetKey={`${pathname}|${shown}`}>
+              {reopening ? (
+                <Center py="xl">
+                  <Loader color="brand" role="status" aria-label="Đang mở lại màn theo đơn vị cơ sở mới" />
+                </Center>
+              ) : (
+                <Outlet key={shown} />
+              )}
+            </PageErrorBoundary>
+          </main>
+        </div>
       </div>
 
       <Spotlight
