@@ -89,9 +89,13 @@
   /* Chữ gợi ý trong ô nhập: mặc định của Mantine chỉ đạt 3:1 trên nền tối */
   --mantine-color-placeholder: var(--mantine-color-dark-2);
 }
-/* Viền ô nhập ở chế độ tối: mặc định 1,6:1, khó thấy ô ở đâu (cần 3:1) */
-:root[data-mantine-color-scheme='dark'] .mantine-Input-input:not([data-error]):not(:focus):not(:focus-within) {
+/* Viền ô nhập, ô tích chưa tích: mặc định theo xám shade 4 (sáng 2,5:1, tối 1,6:1), khó thấy ô ở đâu (cần 3:1).
+   Ô unstyled (ô chọn trong lưới nhập liệu) không có viền: giữ nguyên */
+.mantine-Input-wrapper:not([data-variant='unstyled']) .mantine-Input-input:not([data-error]):not(:focus):not(:focus-within) {
   --input-bd: var(--app-input-line);
+}
+.mantine-Checkbox-input:not(:checked):not([data-indeterminate]):not([data-error]):not(:disabled) {
+  border-color: var(--app-input-line);
 }
 
 html,
