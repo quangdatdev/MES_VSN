@@ -22,9 +22,9 @@
   header { background: #2b2c2d; color: #fff; padding: 20px 16px; border-bottom: 4px solid var(--brand); }
   header h1 { margin: 0 auto; max-width: 860px; font-size: 22px; }
   header p { margin: 4px auto 0; max-width: 860px; color: #d1d5db; font-size: 14px; }
-  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; overflow-wrap: anywhere; }
   nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-  nav a { flex: 1 1 260px; text-decoration: none; color: var(--text); background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--brand); border-radius: 10px; padding: 14px 16px; }
+  nav a { flex: 1 1 340px; text-decoration: none; color: var(--text); background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--brand); border-radius: 10px; padding: 14px 16px; }
   nav a b { display: block; font-size: 18px; }
   nav a span { color: var(--muted); font-size: 14px; }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
@@ -38,13 +38,18 @@
   .cmd pre { margin: 0; background: var(--code-bg); color: var(--code-text); padding: 12px 84px 12px 14px; border-radius: 8px; overflow-x: auto; font: 14px/1.5 Consolas, "Cascadia Mono", monospace; }
   .cmd button { position: absolute; top: 8px; right: 8px; border: 0; border-radius: 6px; padding: 4px 10px; background: var(--brand); color: #111; font: 600 13px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
   .cmd button:focus-visible { outline: 3px solid #007185; outline-offset: 2px; }
+  pre.out { margin: 8px 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 10px 14px; border-radius: 8px; overflow-x: auto; font: 14px/1.5 Consolas, "Cascadia Mono", monospace; }
+  h3 { margin: 22px 0 4px; font-size: 17px; }
+  ul { padding-left: 22px; }
+  li + li { margin-top: 4px; }
   code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 0.92em; background: var(--line); padding: 1px 5px; border-radius: 4px; }
   .note { border-radius: 8px; padding: 10px 14px; margin: 10px 0; border: 1px solid var(--warn-line); background: var(--warn-bg); }
   .ok { border-color: var(--ok-line); background: var(--ok-bg); }
   .muted { color: var(--muted); font-size: 14px; }
-  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  /* fixed: khối lệnh trong ô cuộn ngang, không kéo bảng rộng quá màn điện thoại */
+  table { width: 100%; border-collapse: collapse; font-size: 15px; table-layout: fixed; }
   td { border-top: 1px solid var(--line); padding: 8px 6px; vertical-align: top; }
-  td:first-child { width: 42%; }
+  td:first-child { width: 30%; }
   details { margin-top: 8px; }
   summary { cursor: pointer; color: var(--brand-ink); font-weight: 600; }
 </style>
@@ -52,13 +57,20 @@
 <body>
 <header>
   <h1>Hướng dẫn chạy MES trên máy chủ</h1>
-  <p>Mã nguồn ở <b>D:\MES</b>. Web chạy từ <b>D:\MES-run</b>. Mở PowerShell, chạy các lệnh dưới đây.</p>
+  <p>Ví dụ dưới đây: mã nguồn (thư mục git) ở <b>D:\MES</b>, web chạy từ <b>D:\MES-run</b>. Máy chủ để chỗ khác thì đổi đường dẫn cho đúng. Mở PowerShell, chạy các lệnh dưới đây.</p>
 </header>
 <main>
   <nav>
     <a href="#cai-moi"><b>1. Cài đặt mới</b><span>Làm một lần, lần đầu chuyển sang cách chạy mới</span></a>
     <a href="#cap-nhat"><b>2. Có code mới (git pull)</b><span>Làm mỗi lần cập nhật</span></a>
+    <a href="#cau-hinh"><b>3. File cấu hình .env</b><span>Cần những dòng gì, sửa xong làm gì</span></a>
+    <a href="#phien-ban"><b>4. Phiên bản, quay về bản cũ</b><span>Xem đang chạy bản nào, lùi khi bản mới lỗi</span></a>
   </nav>
+
+  <div class="note ok"><b>Vì sao có thêm thư mục D:\MES-run?</b> Web đang chạy giữ file trong <code>node_modules</code> và <code>dist</code>,
+  nên <code>npm ci</code>, build ngay tại D:\MES thì phải dừng web (như cách cũ). Script cài gói và build bản mới ở thư mục riêng
+  <code>D:\MES-run\releases\&lt;ngày-giờ&gt;</code> trong lúc bản cũ vẫn chạy, xong mới chuyển web sang bản mới trong vài giây.
+  D:\MES chỉ còn dùng để <code>git pull</code>.</div>
 
   <section id="cai-moi">
     <h2>1. Cài đặt mới</h2>
@@ -77,6 +89,7 @@ git pull</pre><button type="button">Chép</button></div>
         <b>Tạo thư mục chạy, chép file cấu hình</b>
         <div class="cmd"><pre>mkdir D:\MES-run\shared
 copy D:\MES\backend\.env D:\MES-run\shared\.env</pre><button type="button">Chép</button></div>
+        Mở file vừa chép, kiểm đủ các dòng ở <a href="#cau-hinh">mục 3</a>. File cũ thường thiếu <code>NODE_ENV=production</code>.
       </li>
       <li>
         <b>Chạy</b>
@@ -99,20 +112,20 @@ copy D:\MES\backend\.env D:\MES-run\shared\.env</pre><button type="button">Chép
         <li>Cài Node.js 22, Git, SQL Server (5 database và tài khoản SQL đã có).</li>
         <li>Cài pm2: <code>npm install -g pm2@7.0.4</code></li>
         <li>Lấy mã nguồn: <code>git clone &lt;địa chỉ repo&gt; D:\MES</code></li>
-        <li>Ở bước 3: không có file để chép, tạo <code>D:\MES-run\shared\.env</code> theo mẫu <code>D:\MES\backend\.env.example</code> (mật khẩu DB, JWT_SECRET...).</li>
+        <li>Ở bước 3: không có file để chép, tạo <code>D:\MES-run\shared\.env</code> theo mẫu ở <a href="#cau-hinh">mục 3</a>.</li>
       </ul>
     </details>
   </section>
 
   <section id="cap-nhat">
     <h2>2. Có code mới (git pull về để chạy)</h2>
-    <p>Làm mỗi lần có bản mới. Không cần dừng pm2, không cần npm ci, không cần build tay.</p>
+    <p>Làm mỗi lần có bản mới. Không tự dừng pm2, không tự chạy npm ci, build: script làm hết.</p>
     <ol class="steps">
       <li>
         <b>Chạy một lệnh</b>
         <div class="cmd"><pre>cd D:\MES
 node deploy\deploy.cjs --root D:\MES-run</pre><button type="button">Chép</button></div>
-        Script tự <code>git pull</code>, cài gói, build. Trong lúc đó web vẫn chạy bình thường.
+        Script tự <code>git pull</code>, chạy <code>npm ci</code> và <code>npm run build</code> trong thư mục bản mới, chạy <code>npm run migrate</code>, rồi chuyển pm2 sang bản mới. Trong lúc cài gói, build, web vẫn chạy bản cũ.
       </li>
       <li>
         <b>Nếu script hỏi "Đã sao lưu 5 database chưa?"</b>
@@ -124,17 +137,136 @@ node deploy\deploy.cjs --root D:\MES-run</pre><button type="button">Chép</butto
       <li>
         <b>Xong</b>
         Thấy dòng <code>Đang chạy: ...</code> là xong. Báo người dùng bấm F5.
+        Ghi vào sổ vận hành: ngày giờ và dòng <code>Đang chạy: ...</code> (<a href="#phien-ban">mục 4</a>).
       </li>
     </ol>
   </section>
 
-  <section>
+  <section id="cau-hinh">
+    <h2>3. File cấu hình .env</h2>
+    <p>Máy chủ chỉ có một file cấu hình: <code>D:\MES-run\shared\.env</code>. Script tự chép file này vào từng bản. Không sửa bản chép trong <code>D:\MES-run\current</code>: lần triển khai sau sẽ ghi đè.</p>
+
+    <h3>Mẫu cho máy chủ chạy http:// trong mạng nội bộ</h3>
+    <p class="muted">Thay phần trong dấu &lt; &gt; bằng giá trị thật. Tên 5 database đúng mặc định (MES_Core, MES_Order, MES_Sewing, MES_Hr, MES_Sync) thì không cần ghi.</p>
+    <div class="cmd"><pre># Máy dùng thật
+NODE_ENV=production
+SEED_SAMPLE_DATA=false
+
+# SQL Server: login riêng của ứng dụng, db_owner trên 5 database
+DB_HOST=&lt;tên máy hoặc IP SQL Server, không kèm tên instance&gt;
+DB_PORT=1433
+DB_USER=&lt;login SQL&gt;
+DB_PASSWORD=&lt;mật khẩu&gt;
+
+# Nguồn đồng bộ, chỉ đọc view. Database nằm cùng máy SQL Server thì để trống dòng ..._SERVER
+DB_TRUNGGIAN_NAME=&lt;database trung gian chứa view BRAVO&gt;
+DB_TRUNGGIAN_SERVER=
+DB_OSM_NAME=&lt;database OSM có view vOSMDataFty&gt;
+DB_OSM_SERVER=
+DB_OSM_APP_NAME=&lt;database ứng dụng OSM có view v_OSMData&gt;
+DB_OSM_APP_SERVER=
+
+# Ứng dụng
+PORT=&lt;cổng mở web, ví dụ 8000&gt;
+HOST=0.0.0.0
+JWT_SECRET=&lt;chuỗi ngẫu nhiên, ít nhất 32 ký tự&gt;
+DEMO_PASSWORD=&lt;mật khẩu ban đầu của admin, ít nhất 8 ký tự&gt;
+COOKIE_SECURE=false
+TRUST_PROXY=</pre><button type="button">Chép</button></div>
+
+    <h3>Từng dòng cần biết</h3>
+    <table>
+      <tr><td><code>NODE_ENV=production</code></td><td>Bắt buộc trên máy chủ: bật các chốt an toàn (bắt buộc <code>JWT_SECRET</code> đủ dài, chặn các lệnh xóa dữ liệu demo). Chỉ ghi trong file này, <b>không</b> đặt thành biến môi trường của Windows. File mẫu <code>backend\.env.example</code> không có dòng này: phải tự thêm.</td></tr>
+      <tr><td><code>SEED_SAMPLE_DATA=false</code></td><td>Không nạp dữ liệu giả; chặn <code>reset:demo</code>, <code>load:bravo</code>, <code>sim:board</code>. Đơn hàng BRAVO tự nạp sau mỗi lần đồng bộ.</td></tr>
+      <tr><td><code>JWT_SECRET</code></td><td>Tạo bằng lệnh dưới rồi chép kết quả vào file. Đặt một lần rồi giữ nguyên: đổi là mọi người bị đăng xuất.
+        <div class="cmd"><pre>node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td><code>DEMO_PASSWORD</code></td><td>Mật khẩu ban đầu của <code>admin</code>. Luôn giữ dòng này: lần triển khai nào script cũng chạy migrate, thiếu là dừng. Giữ dòng này không làm đổi mật khẩu <code>admin</code> đã đặt.</td></tr>
+      <tr><td><code>COOKIE_SECURE</code></td><td>Web mở bằng <code>http://</code> (trình duyệt báo "Not secure") thì phải là <code>false</code>. Để sai thì tải lại trang là mất đăng nhập, cứ 15 phút phải đăng nhập lại.</td></tr>
+      <tr><td><code>HOST</code>, <code>TRUST_PROXY</code></td><td>Chạy thẳng như hiện nay: <code>HOST=0.0.0.0</code>, <code>TRUST_PROXY</code> để trống. Khi có HTTPS qua Nginx hoặc IIS trên cùng máy: <code>HOST=127.0.0.1</code>, <code>TRUST_PROXY=loopback</code>, <code>COOKIE_SECURE=true</code>.</td></tr>
+      <tr><td>Các dòng khác trong file mẫu</td><td>Để trống, mặc định đã đúng cho máy chủ. Dòng bật/tắt chỉ nhận <code>true</code>, <code>false</code> hoặc để trống; gõ <code>0</code>, <code>yes</code> là backend không chạy.</td></tr>
+    </table>
+
+    <h3>Sửa file xong</h3>
+    <ul>
+      <li>Thông thường: chạy lệnh dưới. Script kiểm cấu hình trước; sai thì giữ cấu hình cũ, web không bị ảnh hưởng.
+        <div class="cmd"><pre>cd D:\MES
+node deploy\deploy.cjs --root D:\MES-run --sync-env</pre><button type="button">Chép</button></div></li>
+      <li>Đổi các dòng <code>DB_TRUNGGIAN_...</code>, <code>DB_OSM_...</code> (nguồn đồng bộ): phải chạy lại migrate để trỏ sang view mới. Chạy lệnh dưới thay cho <code>--sync-env</code>; khi hỏi <code>Bản đang chạy đã là commit này. Vẫn triển khai lại?</code> thì gõ <code>y</code>. Web không dừng.
+        <div class="cmd"><pre>cd D:\MES
+node deploy\deploy.cjs --root D:\MES-run --no-pull</pre><button type="button">Chép</button></div>
+        <span class="muted">Script không hỏi câu đó mà hỏi sao lưu: D:\MES đang có code mới hơn bản đang chạy, làm như <a href="#cap-nhat">mục 2</a>.</span></li>
+    </ul>
+  </section>
+
+  <section id="phien-ban">
+    <h2>4. Phiên bản, quay về bản cũ</h2>
+    <p>Mỗi lần triển khai là một bản riêng, đặt tên theo ngày giờ. Bản cũ vẫn nằm trên đĩa nên quay về chỉ mất vài giây, không phải build lại.</p>
+    <pre class="out">D:\MES-run\
+  releases\20261013-160000\   một bản: code đúng commit, đã build, kèm .env
+  releases\20261015-180000\
+  current                     trỏ vào bản đang chạy
+  shared\.env                 file cấu hình duy nhất
+  logs\                       mes-out.log, mes-error.log</pre>
+
+    <h3>Xem đang chạy bản nào</h3>
+    <div class="cmd"><pre>cd D:\MES
+node deploy\deploy.cjs --root D:\MES-run --status</pre><button type="button">Chép</button></div>
+    Kết quả ví dụ, bản mới nhất ở trên:
+    <pre class="out">* 20261020-090000  Sửa màn Phân bổ PO
+  20261015-180000  Phase 1 : Done
+  20261013-160000  Cách triển khai mới
+pm2: online (theo ecosystem)</pre>
+    <ul>
+      <li><code>*</code> là bản đang chạy. Chữ sau tên bản là nội dung commit người viết code ghi.</li>
+      <li>Bản có chữ <code>(build xong, chưa chạy được)</code> hoặc <code>(build lỗi hoặc đang làm)</code> là bản hỏng, không dùng để quay về.</li>
+    </ul>
+
+    <h3>Quay về bản trước</h3>
+    <div class="cmd"><pre>cd D:\MES
+node deploy\deploy.cjs --root D:\MES-run --rollback</pre><button type="button">Chép</button></div>
+    <ul>
+      <li>Script in bản đang chạy và bản sẽ quay về, rồi hỏi <code>Quay về bản trước?</code>: gõ <code>y</code>, Enter. Thấy <code>Đang chạy: ...</code> là xong, báo người dùng bấm F5.</li>
+      <li>Về bản <b>đã từng chạy được</b> gần nhất trước bản hiện tại. Chạy thêm lần nữa thì lùi tiếp một bản.</li>
+      <li>Bản quay về dùng file <code>shared\.env</code> hiện tại.</li>
+      <li>Bản mới vừa triển khai mà không khởi động được thì script tự quay về (khi bản đó không đổi database), không cần chạy lệnh này.</li>
+      <li>Muốn lên lại bản mới nhất: làm như <a href="#cap-nhat">mục 2</a>.</li>
+    </ul>
+
+    <div class="note"><b>Database không quay về theo.</b> Code lùi được, nhưng thay đổi database (bảng, cột mới) đã chạy thì ở lại.
+      Nếu bản đang chạy có thay đổi database mà bản cũ không có, trước khi hỏi, <code>--rollback</code> in <code>Cảnh báo: database đã chạy migration mà bản trước không có</code> kèm danh sách file. Gặp cảnh báo này:
+      <ul>
+        <li>gõ <code>n</code> để hủy, hỏi người viết code bản cũ có chạy được với database hiện tại không;</li>
+        <li>muốn lùi hẳn thì phải phục hồi bản sao lưu 5 database chụp trước lần triển khai đó, dữ liệu nhập sau lúc sao lưu sẽ mất. Làm cùng người viết code.</li>
+      </ul>
+      Vì vậy: khi script hỏi <code>Đã sao lưu 5 database chưa?</code> thì sao lưu thật, và kiểm kỹ ngay sau khi lên bản mới.</div>
+
+    <h3>Số bản được giữ</h3>
+    Mặc định giữ <b>3 bản</b> đã chạy được, bản cũ hơn bị xóa ở lần triển khai sau. Muốn giữ nhiều hơn thì thêm <code>--keep 5</code> vào lệnh ở <a href="#cap-nhat">mục 2</a>, <b>lần nào cũng thêm</b>: lần nào thiếu thì lần đó dọn về 3 bản.
+
+    <h3>Về một bản cũ hơn (đã bị xóa)</h3>
+    Build lại từ lịch sử git, mất vài phút như một lần triển khai. Xem danh sách commit, lấy mã ở đầu dòng:
+    <div class="cmd"><pre>cd D:\MES
+git log --oneline -20</pre><button type="button">Chép</button></div>
+    <div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --ref &lt;mã commit hoặc tag&gt;</pre><button type="button">Chép</button></div>
+    <div class="note">Cách này <b>không</b> cảnh báo về database như <code>--rollback</code>. Bản còn giữ thì dùng <code>--rollback</code>; về bản cũ hơn nữa thì hỏi người viết code trước.</div>
+
+    <h3>Để dễ theo dõi</h3>
+    <ul>
+      <li>Mỗi lần triển khai hoặc quay về, ghi vào sổ: ngày giờ, tên bản (dòng <code>Đang chạy: ...</code>), lý do.</li>
+      <li>Người viết code: ghi nội dung commit rõ ràng (tránh <code>Update</code>), gắn tag cho bản đưa lên máy chủ (<code>git tag v1.0</code> rồi <code>git push --tags</code>). Khi đó quay về chỉ cần <code>--ref v1.0</code>.</li>
+    </ul>
+  </section>
+
+  <section id="su-co">
     <h2>Khi có vấn đề</h2>
     <table>
       <tr><td>Script báo <code>... đã quay về ...</code></td><td>Bản mới bị lỗi, script đã tự chạy lại bản cũ. Web vẫn dùng được. Gửi file <code>D:\MES-run\logs\mes-error.log</code> cho người viết code.</td></tr>
-      <tr><td>Muốn quay lại bản trước</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --rollback</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td>Muốn quay lại bản trước</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --rollback</pre><button type="button">Chép</button></div>Đọc <a href="#phien-ban">mục 4</a> trước nếu bản mới có thay đổi database.</td></tr>
       <tr><td>Xem đang chạy bản nào</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --status</pre><button type="button">Chép</button></div></td></tr>
-      <tr><td>Sửa cấu hình (mật khẩu DB, cổng...)</td><td>Sửa file <code>D:\MES-run\shared\.env</code>, rồi chạy:<div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --sync-env</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td>Sửa cấu hình (mật khẩu DB, cổng...)</td><td>Sửa file <code>D:\MES-run\shared\.env</code>, rồi chạy:<div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --sync-env</pre><button type="button">Chép</button></div>Đổi nguồn đồng bộ thì xem <a href="#cau-hinh">mục 3</a>.</td></tr>
+      <tr><td>Tải lại trang thì mất đăng nhập; cứ 15 phút phải đăng nhập lại</td><td>Web chạy <code>http://</code> mà <code>COOKIE_SECURE</code> đang bật. Sửa thành <code>COOKIE_SECURE=false</code> trong <code>shared\.env</code> rồi chạy <code>--sync-env</code>.</td></tr>
+      <tr><td>Script báo <code>Cảnh báo: bản này thêm biến môi trường ...</code></td><td>Bản mới cần thêm dòng cấu hình. Hỏi người viết code giá trị, thêm vào <code>shared\.env</code> rồi chạy <code>--sync-env</code>.</td></tr>
+      <tr><td>Script báo <code>Cấu hình .env không hợp lệ ...</code></td><td>Sửa <code>shared\.env</code> theo dòng lỗi rồi chạy lại lệnh vừa chạy. Bản đang chạy không bị ảnh hưởng.</td></tr>
       <tr><td>Script báo <code>Cảnh báo: ... cho Everyone, Authenticated Users, Users truy cập</code></td><td>Thư mục <code>D:\MES-run</code> (chứa mật khẩu DB) đang mở cho mọi người đọc. Mở PowerShell bằng quyền quản trị, chạy lệnh <code>icacls</code> mà script in ra.</td></tr>
       <tr><td>Thông báo khác</td><td>Đọc dòng <code>Lỗi:</code> script in ra, thường có ghi cách xử lý. Chi tiết: tài liệu <code>11-van-hanh.md</code>, mục Cập nhật bản mới lên máy chủ.</td></tr>
     </table>
