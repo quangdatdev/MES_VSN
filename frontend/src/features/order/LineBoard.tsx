@@ -11,14 +11,21 @@ const LABEL_W = 116;
 export interface BoardLine {
   code: string;
   name: string;
+  /** ĐVCS của chuyền: ngày nghỉ tô theo lịch làm việc của ĐVCS này */
+  branchCode?: string;
   /** false: chuyền đã ngừng dùng, chỉ còn hàng vì còn việc trong khoảng ngày */
   isActive?: boolean;
 }
+
+/** Ngày nghỉ theo lịch ĐVCS (máy chủ trả theo mã ĐVCS); `name` chỉ có ở ngày lễ, Tết */
+export type NonWorkingDays = Record<string, { date: string; name: string | null }[]>;
 
 interface Props {
   from: string;
   to: string;
   lines: BoardLine[];
+  /** Không có (máy chủ cũ, dữ liệu thử): tô Chủ nhật như trước phase 5.12 */
+  nonWorkingDays?: NonWorkingDays;
   bars: (BoardBar & { preview?: boolean })[];
   /** Kế hoạch đang mở: thanh của kế hoạch này nổi lên, thanh khác mờ đi */
   focusPlanId?: number | null;
@@ -35,6 +42,7 @@ const drawable = (b: BoardBar) => ISO_DAY.test(String(b.startDate ?? '')) && ISO
 const barLabel = (b: BoardBar) => [String(b.customerName ?? '').split(' ')[0], b.styleCode, `${fmtNum(b.qty)} sp`].filter(Boolean).join(', ');
 const isSunday = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
 const NO_BARS: Props['bars'] = [];
+const NO_OFF: number[] = [];
 
 interface RowProps {
   line: BoardLine;
@@ -47,16 +55,19 @@ interface RowProps {
   focusPlanId?: number | null;
   details: boolean;
   renderActions?: (bar: BoardBar) => ReactNode;
+  /** Ngày nghỉ riêng của ĐVCS chuyền này (chỉ số cột), ngoài ngày nghỉ chung đã tô suốt bảng */
+  ownOff: number[];
 }
 
 /** Một hàng chuyền. Vẽ lại khi thanh của chính chuyền đó đổi: sửa một dòng dàn chuyền không vẽ lại mọi chuyền. */
-function BoardRowView({ line, list, top, from, dayCount, width, focusPlanId, details, renderActions }: RowProps) {
+function BoardRowView({ line, list, top, from, dayCount, width, focusPlanId, details, renderActions, ownOff }: RowProps) {
   return (
     <div className="board-row" style={{ top, height: ROW_H }}>
       <div className="board-label" style={{ width: LABEL_W }} title={`${line.name} (${line.code})${line.isActive === false ? ', đã ngừng dùng' : ''}`} data-inactive={line.isActive === false || undefined}>
         <span>{line.name}{line.isActive === false && ' (đã ngừng)'}</span>
       </div>
       <div className="board-track" style={{ width }}>
+        {ownOff.map((i) => <div key={`off${i}`} className="board-off board-off-row" style={{ left: i * DAY_W, width: DAY_W }} />)}
         {list.map((b, i) => {
           const next = list[i + 1];
           const start = Math.max(0, dayIndex(from, b.startDate));
@@ -127,11 +138,35 @@ const BoardRow = memo(BoardRowView, (a, b) => {
 });
 
 /**
- * Bảng dàn chuyền: mỗi chuyền một hàng, mỗi ngày một cột (Chủ nhật tô đậm, là ngày nghỉ).
+ * Ngày nghỉ của bảng: ngày nghỉ chung (mọi ĐVCS đang hiện đều nghỉ) tô suốt bảng và tiêu đề; ngày chỉ một số ĐVCS nghỉ (đơn vị
+ * tổng hợp xem chuyền của nhiều ĐVCS) tô riêng trên hàng chuyền của ĐVCS đó.
+ */
+function useOffDays(days: string[], lines: BoardLine[], nonWorkingDays: NonWorkingDays | undefined) {
+  return useMemo(() => {
+    const index = new Map(days.map((d, i) => [d, i]));
+    const names = new Map<string, string>();
+    if (!nonWorkingDays) {
+      const common = new Set(days.filter(isSunday));
+      return { common, names, own: new Map<string, number[]>() };
+    }
+    const byBranch = new Map(Object.entries(nonWorkingDays).map(([b, list]) => [b, new Set(list.map((d) => d.date))]));
+    for (const list of Object.values(nonWorkingDays)) for (const d of list) if (d.name) names.set(d.date, d.name);
+    const shown = [...new Set(lines.map((l) => l.branchCode).filter((b): b is string => !!b && byBranch.has(b)))];
+    const branches = shown.length ? shown : [...byBranch.keys()];
+    const common = new Set(days.filter((d) => branches.length > 0 && branches.every((b) => byBranch.get(b)!.has(d))));
+    const own = new Map(
+      branches.map((b) => [b, [...byBranch.get(b)!].filter((d) => !common.has(d) && index.has(d)).map((d) => index.get(d)!)] as const),
+    );
+    return { common, names, own };
+  }, [days, lines, nonWorkingDays]);
+}
+
+/**
+ * Bảng dàn chuyền: mỗi chuyền một hàng, mỗi ngày một cột (ngày nghỉ theo lịch làm việc của ĐVCS tô đậm).
  * Thanh cam: đang may; thanh xanh: đã xếp, chưa vào chuyền; thanh xám: đã xong; ô vàng nhạt: chuyền đang trống giữa hai việc.
  * Trạng thái không chỉ nói bằng màu: có trong tên đọc của thanh và khi rê chuột.
  */
-function LineBoardView({ from, to, lines, bars, focusPlanId, details = true, renderActions }: Props) {
+function LineBoardView({ from, to, lines, nonWorkingDays, bars, focusPlanId, details = true, renderActions }: Props) {
   const days = useMemo(() => {
     const n = Math.max(0, dayIndex(from, to)) + 1;
     return Array.from({ length: n }, (_, i) => addDays(from, i));
@@ -152,6 +187,7 @@ function LineBoardView({ from, to, lines, bars, focusPlanId, details = true, ren
     for (const list of m.values()) list.sort((a, b) => a.startDate.localeCompare(b.startDate));
     return m;
   }, [bars]);
+  const off = useOffDays(days, lines, nonWorkingDays);
   const todayIdx = dayIndex(from, today());
   const width = days.length * DAY_W;
   const hasPreview = bars.some((b) => b.preview);
@@ -170,7 +206,13 @@ function LineBoardView({ from, to, lines, bars, focusPlanId, details = true, ren
               </div>
               <div className="board-days">
                 {days.map((d) => (
-                  <div key={d} data-sunday={isSunday(d) || undefined} data-today={d === today() || undefined} style={{ width: DAY_W }} title={fmtDate(d)}>
+                  <div
+                    key={d}
+                    data-off={off.common.has(d) || undefined}
+                    data-today={d === today() || undefined}
+                    style={{ width: DAY_W }}
+                    title={[fmtDate(d), off.names.get(d) ?? (off.common.has(d) ? 'nghỉ' : null)].filter(Boolean).join(', ')}
+                  >
                     {isSunday(d) ? 'CN' : Number(d.slice(8, 10))}
                   </div>
                 ))}
@@ -179,9 +221,9 @@ function LineBoardView({ from, to, lines, bars, focusPlanId, details = true, ren
           </div>
 
           <div className="board-body" style={{ height: lines.length * ROW_H }}>
-            {/* Lớp nền: Chủ nhật và vạch hôm nay phủ suốt các hàng */}
+            {/* Lớp nền: ngày nghỉ chung và vạch hôm nay phủ suốt các hàng */}
             <div className="board-underlay" style={{ left: LABEL_W, width }}>
-              {days.map((d, i) => (isSunday(d) ? <div key={d} className="board-sunday" style={{ left: i * DAY_W, width: DAY_W }} /> : null))}
+              {days.map((d, i) => (off.common.has(d) ? <div key={d} className="board-off" style={{ left: i * DAY_W, width: DAY_W }} /> : null))}
               {todayIdx >= 0 && todayIdx < days.length && <div className="board-today" style={{ left: todayIdx * DAY_W + DAY_W / 2 }} title="Hôm nay" />}
             </div>
             {lines.map((line, r) => (
@@ -196,6 +238,7 @@ function LineBoardView({ from, to, lines, bars, focusPlanId, details = true, ren
                 focusPlanId={focusPlanId}
                 details={details}
                 renderActions={renderActions}
+                ownOff={(line.branchCode && off.own.get(line.branchCode)) || NO_OFF}
               />
             ))}
           </div>
@@ -213,7 +256,7 @@ function LineBoardView({ from, to, lines, bars, focusPlanId, details = true, ren
           </span>
         )}
         <span><i data-k="gap" />Chuyền trống</span>
-        <span><i data-k="sunday" />Chủ nhật</span>
+        <span><i data-k="off" />Ngày nghỉ</span>
         <span><i data-k="today" />Hôm nay</span>
       </div>
     </div>

@@ -33,7 +33,9 @@ import {
   users,
   prepSteps,
   productionFactories,
+  workCalendarSample,
 } from './seed-data';
+import { addCalendarDays, DEFAULT_WORK_CALENDAR, readWorkCalendars } from '../src/platform/catalog/work-calendar';
 import { syncBranchesFromBravo } from './bravo-branches';
 import { seedHrIfReady } from './hr-data';
 import { seedOrders } from './seed-order';
@@ -288,6 +290,28 @@ export async function runSeed({
       }
     }
 
+    // 6d. Lịch làm việc mẫu (phase 5.12): chỉ khi có dữ liệu mẫu, chỉ cho ĐVCS mẫu chưa có lịch (không ghi đè lịch đã sửa ở màn hình)
+    if (sampleData) {
+      for (const b of branches.filter((x) => !x.isAggregate && branchId.has(x.code))) {
+        const has = await db.selectFrom('SysWorkCalendar').select('Id').where('BranchCode', '=', b.code).executeTakeFirst();
+        if (has) continue;
+        const d = DEFAULT_WORK_CALENDAR;
+        const cal = await db
+          .insertInto('SysWorkCalendar')
+          .values({ BranchCode: b.code, WeeklyOffMask: d.weeklyOffMask, OutStartOffsetDays: d.outStartOffsetDays, OutEndOffsetDays: d.outEndOffsetDays, WarehouseStartOffsetDays: d.warehouseStartOffsetDays, WarehouseEndOffsetDays: d.warehouseEndOffsetDays })
+          .output('inserted.Id')
+          .executeTakeFirstOrThrow();
+        const days = workCalendarSample
+          .filter((s) => s.branch === '*' || s.branch === b.code)
+          .flatMap((s) => {
+            const n = Math.round((Date.parse(s.to) - Date.parse(s.from)) / 86_400_000) + 1;
+            return Array.from({ length: n }, (_, i) => ({ WorkCalendarId: cal.Id, CalendarDate: addCalendarDays(s.from, i), DayType: s.dayType, Name: s.name }));
+          });
+        if (days.length) await db.insertInto('SysWorkCalendarDay').values(days).execute();
+        bump('lịch làm việc');
+      }
+    }
+
     // 7. Tài nguyên lọc theo chiều nào, qua cột nào. Tài nguyên hệ thống khai báo ở seed-data thì đồng bộ đúng như khai báo:
     // đổi bảng nguồn mà còn liên kết cũ trỏ tới cột không có sẽ làm truy vấn lỗi (review 5.1 #18).
     const dims = new Map((await db.selectFrom('SysScopeDimension').select(['Id', 'Code']).execute()).map((d) => [d.Code, d.Id]));
@@ -508,10 +532,11 @@ export async function runSeed({
         try {
           const planner = userId.get('kehoach.a') ?? null;
           const plannerName = users.find((u) => u.username === 'kehoach.a')?.fullName ?? 'Kế hoạch';
+          const calendars = await readWorkCalendars(db);
           for (const b of branches.filter((x) => !x.isAggregate)) {
             const has = await order.selectFrom('SalesOrder').select('Id').where('BranchCode', '=', b.code).executeTakeFirst();
             if (has) continue;
-            const s = await seedOrders(order, b.code, planner, plannerName);
+            const s = await seedOrders(order, b.code, planner, plannerName, calendars.get(b.code) ?? DEFAULT_WORK_CALENDAR);
             bump('đơn hàng', s.orders);
             bump('PO', s.pos);
             bump('kế hoạch xuất hàng', s.plans);

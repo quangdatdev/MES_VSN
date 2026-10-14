@@ -75,25 +75,7 @@ export async function readableQuery<Q extends FilterParams>(
   return { ...out, searchExclude: Object.entries(SEARCH_FIELDS).filter(([, f]) => blind.has(f)).map(([c]) => c) };
 }
 
-/**
- * Ngày làm việc thứ n tính từ `start` (tính cả ngày bắt đầu), bỏ Chủ nhật như bảng dàn chuyền ("Ng" = nghỉ).
- * n = số ngày sản xuất + số ngày nghỉ khác.
- */
-export function addWorkingDays(start: string, n: number): string {
-  const d = new Date(`${start}T00:00:00Z`);
-  if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
-  // Tính theo tuần (6 ngày làm) rồi lặp phần lẻ (< 6 ngày): không lặp theo số ngày nên đầu vào lớn không làm treo máy chủ
-  let left = Math.max(1, Math.trunc(n)) - 1;
-  d.setUTCDate(d.getUTCDate() + Math.floor(left / 6) * 7);
-  left %= 6;
-  while (left > 0) {
-    d.setUTCDate(d.getUTCDate() + 1);
-    if (d.getUTCDay() !== 0) left--;
-  }
-  return d.toISOString().slice(0, 10);
-}
-
-/** Số ngày sản xuất tối đa của một dòng dàn chuyền (chặn đầu vào vô lý trước khi tính ngày). */
+/** Số ngày sản xuất tối đa của một dòng dàn chuyền (chặn đầu vào vô lý trước khi tính ngày theo lịch, work-calendar.ts). */
 export const MAX_PRODUCTION_DAYS = 366;
 
 export const conflict = (msg: string) => new AppException('CONFLICT', msg, 409);

@@ -1021,19 +1021,46 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Xếp chuyền: số ngày SX, ngày kết thúc bỏ Chủ nhật; đề xuất phân màu cỡ; chuyền nhà máy khác, số ngày quá lớn => 422', async () => {
+    it('Xếp chuyền: số ngày SX, số ngày nghỉ, kết thúc, ra chuyền, nhập kho tính theo lịch ĐVCS (phase 5.12); đề xuất phân màu cỡ; chuyền nhà máy khác, số ngày quá lớn => 422', async () => {
       const t = await tokenFor('kehoach.a', 'A01');
       const plan = (await api().get(`/api/v1/order/line-plans?pageSize=200&style=${FIXTURE_STYLE}`).set(auth(t))).body.items.find((p: any) => p.id === fixture.planId && p.lineCount === 0);
       await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ lineCode: 'A02-L01', qty: 10, avgOutput: 10, startDate: '2026-12-05' }] }).expect(422);
       const slow = await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ lineCode: 'A01-L12', qty: 1000, avgOutput: 1, startDate: '2026-12-05' }] }).expect(422);
       expect(slow.body.error.message).toContain('366');
+      const adminA01 = await tokenFor('admin', 'A01');
+      const holiday = { branchCodes: ['A01'], from: '2026-12-07', to: '2026-12-07', dayType: 'OFF', name: 'Nghỉ thử P5' };
       try {
-        // 2026-12-05 là thứ Bảy: 1000/300 => 4 ngày SX: T7, (CN nghỉ), T2, T3, T4 => kết thúc 2026-12-09
+        // 2026-12-05 là thứ Bảy: 1000/300 => 4 ngày SX: T7, (CN nghỉ), T2, T3, T4 => kết thúc 2026-12-09. Ra chuyền, nhập kho cộng
+        // theo ngày làm việc (lịch mặc định của ĐVCS mẫu: nghỉ Chủ nhật, 3/3/2/5). Số ngày nghỉ, ngày client gửi bị bỏ qua
         const saved = (await api()
           .put(`/api/v1/order/line-plans/${plan.id}/lines`)
           .set(auth(t))
-          .send({ lines: [{ lineCode: 'A01-L12', qty: 1000, avgOutput: 300, startDate: '2026-12-05' }] })
+          .send({ lines: [{ lineCode: 'A01-L12', qty: 1000, avgOutput: 300, startDate: '2026-12-05', offDays: 9, outStartDate: '2030-01-01', warehouseEndDate: '2026-12-01' }] })
           .expect(200)).body;
+        expect(saved.lines[0]).toMatchObject({
+          lineCode: 'A01-L12',
+          productionDays: 4,
+          offDays: 1,
+          endDate: '2026-12-09',
+          outStartDate: '2026-12-09',
+          outEndDate: '2026-12-12',
+          warehouseStartDate: '2026-12-11',
+          warehouseEndDate: '2026-12-18',
+        });
+        expect(saved.calendar).toMatchObject({ weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5 });
+        // Quản trị đặt thứ Hai 07/12 là ngày nghỉ của A01: lần lưu sau tính theo lịch mới, chi tiết và bảng dàn chuyền thấy ngày đó
+        await api().post('/api/v1/admin/catalogs/work-calendars/days').set(auth(adminA01)).send(holiday).expect(201);
+        const detail = (await api().get(`/api/v1/order/line-plans/${plan.id}`).set(auth(t)).expect(200)).body;
+        expect(detail.calendar.days).toContainEqual({ date: '2026-12-07', dayType: 'OFF', name: 'Nghỉ thử P5' });
+        const resaved = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ id: saved.lines[0].id, lineCode: 'A01-L12', qty: 1000, avgOutput: 300, startDate: '2026-12-05' }] }).expect(200)).body;
+        expect(resaved.lines[0]).toMatchObject({ offDays: 2, endDate: '2026-12-10', outStartDate: '2026-12-10' });
+        const holidayBoard = (await api().get('/api/v1/order/line-plans/board?from=2026-12-01&to=2026-12-13').set(auth(t)).expect(200)).body;
+        expect(holidayBoard.nonWorkingDays.A01).toEqual([
+          { date: '2026-12-06', name: null },
+          { date: '2026-12-07', name: 'Nghỉ thử P5' },
+          { date: '2026-12-13', name: null },
+        ]);
+        await api().delete('/api/v1/admin/catalogs/work-calendars/A01/days?from=2026-12-07&to=2026-12-07').set(auth(adminA01)).expect(200);
         expect(saved.lines[0]).toMatchObject({ lineCode: 'A01-L12', productionDays: 4, endDate: '2026-12-09' });
         expect(saved.statusCode).toBe('SCHEDULED');
         const alloc = (await api().get(`/api/v1/order/color-size/${saved.lines[0].id}`).set(auth(t)).expect(200)).body;
@@ -1042,8 +1069,9 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         expect(board.bars.some((b: any) => b.planId === plan.id && b.lineCode === 'A01-L12')).toBe(true);
         // 7 ngày làm từ thứ Hai = thứ Hai tuần sau (bỏ Chủ nhật)
         const week = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ id: saved.lines[0].id, lineCode: 'A01-L12', qty: 700, avgOutput: 100, startDate: '2026-12-07' }] }).expect(200)).body;
-        expect(week.lines[0].endDate).toBe('2026-12-14');
+        expect(week.lines[0]).toMatchObject({ endDate: '2026-12-14', offDays: 1 });
       } finally {
+        await api().delete(`/api/v1/admin/catalogs/work-calendars/A01/days?from=${holiday.from}&to=${holiday.to}`).set(auth(adminA01)).expect(200);
         const back = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [] }).expect(200)).body;
         expect(back.statusCode).toBe('PLANNED');
       }
@@ -1205,10 +1233,5 @@ function strip(l: any) {
     qty: l.qty,
     avgOutput: l.avgOutput,
     startDate: l.startDate,
-    offDays: l.offDays,
-    outStartDate: l.outStartDate,
-    outEndDate: l.outEndDate,
-    warehouseStartDate: l.warehouseStartDate,
-    warehouseEndDate: l.warehouseEndDate,
   };
 }

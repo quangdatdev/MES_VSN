@@ -1,10 +1,10 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
-import { sql, type Updateable } from 'kysely';
+import { sql, type Kysely, type Updateable } from 'kysely';
 import { AppException, Errors } from '../../common/app.exception';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
-import type { SysCatalogItemTable, SysProductionFactoryTable, SysShiftTable } from '../database/core.types';
+import type { CoreDatabase, SysCatalogItemTable, SysProductionFactoryTable, SysShiftTable, SysWorkCalendarTable } from '../database/core.types';
 import { CORE_DB, type CoreDb } from '../database/database.module';
 import { PermissionService } from '../permission/permission.service';
 import { OSM_FACTORY_SOURCE } from '../sync/bravo-order-source';
@@ -18,7 +18,10 @@ import {
   FactoryUpdateDto,
   ShiftCreateDto,
   ShiftUpdateDto,
+  WorkCalendarDaysDto,
+  WorkCalendarUpdateDto,
 } from './catalog.dto';
+import { addCalendarDays, DEFAULT_WORK_CALENDAR, isRealDate, maskOf, offsetsInOrder, offsetsOf, weekdaysOf, type CalendarOffsets } from './work-calendar';
 
 /** Mẫu LIKE "chứa chuỗi": thoát %, _, [ để người dùng gõ ký tự này vẫn tìm đúng chữ. */
 const containsLike = (s: string) => `%${s.replace(/[%_[]/g, (c) => `[${c}]`)}%`;
@@ -44,6 +47,16 @@ const shiftMinutes = (start: string, end: string) => (minutesOf(end) - minutesOf
  * Đổi tên đơn vị tính không đổi đơn hàng đã lưu tên cũ.
  */
 const NAME_MAX: Record<string, number> = { UNIT: 20 };
+/** Một lần đặt ngày đặc biệt dài tối đa bấy nhiêu ngày (Tết dài nhất khoảng 9–10 ngày) */
+const MAX_CALENDAR_RANGE_DAYS = 62;
+/** Xóa theo khoảng tối đa một năm: gọi nhầm API không xóa sạch lịch nhiều năm một lần */
+const MAX_DELETE_RANGE_DAYS = 366;
+/** Năm nhận được, như ô năm của API; DATE của SQL Server không nhận năm 0000 (lỗi chuyển kiểu thành 500) */
+const calendarYearOk = (iso: string) => isRealDate(iso) && iso >= '2000-01-01' && iso <= '2100-12-31';
+const dayOf = (d: Date) => d.toISOString().slice(0, 10);
+/** Cột DATE so với chuỗi YYYY-MM-DD (kiểu Kysely của cột là Date khi đọc) */
+const dateRef = (column: string) => sql<string>`${sql.ref(column)}`;
+const daySpan = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
 
 /**
  * Danh mục hệ thống (Phase 5.4). Danh mục MES (nhà máy SX, ca làm việc, danh mục mã-tên trong SysCatalog) thêm, sửa,
@@ -83,7 +96,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
   // ---------------- Tổng quan ----------------
 
   async overview() {
-    const [catalogs, shifts, factories, branches] = await Promise.all([
+    const [catalogs, shifts, factories, branches, calendars] = await Promise.all([
       this.db
         .selectFrom('SysCatalog as c')
         .leftJoin('SysCatalogItem as i', 'i.CatalogId', 'c.Id')
@@ -102,6 +115,12 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
         .select([sql<number>`COUNT(*)`.as('Total'), sql<number>`SUM(CASE WHEN IsActive = 1 THEN 1 ELSE 0 END)`.as('Active')])
         .executeTakeFirstOrThrow(),
       this.db.selectFrom('SysBranch').select(['Code', 'Name', 'IsActive']).where('IsAggregate', '=', false).orderBy('SortOrder').orderBy('Code').execute(),
+      this.db
+        .selectFrom('SysWorkCalendar as c')
+        .innerJoin('SysBranch as b', 'b.Code', 'c.BranchCode')
+        .select(sql<number>`COUNT(*)`.as('Total'))
+        .where('b.IsActive', '=', true)
+        .executeTakeFirstOrThrow(),
     ]);
     const count = (r: { Total: number; Active: number | null }) => ({ total: Number(r.Total), active: Number(r.Active ?? 0) });
     // Danh mục BRAVO đọc qua MES_Sync: chưa có database đồng bộ thì vẫn trả danh mục MES, kèm lý do
@@ -124,6 +143,15 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
         },
         ...catalogs.map((c) => ({ code: c.Code, kind: 'item', name: c.Name, description: c.Description, nameMax: NAME_MAX[c.Code] ?? 100, ...count(c) })),
         { code: 'SHIFT', kind: 'shift', name: 'Ca làm việc', description: 'Ca làm, giờ bắt đầu, kết thúc, thời gian nghỉ: dùng cho kế hoạch may, sản lượng theo giờ.', ...count(shifts) },
+        {
+          code: 'WORK_CALENDAR',
+          kind: 'calendar',
+          name: 'Lịch làm việc',
+          description: 'Ngày nghỉ hằng tuần, nghỉ lễ, Tết, ngày làm bù và số ngày ra chuyền, nhập kho của từng đơn vị cơ sở: Chi tiết dàn chuyền dùng để tự tính ngày.',
+          // total: số ĐVCS đang dùng; active: số ĐVCS đang dùng đã có lịch riêng (còn lại dùng lịch mặc định)
+          total: branches.filter((b) => b.IsActive).length,
+          active: Number(calendars.Total),
+        },
       ],
       external,
       externalError,
@@ -420,6 +448,182 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
       await trx.updateTable('SysShift').set({ ...set, ModifiedAt: new Date(), ModifiedBy: actor.userId }).where('Id', '=', id).execute();
       await this.audit.logStrict(this.entry(actor, 'SysShift', id, 'SHIFT_UPDATE', before, set), trx);
     });
+  }
+
+  // ---------------- Lịch làm việc theo ĐVCS (phase 5.12) ----------------
+
+  /** Mọi ĐVCS (trừ đơn vị tổng hợp) kèm lịch riêng hoặc lịch mặc định, số ngày đặc biệt đã nhập */
+  async workCalendars() {
+    const [branches, calendars, counts] = await Promise.all([
+      this.db.selectFrom('SysBranch').select(['Code', 'Name', 'IsActive']).where('IsAggregate', '=', false).orderBy('SortOrder').orderBy('Code').execute(),
+      this.db.selectFrom('SysWorkCalendar').selectAll().execute(),
+      this.db.selectFrom('SysWorkCalendarDay').select(['WorkCalendarId', sql<number>`COUNT(*)`.as('N')]).groupBy('WorkCalendarId').execute(),
+    ]);
+    const byBranch = new Map(calendars.map((c) => [c.BranchCode, c]));
+    const dayCount = new Map(counts.map((c) => [c.WorkCalendarId, Number(c.N)]));
+    const defaults = { weeklyOffDays: weekdaysOf(DEFAULT_WORK_CALENDAR.weeklyOffMask), ...offsetsOf(DEFAULT_WORK_CALENDAR) };
+    return {
+      defaults,
+      // ĐVCS đã ngừng dùng chỉ hiện khi đã có lịch riêng (dàn chuyền cũ của nó vẫn tính theo lịch đó)
+      items: branches
+        .filter((b) => b.IsActive || byBranch.has(b.Code))
+        .map((b) => {
+          const c = byBranch.get(b.Code);
+          return {
+            branchCode: b.Code,
+            branchName: b.Name,
+            branchActive: !!b.IsActive,
+            configured: !!c,
+            ...(c ? { weeklyOffDays: weekdaysOf(c.WeeklyOffMask), ...this.offsetsOfRow(c) } : defaults),
+            dayCount: c ? (dayCount.get(c.Id) ?? 0) : 0,
+          };
+        }),
+    };
+  }
+
+  private offsetsOfRow(r: Pick<SysWorkCalendarTable, 'OutStartOffsetDays' | 'OutEndOffsetDays' | 'WarehouseStartOffsetDays' | 'WarehouseEndOffsetDays'>): CalendarOffsets {
+    return { outStartOffsetDays: r.OutStartOffsetDays, outEndOffsetDays: r.OutEndOffsetDays, warehouseStartOffsetDays: r.WarehouseStartOffsetDays, warehouseEndOffsetDays: r.WarehouseEndOffsetDays };
+  }
+
+  private offsetColumns(o: CalendarOffsets) {
+    return { OutStartOffsetDays: o.outStartOffsetDays, OutEndOffsetDays: o.outEndOffsetDays, WarehouseStartOffsetDays: o.warehouseStartOffsetDays, WarehouseEndOffsetDays: o.warehouseEndOffsetDays };
+  }
+
+  /** ĐVCS của lịch: phải có, không phải đơn vị tổng hợp; ghi thì phải đang dùng */
+  private async calendarBranch(code: string, write: boolean) {
+    const b = await this.db.selectFrom('SysBranch').select(['Code', 'IsAggregate', 'IsActive']).where('Code', '=', code).executeTakeFirst();
+    if (!b) throw Errors.notFound(`Không có đơn vị cơ sở ${code}.`);
+    if (b.IsAggregate) throw invalid('Đơn vị tổng hợp không có lịch làm việc. Chọn một đơn vị cơ sở cụ thể.');
+    if (write && !b.IsActive) throw invalid(`Đơn vị cơ sở ${code} đang ngừng dùng.`);
+    return b.Code;
+  }
+
+  /** Ngày đặc biệt của một ĐVCS trong năm */
+  async workCalendarDays(branchCode: string, year: number) {
+    const code = await this.calendarBranch(branchCode, false);
+    const rows = await this.db
+      .selectFrom('SysWorkCalendarDay as d')
+      .innerJoin('SysWorkCalendar as c', 'c.Id', 'd.WorkCalendarId')
+      .select(['d.Id', 'd.CalendarDate', 'd.DayType', 'd.Name'])
+      .where('c.BranchCode', '=', code)
+      .where(dateRef('d.CalendarDate'), '>=', `${year}-01-01`)
+      .where(dateRef('d.CalendarDate'), '<=', `${year}-12-31`)
+      .orderBy('d.CalendarDate')
+      .execute();
+    return rows.map((r) => ({ id: r.Id, date: dayOf(r.CalendarDate), dayType: r.DayType, name: r.Name }));
+  }
+
+  /**
+   * Id lịch của ĐVCS; chưa có thì tạo theo lịch mặc định, cùng transaction với lần ghi. Không có nhật ký riêng: lịch tạo ngầm
+   * mang đúng giá trị mặc định (như khi chưa có dòng), nhật ký của lần đặt ngày đi kèm đã ghi ĐVCS và Id lịch.
+   */
+  private async ensureCalendar(trx: Kysely<CoreDatabase>, actor: AuthUser, branchCode: string) {
+    const has = await trx.selectFrom('SysWorkCalendar').select('Id').where('BranchCode', '=', branchCode).executeTakeFirst();
+    if (has) return has.Id;
+    const row = await trx
+      .insertInto('SysWorkCalendar')
+      .values({ BranchCode: branchCode, WeeklyOffMask: DEFAULT_WORK_CALENDAR.weeklyOffMask, ...this.offsetColumns(DEFAULT_WORK_CALENDAR), CreatedBy: actor.userId })
+      .output('inserted.Id')
+      .executeTakeFirstOrThrow();
+    return row.Id;
+  }
+
+  /** Ngày nghỉ hằng tuần, số ngày cộng thêm của một ĐVCS; chưa có lịch thì tạo */
+  async updateWorkCalendar(actor: AuthUser, branchCode: string, dto: WorkCalendarUpdateDto) {
+    const code = await this.calendarBranch(branchCode, true);
+    const mask = maskOf(dto.weeklyOffDays);
+    if (mask >= 127) throw invalid('Phải còn ít nhất một ngày làm việc trong tuần.');
+    if (!offsetsInOrder(dto)) {
+      throw invalid('Số ngày cộng thêm làm ngày bắt đầu sau ngày kết thúc: Kết thúc ra chuyền phải cộng từ bằng Bắt đầu ra chuyền trở lên, và tổng của Kết thúc ra chuyền với Kết thúc nhập kho phải từ bằng tổng của hai ngày bắt đầu trở lên.');
+    }
+    const values = { WeeklyOffMask: mask, ...this.offsetColumns(dto) };
+    await unique(
+      () =>
+        this.db.transaction().execute(async (trx) => {
+          const before = await trx.selectFrom('SysWorkCalendar').selectAll().where('BranchCode', '=', code).executeTakeFirst();
+          // Gửi lại đúng cấu hình đang có (bấm Lưu hai lần): không ghi, không thêm nhật ký
+          if (before && (Object.keys(values) as (keyof typeof values)[]).every((k) => before[k] === values[k])) return;
+          let id: number;
+          if (before) {
+            id = before.Id;
+            await trx.updateTable('SysWorkCalendar').set({ ...values, ModifiedAt: new Date(), ModifiedBy: actor.userId }).where('Id', '=', id).execute();
+          } else {
+            id = (await trx.insertInto('SysWorkCalendar').values({ BranchCode: code, ...values, CreatedBy: actor.userId }).output('inserted.Id').executeTakeFirstOrThrow()).Id;
+          }
+          const old = before ? { weeklyOffDays: weekdaysOf(before.WeeklyOffMask), ...this.offsetsOfRow(before) } : undefined;
+          await this.audit.logStrict(this.entry(actor, 'SysWorkCalendar', id, 'WORK_CALENDAR_UPDATE', old, { branchCode: code, weeklyOffDays: weekdaysOf(mask), ...offsetsOf(dto) }), trx);
+        }),
+      'Lịch của đơn vị cơ sở này vừa được người khác tạo. Tải lại rồi thử lại.',
+    );
+    this.lookup.invalidateWorkCalendars();
+  }
+
+  private checkRange(from: string, to: string) {
+    if (!calendarYearOk(from) || !calendarYearOk(to)) throw invalid('Ngày không có thật hoặc ngoài khoảng năm 2000–2100.');
+    if (from > to) throw invalid('Ngày kết thúc phải từ ngày bắt đầu trở đi.');
+    if (daySpan(from, to) > MAX_CALENDAR_RANGE_DAYS) throw invalid(`Mỗi lần đặt tối đa ${MAX_CALENDAR_RANGE_DAYS} ngày.`);
+  }
+
+  /**
+   * Đặt ngày nghỉ hoặc làm bù cho mọi ngày trong khoảng, ở một hay nhiều ĐVCS (ĐVCS chưa có lịch thì tạo theo mặc định). Ngày đã
+   * đặt trước đó trong khoảng được thay bằng loại, tên mới. Mỗi ĐVCS một dòng nhật ký (ngày cũ, khoảng mới).
+   */
+  async setWorkCalendarDays(actor: AuthUser, dto: WorkCalendarDaysDto) {
+    this.checkRange(dto.from, dto.to);
+    const codes: string[] = [];
+    for (const c of dto.branchCodes) codes.push(await this.calendarBranch(c, true));
+    const dates = Array.from({ length: daySpan(dto.from, dto.to) }, (_, i) => addCalendarDays(dto.from, i));
+    const name = dto.name?.trim() || null;
+    await unique(
+      () =>
+        this.db.transaction().execute(async (trx) => {
+          for (const code of codes) {
+            const id = await this.ensureCalendar(trx, actor, code);
+            const old = await this.daysIn(trx, id, dto.from, dto.to);
+            // Thay cả khoảng: không bảng nào tham chiếu dòng ngày đặc biệt, Id đổi không ảnh hưởng gì
+            await trx.deleteFrom('SysWorkCalendarDay').where('WorkCalendarId', '=', id).where(dateRef('CalendarDate'), '>=', dto.from).where(dateRef('CalendarDate'), '<=', dto.to).execute();
+            await trx
+              .insertInto('SysWorkCalendarDay')
+              .values(dates.map((date) => ({ WorkCalendarId: id, CalendarDate: date, DayType: dto.dayType, Name: name, CreatedBy: actor.userId })))
+              .execute();
+            const newValue = { branchCode: code, from: dto.from, to: dto.to, dayType: dto.dayType, name };
+            await this.audit.logStrict(this.entry(actor, 'SysWorkCalendar', id, 'WORK_CALENDAR_DAYS_SET', old.length ? old : undefined, newValue), trx);
+          }
+        }),
+      'Lịch của đơn vị cơ sở vừa được người khác sửa. Tải lại rồi thử lại.',
+    );
+    this.lookup.invalidateWorkCalendars();
+    return { count: dates.length * codes.length };
+  }
+
+  private async daysIn(db: Kysely<CoreDatabase>, calendarId: number, from: string, to: string) {
+    const rows = await db
+      .selectFrom('SysWorkCalendarDay')
+      .select(['CalendarDate', 'DayType', 'Name'])
+      .where('WorkCalendarId', '=', calendarId)
+      .where(dateRef('CalendarDate'), '>=', from)
+      .where(dateRef('CalendarDate'), '<=', to)
+      .orderBy('CalendarDate')
+      .execute();
+    return rows.map((d) => ({ date: dayOf(d.CalendarDate), dayType: d.DayType, name: d.Name }));
+  }
+
+  /** Xóa ngày đặc biệt trong khoảng của một ĐVCS (nhập nhầm, bỏ một đợt nghỉ) */
+  async deleteWorkCalendarDays(actor: AuthUser, branchCode: string, from: string, to: string) {
+    const code = await this.calendarBranch(branchCode, false);
+    if (!calendarYearOk(from) || !calendarYearOk(to) || from > to) throw invalid('Khoảng ngày không hợp lệ.');
+    if (daySpan(from, to) > MAX_DELETE_RANGE_DAYS) throw invalid(`Mỗi lần xóa tối đa ${MAX_DELETE_RANGE_DAYS} ngày.`);
+    const cal = await this.db.selectFrom('SysWorkCalendar').select('Id').where('BranchCode', '=', code).executeTakeFirst();
+    if (!cal) return { deleted: 0 };
+    const deleted = await this.db.transaction().execute(async (trx) => {
+      const old = await this.daysIn(trx, cal.Id, from, to);
+      if (!old.length) return 0;
+      await trx.deleteFrom('SysWorkCalendarDay').where('WorkCalendarId', '=', cal.Id).where(dateRef('CalendarDate'), '>=', from).where(dateRef('CalendarDate'), '<=', to).execute();
+      await this.audit.logStrict(this.entry(actor, 'SysWorkCalendar', cal.Id, 'WORK_CALENDAR_DAYS_DELETE', old, { branchCode: code, from, to }), trx);
+      return old.length;
+    });
+    if (deleted) this.lookup.invalidateWorkCalendars();
+    return { deleted };
   }
 
   // ---------------- Danh mục chép từ BRAVO (chỉ xem) ----------------

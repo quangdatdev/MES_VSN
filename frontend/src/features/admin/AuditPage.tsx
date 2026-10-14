@@ -33,6 +33,7 @@ const ENTITIES = [
   { value: 'Department', label: 'Phòng ban, chuyền may' },
   { value: 'SysCatalogItem', label: 'Danh mục: đơn vị tính, loại đơn hàng…' },
   { value: 'SysShift', label: 'Danh mục: ca làm việc' },
+  { value: 'SysWorkCalendar', label: 'Danh mục: lịch làm việc' },
   { value: 'Auth', label: 'Đăng nhập' },
 ];
 
@@ -88,6 +89,9 @@ const ACTION_TEXT: Record<string, string> = {
   CATALOG_ITEM_UPDATE: 'Sửa mục danh mục',
   SHIFT_CREATE: 'Thêm ca làm việc',
   SHIFT_UPDATE: 'Sửa ca làm việc',
+  WORK_CALENDAR_UPDATE: 'Sửa lịch làm việc',
+  WORK_CALENDAR_DAYS_SET: 'Đặt ngày nghỉ, làm bù',
+  WORK_CALENDAR_DAYS_DELETE: 'Xóa ngày nghỉ, làm bù',
   CREATE: 'Thêm',
   UPDATE: 'Sửa',
   DELETE: 'Xóa',

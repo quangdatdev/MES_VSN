@@ -234,11 +234,8 @@ export class ScheduleLineDto {
   @Type(() => Number) @IsInt() @Min(1) @Max(10_000_000) qty!: number;
   @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) avgOutput!: number;
   @IsISO8601({ strict: true }) @DateOnly() startDate!: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(365) offDays?: number;
-  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() outStartDate?: string | null;
-  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() outEndDate?: string | null;
-  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() warehouseStartDate?: string | null;
-  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() warehouseEndDate?: string | null;
+  // Số ngày nghỉ, ngày kết thúc, ra chuyền, nhập kho do máy chủ tính theo lịch ĐVCS (phase 5.12). Giao diện cũ chưa tải lại còn gửi
+  // offDays, outStartDate…: ValidationPipe (whitelist) bỏ các trường này, không trả 422
 }
 
 export class ScheduleDto {

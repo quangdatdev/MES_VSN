@@ -303,10 +303,33 @@ export interface SysShiftTable extends Audit {
   IsSystem: boolean;
 }
 
+/** Lịch làm việc của một ĐVCS (MES_Core/0011, phase 5.12). ĐVCS chưa có dòng dùng lịch mặc định (work-calendar.ts) */
+export interface SysWorkCalendarTable extends Audit {
+  Id: Id;
+  BranchCode: string;
+  /** Ngày nghỉ hằng tuần, mỗi thứ một bit: 1 = thứ Hai … 64 = Chủ nhật */
+  WeeklyOffMask: number;
+  OutStartOffsetDays: number;
+  OutEndOffsetDays: number;
+  WarehouseStartOffsetDays: number;
+  WarehouseEndOffsetDays: number;
+}
+
+/** Ngày đặc biệt của lịch: OFF nghỉ (lễ, Tết), WORK làm bù. Cột DATE đọc ra Date lúc 00:00 UTC */
+export interface SysWorkCalendarDayTable extends Audit {
+  Id: Id;
+  WorkCalendarId: number;
+  CalendarDate: ColumnType<Date, string, string>;
+  DayType: 'OFF' | 'WORK';
+  Name: string | null;
+}
+
 export interface CoreDatabase {
   SysCatalog: SysCatalogTable;
   SysCatalogItem: SysCatalogItemTable;
   SysShift: SysShiftTable;
+  SysWorkCalendar: SysWorkCalendarTable;
+  SysWorkCalendarDay: SysWorkCalendarDayTable;
   SysProductionFactory: SysProductionFactoryTable;
   SysUserProductionFactory: SysUserProductionFactoryTable;
   SysOrgUnit: SysOrgUnitTable;

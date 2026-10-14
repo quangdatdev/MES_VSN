@@ -114,6 +114,9 @@ async function main() {
         .where('Code', 'not in', productionFactories.map((f) => f.code))
         .where((eb) => eb.or([eb('CreatedBy', 'is not', null), eb('Description', 'is', null), eb('Description', '<>', OSM_FACTORY_NOTE)]))
         .execute();
+      // Lịch làm việc (phase 5.12): xóa hết, runSeed bên dưới nạp lại lịch mẫu cho các ĐVCS mẫu
+      await trx.deleteFrom('SysWorkCalendarDay').execute();
+      await trx.deleteFrom('SysWorkCalendar').execute();
       for (const c of catalogs) {
         const cat = await trx.selectFrom('SysCatalog').select('Id').where('Code', '=', c.code).executeTakeFirst();
         if (!cat) continue;

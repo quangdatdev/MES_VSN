@@ -1,5 +1,5 @@
-import { Alert, Button, Center, Checkbox, Group, Loader, Modal, SegmentedControl, Text } from '@mantine/core';
-import { IconAlertCircle, IconCalendarStats, IconFilterOff, IconList, IconSearch } from '@tabler/icons-react';
+import { Alert, Button, Center, Checkbox, Group, List, Loader, Modal, Popover, SegmentedControl, Text } from '@mantine/core';
+import { IconAlertCircle, IconCalendarStats, IconFilterOff, IconInfoCircle, IconList, IconSearch } from '@tabler/icons-react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActionButton } from '../../components/ActionButton';
@@ -20,10 +20,12 @@ import { useLeaveGuard } from '../../lib/leaveGuard';
 import { LINE_EMPTY, LINE_NOT_FOUND, lineNameLabel, lineOptions, ORPHAN_LINE_SUFFIX } from '../../lib/lines';
 import { toastError, toastOk } from '../../lib/notify';
 import { useStableByKey } from '../../lib/useStable';
+import { toCalendar, WEEKDAYS, type WorkCalendar, type WorkCalendarJson } from '../../lib/workCalendar';
 import { useSession } from '../../store/session';
 import type { Board, BoardBar, LinePlan, LinePlanDetail, ScheduleLine } from './api';
 import { EmptyState, ExportButton, LINE_STATUS, loadError, OrderFilters, PICK_ROW, PLAN_STATUS, readable, StatusBadge, useCanWrite, useCustomers, useLinesState, usePagedList } from './common';
 import { LineBoard } from './LineBoard';
+import { computeLine, DATE_KEYS, isOutdated, storedOf, type Computed } from './scheduleDates';
 
 const RESOURCE = 'order.lineplan';
 
@@ -230,7 +232,18 @@ function BoardArea({ filter, board, bars, focusPlanId, renderActions }: {
       </Text>
     );
   }
-  return <LineBoard from={board.data.from} to={board.data.to} lines={board.data.lines} bars={bars ?? board.data.bars} focusPlanId={focusPlanId} details={filter.details} renderActions={renderActions} />;
+  return (
+    <LineBoard
+      from={board.data.from}
+      to={board.data.to}
+      lines={board.data.lines}
+      nonWorkingDays={board.data.nonWorkingDays}
+      bars={bars ?? board.data.bars}
+      focusPlanId={focusPlanId}
+      details={filter.details}
+      renderActions={renderActions}
+    />
+  );
 }
 
 /** Bảng dàn chuyền toàn nhà máy (tab trên màn Xếp chuyền). */
@@ -252,12 +265,11 @@ function BoardPanel({ filter, onOpenPlan }: { filter: BoardFilter; onOpenPlan: (
   );
 }
 
-/** Dòng dàn chuyền đang sửa: ô số, ngày có thể trống trong lúc nhập (lưới bảng tính) */
-interface EditLine extends Omit<ScheduleLine, 'qty' | 'avgOutput' | 'offDays' | 'startDate'> {
+/** Dòng dàn chuyền đang sửa: ô số, ngày có thể trống trong lúc nhập (lưới bảng tính). Số ngày nghỉ, các ngày khác là số đã lưu */
+interface EditLine extends Omit<ScheduleLine, 'qty' | 'avgOutput' | 'startDate'> {
   key: number;
   qty: number | null;
   avgOutput: number | null;
-  offDays: number | null;
   startDate: string | null;
 }
 let nextKey = 1;
@@ -265,48 +277,73 @@ const started = (l: EditLine) => l.statusCode === 'IN_PRODUCTION' || l.statusCod
 // Dòng không sửa được (ngoài phạm vi sửa, kể cả dòng không thấy) không gửi lên nhưng vẫn tính vào tổng, như máy chủ
 const mine = (r: Pick<EditLine, 'editable'>) => r.editable !== false;
 
-/** Ngày làm việc thứ n tính từ ngày bắt đầu, bỏ Chủ nhật (cùng công thức với backend: theo tuần 6 ngày làm). */
-function addWorkingDays(start: string, n: number) {
-  const d = new Date(`${start}T00:00:00Z`);
-  if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
-  let left = Math.max(1, Math.trunc(n)) - 1;
-  d.setUTCDate(d.getUTCDate() + Math.floor(left / 6) * 7);
-  left %= 6;
-  while (left > 0) {
-    d.setUTCDate(d.getUTCDate() + 1);
-    if (d.getUTCDay() !== 0) left--;
-  }
-  return d.toISOString().slice(0, 10);
+/**
+ * Số ngày SX và các ngày của một dòng: dòng mình sửa được thì tính theo lịch làm việc của ĐVCS kế hoạch (phase 5.12), dòng ngoài
+ * phạm vi sửa (không gửi lên) thì số máy chủ đã lưu. Mỗi dòng là đối tượng bất biến của lưới: nhớ kết quả theo dòng, các ô của một
+ * dòng không tính lại.
+ */
+function useLineCalc(calendar: WorkCalendar | null) {
+  return useMemo(() => {
+    const cache = new WeakMap<EditLine, Computed>();
+    return (l: EditLine): Computed => {
+      const hit = cache.get(l);
+      if (hit) return hit;
+      const out = mine(l) ? computeLine(calendar, l) : storedOf(l);
+      cache.set(l, out);
+      return out;
+    };
+  }, [calendar]);
 }
-const MAX_PRODUCTION_DAYS = 366;
-const computed = (l: EditLine) => {
-  const start = l.startDate;
-  if (!l.qty || !l.avgOutput || !start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return { productionDays: undefined, endDate: undefined };
-  const productionDays = Math.ceil(l.qty / l.avgOutput);
-  if (productionDays + (l.offDays || 0) > MAX_PRODUCTION_DAYS) return { productionDays, endDate: undefined };
-  return { productionDays, endDate: addWorkingDays(start, productionDays + (l.offDays || 0)) };
-};
+const DATE_COLUMNS: [(typeof DATE_KEYS)[number], string][] = [
+  ['endDate', 'Kết thúc vào chuyền'],
+  ['outStartDate', 'Bắt đầu ra chuyền'],
+  ['outEndDate', 'Kết thúc ra chuyền'],
+  ['warehouseStartDate', 'Bắt đầu nhập kho'],
+  ['warehouseEndDate', 'Kết thúc nhập kho'],
+];
 const lineStatusLabel = (r: EditLine) => LINE_STATUS[r.statusCode ?? 'PLANNED']?.label ?? '';
-/** Dòng đủ thông tin để vẽ thanh xem trước */
-const drawn = (r: EditLine) => !!(r.lineCode && r.qty && r.avgOutput && r.startDate && computed(r).endDate);
-/** Các trường làm đổi thanh của một dòng: gõ cột khác (ngày ra chuyền, nhập kho…) thì bảng dàn chuyền không vẽ lại */
-const barSignature = (r: EditLine) => [r.id ?? -r.key, r.lineCode, r.qty, r.avgOutput, r.startDate, r.offDays, r.statusCode].join('|');
+/** Các trường làm đổi thanh của một dòng: gõ cột khác thì bảng dàn chuyền không vẽ lại */
+const barSignature = (r: EditLine) => [r.id ?? -r.key, r.lineCode, r.qty, r.avgOutput, r.startDate, r.statusCode].join('|');
 
-// Lưới xem khi không được sửa (và khi đang tải, tải lỗi)
+// Lưới xem khi không được sửa (và khi đang tải, tải lỗi): số máy chủ đã tính lúc lưu
 const SCHEDULE_VIEW_COLS: Column<EditLine>[] = [
   { key: 'lineCode', title: 'Chuyền', field: null, minWidth: 150, render: (r) => r.lineName ?? r.lineCode },
   { key: 'qty', title: 'Số lượng', format: 'number', field: null },
   { key: 'avgOutput', title: 'Năng suất TB', format: 'number', field: null },
-  { key: 'startDate', title: 'Ngày vào chuyền', format: 'date', field: null },
-  { key: 'productionDays', title: 'Số ngày SX', field: null, align: 'right', render: (r) => computed(r).productionDays ?? '–' },
-  { key: 'offDays', title: 'Ngày nghỉ', format: 'number', field: null },
-  { key: 'endDate', title: 'Ngày kết thúc', field: null, render: (r) => fmtDate(computed(r).endDate) || '–' },
-  { key: 'outStartDate', title: 'Ngày ra chuyền', format: 'date', field: null },
-  { key: 'outEndDate', title: 'Ngày KT ra chuyền', format: 'date', field: null },
-  { key: 'warehouseStartDate', title: 'Ngày BĐ nhập kho', format: 'date', field: null },
-  { key: 'warehouseEndDate', title: 'Ngày KT nhập kho', format: 'date', field: null },
+  { key: 'startDate', title: 'Bắt đầu vào chuyền', format: 'date', field: null },
+  { key: 'productionDays', title: 'Số ngày SX', format: 'number', field: null },
+  { key: 'offDays', title: 'Số ngày nghỉ', format: 'number', field: null },
+  ...DATE_COLUMNS.map(([key, title]): Column<EditLine> => ({ key, title, format: 'date', field: null })),
   { key: 'statusCode', title: 'Phân màu cỡ', field: null, render: (r) => <StatusBadge map={LINE_STATUS} code={r.statusCode ?? 'PLANNED'} /> },
 ];
+
+/** Ngày nghỉ hằng tuần đọc thành chữ: "Chủ nhật", "thứ Bảy, Chủ nhật" */
+const weeklyOffText = (days: number[]) =>
+  days.length ? WEEKDAYS.filter((d) => days.includes(d.value)).map((d) => (d.value === 7 ? d.label : d.label.toLowerCase())).join(', ') : 'không có ngày nghỉ cố định trong tuần';
+
+/** Cách tính các cột tự tính, theo đúng lịch của ĐVCS kế hoạch */
+function ScheduleRules({ calendar: c }: { calendar: WorkCalendarJson }) {
+  return (
+    <Popover width={360} position="bottom-end" withArrow shadow="md">
+      <Popover.Target>
+        <Button size="compact-xs" variant="subtle" color="gray" leftSection={<IconInfoCircle size={14} />}>
+          Cách tính ngày
+        </Button>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Text size="sm" mb={6}>Bạn nhập chuyền, số lượng, năng suất và ngày bắt đầu vào chuyền. Các cột xám tự tính theo lịch làm việc của đơn vị cơ sở:</Text>
+        <List size="sm" spacing={4}>
+          <List.Item>Số ngày SX = số lượng / năng suất, làm tròn lên.</List.Item>
+          <List.Item>Số ngày nghỉ: {weeklyOffText(c.weeklyOffDays)} và ngày lễ, Tết trong lịch, từ ngày bắt đầu tới ngày kết thúc vào chuyền.</List.Item>
+          <List.Item>Kết thúc vào chuyền = bắt đầu + số ngày SX + số ngày nghỉ − 1.</List.Item>
+          <List.Item>Bắt đầu ra chuyền = bắt đầu vào chuyền + {c.outStartOffsetDays}; kết thúc ra chuyền = kết thúc vào chuyền + {c.outEndOffsetDays} ngày làm việc.</List.Item>
+          <List.Item>Bắt đầu nhập kho = bắt đầu ra chuyền + {c.warehouseStartOffsetDays}; kết thúc nhập kho = kết thúc ra chuyền + {c.warehouseEndOffsetDays} ngày làm việc.</List.Item>
+        </List>
+        <Text size="xs" c="dimmed" mt={6}>Lịch làm việc do quản trị khai báo ở Danh mục hệ thống.</Text>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
 
 /** Popup "Chi tiết dàn chuyền": thông tin chung, bảng nhập liệu dàn chuyền, bảng dàn chuyền để thấy chuyền trống. */
 function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: () => void; onSaved: () => void }) {
@@ -330,6 +367,20 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
   const [boardFilter, setBoardFilter] = useState<BoardFilter>(defaultBoardFilter);
   const board = useBoard(boardFilter);
 
+  const calendar = useMemo(() => (plan?.calendar ? toCalendar(plan.calendar) : null), [plan?.calendar]);
+  const calc = useLineCalc(calendar);
+  // Dòng chỉ đủ để vẽ thanh xem trước khi có chuyền và tính được ngày kết thúc
+  const drawn = (r: EditLine) => !!(r.lineCode && calc(r).dates);
+  // Dòng đã lưu, chưa sửa ô nào, mà ngày khác cách tính theo lịch hiện tại: Lưu là tính lại (người dùng chốt Q5 phase 5.12)
+  const savedById = useMemo(() => new Map((plan?.lines ?? []).map((l) => [l.id, l])), [plan?.lines]);
+  const outdatedCount = useMemo(
+    () =>
+      rows.filter((r) => {
+        const saved = r.id === undefined ? undefined : savedById.get(r.id);
+        return !!saved && mine(r) && isOutdated(saved, r, calc(r));
+      }).length,
+    [rows, calc, savedById],
+  );
   const savedMine = (plan?.lines ?? []).filter((l) => l.editable !== false).reduce((s, l) => s + (Number(l.qty) || 0), 0);
   const others = plan && typeof plan.scheduledQty === 'number' ? Math.max(0, plan.scheduledQty - savedMine) : 0;
   const total = rows.filter(mine).reduce((s, r) => s + (Number(r.qty) || 0), 0) + others;
@@ -338,12 +389,12 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
   const incomplete = rows.some((r) => !drawn(r));
   const saveBlocked = !filled
     ? 'Đang tải dàn chuyền…'
-    : !dirty
+    : !dirty && !outdatedCount
       ? 'Chưa có thay đổi nào'
       : overQty
         ? `Tổng số lượng dàn chuyền vượt SL kế hoạch ${fmtNum(planQty)}`
         : incomplete
-          ? 'Mỗi dòng cần đủ chuyền, số lượng, năng suất và ngày vào chuyền'
+          ? 'Mỗi dòng cần đủ chuyền, số lượng, năng suất và ngày bắt đầu vào chuyền'
           : null;
 
   // Thanh xem trước: dòng đang sửa thay cho thanh đã lưu của kế hoạch này. Chỉ tính lại khi một trường làm đổi thanh đổi
@@ -358,7 +409,7 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
         planNo: plan?.planNo ?? '',
         lineCode: r.lineCode,
         startDate: r.startDate ?? '',
-        endDate: computed(r).endDate!,
+        endDate: calc(r).dates!.endDate,
         qty: Number(r.qty),
         avgOutput: Number(r.avgOutput),
         customerName: plan?.customerName ?? '',
@@ -369,7 +420,7 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
         preview: dirty,
       }));
     return [...saved, ...preview];
-  }, [board.data, previewRows, planId, plan, dirty, filled]);
+  }, [board.data, previewRows, planId, plan, dirty, filled, calc]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -382,11 +433,6 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
             qty: Number(r.qty),
             avgOutput: Number(r.avgOutput),
             startDate: r.startDate,
-            offDays: Number(r.offDays) || 0,
-            outStartDate: r.outStartDate || null,
-            outEndDate: r.outEndDate || null,
-            warehouseStartDate: r.warehouseStartDate || null,
-            warehouseEndDate: r.warehouseEndDate || null,
           })),
         },
       }),
@@ -419,17 +465,16 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
       ),
       sheetNumber<EditLine>('qty', 'Số lượng', { required: true, disabled: locked }),
       sheetNumber<EditLine>('avgOutput', 'Năng suất TB', { required: true, disabled: locked }),
-      sheetDate<EditLine>('startDate', 'Ngày vào chuyền', { required: true, disabled: locked }),
-      sheetReadonly<EditLine>('Số ngày SX', (r) => computed(r).productionDays ?? '–', (r) => computed(r).productionDays ?? null, { minWidth: 90, align: 'right' }),
-      sheetNumber<EditLine>('offDays', 'Ngày nghỉ', { minWidth: 90, disabled: locked }),
-      sheetReadonly<EditLine>('Ngày kết thúc', (r) => fmtDate(computed(r).endDate) || '–', (r) => fmtDate(computed(r).endDate) || null, { minWidth: 110 }),
-      sheetDate<EditLine>('outStartDate', 'Ngày ra chuyền', { disabled: locked }),
-      sheetDate<EditLine>('outEndDate', 'Ngày KT ra chuyền', { disabled: locked }),
-      sheetDate<EditLine>('warehouseStartDate', 'Ngày BĐ nhập kho', { disabled: locked }),
-      sheetDate<EditLine>('warehouseEndDate', 'Ngày KT nhập kho', { disabled: locked }),
+      sheetDate<EditLine>('startDate', 'Bắt đầu vào chuyền', { required: true, disabled: locked }),
+      sheetReadonly<EditLine>('Số ngày SX', (r) => calc(r).productionDays ?? '–', (r) => calc(r).productionDays ?? null, { minWidth: 90, align: 'right' }),
+      sheetReadonly<EditLine>('Số ngày nghỉ', (r) => calc(r).dates?.offDays ?? '–', (r) => calc(r).dates?.offDays ?? null, { minWidth: 100, align: 'right' }),
+      // Ngày tự tính theo lịch ĐVCS, không cho sửa tay (người dùng chốt Q3 phase 5.12)
+      ...DATE_COLUMNS.map(([key, title]) =>
+        sheetReadonly<EditLine>(title, (r) => fmtDate(calc(r).dates?.[key] ?? null) || '–', (r) => fmtDate(calc(r).dates?.[key] ?? null) || null, { minWidth: 130 }),
+      ),
       sheetReadonly<EditLine>('Phân màu cỡ', (r) => <StatusBadge map={LINE_STATUS} code={r.statusCode ?? 'PLANNED'} />, lineStatusLabel, { minWidth: 120 }),
     ];
-  }, [lines, linesLoaded]);
+  }, [lines, linesLoaded, calc]);
   // Dòng mới nhận phần số lượng còn lại; thêm nhiều dòng một lần (hoặc dán quá cuối lưới) thì chỉ dòng đầu nhận, các dòng sau 0.
   // Năng suất, ngày vào chuyền để trống (ô vàng nhắc nhập): điền sẵn thì trông như số người dùng đã nhập
   let handedOut = 0;
@@ -475,10 +520,18 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
           {info('Ngày xuất hàng', fmtDate(plan?.shipDate ?? null))}
         </div>
         <div className="schedule-editor">
-          <Group justify="space-between" mb={6}>
+          <Group justify="space-between" mb={6} gap="xs">
             <Text fw={700} size="sm">Bảng nhập liệu dàn chuyền</Text>
-            {!canEdit && <Text size="xs" c="dimmed">Bạn chỉ được xem dàn chuyền.</Text>}
+            <Group gap="xs">
+              {!canEdit && <Text size="xs" c="dimmed">Bạn chỉ được xem dàn chuyền.</Text>}
+              {plan?.calendar && <ScheduleRules calendar={plan.calendar} />}
+            </Group>
           </Group>
+          {canEdit && outdatedCount > 0 && (
+            <Alert color="blue" variant="light" icon={<IconInfoCircle size={16} />} py={4} mb={6}>
+              {fmtNum(outdatedCount)} dòng có ngày đã lưu khác cách tính theo lịch làm việc hiện tại (lịch vừa đổi, hoặc ngày nhập tay trước đây). Bấm Lưu thay đổi để tính lại.
+            </Alert>
+          )}
           {overQty && (
             <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} py={4} mb={6}>
               Tổng số lượng dàn chuyền {fmtNum(total)}{others > 0 ? ` (gồm ${fmtNum(others)} ở chuyền bạn không sửa được)` : ''} vượt số lượng kế hoạch {fmtNum(planQty)}.
@@ -518,7 +571,7 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
           <Group justify="flex-end" gap="xs" mt={8}>
             {canEdit ? (
               <>
-                {incomplete && rows.length > 0 && <Text size="xs" c="dimmed" mr="auto">Mỗi dòng cần chuyền, số lượng, năng suất và ngày vào chuyền.</Text>}
+                {incomplete && rows.length > 0 && <Text size="xs" c="dimmed" mr="auto">Mỗi dòng cần chuyền, số lượng, năng suất và ngày bắt đầu vào chuyền.</Text>}
                 <Button variant="default" onClick={close}>Hủy</Button>
                 <ActionButton loading={save.isPending} blockedReason={saveBlocked} onClick={() => save.mutate()}>
                   Lưu thay đổi

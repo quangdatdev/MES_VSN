@@ -3,6 +3,7 @@
 
 import type { Masked } from '../../lib/fieldPolicy';
 import type { Paged } from '../../lib/types';
+import type { WorkCalendarJson } from '../../lib/workCalendar';
 
 export type { Masked };
 
@@ -276,6 +277,8 @@ export interface ScheduleLine {
 
 export interface LinePlanDetail extends LinePlan {
   lines: ScheduleLine[];
+  /** Lịch làm việc của ĐVCS kế hoạch: tính trước số ngày nghỉ, kết thúc, ra chuyền, nhập kho khi gõ (phase 5.12) */
+  calendar: WorkCalendarJson;
 }
 
 export interface BoardBar {
@@ -299,6 +302,8 @@ export interface Board {
   to: string;
   lines: { code: string; name: string; branchCode: string; isActive: boolean }[];
   bars: BoardBar[];
+  /** Ngày nghỉ theo lịch ĐVCS trong khoảng đang xem, theo mã ĐVCS; `name` chỉ có ở ngày lễ, Tết */
+  nonWorkingDays?: Record<string, { date: string; name: string | null }[]>;
 }
 
 export interface Allocation {

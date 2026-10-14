@@ -4,6 +4,7 @@ import { AppException, Errors } from '../../common/app.exception';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { AuditService } from '../../platform/audit/audit.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
+import { addCalendarDays, lineDates, nonWorkingDays, presentCalendar } from '../../platform/catalog/work-calendar';
 import { inTransaction } from '../../platform/data/transaction';
 import { scopeOf } from '../../platform/data/base.repository';
 import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type FilterSpec } from '../../platform/data/column-filter';
@@ -22,7 +23,7 @@ import {
   type PlanLineRow,
 } from './order.repositories';
 import type { OrderDb } from './order.types';
-import { addWorkingDays, apportion, businessFilter, conflict, day, invalid, MAX_PRODUCTION_DAYS, num, readableQuery, sortOf } from './order.util';
+import { apportion, businessFilter, conflict, day, invalid, MAX_PRODUCTION_DAYS, num, readableQuery, sortOf } from './order.util';
 
 const RESOURCE = 'order.lineplan';
 const MAX_BOARD_DAYS = 190;
@@ -174,28 +175,30 @@ export class LinePlanService {
     return {
       ...presentLinePlan(plan),
       lines: lines.map((l) => ({ ...presentLine(l), lineName: lineName(l.LineCode), editable: editable.has(l.Id) })),
+      // Lịch làm việc của ĐVCS kế hoạch: giao diện tính trước các ngày khi gõ, cùng công thức với lúc lưu. Ngày đặc biệt từ dòng
+      // vào chuyền sớm nhất (hoặc một năm trước hôm nay) trở đi là đủ: cách tính chỉ nhìn về sau ngày bắt đầu
+      calendar: presentCalendar(await this.catalogs.workCalendar(plan.BranchCode), [addCalendarDays(new Date().toISOString().slice(0, 10), -366), ...lines.map((l) => day(l.StartDate)!)].sort()[0]),
     };
   }
 
   /**
    * Lưu bảng nhập liệu dàn chuyền của một kế hoạch: thêm, sửa, xóa dòng trong một transaction.
-   * Số ngày SX = làm tròn lên (số lượng / năng suất); ngày kết thúc bỏ Chủ nhật, cộng thêm ngày nghỉ.
-   * Dòng mới được đề xuất sẵn phân màu cỡ theo tỷ lệ kế hoạch (màn Phân bổ màu cỡ chỉnh tiếp).
+   * Người dùng chỉ nhập chuyền, số lượng, năng suất, ngày vào chuyền. Số ngày SX = làm tròn lên (số lượng / năng suất); số ngày
+   * nghỉ, kết thúc vào chuyền, ngày ra chuyền, nhập kho tính theo lịch làm việc của ĐVCS (phase 5.12, work-calendar.ts), không
+   * nhận từ client. Dòng mới được đề xuất sẵn phân màu cỡ theo tỷ lệ kế hoạch (màn Phân bổ màu cỡ chỉnh tiếp).
    */
   async saveLines(user: AuthUser, id: number, dto: ScheduleDto) {
     const scope = scopeOf(user);
     await this.plans.assertWritable(scope);
+    // Lịch theo ĐVCS của chính kế hoạch (không theo ĐVCS phiên): đúng cả khi tài nguyên đổi cách lọc ĐVCS. ĐVCS của kế hoạch
+    // không sửa được, đọc trước transaction không lệch với lần khóa bên dưới
+    const calendar = await this.catalogs.workCalendar((await this.plans.getById(scope, id, 'update')).BranchCode);
     const rows: { id?: number; values: Record<string, unknown> & { Qty: number } }[] = [];
     for (const [i, l] of dto.lines.entries()) {
       const productionDays = Math.ceil(l.qty / l.avgOutput);
-      const offDays = l.offDays ?? 0;
-      if (productionDays + offDays > MAX_PRODUCTION_DAYS) throw invalid(`Dòng ${i + 1}: số ngày sản xuất quá ${MAX_PRODUCTION_DAYS} ngày. Kiểm tra số lượng và năng suất.`);
-      for (const [a, b, label] of [
-        [l.outStartDate, l.outEndDate, 'ra chuyền'],
-        [l.warehouseStartDate, l.warehouseEndDate, 'nhập kho'],
-      ] as const) {
-        if (a && b && a > b) throw invalid(`Dòng ${i + 1}: ngày kết thúc ${label} phải sau ngày bắt đầu.`);
-      }
+      if (productionDays > MAX_PRODUCTION_DAYS) throw invalid(`Dòng ${i + 1}: số ngày sản xuất quá ${MAX_PRODUCTION_DAYS} ngày. Kiểm tra số lượng và năng suất.`);
+      const dates = lineDates(calendar, l.startDate, productionDays);
+      if (!dates) throw invalid(`Dòng ${i + 1}: lịch làm việc của đơn vị cơ sở không đủ ngày làm việc để tính ngày kết thúc. Kiểm tra Lịch làm việc ở Danh mục hệ thống.`);
       rows.push({
         id: l.id,
         values: {
@@ -204,12 +207,12 @@ export class LinePlanService {
           AvgOutput: l.avgOutput,
           StartDate: l.startDate,
           ProductionDays: productionDays,
-          OffDays: offDays,
-          EndDate: addWorkingDays(l.startDate, productionDays + offDays),
-          OutStartDate: l.outStartDate ?? null,
-          OutEndDate: l.outEndDate ?? null,
-          WarehouseStartDate: l.warehouseStartDate ?? null,
-          WarehouseEndDate: l.warehouseEndDate ?? null,
+          OffDays: dates.offDays,
+          EndDate: dates.endDate,
+          OutStartDate: dates.outStartDate,
+          OutEndDate: dates.outEndDate,
+          WarehouseStartDate: dates.warehouseStartDate,
+          WarehouseEndDate: dates.warehouseEndDate,
           SortOrder: i,
         },
       });
@@ -321,9 +324,13 @@ export class LinePlanService {
     // còn là bộ phận chuyền nào, Q4 phase 5.10) không có hàng: bảng chỉ liệt kê chuyền đang có, thanh của nó không vẽ được
     const busy = new Set(bars.map((b) => b.LineCode));
     const lines = (await this.org.lines(scope.branchCode, scope.isAggregate, { includeInactive: true })).filter((l) => l.isActive || busy.has(l.code));
+    // Ngày nghỉ theo lịch ĐVCS của từng chuyền (đơn vị tổng hợp xem chuyền của nhiều ĐVCS); ĐVCS phiên luôn có để tô tiêu đề
+    const branches = [...new Set([...(scope.isAggregate ? [] : [scope.branchCode]), ...lines.map((l) => l.branchCode)])];
+    const offDays = await Promise.all(branches.map(async (b) => [b, nonWorkingDays(await this.catalogs.workCalendar(b), q.from, q.to)] as const));
     return {
       from: q.from,
       to: q.to,
+      nonWorkingDays: Object.fromEntries(offDays),
       lines: lines.map((l) => ({ code: l.code, name: l.name, branchCode: l.branchCode, isActive: l.isActive })),
       bars: bars.map((b) => ({
         id: b.Id,
