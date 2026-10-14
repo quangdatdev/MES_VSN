@@ -21,6 +21,7 @@ import {
   type ShipmentPlanRow,
 } from './order.repositories';
 import type { OrderDb } from './order.types';
+import { ShipmentPlanDeleteGuards } from './shipment-plan-delete-guard';
 import { assignedVisible, businessFilter, byColorSize, colorSizeKey, conflict, csKey, day, derived, invalid, isReferenceError, readableQuery, someOf, sortOf, withDerived } from './order.util';
 
 const RESOURCE = 'order.shipment';
@@ -173,6 +174,7 @@ export class ShipmentService {
     private readonly exporter: ExportService,
     private readonly fields: FieldPolicyService,
     private readonly catalogs: CatalogLookupService,
+    private readonly deleteGuards: ShipmentPlanDeleteGuards,
   ) {}
 
   private async sort(user: AuthUser, sort: string | undefined) {
@@ -460,6 +462,10 @@ export class ShipmentService {
   async remove(user: AuthUser, id: number) {
     const scope = scopeOf(user);
     const before = await this.plans.getById(scope, id, 'delete');
+    // Dữ liệu ở module khác theo kế hoạch này (số cắt ở Đồng bộ tiến độ cắt, quyết định 13.4): kiểm trước, khác database nên ngoài
+    // transaction; module đó tự kiểm lại kế hoạch còn tồn tại khi ghi
+    const reasons = await this.deleteGuards.reasonsFor({ id, branchCode: before.BranchCode, createdAt: before.CreatedAt });
+    if (reasons.length) throw conflict(reasons.join(' '));
     const scheduled = conflict('Kế hoạch đã được xếp chuyền nên không xóa được. Xóa dàn chuyền ở màn Xếp chuyền trước.');
     try {
       await inTransaction(this.db, async (trx) => {

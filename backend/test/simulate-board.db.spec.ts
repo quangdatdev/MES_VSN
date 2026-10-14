@@ -159,21 +159,29 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
         [planLine.get(prepStale)!, new Date(Date.parse('2026-01-01T00:00:00Z'))],
       ]);
       const other = await plan(OTHER, await order(OTHER, 43, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-C', PLANNER_NAME, { code: `${OTHER}-L01`, start: TODAY, end: addDays(TODAY, 4) });
+      // Phase 5.14: kế hoạch mô phỏng đã có số cắt luôn giữ (kể cả --all); số cắt của kế hoạch khác cùng Id (thời điểm tạo khác) thì không
+      const cutKept = await plan(B, await order(B, 50, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-K', PLANNER_NAME, { code: `${B}-L03`, start: addDays(TODAY, 30), end: addDays(TODAY, 35) });
+      const cutStale = await plan(B, await order(B, 51, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-L', PLANNER_NAME, { code: `${B}-L04`, start: addDays(TODAY, 30), end: addDays(TODAY, 35) });
+      const createdOf = async (id: number) => (await trx.selectFrom('ShipmentPlan').select('CreatedAt').where('Id', '=', id).executeTakeFirstOrThrow()).CreatedAt;
+      const cutPlans = new Map<number, Date>([
+        [cutKept, await createdOf(cutKept)],
+        [cutStale, new Date(Date.parse('2026-01-01T00:00:00Z'))],
+      ]);
 
       const planIds = async (branch: string) => (await trx.selectFrom('ShipmentPlan').select('Id').where('BranchCode', '=', branch).execute()).map((r) => r.Id);
       const statusOf = async (orderId: number) => (await trx.selectFrom('SalesOrder').select('StatusCode').where('Id', '=', orderId).executeTakeFirstOrThrow()).StatusCode;
 
       // 1. Xóa: chỉ kế hoạch mô phỏng chưa sửa của đúng nhà máy; đơn trả về trạng thái lúc nạp
-      expect(await clearSimulated(trx, B, { prepLines })).toEqual({ removed: 3, kept: 6 });
-      const keptIds = [userPlan, touched, lineEdited, lineAdded, allocEdited, allocAdded, prepEdited];
+      expect(await clearSimulated(trx, B, { prepLines, cutPlans })).toEqual({ removed: 4, kept: 7 });
+      const keptIds = [userPlan, touched, lineEdited, lineAdded, allocEdited, allocAdded, prepEdited, cutKept];
       expect((await planIds(B)).sort((a, b) => a - b)).toEqual(keptIds.sort((a, b) => a - b));
       expect(await planIds(OTHER)).toEqual([other]);
       expect(await statusOf(closedOrder)).toBe('DONE');
       expect(await statusOf(openOrder)).toBe('NEW');
 
       // 2. Xếp mới
-      const stats = await simulateBranch(trx, { branch: B, lines: LINES6, today: TODAY, plannerId: null, prepLines, calendar: DEFAULT_WORK_CALENDAR });
-      expect(stats).toMatchObject({ removed: 0, kept: 6 });
+      const stats = await simulateBranch(trx, { branch: B, lines: LINES6, today: TODAY, plannerId: null, prepLines, cutPlans, calendar: DEFAULT_WORK_CALENDAR });
+      expect(stats).toMatchObject({ removed: 0, kept: 7 });
       expect(stats.plans).toBeGreaterThan(20);
       expect(await planIds(OTHER)).toEqual([other]);
       const plans = await trx.selectFrom('ShipmentPlan').selectAll().where('BranchCode', '=', B).execute();
@@ -222,9 +230,10 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
       expect(statuses.every((s) => ['PLANNING', 'IN_PRODUCTION', 'DONE'].includes(s.StatusCode))).toBe(true);
 
       // 3. --all: xóa cả kế hoạch mô phỏng đã sửa, kế hoạch người dùng lập vẫn giữ
-      const swept = await clearSimulated(trx, B, { prepLines, all: true });
-      expect(swept.kept).toBe(0);
-      expect(await planIds(B)).toEqual([userPlan]);
+      // 3b. --all vẫn giữ kế hoạch đã có số cắt (quyết định 13.4)
+      const swept = await clearSimulated(trx, B, { prepLines, cutPlans, all: true });
+      expect(swept.kept).toBe(1);
+      expect((await planIds(B)).sort((a, b) => a - b)).toEqual([userPlan, cutKept].sort((a, b) => a - b));
       throw ROLLBACK;
     });
     // Lỗi khác ROLLBACK là một khẳng định bên trong transaction bị sai: ném lại để Jest báo đúng dòng

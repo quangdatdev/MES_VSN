@@ -6,6 +6,7 @@ import { resolve } from 'path';
 import { sql } from 'kysely';
 import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
+import { databaseNameOf } from './database-names';
 
 interface SoftKey {
   from: string;
@@ -23,13 +24,11 @@ interface SoftKey {
 
 const IDENT = /^[A-Za-z][A-Za-z0-9_]*$/;
 const SAFE_WHERE = /^[A-Za-z][A-Za-z0-9_]* = '[A-Z0-9_]+'$/;
-const DB_NAMES: Record<string, string> = { MES_Core: env.db.coreName, MES_Order: env.db.orderName, MES_Sync: env.db.syncName, MES_Sewing: env.db.sewingName, MES_Hr: env.db.hrName };
-const dbName = (folder: string) => DB_NAMES[folder] ?? folder;
 
 function parse(ref: string) {
   const [database, table, column] = ref.split('.');
   if (![table, column].every((x) => IDENT.test(x ?? ''))) throw new Error(`Khóa ngầm không hợp lệ: ${ref}`);
-  return { database: dbName(database), table, column };
+  return { database: databaseNameOf(database), table, column };
 }
 
 async function main() {

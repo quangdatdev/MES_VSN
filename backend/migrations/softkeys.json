@@ -154,6 +154,32 @@
       "status": "MES_Sewing/0001 (Phase 5.5); đích đổi từ MES_Core.SysOrgUnit (OrgType = 'LINE') sang bộ phận ở phase 5.10, như ShipmentPlanLine.LineCode"
     },
     {
+      "from": "MES_Cutting.CuttingPlan.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0001 (Phase 5.14)"
+    },
+    {
+      "from": "MES_Cutting.CuttingPlanColorSize.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0001 (Phase 5.14)"
+    },
+    {
+      "from": "MES_Cutting.CuttingPlanDaily.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0001 (Phase 5.14)"
+    },
+    {
+      "from": "MES_Cutting.CuttingPlan.ShipmentPlanId",
+      "to": "MES_Order.ShipmentPlan.Id",
+      "sameBranch": true,
+      "nullable": true,
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0001 (Phase 5.14); bản chép cập nhật mỗi lần mở màn. Kế hoạch bị xóa mà đã có số cắt thì giữ dòng, ShipmentPlanId = NULL, SourceDeletedAt có giá trị (quyết định 13.2)"
+    },
+    {
       "from": "MES_Hr.Department.BranchCode",
       "to": "MES_Core.SysBranch.Code",
       "where": "IsAggregate = '0'",
@@ -181,6 +207,7 @@
     "MES_Order": "order",
     "MES_Sync": "platform",
     "MES_Sewing": "sewing",
+    "MES_Cutting": "cutting",
     "MES_Hr": "hr"
   },
   "retired": {

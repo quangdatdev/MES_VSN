@@ -20,6 +20,7 @@ import type { OrderDatabase } from '../src/modules/order/order.types';
 import { clearHr, hrDbState } from './hr-data';
 import { clearOrderData, loadBravoOrders } from './load-bravo-orders';
 import { assertDemoMachine } from './local-db';
+import { clearCutting } from './cutting-data';
 import { clearSewingPrep } from './sewing-data';
 import { runSeed } from './seed';
 import { bravoBranchCode } from '../src/platform/admin/branch-import';
@@ -35,6 +36,7 @@ async function main() {
         'Lệnh này đưa dữ liệu demo về ban đầu:',
         `  - xóa mọi dữ liệu đơn hàng trong ${env.db.orderName} rồi nạp lại dữ liệu mẫu (--bravo: dữ liệu thật từ ${env.db.syncName});`,
         `  - xóa Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (ngày đã nhập; danh mục bước giữ nguyên);`,
+        `  - xóa Đồng bộ tiến độ cắt trong ${env.db.cuttingName} (kế hoạch đã chép và số cắt đã nhập);`,
         `  - xóa loại phòng ban, phòng ban, chức danh, hồ sơ nhân viên trong ${env.db.hrName} rồi nạp lại dữ liệu nhân sự giả (gồm xưởng, chuyền may mẫu);`,
         `  - đặt lại đơn vị cơ sở, nhà máy SX, vai trò, quyền, chính sách cột và tài khoản demo trong ${env.db.coreName} (máy chủ ${env.db.host});`,
         '  - vô hiệu hóa người dùng, vai trò, đơn vị cơ sở, nhà máy SX tạo thêm; thu hồi mọi phiên đăng nhập.',
@@ -141,6 +143,9 @@ async function main() {
     // Id dòng dàn chuyền sẽ được đánh số lại: bản chép Kế hoạch chuẩn bị SX cũ không còn đúng dòng nào (ADR 0009). Xóa trước dữ
     // liệu đơn hàng (lượt mở màn xen giữa chỉ chép lại dòng cũ, dấu phiên bản đổi sau khi nạp)
     console.log(`Đã xóa ${await clearSewingPrep()} dòng Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);
+    // Id kế hoạch xuất hàng cũng được đánh số lại: số cắt cũ không còn đúng kế hoạch nào (quyết định 13.4)
+    const cuts = await clearCutting();
+    console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt trong ${env.db.cuttingName}.`);
     await order.transaction().execute((trx) => clearOrderData(trx));
     console.log(`Đã xóa dữ liệu đơn hàng trong ${env.db.orderName}.`);
     console.log(`Đã xóa ${await clearHr()} hồ sơ nhân viên và sơ đồ tổ chức trong ${env.db.hrName} (seed nạp lại bản mẫu).`);

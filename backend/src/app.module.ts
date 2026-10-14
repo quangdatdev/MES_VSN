@@ -3,6 +3,7 @@ import { HealthController } from './health.controller';
 import { HrModule } from './modules/hr/hr.module';
 import { OrderModule } from './modules/order/order.module';
 import { SewingModule } from './modules/sewing/sewing.module';
+import { CuttingModule } from './modules/cutting/cutting.module';
 import { AdminModule } from './platform/admin/admin.module';
 import { AuditModule } from './platform/audit/audit.module';
 import { AuthModule } from './platform/auth/auth.module';
@@ -17,7 +18,7 @@ import { PermissionModule } from './platform/permission/permission.module';
 import { SyncModule } from './platform/sync/sync.module';
 
 @Module({
-  imports: [DatabaseModule, PermissionModule, AuditModule, DataModule, OrgModule, ExportModule, AuthModule, MeModule, AdminModule, SyncModule, SourceFeedModule, CatalogModule, OrderModule, SewingModule, HrModule],
+  imports: [DatabaseModule, PermissionModule, AuditModule, DataModule, OrgModule, ExportModule, AuthModule, MeModule, AdminModule, SyncModule, SourceFeedModule, CatalogModule, OrderModule, SewingModule, CuttingModule, HrModule],
   controllers: [HealthController],
 })
 export class AppModule {}

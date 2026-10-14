@@ -87,8 +87,8 @@
     <p>Làm một lần, khi máy chủ còn chạy MES theo cách cũ (pm2 chạy thẳng trong F:\App\MES_VSN). Nên làm ngoài giờ: web sẽ dừng khoảng 1 phút.</p>
     <ol class="steps">
       <li>
-        <b>Sao lưu 5 database</b>
-        MES_Core, MES_Order, MES_Sewing, MES_Hr, MES_Sync.
+        <b>Sao lưu các database MES</b>
+        MES_Core, MES_Order, MES_Sewing, MES_Cutting, MES_Hr, MES_Sync (MES_Cutting có từ phase 5.14).
       </li>
       <li>
         <b>Kiểm máy</b>
@@ -123,7 +123,7 @@ icacls F:\App\MES-run /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-
         Quay lại cửa sổ PowerShell thường (không cần quyền quản trị):
         <div class="cmd"><pre>cd F:\App\MES_VSN
 node deploy\deploy.cjs --root F:\App\MES-run</pre><button type="button">Chép</button></div>
-        Khi hỏi <code>... Đã sao lưu 5 database chưa? (y/N)</code> thì gõ <code>y</code> rồi Enter.
+        Khi hỏi <code>... Đã sao lưu các database MES chưa? (y/N)</code> thì gõ <code>y</code> rồi Enter.
         Script build vài phút (web cũ vẫn chạy), rồi dừng web cũ, cập nhật database, chạy bản mới.
         Thấy dòng <code>Đang chạy: ...</code> và <code>Thời gian web gián đoạn: khoảng ... giây</code> là xong.
         <div class="note">
@@ -171,7 +171,7 @@ node deploy\deploy.cjs --root F:\App\MES-run --status</pre><button type="button"
     <details>
       <summary>Máy chủ mới hoàn toàn (chưa có gì)?</summary>
       <ul>
-        <li>Cài Node.js 22, Git, SQL Server (5 database và login SQL của ứng dụng đã có). Cài pm2: <code>npm install -g pm2@7.0.4</code></li>
+        <li>Cài Node.js 22, Git, SQL Server (6 database MES và login SQL của ứng dụng đã có). Cài pm2: <code>npm install -g pm2@7.0.4</code></li>
         <li>Ổ F: phải là ổ NTFS gắn trên chính máy chủ, không phải ổ mạng: script cần tạo liên kết thư mục (junction).</li>
         <li>Lấy mã nguồn: <code>git clone &lt;địa chỉ repo&gt; F:\App\MES_VSN</code></li>
         <li>Bỏ bước 2 phần <code>pm2 ls</code> (chưa có app cũ). Ở bước 4: không có file để chép, bỏ dòng <code>Copy-Item</code>, tạo <code>F:\App\MES-run\shared\.env</code> theo mẫu ở <a href="#cau-hinh">mục 3</a>; vẫn chạy <code>icacls</code>.</li>
@@ -191,8 +191,9 @@ node deploy\deploy.cjs --root F:\App\MES-run</pre><button type="button">Chép</b
         Script tự <code>git pull</code>, chạy <code>npm ci</code> và <code>npm run build</code> trong thư mục bản mới, chạy <code>npm run migrate</code>, rồi chuyển pm2 sang bản mới. Trong lúc cài gói, build, web vẫn chạy bản cũ.
       </li>
       <li>
-        <b>Nếu script hỏi "Đã sao lưu 5 database chưa?"</b>
-        Nghĩa là bản mới có thay đổi database (script in danh sách dưới dòng <code>Migration mới:</code>). Sao lưu 5 database rồi gõ <code>y</code>, Enter.
+        <b>Nếu script hỏi "Đã sao lưu các database MES chưa?"</b>
+        Nghĩa là bản mới có thay đổi database (script in danh sách dưới dòng <code>Migration mới:</code>). Sao lưu các database rồi gõ <code>y</code>, Enter.
+        <div class="note">Sau khi build, script kiểm đủ database ở bước <code>Kiểm database (bản cũ vẫn chạy)</code>. Báo <code>Chưa có database MES_Cutting và tài khoản trong .env không tạo được</code> thì web vẫn chạy bản cũ, chưa có gì bị đổi: nhờ quản trị CSDL tạo database đó (cùng collation với MES_Core), cấp <code>db_owner</code> cho login của ứng dụng, rồi chạy lại lệnh ở bước 1.</div>
         <div class="note">Lúc này web sẽ dừng khoảng 20–60 giây. Nên làm ngoài giờ.<br>
         Nếu người viết code báo bản này <b>chỉ thêm bảng, thêm cột</b> thì thêm <code>--online-migrate</code> vào cuối lệnh ở bước 1: web không dừng (script vẫn hỏi sao lưu).</div>
         Không hỏi gì thì web không dừng chút nào.
@@ -211,12 +212,12 @@ node deploy\deploy.cjs --root F:\App\MES-run</pre><button type="button">Chép</b
     <p>Máy chủ chỉ có một file cấu hình: <code>F:\App\MES-run\shared\.env</code>. Script tự chép file này vào từng bản. Không sửa bản chép trong <code>F:\App\MES-run\current</code> hay <code>releases\</code>: lần triển khai sau sẽ ghi đè.</p>
 
     <h3>Mẫu cho máy chủ chạy http:// trong mạng nội bộ</h3>
-    <p class="muted">Thay phần trong dấu &lt; &gt; bằng giá trị thật. Tên 5 database đúng mặc định (MES_Core, MES_Order, MES_Sewing, MES_Hr, MES_Sync) thì không cần ghi.</p>
+    <p class="muted">Thay phần trong dấu &lt; &gt; bằng giá trị thật. Tên database đúng mặc định (MES_Core, MES_Order, MES_Sewing, MES_Cutting, MES_Hr, MES_Sync) thì không cần ghi.</p>
     <div class="cmd"><pre># Máy dùng thật
 NODE_ENV=production
 SEED_SAMPLE_DATA=false
 
-# SQL Server: login riêng của ứng dụng, db_owner trên 5 database
+# SQL Server: login riêng của ứng dụng, db_owner trên 6 database MES
 DB_HOST=&lt;tên máy hoặc IP SQL Server, không kèm tên instance&gt;
 DB_PORT=1433
 DB_USER=&lt;login SQL&gt;
@@ -305,9 +306,9 @@ node deploy\deploy.cjs --root F:\App\MES-run --rollback</pre><button type="butto
       Nếu bản đang chạy có thay đổi database mà bản cũ không có, trước khi hỏi, <code>--rollback</code> in <code>Cảnh báo: database đã chạy migration mà bản trước không có</code> kèm danh sách file. Gặp cảnh báo này:
       <ul>
         <li>gõ <code>n</code> để hủy, hỏi người viết code bản cũ có chạy được với database hiện tại không;</li>
-        <li>muốn lùi hẳn thì phải phục hồi bản sao lưu 5 database chụp trước lần triển khai đó, dữ liệu nhập sau lúc sao lưu sẽ mất. Làm cùng người viết code.</li>
+        <li>muốn lùi hẳn thì phải phục hồi bản sao lưu các database MES chụp trước lần triển khai đó, dữ liệu nhập sau lúc sao lưu sẽ mất. Làm cùng người viết code.</li>
       </ul>
-      Vì vậy: khi script hỏi <code>Đã sao lưu 5 database chưa?</code> thì sao lưu thật, và kiểm kỹ ngay sau khi lên bản mới.</div>
+      Vì vậy: khi script hỏi <code>Đã sao lưu các database MES chưa?</code> thì sao lưu thật, và kiểm kỹ ngay sau khi lên bản mới.</div>
 
     <h3>Số bản được giữ</h3>
     Mặc định giữ <b>3 bản</b> đã chạy được, bản cũ hơn bị xóa ở lần triển khai sau. Muốn giữ nhiều hơn thì thêm <code>--keep 5</code> vào lệnh ở <a href="#cap-nhat">mục 2</a>, <b>lần nào cũng thêm</b>: lần nào thiếu thì lần đó dọn về 3 bản.

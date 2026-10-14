@@ -13,6 +13,8 @@ const loaders: Record<string, () => PageModule> = {
   '/order/color-size': () => import('../features/order/ColorSizePage'),
   // Màn của nhóm Quản trị đơn hàng, code và dữ liệu thuộc module May (ADR 0009)
   '/order/prep': () => import('../features/sewing/PrepPlanPage'),
+  // Quản trị nhà cắt: module Cắt (phase 5.14)
+  '/cutting/progress': () => import('../features/cutting/CuttingProgressPage'),
   // Quản trị nhân sự (ADR 0012)
   '/hr/org-chart': () => import('../features/hr/OrgChartPage'),
   '/hr/employees': () => import('../features/hr/EmployeesPage'),

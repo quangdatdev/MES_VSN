@@ -18,6 +18,7 @@ import {
   PoColorSizeRepository,
   SalesOrderPoRepository,
   SalesOrderRepository,
+  ShipmentPlanFeedRepository,
   ShipmentPlanRepository,
 } from './order.repositories';
 import { PoAllocationRefreshService } from './po-allocation-refresh.service';
@@ -25,11 +26,14 @@ import { PoAllocationRefreshRepository, PoAllocationRepository } from './po-allo
 import { PoAllocationService } from './po-allocation.service';
 import { SalesOrderService } from './sales-order.service';
 import { ScheduleFeed } from './schedule-feed.service';
+import { ShipmentPlanDeleteGuards } from './shipment-plan-delete-guard';
+import { ShipmentPlanFeed } from './shipment-plan-feed.service';
 import { ShipmentService } from './shipment.service';
 
 /**
  * Module Đơn hàng: 5 màn theo mô tả giao diện của BA, database MES_Order (ADR 0006), và màn Phân bổ PO (bảng làm việc chép từ dữ
- * liệu OSM đã đồng bộ, Nhà máy SX sửa tay được). Chỉ xuất ScheduleFeed cho module khác.
+ * liệu OSM đã đồng bộ, Nhà máy SX sửa tay được). Chỉ xuất API công khai cho module khác: ScheduleFeed (module May), ShipmentPlanFeed và
+ * ShipmentPlanDeleteGuards (module Cắt).
  */
 @Module({
   controllers: [SalesOrderController, PoAllocationController, ShipmentController, CutRatioController, LinePlanController, ColorSizeController],
@@ -56,12 +60,15 @@ import { ShipmentService } from './shipment.service';
     LinePlanService,
     ColorSizeService,
     ScheduleFeed,
+    ShipmentPlanFeedRepository,
+    ShipmentPlanFeed,
+    ShipmentPlanDeleteGuards,
     BravoOrderImportRepository,
     BravoOrderImportService,
     OsmFactoryService,
     PoAllocationRefreshService,
   ],
-  // API công khai cho module khác (module May đọc dàn chuyền, ADR 0009)
-  exports: [ScheduleFeed],
+  // API công khai cho module khác: module May đọc dàn chuyền (ADR 0009); module Cắt đọc kế hoạch, chặn xóa kế hoạch (quyết định 13.2, 13.4)
+  exports: [ScheduleFeed, ShipmentPlanFeed, ShipmentPlanDeleteGuards],
 })
 export class OrderModule {}

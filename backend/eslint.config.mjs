@@ -40,10 +40,49 @@ export default tseslint.config(
       ],
     },
   },
+  // Module Cắt (quyết định 13): chỉ dùng API công khai của Đơn hàng (OrderModule, ShipmentPlanFeed, ShipmentPlanDeleteGuards)
+  {
+    files: ['src/modules/cutting/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '../order/*',
+                '**/modules/order/*',
+                '!../order/order.module',
+                '!../order/shipment-plan-feed.service',
+                '!../order/shipment-plan-delete-guard',
+                '!**/modules/order/order.module',
+                '!**/modules/order/shipment-plan-feed.service',
+                '!**/modules/order/shipment-plan-delete-guard',
+              ],
+              message: 'Module Cắt chỉ dùng API công khai của module Đơn hàng (OrderModule, shipment-plan-feed.service, shipment-plan-delete-guard).',
+            },
+            { group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Cắt không phụ thuộc module May.' },
+            NO_HR,
+            NO_SYNC,
+          ],
+        },
+      ],
+    },
+  },
   {
     files: ['src/modules/order/**/*.ts'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [{ group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Đơn hàng không phụ thuộc module May (ADR 0009).' }, NO_HR, NO_SYNC] }],
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Đơn hàng không phụ thuộc module May (ADR 0009).' },
+            { group: ['../cutting/*', '**/modules/cutting/*'], message: 'Module Đơn hàng không phụ thuộc module Cắt: module Cắt đăng ký vào ShipmentPlanDeleteGuards (quyết định 13.4).' },
+            NO_HR,
+            NO_SYNC,
+          ],
+        },
+      ],
     },
   },
   // Nền tảng không phụ thuộc module nghiệp vụ (CLAUDE.md mục 3): module cấp dữ liệu cho nền tảng bằng cách đăng ký vào service của
@@ -63,7 +102,7 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [{ group: ['../order/*', '../sewing/*', '**/modules/order/*', '**/modules/sewing/*'], message: 'Module Nhân sự không phụ thuộc module nghiệp vụ khác (ADR 0012).' }, NO_SYNC] },
+        { patterns: [{ group: ['../order/*', '../sewing/*', '../cutting/*', '**/modules/order/*', '**/modules/sewing/*', '**/modules/cutting/*'], message: 'Module Nhân sự không phụ thuộc module nghiệp vụ khác (ADR 0012).' }, NO_SYNC] },
       ],
     },
   },

@@ -12,7 +12,7 @@
     "lint": "npm run lint -w backend && npm run lint -w frontend && eslint deploy --max-warnings 0",
     "test": "npm test -w backend && npm test -w frontend && npm run test:deploy",
     "test:deploy": "node --test deploy/deploy.test.cjs",
-    "migrate": "npm run migrate -w backend",
+    "migrate": "npm run migrate -w backend --",
     "seed": "npm run seed -w backend --",
     "reset:demo": "npm run reset:demo -w backend --",
     "load:bravo": "npm run load:bravo -w backend --",

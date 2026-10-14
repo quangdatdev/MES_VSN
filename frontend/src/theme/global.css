@@ -1979,6 +1979,16 @@ a:hover > .home-tile .home-tile-name {
 .sheet-right .sheet-text {
   text-align: right;
 }
+/* Đồng bộ tiến độ cắt (phase 5.14): dòng Tổng ghim đầu lưới nền xanh nhạt, chữ đậm như ảnh mẫu; màu cỡ đã bị bỏ khỏi kế hoạch
+   (còn số cắt, chỉ xem) chữ nghiêng để phân biệt với màu cỡ đang nhập được */
+.sheet-wrap .dsg-cell.cut-total {
+  background: color-mix(in srgb, var(--success) 12%, var(--app-surface));
+  color: var(--success);
+  font-weight: 700;
+}
+.sheet-wrap .dsg-cell.cut-removed .sheet-text {
+  font-style: italic;
+}
 .sheet-select {
   flex: 1;
   align-self: stretch;

@@ -57,7 +57,7 @@ describe('PO của kế hoạch (service)', () => {
     const planPos = { listByParent: jest.fn(async (_s: unknown, planId: number) => (planId === 5 ? [{ SalesOrderPoId: 1 }, { SalesOrderPoId: 2 }, { SalesOrderPoId: 2 }, { SalesOrderPoId: 3 }] : [])) };
     const pos = { listAll: jest.fn(async (_s: unknown, _o: { sort: string }, _a: string) => [confirmed, po()]) };
     const fields = { levels: jest.fn(async () => ({ fields: [], levels: new Map([['qty', 'MASKED']]) })) };
-    const service = new ShipmentService(null as any, null as any, null as any, planPos as any, null as any, pos as any, null as any, null as any, null as any, null as any, fields as any, null as any);
+    const service = new ShipmentService(null as any, null as any, null as any, planPos as any, null as any, pos as any, null as any, null as any, null as any, null as any, fields as any, null as any, null as any);
     const user = { userId: 1, username: 'u', branchCode: 'A01', isAggregate: false, tokenType: 'access', access: {} } as any;
 
     const res = await service.posOfPlan(user, 5);
@@ -80,7 +80,7 @@ describe('PO của kế hoạch (service)', () => {
       const planPos = { listByParent: jest.fn(async () => [{ SalesOrderPoId: 1 }]) };
       const pos = { listAll: jest.fn(async (_s: unknown, _o: { sort: string }, _a: string) => [po()]) };
       const fields = { levels: jest.fn(async () => ({ fields: [], levels: new Map(Object.entries(policy)) })) };
-      const service = new ShipmentService(null as any, null as any, null as any, planPos as any, null as any, pos as any, null as any, null as any, null as any, null as any, fields as any, null as any);
+      const service = new ShipmentService(null as any, null as any, null as any, planPos as any, null as any, pos as any, null as any, null as any, null as any, null as any, fields as any, null as any, null as any);
       await service.posOfPlan({ userId: 1, branchCode: 'A01', isAggregate: false, tokenType: 'access', access: {} } as any, 5);
       return pos.listAll.mock.calls[0][1].sort;
     };

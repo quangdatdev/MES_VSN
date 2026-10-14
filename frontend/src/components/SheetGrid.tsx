@@ -455,6 +455,8 @@ type SheetGridProps<T> = RowOps<T> & {
   empty?: ReactNode;
   /** STT bắt đầu từ (trang - 1) * cỡ trang + 1 */
   indexOffset?: number;
+  /** Nhãn ô số thứ tự của một dòng thay cho số (ví dụ "-" ở dòng Tổng ghim đầu lưới); undefined thì hiện số như thường */
+  rowLabel?: (row: T, index: number) => ReactNode | undefined;
   /**
    * Dòng của ô vừa chọn (để nút trên màn làm việc với dòng đó). Bấm ra ngoài lưới (vào chính nút đó) thì thư viện bỏ ô
    * đang chọn, nhưng dòng vẫn được giữ: không báo null.
@@ -503,11 +505,11 @@ function useHorizontalScroll(active: boolean) {
 }
 
 /** Lưới nhập liệu kiểu bảng tính, lấp đầy khung chứa (khung cha là flex cột có chiều cao) */
-export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, addAtActive, empty, indexOffset = 0, onActiveRowChange, selectedKey, onRowOpen, hint }: SheetGridProps<T>) {
+export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, addAtActive, empty, indexOffset = 0, rowLabel, onActiveRowChange, selectedKey, onRowOpen, hint }: SheetGridProps<T>) {
   const { ref, height } = useElementSize();
   // Hàm do trang truyền vào thường viết tại chỗ: đọc qua ref để các prop đưa vào lưới giữ nguyên, ô không vẽ lại cả lưới
-  const latest = useRef({ value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, onActiveRowChange, onRowOpen });
-  latest.current = { value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, onActiveRowChange, onRowOpen };
+  const latest = useRef({ value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, onActiveRowChange, onRowOpen, rowLabel });
+  latest.current = { value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, onActiveRowChange, onRowOpen, rowLabel };
   const activeRow = useRef<number | null>(null);
   // Ô chọn gần nhất: bấm nút Thêm (ngoài các ô) thì thư viện bỏ ô đang chọn, nút vẫn cần biết chèn dưới dòng nào
   const lastCell = useRef<{ key: string | number; col: number } | null>(null);
@@ -550,9 +552,14 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
         : null,
     [columns, overlay],
   );
+  // Lưới tĩnh đọc cột số thứ tự một lần: nhãn riêng của dòng đọc qua ref
+  const labelled = !!rowLabel;
   const gutter = useMemo(
-    () => (indexOffset ? { ...GUTTER, component: ({ rowIndex }: CellProps<T, unknown>) => <span className="sheet-text">{indexOffset + rowIndex + 1}</span> } : GUTTER),
-    [indexOffset],
+    () =>
+      indexOffset || labelled
+        ? { ...GUTTER, component: ({ rowData, rowIndex }: CellProps<T, unknown>) => <span className="sheet-text">{latest.current.rowLabel?.(rowData, rowIndex) ?? indexOffset + rowIndex + 1}</span> }
+        : GUTTER,
+    [indexOffset, labelled],
   );
   const handleActive = useCallback(({ cell }: { cell: { row: number; col: number } | null }) => {
     activeRow.current = cell?.row ?? null;

@@ -20,6 +20,7 @@ import { createDb } from '../src/platform/database/db';
 import { factoryListFor } from '../src/platform/catalog/factory-list';
 import { readBravoOrderSource, readOsmFactories } from '../src/platform/sync/bravo-order-source';
 import { syncBranchesFromBravo } from './bravo-branches';
+import { clearCutting } from './cutting-data';
 import { clearSewingPrep } from './sewing-data';
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
@@ -94,6 +95,9 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
       // làm sau: lượt mở màn xen giữa thì chép lại dòng cũ, sau khi nạp dấu phiên bản đổi và lượt sau thay hết
       const prep = await clearSewingPrep();
       if (prep) console.log(`Đã xóa ${prep} dòng Kế hoạch chuẩn bị SX cũ trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);
+      // Id kế hoạch xuất hàng được đánh số lại: số cắt cũ không còn đúng kế hoạch nào (quyết định 13.4)
+      const cuts = await clearCutting();
+      if (cuts.plans) console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt cũ trong ${env.db.cuttingName}.`);
       await clearOrderData(trx);
 
       const orderRows = await insertAll(
@@ -201,6 +205,7 @@ async function main() {
       [
         `Lệnh này xóa mọi dữ liệu đơn hàng trong ${env.db.orderName} (máy chủ ${env.db.host}), kể cả đơn nhập tay,`,
         `và Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (ngày đã nhập; danh mục bước giữ nguyên),`,
+        `và Đồng bộ tiến độ cắt trong ${env.db.cuttingName} (số cắt đã nhập),`,
         `rồi nạp đơn hàng, PO, màu cỡ thật từ bảng chép BRAVO trong ${env.db.syncName}.`,
         'Kế hoạch xuất hàng và dàn chuyền được sinh mô phỏng, xếp kín các chuyền quanh hôm nay (bỏ bằng --no-plans).',
         'Chạy lại với: npm run load:bravo -- --yes',

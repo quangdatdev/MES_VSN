@@ -24,6 +24,7 @@ import { DEFAULT_WORK_CALENDAR, lineDates, nextWorkingDay, readWorkCalendars, ty
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { prng } from './seed-data';
+import { plansWithCuts } from './cutting-data';
 import { hasSewingDb } from './sewing-data';
 
 export const PLANNER_NAME = 'Lập tự động (mô phỏng)';
@@ -338,6 +339,8 @@ const closedAtLoad = (sourceProductId: number | null, pos: { StatusCode: string;
 
 /** Dòng dàn chuyền có dữ liệu ở Kế hoạch chuẩn bị SX: Id dòng → thời điểm tạo dòng lúc chép (khớp cả hai như syncFromSchedule) */
 export type PrepLines = ReadonlyMap<number, Date | null>;
+/** Kế hoạch đang có số cắt ở Đồng bộ tiến độ cắt: Id → thời điểm tạo của kế hoạch (đọc từ MES_Cutting, plansWithCuts) */
+export type CutPlans = ReadonlyMap<number, Date>;
 
 /**
  * Xóa kế hoạch mô phỏng của một nhà máy (kèm PO, màu cỡ, dòng dàn chuyền, phân màu cỡ) và trả đơn không còn kế hoạch
@@ -345,8 +348,13 @@ export type PrepLines = ReadonlyMap<number, Date | null>;
  * nên trạng thái trả về là trạng thái trước khi mô phỏng.
  * Giữ kế hoạch mô phỏng người dùng đã sửa (trừ khi `all`): kế hoạch, màu cỡ, dòng hay phân màu cỡ có ModifiedAt; dòng dàn
  * chuyền, phân màu cỡ thêm sau; dòng đã nhập ở Kế hoạch chuẩn bị SX (`prepLines`, đọc từ MES_Sewing).
+ * Luôn giữ (kể cả `all`) kế hoạch đã có số cắt (`cutPlans`, đọc từ MES_Cutting): muốn xóa phải Xóa số cắt trước (quyết định 13.4).
  */
-export async function clearSimulated(trx: Kysely<OrderDatabase>, branch: string, { prepLines = new Map(), all = false }: { prepLines?: PrepLines; all?: boolean } = {}) {
+export async function clearSimulated(
+  trx: Kysely<OrderDatabase>,
+  branch: string,
+  { prepLines = new Map(), cutPlans = new Map(), all = false }: { prepLines?: PrepLines; cutPlans?: CutPlans; all?: boolean } = {},
+) {
   const plans = await trx.selectFrom('ShipmentPlan').select(['Id', 'SalesOrderId', 'CreatedAt', 'ModifiedAt']).where('BranchCode', '=', branch).where('PlannerName', '=', PLANNER_NAME).execute();
   if (!plans.length) return { removed: 0, kept: 0 };
   const sim = () => trx.selectFrom('ShipmentPlan').select('Id').where('BranchCode', '=', branch).where('PlannerName', '=', PLANNER_NAME);
@@ -366,12 +374,14 @@ export async function clearSimulated(trx: Kysely<OrderDatabase>, branch: string,
   const editedCells = await trx.selectFrom('ShipmentPlanColorSize').select('ShipmentPlanId').distinct().where('BranchCode', '=', branch).where('ModifiedAt', 'is not', null).where('ShipmentPlanId', 'in', sim()).execute();
   const created = new Map(plans.map((p) => [p.Id, p.CreatedAt.getTime()]));
   const inPrep = (l: { Id: number; CreatedAt: Date }) => prepLines.has(l.Id) && (prepLines.get(l.Id) == null || prepLines.get(l.Id)!.getTime() === l.CreatedAt.getTime());
-  const touched = new Set<number>(all ? [] : [
+  // Cùng Id mà khác thời điểm tạo (dung sai 5 ms như bản chép) là kế hoạch khác: số cắt đó không thuộc kế hoạch này
+  const cut = plans.filter((p) => cutPlans.has(p.Id) && Math.abs(cutPlans.get(p.Id)!.getTime() - p.CreatedAt.getTime()) < 5).map((p) => p.Id);
+  const touched = new Set<number>([...cut, ...(all ? [] : [
     ...plans.filter((p) => p.ModifiedAt !== null).map((p) => p.Id),
     ...lines.filter((l) => l.ModifiedAt !== null || inPrep(l) || l.CreatedAt.getTime() - created.get(l.ShipmentPlanId)! > TOUCH_MINUTES * 60_000).map((l) => l.ShipmentPlanId),
     ...editedLines.map((r) => r.ShipmentPlanId),
     ...editedCells.map((r) => r.ShipmentPlanId),
-  ]);
+  ])]);
   const drop = plans.filter((p) => !touched.has(p.Id));
   const dropIds = drop.map((p) => p.Id);
   const dropLines = lines.filter((l) => !touched.has(l.ShipmentPlanId)).map((l) => l.Id);
@@ -401,7 +411,7 @@ export async function clearSimulated(trx: Kysely<OrderDatabase>, branch: string,
 
 /**
  * Xóa kế hoạch mô phỏng cũ rồi sinh lại cho một nhà máy, trong transaction của nơi gọi. `lines`: mã chuyền đang dùng của
- * nhà máy (bộ phận tích "Xưởng sản xuất" ở MES_Hr, đọc bằng readLines); `prepLines`, `all`: như clearSimulated.
+ * nhà máy (bộ phận tích "Xưởng sản xuất" ở MES_Hr, đọc bằng readLines); `prepLines`, `cutPlans`, `all`: như clearSimulated.
  */
 export async function simulateBranch(
   trx: Kysely<OrderDatabase>,
@@ -411,11 +421,12 @@ export async function simulateBranch(
     today,
     plannerId,
     prepLines,
+    cutPlans,
     all,
     calendar,
-  }: { branch: string; lines: string[]; today: string; plannerId: number | null; prepLines?: PrepLines; all?: boolean; calendar: WorkCalendar },
+  }: { branch: string; lines: string[]; today: string; plannerId: number | null; prepLines?: PrepLines; cutPlans?: CutPlans; all?: boolean; calendar: WorkCalendar },
 ) {
-  const { removed, kept } = await clearSimulated(trx, branch, { prepLines, all });
+  const { removed, kept } = await clearSimulated(trx, branch, { prepLines, cutPlans, all });
   const busy = (await trx.selectFrom('ShipmentPlanLine').select(['LineCode', 'StartDate', 'EndDate']).where('BranchCode', '=', branch).execute()).map((b) => ({
     lineCode: b.LineCode,
     start: ymd(b.StartDate as Date),
@@ -599,6 +610,7 @@ async function main() {
         `- Chuyền: bộ phận tích "Xưởng sản xuất" đang dùng, có đơn vị cơ sở, trong ${env.db.hrName} (Nhân sự › Sơ đồ tổ chức).`,
         '- Giữ nguyên: kế hoạch người dùng lập; kế hoạch mô phỏng người dùng đã sửa ở Kế hoạch xuất hàng, Xếp chuyền, Phân bổ màu cỡ',
         '  hoặc đã nhập ở Kế hoạch chuẩn bị SX. Thêm --all để xóa cả các kế hoạch đó (kèm ngày chuẩn bị SX đã nhập).',
+        '- Luôn giữ (kể cả --all) kế hoạch đã có số cắt ở Đồng bộ tiến độ cắt: muốn xóa thì Xóa số cắt ở màn đó trước.',
         '- Đơn hàng của kế hoạch bị xóa trở về trạng thái lúc nạp (Mới, hoặc Hoàn thành nếu đã đóng lệnh ở BRAVO).',
         '- Chạy trong một transaction (vài chục giây): backend đang chạy thì các màn đơn hàng chờ tới khi xong.',
         'Chạy lại với: npm run sim:board -- --yes [--all]',
@@ -612,12 +624,13 @@ async function main() {
     const { branches, linesOf, plannerId } = await readLines(core);
     const calendars = await readWorkCalendars(core);
     const prep = all ? new Map<number, Date | null>() : await prepLines();
+    const cuts = await plansWithCuts();
     const today = localToday();
     const stats: Record<string, Record<string, number>> = {};
     let stuck = 0;
     await order.transaction().execute(async (trx) => {
       for (const branch of branches) {
-        const s = await simulateBranch(trx, { branch, lines: linesOf(branch), today, plannerId, prepLines: prep, all, calendar: calendars.get(branch) ?? DEFAULT_WORK_CALENDAR });
+        const s = await simulateBranch(trx, { branch, lines: linesOf(branch), today, plannerId, prepLines: prep, cutPlans: cuts, all, calendar: calendars.get(branch) ?? DEFAULT_WORK_CALENDAR });
         stats[branch] = { 'kế hoạch cũ đã xóa': s.removed, 'giữ lại (người dùng đã sửa)': s.kept, 'kế hoạch mô phỏng': s.plans, 'dòng dàn chuyền': s.lines };
         stuck += s.stuck;
       }

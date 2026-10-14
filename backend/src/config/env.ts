@@ -44,6 +44,8 @@ export const env = {
     orderName: process.env.DB_ORDER_NAME || 'MES_Order',
     // Module May (ADR 0009)
     sewingName: process.env.DB_SEWING_NAME || 'MES_Sewing',
+    // Module Cắt: Đồng bộ tiến độ cắt (phase 5.14, quyết định 13.1)
+    cuttingName: process.env.DB_CUTTING_NAME || 'MES_Cutting',
     // Module Nhân sự: phòng ban, chức danh, hồ sơ nhân viên (ADR 0012)
     hrName: process.env.DB_HR_NAME || 'MES_Hr',
     // Bảng chép dữ liệu từ hệ thống ngoài và nhật ký đồng bộ (ADR 0007)

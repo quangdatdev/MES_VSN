@@ -25,7 +25,7 @@ describe('Màu cỡ của kế hoạch (service)', () => {
     const planPos = { listByParent: jest.fn(async () => [{ SalesOrderPoId: 1 }]) };
     const policy: Record<string, Map<string, string>> = { 'order.shipment': new Map(), 'order.po': new Map() };
     const fields = { levels: jest.fn(async (_a: unknown, resource: string) => ({ fields: [], levels: policy[resource] })) };
-    const service = new ShipmentService(null as any, plans as any, planColorSizes as any, planPos as any, null as any, null as any, null as any, null as any, null as any, null as any, fields as any, null as any);
+    const service = new ShipmentService(null as any, plans as any, planColorSizes as any, planPos as any, null as any, null as any, null as any, null as any, null as any, null as any, fields as any, null as any, null as any);
     const userWith = (permissions: string[]) => ({ userId: 1, username: 'u', branchCode: 'A01', isAggregate: false, tokenType: 'access', access: { permissions: new Set(permissions) } }) as any;
 
     const full = await service.get(userWith(['order.shipment:view', 'order.po:view']), 5);

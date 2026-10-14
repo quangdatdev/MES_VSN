@@ -318,13 +318,18 @@ async function deploy(o, L, releaseLock) {
         : stopsOld
           ? 'Bản cũ sẽ DỪNG trong lúc migrate (bản mới đã build sẵn), xong thì chạy bản mới.'
           : 'Chạy migrate rồi khởi động bản mới.';
-      if (!(await confirm(o, `${how} Đã sao lưu 5 database chưa?`))) fail('Chưa sao lưu: dừng.');
+      if (!(await confirm(o, `${how} Đã sao lưu các database MES chưa?`))) fail('Chưa sao lưu: dừng.');
     }
 
     step('Cài gói, build (bản cũ vẫn chạy)');
     shell('npm ci --include=dev --prefer-offline --no-audit --fund=false', { cwd: dir });
     shell('npm run build', { cwd: dir });
     preflight(dir);
+    // Bản có database mới (ví dụ MES_Cutting) mà tài khoản không tạo được: dừng lúc bản cũ còn chạy, chưa migrate gì
+    if (added === null || added.length) {
+      step('Kiểm database (bản cũ vẫn chạy)');
+      shell('npm run migrate -- --check', { cwd: dir });
+    }
     const carried = lib.carryAssets(prev, dir);
     if (carried) console.log(`Giữ ${carried} file code giao diện của bản đang chạy cho tab đã mở.`);
     fs.writeFileSync(path.join(dir, lib.BUILT_MARK), new Date().toISOString());

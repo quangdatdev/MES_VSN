@@ -216,6 +216,78 @@ export class ShipmentPlanRepository extends BaseRepository<ShipmentPlanRow> {
   }
 }
 
+// ---------- Cho module Cắt (quyết định 13.2): đọc của hệ thống, chỉ qua ShipmentPlanFeed ----------
+
+/** Một kế hoạch xuất hàng như module Cắt cần (Đồng bộ tiến độ cắt) */
+export interface CuttingFeedPlanRow {
+  Id: number;
+  PlanNo: string;
+  CustomerName: string;
+  StyleCode: string;
+  ProductName: string;
+  PoBuyDate: string;
+  ShipDate: Date;
+  PlanQty: number;
+  BranchCode: string;
+  CreatedAt: Date;
+}
+
+/**
+ * Đọc kế hoạch xuất hàng cho module Cắt chép sang MES_Cutting. Việc của hệ thống khi mở màn, không theo phạm vi người xem (như
+ * LinePlanLineRepository.feed): chỉ lọc ĐVCS do ShipmentPlanFeed truyền từ phiên, null là mọi ĐVCS (phiên A00).
+ */
+@Injectable()
+export class ShipmentPlanFeedRepository {
+  constructor(@Inject(ORDER_DB) private readonly db: OrderDb) {}
+
+  plans(branchCode: string | null): Promise<CuttingFeedPlanRow[]> {
+    let qb = this.db
+      .selectFrom('ShipmentPlan')
+      .select(['Id', 'PlanNo', 'CustomerName', 'StyleCode', 'ProductName', 'PoBuyDate', 'ShipDate', 'PlanQty', 'BranchCode', 'CreatedAt']);
+    if (branchCode !== null) qb = qb.where('BranchCode', '=', branchCode);
+    return qb.orderBy('Id').execute() as Promise<CuttingFeedPlanRow[]>;
+  }
+
+  /** SL KHXH theo màu cỡ (> 0) của các kế hoạch cùng cách lọc ĐVCS như plans() */
+  colorSizes(branchCode: string | null) {
+    let qb = this.db.selectFrom('ShipmentPlanColorSize').select(['ShipmentPlanId', 'ColorName', 'SizeName', 'PlanQty', 'SortOrder']).where('PlanQty', '>', 0);
+    if (branchCode !== null) qb = qb.where('BranchCode', '=', branchCode);
+    return qb.orderBy('ShipmentPlanId').orderBy('SortOrder').orderBy('Id').execute();
+  }
+
+  /**
+   * Dấu phiên bản của plans() và colorSizes(): số kế hoạch, số dòng màu cỡ và checksum các cột được chép. Module Cắt chỉ chép lại
+   * khi dấu đổi. BINARY_CHECKSUM để đổi chữ hoa, chữ thường cũng đổi dấu.
+   */
+  async version(branchCode: string | null): Promise<string> {
+    let plans = this.db
+      .selectFrom('ShipmentPlan')
+      .select([
+        sql<number>`COUNT(*)`.as('N'),
+        sql<number>`CHECKSUM_AGG(BINARY_CHECKSUM(Id, PlanNo, CustomerName, StyleCode, ProductName, PoBuyDate, ShipDate, PlanQty, BranchCode, CreatedAt))`.as('C'),
+        // Checksum có thể trùng khi hai thay đổi bù nhau: lần sửa gần nhất đổi dấu chắc chắn hơn
+        sql<Date | null>`MAX(ModifiedAt)`.as('M'),
+      ]);
+    let cells = this.db
+      .selectFrom('ShipmentPlanColorSize')
+      .select([sql<number>`COUNT(*)`.as('N'), sql<number>`CHECKSUM_AGG(BINARY_CHECKSUM(ShipmentPlanId, ColorName, SizeName, PlanQty, SortOrder))`.as('C'), sql<Date | null>`MAX(ModifiedAt)`.as('M')])
+      .where('PlanQty', '>', 0);
+    if (branchCode !== null) {
+      plans = plans.where('BranchCode', '=', branchCode);
+      cells = cells.where('BranchCode', '=', branchCode);
+    }
+    const [p, c] = await Promise.all([plans.executeTakeFirst(), cells.executeTakeFirst()]);
+    const at = (d: Date | null | undefined) => (d ? new Date(d).getTime() : 0);
+    return `${p?.N ?? 0}:${p?.C ?? 0}:${c?.N ?? 0}:${c?.C ?? 0}:${at(p?.M)}:${at(c?.M)}`;
+  }
+
+  /** Thời điểm tạo của kế hoạch còn tồn tại ở ĐVCS đó (không có: undefined), để module Cắt biết bản chép còn nguồn */
+  async createdAt(id: number, branchCode: string): Promise<Date | undefined> {
+    const r = await this.db.selectFrom('ShipmentPlan').select('CreatedAt').where('Id', '=', id).where('BranchCode', '=', branchCode).executeTakeFirst();
+    return r?.CreatedAt;
+  }
+}
+
 @Injectable()
 export class PlanColorSizeRepository extends ChildRepository<PlanColorSizeRow> {
   protected readonly table = 'ShipmentPlanColorSize';

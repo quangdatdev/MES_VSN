@@ -1,6 +1,7 @@
 // Chạy migration .sql theo từng database: backend/migrations/<Database>/NNNN_ten.sql
 // Dùng: npm run migrate            (tất cả database, rồi nạp dữ liệu hệ thống và tài khoản admin)
 //       npm run migrate -- MES_Core (một database, không nạp dữ liệu)
+//       npm run migrate -- --check  (chỉ kiểm mọi database đã có hoặc tạo được, đã được cấp quyền; không chạy migration)
 // Chỉ chạy khi người dùng gọi lệnh; không tự chạy lúc khởi động ứng dụng.
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
@@ -8,29 +9,33 @@ import { sql, type Kysely } from 'kysely';
 import { env } from '../src/config/env';
 import { createDb } from '../src/platform/database/db';
 import type { CoreDatabase } from '../src/platform/database/core.types';
+import { databaseNameOf } from './database-names';
 import { runSeed } from './seed';
 import { SOURCE_DATABASES, assertSourceNames, sourceDatabaseOf, type SourceDatabase } from './source-databases';
 
 const root = resolve(__dirname, '../migrations');
 
-// Tên thư mục -> tên database thật (cấu hình qua .env)
-function dbName(folder: string): string {
-  if (folder === 'MES_Core') return env.db.coreName;
-  if (folder === 'MES_Order') return env.db.orderName;
-  if (folder === 'MES_Sewing') return env.db.sewingName;
-  if (folder === 'MES_Hr') return env.db.hrName;
-  if (folder === 'MES_Sync') return env.db.syncName;
-  return folder;
-}
-
 function splitBatches(text: string): string[] {
   return text.split(/^\s*GO\s*$/gim).map((b) => b.trim()).filter(Boolean);
 }
 
-async function ensureDatabase(name: string) {
+const COLLATION = /^[A-Za-z0-9_]+$/;
+
+/** Collation của database (null: chưa có database) */
+async function collationOf(master: Kysely<any>, name: string): Promise<string | null> {
+  const r = await sql<{ c: string | null }>`SELECT CONVERT(NVARCHAR(128), DATABASEPROPERTYEX(${name}, 'Collation')) AS c`.execute(master);
+  return r.rows[0]?.c ?? null;
+}
+
+/**
+ * Tạo database nếu chưa có. Database tạo mới lấy collation của `collation` (collation của MES_Core): các module so khớp chuỗi
+ * chép từ database khác (tên màu, cỡ chép từ MES_Order sang MES_Cutting), lệch collation thì trùng khóa, sai ký tự.
+ */
+async function ensureDatabase(name: string, collation: string | null) {
   const master = createDb<any>('master');
   try {
-    await sql.raw(`IF DB_ID(N'${name.replace(/'/g, "''")}') IS NULL CREATE DATABASE [${name.replace(/]/g, ']]')}]`).execute(master);
+    const collate = collation && COLLATION.test(collation) ? ` COLLATE ${collation}` : '';
+    await sql.raw(`IF DB_ID(N'${name.replace(/'/g, "''")}') IS NULL CREATE DATABASE [${name.replace(/]/g, ']]')}]${collate}`).execute(master);
   } catch (e) {
     // Tài khoản ứng dụng thường không có quyền tạo database: chỉ rõ việc cần làm thay vì lỗi quyền chung chung
     throw new Error(
@@ -100,9 +105,49 @@ async function linkSourceDatabase(db: Kysely<any>, src: SourceDatabase) {
   console.log(`  [${env.db.syncName}] synonym ${src.system} tới ${server ? `${server}.` : ''}${staging}: ${changed === 0 ? 'đã đúng' : `tạo lại ${changed}`}`);
 }
 
+/**
+ * Kiểm mọi database trước khi chạy migration nào: database chưa có mà không tạo được (tài khoản không có quyền CREATE DATABASE),
+ * hoặc chưa được cấp quyền, thì dừng ngay, chưa database nào bị migrate dở (deploy.cjs gọi --check trước khi dừng bản cũ).
+ * `create = false` (--check): không tạo gì, database chưa có chỉ kiểm tài khoản có quyền tạo, để chạy thử từ máy khác không để lại
+ * database rỗng trên máy chủ.
+ * Collation lệch MES_Core thì cảnh báo, không dừng (database cũ đã có dữ liệu, đổi collation là việc của quản trị CSDL).
+ */
+async function ensureDatabases(folders: string[], create: boolean): Promise<string[]> {
+  const master = createDb<any>('master');
+  const missing: string[] = [];
+  let base: string | null;
+  try {
+    base = await collationOf(master, env.db.coreName);
+    if (!create) {
+      for (const f of folders) if ((await collationOf(master, databaseNameOf(f))) === null) missing.push(databaseNameOf(f));
+      const r = await sql<{ ok: number | null }>`SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'CREATE ANY DATABASE') AS ok`.execute(master);
+      if (missing.length && r.rows[0]?.ok !== 1) {
+        throw new Error(`Chưa có database ${missing.join(', ')} và tài khoản trong .env không có quyền tạo. Nhờ quản trị CSDL tạo (cùng collation với ${env.db.coreName}), cấp db_owner cho tài khoản ứng dụng, rồi chạy lại. Chưa chạy migration nào.`);
+      }
+    }
+  } finally {
+    await master.destroy();
+  }
+  if (create) for (const f of folders) await ensureDatabase(databaseNameOf(f), base);
+  const check = createDb<any>('master');
+  try {
+    base ??= await collationOf(check, env.db.coreName);
+    for (const f of folders) {
+      const name = databaseNameOf(f);
+      if (missing.includes(name)) continue;
+      const r = await sql<{ ok: number | null }>`SELECT HAS_DBACCESS(${name}) AS ok`.execute(check);
+      if (r.rows[0]?.ok !== 1) throw new Error(`Tài khoản trong .env chưa được cấp quyền vào database ${name}: nhờ quản trị CSDL cấp db_owner rồi chạy lại. Chưa chạy migration nào.`);
+      const c = await collationOf(check, name);
+      if (base && c && c !== base) console.warn(`Cảnh báo: database ${name} có collation ${c}, khác ${env.db.coreName} (${base}). Các database MES phải cùng collation (11-van-hanh.md).`);
+    }
+  } finally {
+    await check.destroy();
+  }
+  return missing;
+}
+
 async function migrate(folder: string) {
-  const name = dbName(folder);
-  await ensureDatabase(name);
+  const name = databaseNameOf(folder);
   const db = createDb<any>(name);
   try {
     await sql
@@ -170,7 +215,11 @@ async function adminProblems(): Promise<string[]> {
 }
 
 async function main() {
-  const only = process.argv[2];
+  const args = process.argv.slice(2);
+  const checkOnly = args.includes('--check');
+  // `npm run migrate --check` (thiếu `--`): npm nuốt cờ thành npm_config_check, script không thấy và sẽ migrate thật
+  if (!checkOnly && process.env.npm_config_check) throw new Error('Cờ --check bị npm giữ lại: gõ npm run migrate -- --check. Chưa chạy migration nào.');
+  const only = args.find((a) => !a.startsWith('--'));
   const folders = readdirSync(root, { withFileTypes: true })
     .filter((d) => d.isDirectory() && existsSync(resolve(root, d.name)))
     .map((d) => d.name)
@@ -180,6 +229,12 @@ async function main() {
   // Kiểm trước khi tạo bảng: thiếu mật khẩu thì tạo bảng xong cũng không có tài khoản đăng nhập
   if (!only && !env.demoPassword) throw new Error('Thiếu DEMO_PASSWORD trong backend/.env (mật khẩu ban đầu của tài khoản admin). Chưa chạy migration nào.');
   if (!only && env.isProd && env.demoPassword.length < 8) throw new Error('DEMO_PASSWORD phải dài ít nhất 8 ký tự khi NODE_ENV=production. Chưa chạy migration nào.');
+  const missing = await ensureDatabases(folders, !checkOnly);
+  if (checkOnly) {
+    const ready = folders.map(databaseNameOf).filter((n) => !missing.includes(n));
+    console.log(`Đã có, đã được cấp quyền: ${ready.join(', ')}.${missing.length ? ` Chưa có, tài khoản tạo được khi migrate: ${missing.join(', ')}.` : ''} Chưa chạy migration nào, chưa tạo gì (--check).`);
+    return;
+  }
   for (const f of folders) await migrate(f);
   if (only) {
     console.log('Chỉ migrate một database: chưa nạp dữ liệu hệ thống. Chạy npm run migrate (không tham số) để nạp.');

@@ -106,7 +106,9 @@ export const resources: ResourceDef[] = [
   // Dòng do hệ thống chép từ Xếp chuyền nên không có Thêm, Xóa
   { code: 'order.prep', name: 'Kế hoạch chuẩn bị SX', path: '/order/prep', table: 'SewingPrep', matrix: ['V', 'VE', 'VUE', 'V', '', ''] },
 
-  { code: 'cutting.progress', name: 'Đồng bộ tiến độ cắt', path: '/cutting/progress', matrix: ['V', 'VE', 'V', 'V', '', ''] },
+  // Đồng bộ tiến độ cắt (phase 5.14, quyết định 13.5): bản chép kế hoạch xuất hàng ở MES_Cutting, một dòng mỗi kế hoạch. Không có
+  // Thêm (dòng tự có); Xóa là Xóa số cắt của kế hoạch, mẫu chỉ Toàn quyền có. Kế hoạch nhập số cắt (máy đã cài: MES_Core/0012)
+  { code: 'cutting.progress', name: 'Đồng bộ tiến độ cắt', path: '/cutting/progress', table: 'CuttingPlan', matrix: ['V', 'VE', 'VUE', 'V', '', ''] },
   { code: 'cutting.supply', name: 'Xác nhận cấp BTP', path: '/cutting/supply', matrix: ['V', 'VE', 'V', '', '', ''] },
   { code: 'cutting.embroidery', name: 'Quản lý in thêu', path: '/cutting/embroidery', matrix: ['V', 'VE', 'V', '', '', ''] },
 
@@ -163,6 +165,7 @@ export const scopeBindings: Record<string, Record<string, string>> = {
   'order.lineplan': { FACTORY: 'BranchCode', OWNER: 'CreatedBy' },
   'order.colorsize': { FACTORY: 'BranchCode', LINE: 'LineCode', OWNER: 'CreatedBy' },
   'order.prep': { FACTORY: 'BranchCode', LINE: 'LineCode' },
+  'cutting.progress': { FACTORY: 'BranchCode' },
 };
 
 /** Cột đăng ký (Resource Registry mức cột). Mã trùng trường JSON của API. S = nhạy cảm (mặc định Ẩn). */
@@ -275,6 +278,21 @@ export const resourceFields: Record<string, [code: string, name: string, sensiti
     ['priorityFactor', 'HS Ưu đãi VC'],
     ['startDate', 'Ngày vào chuyền'],
     ['steps', 'Các bước chuẩn bị (KH, TH)'],
+    ['statusCode', 'Trạng thái'],
+  ],
+  // Mã trùng khóa JSON của API Đồng bộ tiến độ cắt (danh sách và popup). +/- = Lũy kế cắt − Số lượng KH (quyết định 13.3)
+  'cutting.progress': [
+    ['planNo', 'Số kế hoạch'],
+    ['customerName', 'Khách hàng'],
+    ['styleCode', 'Mã hàng'],
+    ['productName', 'Tên sản phẩm'],
+    ['poBuyDate', 'PO/Buy date'],
+    ['shipDate', 'Ngày xuất hàng'],
+    ['planQty', 'Số lượng KH'],
+    ['dayQty', 'Trong ngày'],
+    ['cutQty', 'Lũy kế cắt'],
+    ['diffQty', '+/-'],
+    ['lastCutDate', 'Ngày cắt gần nhất'],
     ['statusCode', 'Trạng thái'],
   ],
   // Mã trùng khóa JSON của API Thông tin nhân sự (modules/hr/employee-fields.ts). Chỉ đăng ký thông tin cá nhân: mã, tên, phòng
