@@ -1,7 +1,7 @@
 import { ActionIcon, Text, Tooltip } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import { IconTrash } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import {
   createAddRowsComponent,
@@ -289,6 +289,7 @@ const ContextMenu = (p: ContextMenuComponentProps) =>
   );
 const AddRows = (p: AddRowsComponentProps) => <AddRowsBase {...p} />;
 const GUTTER_W = 44;
+const ROW_H = 32;
 const GUTTER = { basis: GUTTER_W, grow: 0, shrink: 0 };
 const HEAD = 34;
 /** Tiêu đề hai tầng: tầng nhóm đủ hai dòng chữ, tầng dưới một dòng (KH, TH) */
@@ -411,6 +412,16 @@ function GroupHeader({ layout, height, host, release }: { layout: ReturnType<typ
   );
 }
 
+/**
+ * Ô chọn gần nhất sau một lần đổi dữ liệu. Xóa dòng thì thư viện giữ nguyên chỉ số ô đang chọn mà không báo đổi ô: dòng đã nhớ
+ * không còn thì nhớ dòng đang nằm ở chỉ số đó (đúng dòng người dùng thấy đang chọn), không có thì bỏ.
+ */
+export function keepAnchor<T>(last: { key: string | number; col: number } | null, next: T[], key: (row: T) => string | number, activeIndex: number | null) {
+  if (!last || next.some((r) => key(r) === last.key)) return last;
+  const row = activeIndex === null ? undefined : next[activeIndex];
+  return row === undefined ? null : { key: key(row), col: last.col };
+}
+
 /** Các dòng bị bỏ đi trong lần đổi dữ liệu mà không được phép xóa (đang may, ngoài phạm vi sửa…) */
 export function blockedDeletes<T>(before: T[], after: T[], key: (row: T) => string | number, canDelete: (row: T) => boolean): T[] {
   const kept = new Set(after.map(key));
@@ -432,6 +443,14 @@ type SheetGridProps<T> = RowOps<T> & {
   rowKey: (row: T) => string | number;
   /** Dòng không được xóa (đang may, ngoài phạm vi sửa): nút xóa mờ, xóa bằng menu chuột phải bị chặn */
   canDeleteRow?: (row: T) => boolean;
+  /** Lý do dòng không xóa được (nút xóa, thông báo) thay cho câu mặc định */
+  deleteReason?: (row: T) => string;
+  /**
+   * Nút "Thêm N dòng" chèn dòng của createRow ngay dưới dòng vừa chọn (không thêm ở cuối lưới), rồi chọn ô nhập được đầu tiên
+   * của dòng mới. Chưa chọn dòng nào thì nhắc chọn trước. Dùng khi dòng mới phải đứng cạnh dòng gốc (màn chép thông tin của
+   * dòng ngay trên trong onChange)
+   */
+  addAtActive?: boolean;
   /** Hiện khi không có dòng nào và không thêm dòng được */
   empty?: ReactNode;
   /** STT bắt đầu từ (trang - 1) * cỡ trang + 1 */
@@ -484,12 +503,19 @@ function useHorizontalScroll(active: boolean) {
 }
 
 /** Lưới nhập liệu kiểu bảng tính, lấp đầy khung chứa (khung cha là flex cột có chiều cao) */
-export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, empty, indexOffset = 0, onActiveRowChange, selectedKey, onRowOpen, hint }: SheetGridProps<T>) {
+export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, addAtActive, empty, indexOffset = 0, onActiveRowChange, selectedKey, onRowOpen, hint }: SheetGridProps<T>) {
   const { ref, height } = useElementSize();
   // Hàm do trang truyền vào thường viết tại chỗ: đọc qua ref để các prop đưa vào lưới giữ nguyên, ô không vẽ lại cả lưới
-  const latest = useRef({ value, onChange, rowKey, createRow, duplicateRow, canDeleteRow, onActiveRowChange, onRowOpen });
-  latest.current = { value, onChange, rowKey, createRow, duplicateRow, canDeleteRow, onActiveRowChange, onRowOpen };
+  const latest = useRef({ value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, onActiveRowChange, onRowOpen });
+  latest.current = { value, onChange, columns, rowKey, createRow, duplicateRow, canDeleteRow, deleteReason, onActiveRowChange, onRowOpen };
   const activeRow = useRef<number | null>(null);
+  // Ô chọn gần nhất: bấm nút Thêm (ngoài các ô) thì thư viện bỏ ô đang chọn, nút vẫn cần biết chèn dưới dòng nào
+  const lastCell = useRef<{ key: string | number; col: number } | null>(null);
+  // Chỉ dời dòng neo khi dữ liệu đã đổi thật: màn có thể từ chối lần đổi (xóa làm mất màu cỡ), khi đó dòng neo giữ nguyên.
+  // Effect của lưới con chạy trước nên ô vừa báo đổi (handleActive) đã ghi neo hợp lệ
+  useEffect(() => {
+    lastCell.current = keepAnchor(lastCell.current, value, latest.current.rowKey, activeRow.current);
+  }, [value]);
   const grid = useRef<DataSheetGridRef>(null);
   // Ô đang gõ dở chưa ghi vào dòng (ô ngày chỉ ghi khi Enter, Tab hoặc rời ô): vẫn tính là chưa lưu, để tải lại trang, đóng
   // tab hay rời màn bằng phím tắt cũng được hỏi lại. Hết khi ô ghi vào dòng, chuyển ô hoặc Esc
@@ -528,12 +554,14 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
     () => (indexOffset ? { ...GUTTER, component: ({ rowIndex }: CellProps<T, unknown>) => <span className="sheet-text">{indexOffset + rowIndex + 1}</span> } : GUTTER),
     [indexOffset],
   );
-  const handleActive = useCallback(({ cell }: { cell: { row: number } | null }) => {
+  const handleActive = useCallback(({ cell }: { cell: { row: number; col: number } | null }) => {
     activeRow.current = cell?.row ?? null;
     setTyping(false);
-    const { onActiveRowChange: emit, value: rows } = latest.current;
+    const { onActiveRowChange: emit, value: rows, rowKey: key } = latest.current;
     const row = cell ? rows[cell.row] : undefined;
-    if (row !== undefined) emit?.(row);
+    if (row === undefined || !cell) return;
+    lastCell.current = { key: key(row), col: cell.col };
+    emit?.(row);
   }, []);
   const rowClassName = useMemo(
     () => (selectedKey == null ? undefined : ({ rowData }: { rowData: T }) => (latest.current.rowKey(rowData) === selectedKey ? 'sheet-row-selected' : undefined)),
@@ -567,7 +595,7 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
             shrink: 0,
             component: ({ rowData, deleteRow }: CellProps<T, unknown>) => {
               const allowed = latest.current.canDeleteRow?.(rowData) ?? true;
-              const label = allowed ? 'Xóa dòng' : 'Dòng đang may, đã xong hoặc ngoài phạm vi sửa nên không xóa được';
+              const label = allowed ? 'Xóa dòng' : (latest.current.deleteReason?.(rowData) ?? 'Dòng đang may, đã xong hoặc ngoài phạm vi sửa nên không xóa được');
               // data-disabled thay cho disabled: nút vẫn nhận rê chuột, chạm và Tab để hiện lý do
               return (
                 <Tooltip label={label} openDelay={300} multiline maw={260}>
@@ -583,10 +611,10 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
 
   const handleChange = useCallback((next: T[]) => {
     setTyping(false);
-    const { value: before, onChange: emit, rowKey: key, canDeleteRow: canDelete } = latest.current;
+    const { value: before, onChange: emit, rowKey: key, canDeleteRow: canDelete, deleteReason: reason } = latest.current;
     const blocked = canDelete ? blockedDeletes(before, next, key, canDelete) : [];
     if (blocked.length) {
-      toastWarn(`${blocked.length} dòng đang may, đã xong hoặc ngoài phạm vi sửa của bạn nên không xóa được.`, 'Chưa xóa được');
+      toastWarn(reason ? reason(blocked[0]) : `${blocked.length} dòng đang may, đã xong hoặc ngoài phạm vi sửa của bạn nên không xóa được.`, 'Chưa xóa được');
       return;
     }
     emit(next);
@@ -594,6 +622,26 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
   const gridRowKey = useCallback(({ rowData }: { rowData: T }) => String(latest.current.rowKey(rowData)), []);
   const gridDuplicate = useCallback(({ rowData }: { rowData: T }) => latest.current.duplicateRow?.(rowData) ?? { ...rowData }, []);
   const gridCreate = useCallback(() => latest.current.createRow!(), []);
+  // Lưới tĩnh đọc addRowsComponent một lần: hàm chèn đọc dữ liệu mới nhất qua ref
+  const addRows = useMemo(() => {
+    if (!addAtActive) return AddRows;
+    const insert = (count: number) => {
+      const { value: rows, columns: cols, rowKey: key, createRow: create, onChange: emit } = latest.current;
+      const at = lastCell.current ? rows.findIndex((r) => key(r) === lastCell.current?.key) : -1;
+      if (at < 0 || !create) {
+        toastWarn('Chọn một ô của dòng cần thêm rồi bấm Thêm: dòng mới chép thông tin của dòng đó và nằm ngay dưới.', 'Chưa chọn dòng');
+        return;
+      }
+      const added = Array.from({ length: Math.max(1, count) }, () => create());
+      emit([...rows.slice(0, at + 1), ...added, ...rows.slice(at + 1)]);
+      // Chọn ô nhập được đầu tiên của dòng mới (ô chỉ đọc như màu, cỡ chép từ dòng gốc thì bỏ qua)
+      const open = cols.findIndex((c) => !(typeof c.disabled === 'function' ? c.disabled({ rowData: added[0], rowIndex: at + 1 }) : c.disabled));
+      const col = open >= 0 ? open : (lastCell.current?.col ?? 0);
+      // Chọn ô ở dòng mới sau khi lưới nhận dữ liệu mới
+      requestAnimationFrame(() => grid.current?.setActiveCell({ col, row: at + 1 }));
+    };
+    return (p: AddRowsComponentProps) => <AddRowsBase {...p} addRows={(n) => insert(n ?? 1)} />;
+  }, [addAtActive]);
 
   // Enter trong ô của lưới không được gửi form chứa lưới (popup Thêm PO): ô "Thêm N dòng", Shift+Enter khi đang sửa ô
   const stopFormSubmit = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -608,6 +656,8 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
   return (
     <div
       className="sheet-wrap"
+      // Chiều cao dòng cho CSS (ô gộp dời chữ lên nửa dòng)
+      style={{ '--sheet-row-h': `${ROW_H}px` } as CSSProperties}
       role="region"
       aria-label={label}
       onKeyDown={stopFormSubmit}
@@ -631,7 +681,7 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
                 columns={gridColumns}
                 rowKey={gridRowKey}
                 height={height - (fixedRows ? 0 : 46) - (scroll.overflow ? 12 : 0)}
-                rowHeight={32}
+                rowHeight={ROW_H}
                 headerRowHeight={grouped ? HEAD2 : HEAD}
                 gutterColumn={gutter}
                 onActiveCellChange={handleActive}
@@ -640,7 +690,7 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
                 lockRows={fixedRows}
                 createRow={fixedRows ? undefined : gridCreate}
                 duplicateRow={gridDuplicate}
-                addRowsComponent={fixedRows ? false : AddRows}
+                addRowsComponent={fixedRows ? false : addRows}
                 contextMenuComponent={ContextMenu}
               />
               <div ref={scroll.barRef} className="sheet-hscroll" hidden={!scroll.overflow} aria-hidden tabIndex={-1}>

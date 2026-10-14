@@ -1930,6 +1930,44 @@ a:hover > .home-tile .home-tile-name {
 .sheet-wrap .dsg-cell-disabled {
   color: var(--app-ink-soft);
 }
+/* Ô gộp (popup Phân màu cỡ): các dòng liền nhau cùng màu cỡ trông như một ô merge của Excel, chữ ở giữa khối.
+   Lưới nhập vẽ từng dòng riêng: viền dưới của ô là bóng 1px 1px của thư viện nên ô còn dòng dưới chỉ giữ bóng bên phải; chữ
+   đặt ở dòng giữa khối, khối chẵn dòng dời lên nửa dòng (--sheet-row-h do SheetGrid đặt); dòng khác ẩn chữ khỏi mắt (trình đọc
+   màn hình vẫn đọc). Dòng sau vẽ đè dòng trước nên chữ dời lên không bị nền ô phía trên che */
+.sheet-wrap .dsg-cell.merge-col .sheet-text {
+  text-align: center;
+}
+.sheet-wrap .dsg-cell.merge-open {
+  box-shadow: 1px 0 var(--dsg-border-color);
+}
+.sheet-wrap .dsg-cell.merge-next {
+  border-top-color: transparent;
+}
+.sheet-wrap .dsg-cell.merge-half .sheet-text {
+  position: relative;
+  top: calc(var(--sheet-row-h, 32px) / -2);
+}
+.sheet-wrap .dsg-cell.merge-quiet .sheet-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* Lưới xem gộp bằng rowspan: giữa ô theo chiều dọc; rê chuột tô một dòng thì ô gộp giữ nền (ô thuộc dòng đầu của khối) */
+.grid td[data-merged] {
+  vertical-align: middle;
+}
+.grid tbody tr:hover td[data-merged] {
+  background: var(--app-surface);
+}
+.grid tbody tr[data-selected] td[data-merged] {
+  background: #e6f6f9;
+}
+:root[data-mantine-color-scheme='dark'] .grid tbody tr[data-selected] td[data-merged] {
+  background: rgba(79, 195, 214, 0.14);
+}
 .sheet-text {
   flex: 1;
   min-width: 0;
@@ -2473,6 +2511,7 @@ div.board-bar {
     min-height: 420px;
   }
 }
+
 
 /* Trang chủ: màn chưa có nội dung nghiệp vụ nhạt hơn màn dùng được */
 .home-tile:not([data-ready]) {

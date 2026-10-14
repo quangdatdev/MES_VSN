@@ -1,7 +1,18 @@
 import { AppException } from '../../common/app.exception';
 import type { AuthUser } from '../../platform/auth/auth.types';
-import type { FieldPolicyService } from '../../platform/permission/field-policy.service';
+import { MASK, type AccessLevel, type FieldPolicyService } from '../../platform/permission/field-policy.service';
 import type { OrderListQuery } from './order.dto';
+
+type Level = AccessLevel | undefined;
+
+/** Giá trị của cột suy ra theo mức chặt nhất của các cột nguồn; undefined: bỏ khỏi dữ liệu trả về */
+export const derived = (value: unknown, ...lv: Level[]) => (lv.includes('HIDDEN') ? undefined : lv.includes('MASKED') ? MASK : value);
+
+/** Thêm các cột suy ra vào dòng trả về, bỏ cột bị Ẩn (giá trị undefined) */
+export const withDerived = (out: Record<string, unknown>, values: Record<string, unknown>) => {
+  for (const [key, value] of Object.entries(values)) if (value !== undefined) out[key] = value;
+  return out;
+};
 
 /** Cột DATE về dạng Date lúc 00:00 UTC; trả chuỗi YYYY-MM-DD cho giao diện. */
 export const day = (d: Date | string | null | undefined): string | null =>
@@ -75,10 +86,22 @@ export async function readableQuery<Q extends FilterParams>(
   return { ...out, searchExclude: Object.entries(SEARCH_FIELDS).filter(([, f]) => blind.has(f)).map(([c]) => c) };
 }
 
+/**
+ * Người dùng xem được SL giao của Phân bổ màu cỡ (có quyền xem, cột Số lượng giao không Ẩn, không Che): thông báo chặn ở màn
+ * khác (Xếp chuyền, Kế hoạch xuất hàng) mới nêu số đã giao.
+ */
+export async function assignedVisible(fields: FieldPolicyService, user: AuthUser): Promise<boolean> {
+  if (!user.access?.permissions.has('order.colorsize:view')) return false;
+  return (await fields.unreadable(user, 'order.colorsize', ['assignedQty'])).size === 0;
+}
+
 /** Số ngày sản xuất tối đa của một dòng dàn chuyền (chặn đầu vào vô lý trước khi tính ngày theo lịch, work-calendar.ts). */
 export const MAX_PRODUCTION_DAYS = 366;
 
-export const conflict = (msg: string) => new AppException('CONFLICT', msg, 409);
+export const conflict = (msg: string, details: unknown = null) => new AppException('CONFLICT', msg, 409, details);
+
+/** Vài mục đầu nối vào câu báo (thông báo trên giao diện chỉ hiện câu, không hiện `details`): "a; b; c và 2 chuyền khác" */
+export const someOf = (items: string[], unit: string, max = 3) => `${items.slice(0, max).join('; ')}${items.length > max ? ` và ${items.length - max} ${unit} khác` : ''}`;
 export const invalid = (msg: string, details: unknown = null) => new AppException('VALIDATION_FAILED', msg, 422, details);
 
 /** Lỗi khóa ngoại khi xóa dòng đang được dùng: đổi thành thông báo dễ hiểu. */
@@ -100,6 +123,9 @@ export function byColorSize<T extends { ColorName: string; SizeName: string }>(r
 
 export const csKey = (color: string, size: string) => `${color}\u0000${size}`;
 
+/** Khóa màu cỡ so như SQL Server: không phân biệt hoa thường, bỏ khoảng trắng hai đầu (DTO cũng cắt khoảng trắng) */
+export const colorSizeKey = (color: string, size: string) => csKey(color.trim().toLowerCase(), size.trim().toLowerCase());
+
 /** Chia `total` theo tỷ lệ `weights`, làm tròn mà tổng vẫn đúng bằng `total` (phần dư lớn nhất được cộng trước). */
 export function apportion(total: number, weights: number[]): number[] {
   const sum = weights.reduce((s, w) => s + w, 0);
@@ -114,4 +140,17 @@ export function apportion(total: number, weights: number[]): number[] {
     left--;
   }
   return out;
+}
+
+/**
+ * Chia số lượng theo màu cỡ cho nhiều chuyền: tổng của chuyền thứ i bằng `lineQtys[i]` khi còn đủ, tổng mỗi màu cỡ trên các
+ * chuyền không vượt `cells` (chia lần lượt theo phần còn lại, không chia từng chuyền độc lập rồi lệch khi cộng theo màu cỡ).
+ */
+export function lineShares(cells: number[], lineQtys: number[]): number[][] {
+  const left = [...cells];
+  return lineQtys.map((q) => {
+    const share = apportion(Math.min(q, left.reduce((s, v) => s + v, 0)), left);
+    share.forEach((s, i) => (left[i] -= s));
+    return share;
+  });
 }

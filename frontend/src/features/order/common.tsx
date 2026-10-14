@@ -47,6 +47,12 @@ export const LINE_STATUS: StatusMap = {
   IN_PRODUCTION: { label: 'Đang may', color: 'orange' },
   DONE: { label: 'Đã xong', color: 'teal' },
 };
+/** Phân màu cỡ của cả kế hoạch (màn Phân bổ màu cỡ): tổng giao mọi chuyền so với SL kế hoạch */
+export const ALLOC_STATUS: StatusMap = {
+  PLANNED: { label: 'Chưa phân màu cỡ', color: 'gray' },
+  PARTIAL: { label: 'Phân một phần', color: 'orange' },
+  FULL: { label: 'Đã phân đủ', color: 'teal' },
+};
 
 export function StatusBadge({ map, code }: { map: StatusMap; code: string }) {
   const s = map[code] ?? { label: code, color: 'gray' };

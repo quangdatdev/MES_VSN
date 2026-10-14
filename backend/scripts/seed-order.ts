@@ -2,7 +2,7 @@
 // Chuỗi: đơn hàng → PO + màu cỡ → kế hoạch xuất hàng → dàn chuyền (bảng Gantt) → phân màu cỡ cho chuyền.
 import { sql, type Kysely } from 'kysely';
 import type { OrderDatabase } from '../src/modules/order/order.types';
-import { apportion } from '../src/modules/order/order.util';
+import { apportion, lineShares } from '../src/modules/order/order.util';
 import { lineDates, nextWorkingDay, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { COLORS, CUSTOMERS, DESTINATIONS, LINE_COUNT, ORDER_COUNT, PRODUCTS, SCHEDULE_START, SIZES, STAFF, lineCode, prng } from './seed-data';
 
@@ -170,6 +170,8 @@ export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, crea
       if (branch === 'A01' && i % 3 === 0 && !picked.includes('A01-L03')) picked[0] = 'A01-L03';
       const chosen = [...new Set(picked)];
       const lineQty = apportion(planQty, chosen.map(() => 1));
+      // Màu cỡ của từng chuyền chia lần lượt: tổng mỗi màu cỡ trên các chuyền không vượt SL kế hoạch của màu cỡ (phase 5.13)
+      const shares = lineShares(planLines.map((l) => l.planQty), lineQty);
       let started = false;
       for (const [m, code] of chosen.entries()) {
         const q = lineQty[m];
@@ -208,21 +210,14 @@ export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, crea
           .output('inserted.Id')
           .executeTakeFirstOrThrow();
         stats.lines++;
-        const share2 = apportion(q, planLines.map((l) => l.planQty));
-        await db
-          .insertInto('ShipmentPlanLineColorSize')
-          .values(
-            planLines.map((l, n) => ({
-              ShipmentPlanLineId: line.Id,
-              ColorName: l.color,
-              SizeName: l.size,
-              PlanQty: share2[n],
-              AssignedQty: inProduction || allocated ? share2[n] : 0,
-              SortOrder: n,
-              ...audit,
-            })) as any,
-          )
-          .execute();
+        // Chuyền đã phân màu cỡ: mỗi màu cỡ có phần giao một dòng; PlanQty là SL KHXH của màu cỡ ở kế hoạch (phase 5.13)
+        const given = planLines.map((l, n) => ({ l, n, qty: shares[m][n] })).filter((x) => (inProduction || allocated) && x.qty > 0);
+        if (given.length) {
+          await db
+            .insertInto('ShipmentPlanLineColorSize')
+            .values(given.map(({ l, n, qty }) => ({ ShipmentPlanLineId: line.Id, ColorName: l.color, SizeName: l.size, PlanQty: l.planQty, AssignedQty: qty, SortOrder: n, ...audit })) as any)
+            .execute();
+        }
       }
       // Lũy kế theo phần thời gian đã sản xuất tính đến ngày demo
       const lineRows = await db.selectFrom('ShipmentPlanLine').select(['StartDate', 'EndDate']).where('ShipmentPlanId', '=', plan.Id).execute();

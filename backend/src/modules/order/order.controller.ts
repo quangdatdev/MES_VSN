@@ -202,7 +202,10 @@ export class LinePlanController {
   saveLines(@CurrentUser() u: AuthUser, @id() pid: number, @Body() dto: ScheduleDto) { return this.service.saveLines(u, pid, dto); }
 }
 
-/** Phân bổ màu cỡ (tài nguyên order.colorsize): mỗi dòng là một chuyền của một kế hoạch, lọc được theo chuyền. */
+/**
+ * Phân bổ màu cỡ (tài nguyên order.colorsize, bảng nguồn ShipmentPlanLine): mỗi dòng là một kế hoạch đã xếp chuyền, `:id` là Id
+ * kế hoạch; popup chia màu cỡ của kế hoạch cho các chuyền đã xếp (phase 5.13).
+ */
 @Controller('order/color-size')
 @FieldResource('order.colorsize')
 export class ColorSizeController {
@@ -219,8 +222,8 @@ export class ColorSizeController {
   export(@CurrentUser() u: AuthUser, @Query() q: OrderListQuery) { return this.service.export(u, q); }
 
   @Get(':id') @RequirePermission('order.colorsize:view')
-  get(@CurrentUser() u: AuthUser, @id() lid: number) { return this.service.get(u, lid); }
+  get(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.get(u, pid); }
 
   @Put(':id') @RequirePermission('order.colorsize:update')
-  save(@CurrentUser() u: AuthUser, @id() lid: number, @Body() dto: AllocationDto) { return this.service.save(u, lid, dto); }
+  save(@CurrentUser() u: AuthUser, @id() pid: number, @Body() dto: AllocationDto) { return this.service.save(u, pid, dto); }
 }

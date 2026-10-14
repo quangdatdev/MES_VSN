@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedDeletes, parseQty, parseSheetDate, sheetNumber, sheetSelect } from '../components/SheetGrid';
+import { blockedDeletes, keepAnchor, parseQty, parseSheetDate, sheetNumber, sheetSelect } from '../components/SheetGrid';
 
 interface Row {
   key: number;
@@ -39,6 +39,18 @@ describe('Lưới nhập kiểu bảng tính: khóa ô, chặn xóa dòng', () =
     expect(blockedDeletes(rows, [rows[1]], key, can).map(key)).toEqual([1]);
     expect(blockedDeletes(rows, [{ ...rows[0], qty: 5 }, rows[1], { key: 3, qty: null, lineCode: '' }], key, can)).toEqual([]);
     expect(blockedDeletes(rows, [], key, can).map(key)).toEqual([1]);
+  });
+});
+
+describe('Lưới nhập kiểu bảng tính: dòng neo của nút Thêm (addAtActive)', () => {
+  it('dòng đã nhớ còn thì giữ; bị xóa thì nhớ dòng đang ở chỉ số ô đang chọn (thư viện giữ chỉ số), không có thì bỏ', () => {
+    const key = (r: { id: number }) => r.id;
+    const rows = [{ id: 1 }, { id: 3 }];
+    expect(keepAnchor({ key: 1, col: 2 }, rows, key, 0)).toEqual({ key: 1, col: 2 });
+    expect(keepAnchor({ key: 2, col: 2 }, rows, key, 1)).toEqual({ key: 3, col: 2 });
+    expect(keepAnchor({ key: 2, col: 2 }, rows, key, 5)).toBeNull();
+    expect(keepAnchor({ key: 2, col: 2 }, rows, key, null)).toBeNull();
+    expect(keepAnchor(null, rows, key, 0)).toBeNull();
   });
 });
 

@@ -28,6 +28,12 @@ export interface Column<T> {
   /** Tiêu đề nhóm ở tầng trên: các cột kề nhau cùng nhóm có chung một ô tiêu đề (ví dụ bước chuẩn bị › KH, TH). */
   group?: string;
   render?: (row: T) => ReactNode;
+  /**
+   * Gộp ô theo dòng như ô merge của Excel: số dòng ô này phủ (>1), 0 là ô đã gộp vào dòng trên (không vẽ); mặc định 1. Các dòng
+   * của khối phải liền nhau theo thứ tự `rows` (lưới không tự sắp xếp); dòng được memo nên số dòng gộp đổi thì `columns` cũng
+   * phải đổi (dựng cột trong useMemo phụ thuộc cách gộp).
+   */
+  rowSpan?: (row: T) => number;
 }
 
 interface Props<T> {
@@ -196,12 +202,16 @@ function GridRowView<T extends object>({ row: r, rowKey: k, index, columns, sele
       )}
       <td className="grid-index">{index}</td>
       {columns.map((c) => {
+        const span = c.rowSpan?.(r) ?? 1;
+        if (span === 0) return null;
         const v = cell(r, c.key);
         const content = c.render ? (v === MASK ? <Masked /> : c.render(r)) : formatValue(v, c.format);
         return (
           <td
             key={c.key}
             data-col={c.key}
+            rowSpan={span > 1 ? span : undefined}
+            data-merged={span > 1 || undefined}
             style={{ textAlign: alignOf(c) }}
             data-num={c.format === 'number' || c.format === 'money' || undefined}
             // Cột đã kéo hẹp: chữ bị cắt ở mép ô, rê chuột xem đủ

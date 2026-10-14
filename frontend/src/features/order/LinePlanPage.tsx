@@ -13,7 +13,7 @@ import { SheetGrid, sheetDate, sheetNumber, sheetReadonly, sheetSelect, type She
 import { WorkPage } from '../../components/WorkPage';
 import { useAfterClose } from '../../lib/afterClose';
 import { api } from '../../lib/api';
-import { confirmDiscard } from '../../lib/confirm';
+import { confirmAction, confirmDiscard } from '../../lib/confirm';
 import { MASK, useFieldPolicy } from '../../lib/fieldPolicy';
 import { addDays, fmtDate, fmtMoney, fmtNum, qs, sumOf, today } from '../../lib/format';
 import { useLeaveGuard } from '../../lib/leaveGuard';
@@ -25,6 +25,7 @@ import { useSession } from '../../store/session';
 import type { Board, BoardBar, LinePlan, LinePlanDetail, ScheduleLine } from './api';
 import { EmptyState, ExportButton, LINE_STATUS, loadError, OrderFilters, PICK_ROW, PLAN_STATUS, readable, StatusBadge, useCanWrite, useCustomers, useLinesState, usePagedList } from './common';
 import { LineBoard } from './LineBoard';
+import { droppedAllocated } from './linePlanRules';
 import { computeLine, DATE_KEYS, isOutdated, storedOf, type Computed } from './scheduleDates';
 
 const RESOURCE = 'order.lineplan';
@@ -353,6 +354,8 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
   // Luôn tải lại khi mở và chỉ điền một lần từ lần tải đó: tải lại nền không đè lên phần đang nhập
   const detail = useQuery({ queryKey: ['order', 'line-plan', planId], queryFn: () => api<LinePlanDetail>(`/order/line-plans/${planId}`), refetchOnMount: 'always' });
   const plan = detail.data;
+  // Mã hàng bị Ẩn (không có) hay Che (***) thì chỉ còn số kế hoạch, như popup Phân bổ màu cỡ
+  const planLabel = plan ? (typeof plan.styleCode === 'string' && plan.styleCode !== MASK ? `${plan.styleCode} (${plan.planNo})` : plan.planNo) : '';
   const [rows, setRows] = useState<EditLine[]>([]);
   const [filled, setFilled] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -437,12 +440,29 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
         },
       }),
     onSuccess: () => {
-      toastOk(`Đã lưu dàn chuyền ${plan ? `${plan.styleCode} (${plan.planNo})` : ''}. Dòng mới đã có đề xuất phân màu cỡ theo tỷ lệ.`, 'Đã lưu');
+      toastOk(`Đã lưu dàn chuyền${planLabel ? ` ${planLabel}` : ''}. Chia màu cỡ cho từng chuyền ở màn Phân bổ màu cỡ.`, 'Đã lưu');
       onClose();
       onSaved();
     },
     onError: (e) => toastError(e, 'Chưa lưu được'),
   });
+  // Bỏ chuyền đã được phân màu cỡ: lưu là xóa luôn phần phân màu cỡ của chuyền đó (phase 5.13), hỏi lại trước
+  const saveLines = () => {
+    const statusKnown = readable(policy, 'statusCode');
+    const dropped = droppedAllocated(plan?.lines ?? [], new Set(rows.map((r) => r.id)), statusKnown, mine);
+    if (!dropped.length) return save.mutate();
+    const names = dropped.map((l) => l.lineName ?? l.lineCode).join(', ');
+    const these = dropped.length > 1 ? 'các chuyền này' : 'chuyền này';
+    confirmAction({
+      title: statusKnown ? 'Xóa phân màu cỡ của chuyền bị bỏ?' : 'Bỏ dòng dàn chuyền đã lưu?',
+      consequence: statusKnown
+        ? `${names} đã được phân màu cỡ. Lưu dàn chuyền thì phần phân màu cỡ của ${these} bị xóa, cần chia lại cho chuyền khác ở màn Phân bổ màu cỡ.`
+        : `Bạn bỏ ${names} khỏi dàn chuyền. Phần phân màu cỡ của ${these} (nếu có) bị xóa theo, cần chia lại ở màn Phân bổ màu cỡ.`,
+      confirmLabel: 'Lưu dàn chuyền',
+      cancelLabel: 'Quay lại sửa',
+      onConfirm: () => save.mutate(),
+    });
+  };
 
   // Lưới nhập kiểu bảng tính: dán nhiều dòng (chuyền, số lượng, năng suất, ngày) từ Excel; dòng ngoài phạm vi sửa tô xám,
   // dòng đang may hoặc đã xong không đổi chuyền, không xóa được
@@ -505,7 +525,7 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
 
   return (
     // Esc trong lưới là thoát sửa ô, bỏ vùng chọn: không để nó đóng popup
-    <Modal opened onClose={close} closeOnEscape={!canEdit} fullScreen title={plan ? `Chi tiết dàn chuyền: ${plan.styleCode} (${plan.planNo})` : 'Chi tiết dàn chuyền'} classNames={{ body: 'schedule-body' }}>
+    <Modal opened onClose={close} closeOnEscape={!canEdit} fullScreen title={planLabel ? `Chi tiết dàn chuyền: ${planLabel}` : 'Chi tiết dàn chuyền'} classNames={{ body: 'schedule-body' }}>
       <div className="schedule-top">
         <div className="schedule-info">
           <Text fw={700} size="sm" mb={6}>Thông tin chung</Text>
@@ -573,7 +593,7 @@ function ScheduleModal({ planId, onClose, onSaved }: { planId: number; onClose: 
               <>
                 {incomplete && rows.length > 0 && <Text size="xs" c="dimmed" mr="auto">Mỗi dòng cần chuyền, số lượng, năng suất và ngày bắt đầu vào chuyền.</Text>}
                 <Button variant="default" onClick={close}>Hủy</Button>
-                <ActionButton loading={save.isPending} blockedReason={saveBlocked} onClick={() => save.mutate()}>
+                <ActionButton loading={save.isPending} blockedReason={saveBlocked} onClick={saveLines}>
                   Lưu thay đổi
                 </ActionButton>
               </>

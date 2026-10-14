@@ -18,7 +18,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { MAX_COLOR_SIZE_ROWS, SIZE_NAME } from './order.rules';
+import { MAX_ALLOCATION_ROWS, MAX_COLOR_SIZE_ROWS, SIZE_NAME } from './order.rules';
 
 /** Như @IsOptional nhưng không cho null: cột NOT NULL thì null phải trả 422, không lọt xuống DB thành lỗi 500. */
 const Optional = () => ValidateIf((_o, v) => v !== undefined);
@@ -251,13 +251,18 @@ export class BoardQuery {
 
 // ---------- Phân bổ màu cỡ ----------
 
-/** Chỉ nhận số lượng giao cho các màu cỡ đã có của dòng dàn chuyền; SL kế hoạch lấy từ dữ liệu, không lấy từ client. */
+/**
+ * Một phần giao: chuyền (Id dòng dàn chuyền của kế hoạch), màu cỡ của kế hoạch, SL giao. Màu, cỡ phải có trong kế hoạch (máy
+ * chủ so, nên không kiểm theo quy tắc cỡ nhập tay: cỡ của BRAVO có thể ngoài quy tắc đó); SL kế hoạch lấy từ dữ liệu.
+ */
 export class AllocationRowDto {
+  @Type(() => Number) @IsInt({ message: 'Chọn chuyền.' }) @Min(1, { message: 'Chọn chuyền.' }) lineId!: number;
   @trim() @IsString() @MinLength(1) @MaxLength(100) colorName!: string;
-  @trim() @Matches(SIZE_NAME, { message: 'Cỡ tối đa 20 ký tự (chữ, số, dấu chấm, gạch, ngoặc).' }) sizeName!: string;
+  @trim() @IsString() @MinLength(1) @MaxLength(20) sizeName!: string;
   @Type(() => Number) @IsInt() @Min(0) @Max(10_000_000) assignedQty!: number;
 }
 
+/** Thay toàn bộ phân màu cỡ của các chuyền người dùng sửa được: một màu cỡ tách được cho nhiều chuyền nên nhiều dòng hơn màu cỡ */
 export class AllocationDto {
-  @IsArray() @ArrayMaxSize(MAX_COLOR_SIZE_ROWS) @ValidateNested({ each: true }) @Type(() => AllocationRowDto) rows!: AllocationRowDto[];
+  @IsArray() @ArrayMaxSize(MAX_ALLOCATION_ROWS) @ValidateNested({ each: true }) @Type(() => AllocationRowDto) rows!: AllocationRowDto[];
 }

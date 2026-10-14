@@ -181,16 +181,38 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
 
   // ---------------- L3 ----------------
   describe('L3 – phạm vi theo phép gán', () => {
-    it('Trưởng chuyền 3 chỉ thấy chuyền A01-L03 ở Phân bổ màu cỡ; dòng chuyền khác trả 404 khi xem và sửa', async () => {
+    it('Phân bổ màu cỡ gom một dòng mỗi kế hoạch (phase 5.13); Trưởng chuyền 3 chỉ thấy kế hoạch có chuyền 3, chỉ chuyền 3; kế hoạch không có chuyền 3 trả 404 khi xem và sửa', async () => {
       const tc = await tokenFor('truongchuyen.a', 'A01');
       const planner = await tokenFor('kehoach.a', 'A01');
       const mine = (await api().get('/api/v1/order/color-size?pageSize=200').set(auth(tc)).expect(200)).body;
       expect(mine.total).toBeGreaterThan(0);
-      expect(new Set(mine.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
+      expect(new Set(mine.items.flatMap((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
 
       const all = (await api().get('/api/v1/order/color-size?pageSize=200').set(auth(planner)).expect(200)).body;
       expect(all.total).toBeGreaterThan(mine.total);
-      const other = all.items.find((i: any) => i.lineCode !== 'A01-L03');
+      // Mỗi kế hoạch một dòng (id là Id kế hoạch)
+      expect(new Set(all.items.map((i: any) => i.id)).size).toBe(all.items.length);
+      // Kế hoạch xếp hai chuyền: một dòng, chuyền nối theo thứ tự dàn chuyền, NSBQ theo từng chuyền; SL kế hoạch, tổng giao, trạng
+      // thái là của cả kế hoạch
+      const fixturePlan = (await api().get(`/api/v1/order/color-size?pageSize=200&style=${FIXTURE_STYLE}`).set(auth(planner)).expect(200)).body.items;
+      expect(fixturePlan).toHaveLength(1);
+      expect(fixturePlan[0]).toMatchObject({ lineCode: ['A01-L03', 'A01-L05'], avgOutput: [300, 300], qty: 600, assignedQty: 600, statusCode: 'FULL', startDate: '2026-11-02', endDate: '2026-11-02' });
+      expect(fixturePlan[0].lineName).toHaveLength(2);
+      expect(mine.items.find((i: any) => i.id === fixturePlan[0].id)).toMatchObject({ lineCode: ['A01-L03'], avgOutput: [300], qty: 600, assignedQty: 600 });
+      // Lọc theo chuyền: kế hoạch có chuyền đó, cột chuyền vẫn đủ các chuyền; giá trị lọc là từng chuyền
+      const cf = (v: object) => encodeURIComponent(JSON.stringify(v));
+      const byLine = (await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}&line=A01-L05`).set(auth(planner)).expect(200)).body;
+      expect(byLine.items.map((i: any) => i.lineCode)).toEqual([['A01-L03', 'A01-L05']]);
+      expect((await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}&cf=${cf({ lineCode: { in: ['A01-L05'] } })}`).set(auth(planner)).expect(200)).body.total).toBe(1);
+      // Bỏ tích chuyền 5 (notIn): kế hoạch còn chuyền 3 được tích nên vẫn hiện, như khi tích riêng chuyền 3; bỏ tích cả hai thì ẩn
+      expect((await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}&cf=${cf({ lineCode: { notIn: ['A01-L05'] } })}`).set(auth(planner)).expect(200)).body.total).toBe(1);
+      expect((await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}&cf=${cf({ lineCode: { in: ['A01-L03'] } })}`).set(auth(planner)).expect(200)).body.total).toBe(1);
+      expect((await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}&cf=${cf({ lineCode: { notIn: ['A01-L03', 'A01-L05'] } })}`).set(auth(planner)).expect(200)).body.total).toBe(0);
+      expect((await api().get(`/api/v1/order/color-size/values?field=lineCode&style=${FIXTURE_STYLE}`).set(auth(planner)).expect(200)).body.values).toEqual(['A01-L03', 'A01-L05']);
+      // Trưởng chuyền lọc theo chuyền khác: không thấy gì (chỉ chuyền trong phạm vi xem được tính)
+      expect((await api().get('/api/v1/order/color-size?line=A01-L05').set(auth(tc)).expect(200)).body.total).toBe(0);
+
+      const other = all.items.find((i: any) => !i.lineCode.includes('A01-L03'));
       await api().get(`/api/v1/order/color-size/${other.id}`).set(auth(tc)).expect(404);
       await api().put(`/api/v1/order/color-size/${other.id}`).set(auth(tc)).send({ rows: [] }).expect(404);
     });
@@ -212,24 +234,173 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Trưởng chuyền lưu số lượng giao cho chuyền mình; vượt SL KH của ô, màu cỡ lạ => 422', async () => {
+    it('Phân bổ màu cỡ (phase 5.13): Trưởng chuyền phân màu cỡ cho chuyền mình; tổng mỗi màu cỡ gồm cả chuyền khác không vượt SL kế hoạch; chuyền khác, màu cỡ lạ, lặp => 422', async () => {
       const tc = await tokenFor('truongchuyen.a', 'A01');
+      const planner = await tokenFor('kehoach.a', 'A01');
       const row = (await api().get(`/api/v1/order/color-size?pageSize=1&style=${FIXTURE_STYLE}`).set(auth(tc))).body.items[0];
-      expect(row.lineCode).toBe('A01-L03');
       const detail = (await api().get(`/api/v1/order/color-size/${row.id}`).set(auth(tc)).expect(200)).body;
-      const original = detail.rows.map((r: any) => ({ colorName: r.colorName, sizeName: r.sizeName, assignedQty: r.assignedQty }));
+      // Chỉ chuyền 3 (sửa được); SL KH là SL KHXH của kế hoạch; phần của chuyền 5 chỉ có tổng theo màu cỡ
+      expect(detail.lines.map((l: any) => [l.lineCode, l.qty, l.assignedQty, l.editable])).toEqual([['A01-L03', 300, 300, true]]);
+      expect(detail.colorSizes).toHaveLength(6);
+      expect(detail.colorSizes.every((c: any) => c.qty === 100 && c.hiddenQty === 50)).toBe(true);
+      expect(detail.rows).toHaveLength(6);
+      const l3 = detail.lines[0].id;
+      const l5 = (await api().get(`/api/v1/order/color-size/${row.id}`).set(auth(planner)).expect(200)).body.lines.find((l: any) => l.lineCode === 'A01-L05').id;
+      const original = detail.rows.map((r: any) => ({ lineId: r.lineId, colorName: r.colorName, sizeName: r.sizeName, assignedQty: r.assignedQty }));
+      const put = (rows: object[]) => api().put(`/api/v1/order/color-size/${row.id}`).set(auth(tc)).send({ rows });
+      const [c0] = detail.colorSizes;
+      expect([original[0].colorName, original[0].sizeName]).toEqual([c0.colorName, c0.sizeName]);
       try {
-        const over = detail.rows.map((r: any, i: number) => ({ colorName: r.colorName, sizeName: r.sizeName, assignedQty: i === 0 ? r.planQty + 1 : 0 }));
-        expect((await api().put(`/api/v1/order/color-size/${row.id}`).set(auth(tc)).send({ rows: over }).expect(422)).body.error.code).toBe('VALIDATION_FAILED');
-        await api().put(`/api/v1/order/color-size/${row.id}`).set(auth(tc)).send({ rows: [{ colorName: 'Tím lạ', sizeName: 'S', assignedQty: 1 }] }).expect(422);
-        const ok = await api()
-          .put(`/api/v1/order/color-size/${row.id}`)
-          .set(auth(tc))
-          .send({ rows: detail.rows.map((r: any) => ({ colorName: r.colorName, sizeName: r.sizeName, assignedQty: r.planQty })) })
-          .expect(200);
-        expect(ok.body.assignedQty).toBe(detail.rows.reduce((s: number, r: any) => s + r.planQty, 0));
+        // Màu cỡ đầu: 51 + 50 của chuyền 5 > 100 (tổng chuyền vẫn 300)
+        const over = original.map((r: any, i: number) => ({ ...r, assignedQty: i === 0 ? 51 : i === 1 ? 49 : r.assignedQty }));
+        const bad = (await put(over).expect(422)).body.error;
+        expect(bad.code).toBe('VALIDATION_FAILED');
+        expect(bad.details).toEqual([`${c0.colorName}/${c0.sizeName}: giao 101 (gồm 50 ở chuyền khác) > SL KH 100`]);
+        await put([{ lineId: l3, colorName: 'Tím lạ', sizeName: 'S', assignedQty: 1 }]).expect(422);
+        // Chuyền 5 ngoài phạm vi sửa của Trưởng chuyền 3
+        await put([{ lineId: l5, colorName: c0.colorName, sizeName: c0.sizeName, assignedQty: 1 }]).expect(422);
+        // Một chuyền một màu cỡ hai dòng (so không phân biệt hoa thường)
+        await put([
+          { lineId: l3, colorName: c0.colorName, sizeName: c0.sizeName, assignedQty: 1 },
+          { lineId: l3, colorName: c0.colorName.toUpperCase(), sizeName: c0.sizeName.toLowerCase(), assignedQty: 1 },
+        ]).expect(422);
+        // Giảm phần giao: lưu được; tổng giao, trạng thái của cả kế hoạch; dòng giao 0 không lưu
+        const less = original.map((r: any, i: number) => ({ ...r, assignedQty: i === 0 ? 30 : i === 1 ? 0 : r.assignedQty }));
+        const ok = (await put(less).expect(200)).body;
+        expect(ok).toMatchObject({ assignedQty: 530, statusCode: 'PARTIAL' });
+        expect(ok.rows).toHaveLength(5);
+        expect(ok.lines[0]).toMatchObject({ assignedQty: 230, statusCode: 'ALLOCATED' });
       } finally {
-        await api().put(`/api/v1/order/color-size/${row.id}`).set(auth(tc)).send({ rows: original }).expect(200);
+        await put(original).expect(200);
+      }
+    });
+
+    it('Phân bổ màu cỡ (phase 5.13): một màu cỡ tách cho hai chuyền, số lượng khác nhau; tổng một chuyền vượt SL xếp chuyền => 422; bỏ hết phần giao của chuyền thì chuyền về Chưa phân màu cỡ', async () => {
+      const planner = await tokenFor('kehoach.a', 'A01');
+      const row = (await api().get(`/api/v1/order/color-size?pageSize=1&style=${FIXTURE_STYLE}`).set(auth(planner))).body.items[0];
+      const detail = (await api().get(`/api/v1/order/color-size/${row.id}`).set(auth(planner)).expect(200)).body;
+      expect(detail.lines.map((l: any) => [l.lineCode, l.editable])).toEqual([
+        ['A01-L03', true],
+        ['A01-L05', true],
+      ]);
+      expect(detail.colorSizes.every((c: any) => c.hiddenQty === 0)).toBe(true);
+      const [l3, l5] = detail.lines.map((l: any) => l.id as number);
+      const original = detail.rows.map((r: any) => ({ lineId: r.lineId, colorName: r.colorName, sizeName: r.sizeName, assignedQty: r.assignedQty }));
+      const put = (rows: object[]) => api().put(`/api/v1/order/color-size/${row.id}`).set(auth(planner)).send({ rows });
+      const [c0, c1] = detail.colorSizes;
+      const cell = (lineId: number, c: any, assignedQty: number) => ({ lineId, colorName: c.colorName, sizeName: c.sizeName, assignedQty });
+      const rest = original.filter((r: any) => ![c0, c1].some((c: any) => c.colorName === r.colorName && c.sizeName === r.sizeName));
+      try {
+        // Chuyền có phần giao đổi được ghi lúc sửa kể cả khi trạng thái giữ nguyên (chuyền 5 đang may), để dàn chuyền mô phỏng nhận
+        // ra kế hoạch người dùng đã sửa; chuyền không đổi phần giao thì không
+        const order = app.get<OrderDb>(ORDER_DB);
+        await order.updateTable('ShipmentPlanLine').set({ ModifiedAt: null, ModifiedBy: null }).where('Id', 'in', [l3, l5]).execute();
+        const first5 = original.findIndex((r: any) => r.lineId === l5);
+        await put(original.map((r: any, i: number) => (i === first5 ? { ...r, assignedQty: r.assignedQty - 1 } : r))).expect(200);
+        const stamped = new Map((await order.selectFrom('ShipmentPlanLine').select(['Id', 'ModifiedAt']).where('Id', 'in', [l3, l5]).execute()).map((l) => [l.Id, l.ModifiedAt]));
+        expect(stamped.get(l5)).not.toBeNull();
+        expect(stamped.get(l3)).toBeNull();
+        // Màu cỡ đầu: chuyền 3 may 70, chuyền 5 may 30; màu cỡ thứ hai ngược lại: mỗi chuyền vẫn đủ 300
+        const ok = (await put([...rest, cell(l3, c0, 70), cell(l5, c0, 30), cell(l3, c1, 30), cell(l5, c1, 70)]).expect(200)).body;
+        const split = ok.rows.filter((r: any) => r.colorName === c0.colorName && r.sizeName === c0.sizeName).map((r: any) => [r.lineId, r.assignedQty]);
+        expect(split).toEqual(expect.arrayContaining([[l3, 70], [l5, 30]]));
+        expect(ok.statusCode).toBe('FULL');
+        // Chuyền 3 nhận thêm 10 ở màu cỡ đầu (chuyền 5 bớt 10): màu cỡ vẫn 100 nhưng chuyền 3 thành 310 > 300
+        const lineOver = (await put([...rest, cell(l3, c0, 80), cell(l5, c0, 20), cell(l3, c1, 30), cell(l5, c1, 70)]).expect(422)).body.error;
+        expect(lineOver.details).toEqual([expect.stringMatching(/: giao 310 > SL xếp chuyền 300$/)]);
+        // Bỏ hết phần giao của chuyền 3: chuyền 3 về Chưa phân màu cỡ, chuyền 5 đang may giữ trạng thái
+        const only5 = (await put(original.filter((r: any) => r.lineId === l5)).expect(200)).body;
+        expect(only5.lines.map((l: any) => [l.lineCode, l.assignedQty, l.statusCode])).toEqual([
+          ['A01-L03', 0, 'PLANNED'],
+          ['A01-L05', 300, 'IN_PRODUCTION'],
+        ]);
+        expect(only5.statusCode).toBe('PARTIAL');
+      } finally {
+        await put(original).expect(200);
+      }
+    });
+
+    it('Phân bổ màu cỡ (phase 5.13): chính sách cột theo người (Chuyền may Che, Số lượng giao Ẩn, Che, Chỉ đọc, Số lượng kế hoạch Ẩn); kế hoạch ĐVCS khác theo Id => 404', async () => {
+      const id = await tempUser('test.alloccol', ['PLANNER'], ['A01', 'A02']);
+      const setPolicy = (fieldCode: string, accessLevel: string) =>
+        api().post(`/api/v1/admin/users/${id}/field-policies`).set(auth(admin)).send({ resourceId: resId('order.colorsize'), fieldCode, accessLevel, reason: 'Thử chính sách cột (test)' }).expect(200);
+      const clearPolicies = async () => {
+        const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin)).expect(200)).body;
+        for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(204);
+      };
+      try {
+        await clearPolicies();
+        const t = await tokenFor('test.alloccol', 'A01', TEST_PASSWORD);
+        const row = (await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items[0];
+        const detailOf = async () => (await api().get(`/api/v1/order/color-size/${row.id}`).set(auth(t)).expect(200)).body;
+        // Kế hoạch của A01 xem, lưu khi đang làm việc ở A02 (cùng người, cùng quyền): 404 như không có
+        const t2 = await tokenFor('test.alloccol', 'A02', TEST_PASSWORD);
+        await api().get(`/api/v1/order/color-size/${row.id}`).set(auth(t2)).expect(404);
+        await api().put(`/api/v1/order/color-size/${row.id}`).set(auth(t2)).send({ rows: [] }).expect(404);
+
+        // Chuyền may bị Che: mã thành "***", không có tên chuyền (tên suy ra được mã), file xuất cũng che; không hỏi giá trị theo cột này
+        await setPolicy('lineCode', 'MASKED');
+        const masked = (await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items[0];
+        expect(masked.lineCode).toBe('***');
+        expect(masked.lineName).toBeUndefined();
+        expect((await detailOf()).lines.map((l: any) => [l.lineCode, l.lineName])).toEqual([
+          ['***', undefined],
+          ['***', undefined],
+        ]);
+        const csv = (await api().get(`/api/v1/order/color-size/export?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).text;
+        expect(csv).not.toContain('A01-L03');
+        expect(csv.split(/\r?\n/).find((l) => l.includes(FIXTURE_STYLE))).toContain('***');
+        expect((await api().get('/api/v1/order/color-size/values?field=lineCode').set(auth(t)).expect(403)).body.error.code).toBe('FIELD_NOT_READABLE');
+
+        // Số lượng giao bị Ẩn: không có tổng giao, phần của chuyền khác, phần giao; lưu có số lượng giao => 403
+        await clearPolicies();
+        await setPolicy('assignedQty', 'HIDDEN');
+        const hidden = await detailOf();
+        expect(hidden.assignedQty).toBeUndefined();
+        expect(hidden.colorSizes.some((c: any) => 'hiddenQty' in c)).toBe(false);
+        expect(hidden.rows.some((r: any) => 'assignedQty' in r)).toBe(false);
+        expect(hidden.lines.some((l: any) => 'assignedQty' in l)).toBe(false);
+        const [first] = hidden.colorSizes;
+        const denied = await api()
+          .put(`/api/v1/order/color-size/${row.id}`)
+          .set(auth(t))
+          .send({ rows: [{ lineId: hidden.lines[0].id, colorName: first.colorName, sizeName: first.sizeName, assignedQty: 1 }] })
+          .expect(403);
+        expect(denied.body.error.code).toBe('FIELD_READONLY');
+        // Bị Che: "***" ở mọi chỗ, kể cả phần của chuyền khác
+        await clearPolicies();
+        await setPolicy('assignedQty', 'MASKED');
+        const covered = await detailOf();
+        expect(covered.assignedQty).toBe('***');
+        expect(covered.colorSizes.every((c: any) => c.hiddenQty === '***')).toBe(true);
+        expect(covered.rows.every((r: any) => r.assignedQty === '***')).toBe(true);
+        // Chỉ đọc: bỏ hết phần giao bằng `rows: []` (body không có cột nào) cũng bị chặn, phần giao giữ nguyên
+        await clearPolicies();
+        await setPolicy('assignedQty', 'READONLY');
+        const kept = (await detailOf()).rows;
+        expect(kept.length).toBeGreaterThan(0);
+        const wipe = await api().put(`/api/v1/order/color-size/${row.id}`).set(auth(t)).send({ rows: [] }).expect(403);
+        expect(wipe.body.error.code).toBe('FIELD_READONLY');
+        expect((await detailOf()).rows).toEqual(kept);
+
+        // Số lượng kế hoạch bị Ẩn: không có SL kế hoạch, SL đã xếp; thông báo giao vượt không nêu số
+        await clearPolicies();
+        await setPolicy('qty', 'HIDDEN');
+        const blind = await detailOf();
+        expect(blind.qty).toBeUndefined();
+        expect(blind.colorSizes.some((c: any) => 'qty' in c)).toBe(false);
+        expect(blind.lines.some((l: any) => 'qty' in l)).toBe(false);
+        // Chuyền 3: màu cỡ đầu 51 (cộng 50 của chuyền 5 > 100), màu cỡ thứ hai 49 để tổng chuyền vẫn 300
+        const [c0, c1] = blind.colorSizes;
+        const l3 = blind.lines.find((l: any) => l.lineCode === 'A01-L03').id as number;
+        const is = (r: any, c: any) => r.colorName === c.colorName && r.sizeName === c.sizeName;
+        const rows = blind.rows.map((r: any) => ({ lineId: r.lineId, colorName: r.colorName, sizeName: r.sizeName, assignedQty: r.lineId === l3 && is(r, c0) ? 51 : r.lineId === l3 && is(r, c1) ? 49 : r.assignedQty }));
+        const bad = (await api().put(`/api/v1/order/color-size/${row.id}`).set(auth(t)).send({ rows }).expect(422)).body.error;
+        expect(bad.details).toEqual([`${c0.colorName}/${c0.sizeName}`]);
+        expect(bad.message).not.toMatch(/101|100/);
+      } finally {
+        await clearPolicies();
+        await dropUser(id);
       }
     });
 
@@ -364,7 +535,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         const a00 = await tokenFor('test.linea00', 'A00', TEST_PASSWORD);
         const seen = (await api().get('/api/v1/order/color-size?pageSize=200').set(auth(a00)).expect(200)).body;
         expect(seen.total).toBeGreaterThan(0);
-        expect(new Set(seen.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
+        expect(new Set(seen.items.flatMap((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
         await api().put(`/api/v1/order/color-size/${seen.items[0].id}`).set(auth(a00)).send({ rows: [] }).expect(403);
         expect(await lines(a00, PREP)).toEqual(new Set(['A01-L03']));
       } finally {
@@ -402,7 +573,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         expect((await api().get(PREP).set(auth(t)).expect(200)).body.total).toBe(0);
         // Người không bị giới hạn chuyền vẫn thấy dòng của chuyền này (dữ liệu cũ còn mã)
         const planner = await tokenFor('kehoach.a', 'A01');
-        expect((await api().get(COLOR_SIZE).set(auth(planner)).expect(200)).body.items.some((i: any) => i.lineCode === 'A01-L03')).toBe(true);
+        expect((await api().get(COLOR_SIZE).set(auth(planner)).expect(200)).body.items.some((i: any) => i.lineCode.includes('A01-L03'))).toBe(true);
         // Phạm vi đã lưu vẫn còn, hiện là không còn tác dụng; lưu lại phép gán vẫn giữ được mã đó
         const tc = await userId('truongchuyen.a');
         const scopes = (await api().get(`/api/v1/admin/users/${tc}/access`).set(auth(admin)).expect(200)).body.assignments.find((a: any) => a.roleCode === 'LINE_LEADER').scopes;
@@ -421,7 +592,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         org.invalidate();
         await app.get(PermissionService).bumpVersion();
       }
-      expect(new Set((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
+      expect(new Set((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.items.flatMap((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
     });
 
     it('phạm vi chuyền mã "~…" (MES_Core/0009 ghi cho phạm vi cũ vốn không có tác dụng): tập rỗng, không thành không giới hạn', async () => {
@@ -460,7 +631,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         await app.get(PermissionService).bumpVersion();
       }
       // Lỗi không bị giữ trong cache: nguồn đọc lại được thì chạy lại bình thường
-      expect(new Set((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.items.map((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
+      expect(new Set((await api().get(COLOR_SIZE).set(auth(t)).expect(200)).body.items.flatMap((i: any) => i.lineCode))).toEqual(new Set(['A01-L03']));
     });
 
     it('Kế toán (phạm vi ĐVCS A01, A02): ở A00 chỉ đọc kế hoạch của hai ĐVCS này, ở A03 không có quyền; đơn hàng dùng chung thì thấy hết', async () => {
@@ -1021,7 +1192,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Xếp chuyền: số ngày SX, số ngày nghỉ, kết thúc, ra chuyền, nhập kho tính theo lịch ĐVCS (phase 5.12); đề xuất phân màu cỡ; chuyền nhà máy khác, số ngày quá lớn => 422', async () => {
+    it('Xếp chuyền: số ngày SX, số ngày nghỉ, kết thúc, ra chuyền, nhập kho tính theo lịch ĐVCS (phase 5.12); không đề xuất phân màu cỡ, không giảm chuyền, màu cỡ dưới phần đã giao (phase 5.13); chuyền nhà máy khác, số ngày quá lớn => 422', async () => {
       const t = await tokenFor('kehoach.a', 'A01');
       const plan = (await api().get(`/api/v1/order/line-plans?pageSize=200&style=${FIXTURE_STYLE}`).set(auth(t))).body.items.find((p: any) => p.id === fixture.planId && p.lineCount === 0);
       await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ lineCode: 'A02-L01', qty: 10, avgOutput: 10, startDate: '2026-12-05' }] }).expect(422);
@@ -1063,13 +1234,48 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         await api().delete('/api/v1/admin/catalogs/work-calendars/A01/days?from=2026-12-07&to=2026-12-07').set(auth(adminA01)).expect(200);
         expect(saved.lines[0]).toMatchObject({ lineCode: 'A01-L12', productionDays: 4, endDate: '2026-12-09' });
         expect(saved.statusCode).toBe('SCHEDULED');
-        const alloc = (await api().get(`/api/v1/order/color-size/${saved.lines[0].id}`).set(auth(t)).expect(200)).body;
-        expect(alloc.rows.reduce((s: number, r: any) => s + r.planQty, 0)).toBe(1000);
+        // Lưu dàn chuyền không đề xuất phân màu cỡ (phase 5.13): kế hoạch hiện một dòng ở Phân bổ màu cỡ, chưa phân
+        const alloc = (await api().get(`/api/v1/order/color-size/${plan.id}`).set(auth(t)).expect(200)).body;
+        expect(alloc).toMatchObject({ lineCode: ['A01-L12'], qty: 1200, assignedQty: 0, statusCode: 'PLANNED', rows: [] });
+        expect(alloc.colorSizes.map((c: any) => c.qty)).toEqual([200, 200, 200, 200, 200, 200]);
         const board = (await api().get('/api/v1/order/line-plans/board?from=2026-12-01&to=2026-12-31').set(auth(t)).expect(200)).body;
         expect(board.bars.some((b: any) => b.planId === plan.id && b.lineCode === 'A01-L12')).toBe(true);
         // 7 ngày làm từ thứ Hai = thứ Hai tuần sau (bỏ Chủ nhật)
         const week = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ id: saved.lines[0].id, lineCode: 'A01-L12', qty: 700, avgOutput: 100, startDate: '2026-12-07' }] }).expect(200)).body;
         expect(week.lines[0]).toMatchObject({ endDate: '2026-12-14', offDays: 1 });
+        // Giao 100 mỗi màu cỡ (600) cho chuyền 12: Xếp chuyền không giảm chuyền xuống dưới 600, Kế hoạch xuất hàng không giảm màu cỡ
+        // xuống dưới 100 hay bỏ màu cỡ đã giao (409); bỏ chuyền thì phần giao của nó bị xóa theo (finally)
+        const l12 = alloc.lines[0].id;
+        const given = (await api().put(`/api/v1/order/color-size/${plan.id}`).set(auth(t)).send({ rows: alloc.colorSizes.map((c: any) => ({ lineId: l12, colorName: c.colorName, sizeName: c.sizeName, assignedQty: 100 })) }).expect(200)).body;
+        expect(given).toMatchObject({ assignedQty: 600, statusCode: 'PARTIAL' });
+        const shrink = await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ id: l12, lineCode: 'A01-L12', qty: 599, avgOutput: 100, startDate: '2026-12-07' }] }).expect(409);
+        expect(shrink.body.error.details).toEqual([expect.stringContaining('đã giao 600, số lượng mới 599')]);
+        const cells = alloc.colorSizes.map((c: any, i: number) => ({ colorName: c.colorName, sizeName: c.sizeName, planQty: i === 0 ? 99 : 200 }));
+        const cut = await api().put(`/api/v1/order/shipment-plans/${plan.id}`).set(auth(t)).send({ lines: cells }).expect(409);
+        expect(cut.body.error.details).toEqual([`${cells[0].colorName}/${cells[0].sizeName}: đã giao 100, SL KHXH mới 99`]);
+        await api().put(`/api/v1/order/shipment-plans/${plan.id}`).set(auth(t)).send({ lines: cells.slice(1) }).expect(409);
+        // Kế hoạch cũ đang giao vượt một màu cỡ (chia theo tỷ lệ trước phase 5.13): sửa màu cỡ khác vẫn được, giảm đúng màu cỡ đó thì 409
+        await app
+          .get<OrderDb>(ORDER_DB)
+          .updateTable('ShipmentPlanLineColorSize')
+          .set({ AssignedQty: 250 })
+          .where('ShipmentPlanLineId', '=', l12)
+          .where('ColorName', '=', cells[0].colorName)
+          .where('SizeName', '=', cells[0].sizeName)
+          .execute();
+        const raise = cells.map((c: any, i: number) => ({ ...c, planQty: i === 1 ? 210 : 200 }));
+        await api().put(`/api/v1/order/shipment-plans/${plan.id}`).set(auth(t)).send({ lines: raise }).expect(200);
+        await api()
+          .put(`/api/v1/order/shipment-plans/${plan.id}`)
+          .set(auth(t))
+          .send({ lines: raise.map((c: any, i: number) => (i === 0 ? { ...c, planQty: 199 } : c)) })
+          .expect(409);
+        await api().put(`/api/v1/order/shipment-plans/${plan.id}`).set(auth(t)).send({ lines: cells.map((c: any) => ({ ...c, planQty: 200 })) }).expect(200);
+        // Chuyền 12 đang giao 750 > SL chuyền 700 (dữ liệu cũ): lưu dàn chuyền giữ số lượng vẫn được, giảm tiếp thì 409
+        const keepLine = { id: l12, lineCode: 'A01-L12', qty: 700, avgOutput: 100, startDate: '2026-12-07' };
+        await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [keepLine] }).expect(200);
+        const less = await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ ...keepLine, qty: 699 }] }).expect(409);
+        expect(less.body.error.details).toEqual([expect.stringContaining('đã giao 750, số lượng mới 699')]);
       } finally {
         await api().delete(`/api/v1/admin/catalogs/work-calendars/A01/days?from=${holiday.from}&to=${holiday.to}`).set(auth(adminA01)).expect(200);
         const back = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [] }).expect(200)).body;

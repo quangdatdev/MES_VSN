@@ -64,13 +64,13 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
         }
         return orderId;
       };
-      /** Kế hoạch có sẵn; `line` tạo cùng lúc kế hoạch, trừ khi `lineCreatedAt` (dòng người dùng thêm sau) */
+      /** Kế hoạch có sẵn; `line` tạo cùng lúc kế hoạch, trừ khi `createdAt` (dòng người dùng thêm sau); `allocCreatedAt`: phân màu cỡ lưu sau */
       const plan = async (
         branch: string,
         orderId: number,
         no: string,
         planner: string,
-        line?: { code: string; start: string; end: string; createdAt?: Date; modified?: boolean },
+        line?: { code: string; start: string; end: string; createdAt?: Date; modified?: boolean; allocCreatedAt?: Date },
         modified = false,
       ) => {
         const planId = await id('ShipmentPlan', {
@@ -105,7 +105,16 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
             BranchCode: branch,
           });
           planLine.set(planId, lineId);
-          await id('ShipmentPlanLineColorSize', { ShipmentPlanLineId: lineId, ColorName: 'Navy', SizeName: 'M', PlanQty: 500, AssignedQty: 500, SortOrder: 0, BranchCode: branch });
+          await id('ShipmentPlanLineColorSize', {
+            ShipmentPlanLineId: lineId,
+            ColorName: 'Navy',
+            SizeName: 'M',
+            PlanQty: 500,
+            AssignedQty: 500,
+            SortOrder: 0,
+            CreatedAt: line.allocCreatedAt ?? new Date(Date.parse(`${TODAY}T01:00:30Z`)),
+            BranchCode: branch,
+          });
         }
         return planId;
       };
@@ -124,8 +133,9 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
       const openOrder = await order(B, 41, { qty: 2000, ship: TODAY, status: 'PLANNING' });
       await plan(B, openOrder, 'ZT-SIM-D', PLANNER_NAME);
       const touched = await plan(B, await order(B, 42, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-B', PLANNER_NAME, { code: `${B}-L03`, start: addDays(TODAY, 1), end: addDays(TODAY, 6) }, true);
-      // Bốn cách nhận diện "người dùng đã sửa" còn lại: dòng có ModifiedAt; dòng thêm sau kế hoạch hơn 10 phút; phân màu cỡ
-      // có ModifiedAt; dòng có dữ liệu ở Kế hoạch chuẩn bị SX (khớp Id và thời điểm tạo)
+      // Năm cách nhận diện "người dùng đã sửa" còn lại: dòng có ModifiedAt; dòng thêm sau kế hoạch hơn 10 phút; phân màu cỡ
+      // có ModifiedAt; phân màu cỡ lưu sau kế hoạch hơn 10 phút (phase 5.13 lưu dòng đổi bằng cách thêm lại); dòng có dữ liệu ở
+      // Kế hoạch chuẩn bị SX (khớp Id và thời điểm tạo)
       const lineEdited = await plan(B, await order(B, 44, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-E', PLANNER_NAME, { code: `${B}-L04`, start: addDays(TODAY, 1), end: addDays(TODAY, 6), modified: true });
       const lineAdded = await plan(B, await order(B, 45, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-F', PLANNER_NAME, {
         code: `${B}-L05`,
@@ -135,6 +145,12 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
       });
       const allocEdited = await plan(B, await order(B, 46, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-G', PLANNER_NAME, { code: `${B}-L06`, start: addDays(TODAY, 1), end: addDays(TODAY, 6) });
       await trx.updateTable('ShipmentPlanLineColorSize').set({ ModifiedAt: new Date() }).where('ShipmentPlanLineId', '=', planLine.get(allocEdited)!).execute();
+      const allocAdded = await plan(B, await order(B, 49, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-J', PLANNER_NAME, {
+        code: `${B}-L04`,
+        start: addDays(TODAY, 20),
+        end: addDays(TODAY, 25),
+        allocCreatedAt: new Date(Date.parse(`${TODAY}T01:11:00Z`)),
+      });
       const prepEdited = await plan(B, await order(B, 47, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-H', PLANNER_NAME, { code: `${B}-L06`, start: addDays(TODAY, 20), end: addDays(TODAY, 25) });
       // Bản chép cũ (thời điểm tạo khác) của một Id dòng: không được coi là đã nhập
       const prepStale = await plan(B, await order(B, 48, { qty: 1000, ship: TODAY, status: 'PLANNING' }), 'ZT-SIM-I', PLANNER_NAME, { code: `${B}-L05`, start: addDays(TODAY, 20), end: addDays(TODAY, 25) });
@@ -148,8 +164,8 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
       const statusOf = async (orderId: number) => (await trx.selectFrom('SalesOrder').select('StatusCode').where('Id', '=', orderId).executeTakeFirstOrThrow()).StatusCode;
 
       // 1. Xóa: chỉ kế hoạch mô phỏng chưa sửa của đúng nhà máy; đơn trả về trạng thái lúc nạp
-      expect(await clearSimulated(trx, B, { prepLines })).toEqual({ removed: 3, kept: 5 });
-      const keptIds = [userPlan, touched, lineEdited, lineAdded, allocEdited, prepEdited];
+      expect(await clearSimulated(trx, B, { prepLines })).toEqual({ removed: 3, kept: 6 });
+      const keptIds = [userPlan, touched, lineEdited, lineAdded, allocEdited, allocAdded, prepEdited];
       expect((await planIds(B)).sort((a, b) => a - b)).toEqual(keptIds.sort((a, b) => a - b));
       expect(await planIds(OTHER)).toEqual([other]);
       expect(await statusOf(closedOrder)).toBe('DONE');
@@ -157,7 +173,7 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
 
       // 2. Xếp mới
       const stats = await simulateBranch(trx, { branch: B, lines: LINES6, today: TODAY, plannerId: null, prepLines, calendar: DEFAULT_WORK_CALENDAR });
-      expect(stats).toMatchObject({ removed: 0, kept: 5 });
+      expect(stats).toMatchObject({ removed: 0, kept: 6 });
       expect(stats.plans).toBeGreaterThan(20);
       expect(await planIds(OTHER)).toEqual([other]);
       const plans = await trx.selectFrom('ShipmentPlan').selectAll().where('BranchCode', '=', B).execute();
@@ -172,7 +188,8 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
       const navyCells = await trx.selectFrom('ShipmentPlanColorSize').select(['ShipmentPlanId', 'ColorName', 'SizeName']).where('ShipmentPlanId', 'in', navyPlans).execute();
       expect(navyCells.length).toBe(navyPlans.length * 4);
 
-      // Dòng dàn chuyền: không chồng nhau (kể cả dòng có sẵn), phân màu cỡ khớp SL dòng và trạng thái
+      // Dòng dàn chuyền: không chồng nhau (kể cả dòng có sẵn); phân màu cỡ chỉ có phần giao > 0, khớp trạng thái, tổng mỗi chuyền
+      // không vượt SL chuyền, tổng mỗi màu cỡ không vượt SL kế hoạch (luật màn Phân bổ màu cỡ, phase 5.13)
       const lines = await trx.selectFrom('ShipmentPlanLine').selectAll().where('BranchCode', '=', B).execute();
       const day = (d: Date) => d.toISOString().slice(0, 10);
       const bars = lines.map((l) => ({ lineCode: l.LineCode, start: day(l.StartDate as Date), end: day(l.EndDate as Date) }));
@@ -184,10 +201,10 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
       const planCells = await trx.selectFrom('ShipmentPlanColorSize').selectAll().where('BranchCode', '=', B).execute();
       for (const l of lines.filter((x) => !keptIds.includes(x.ShipmentPlanId))) {
         const rows = alloc.filter((a) => a.ShipmentPlanLineId === l.Id);
-        expect(rows.reduce((s, a) => s + a.PlanQty, 0)).toBe(l.Qty);
         const assigned = rows.reduce((s, a) => s + a.AssignedQty, 0);
-        rows.forEach((a) => expect(a.AssignedQty).toBeLessThanOrEqual(a.PlanQty));
-        if (l.StatusCode === 'PLANNED') expect(assigned).toBe(0);
+        rows.forEach((a) => expect(a.AssignedQty).toBeGreaterThan(0));
+        expect(assigned).toBeLessThanOrEqual(l.Qty);
+        if (l.StatusCode === 'PLANNED') expect(rows).toEqual([]);
         else expect(assigned).toBeGreaterThan(0);
       }
       for (const p of plans.filter((x) => x.PlannerName === PLANNER_NAME && !keptIds.includes(x.Id))) {
@@ -195,7 +212,8 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
         expect(own.reduce((s, l) => s + l.Qty, 0)).toBeLessThanOrEqual(p.PlanQty);
         for (const c of planCells.filter((x) => x.ShipmentPlanId === p.Id)) {
           const used = alloc.filter((a) => own.some((l) => l.Id === a.ShipmentPlanLineId) && a.ColorName === c.ColorName && a.SizeName === c.SizeName);
-          expect(used.reduce((s, a) => s + a.PlanQty, 0)).toBeLessThanOrEqual(c.PlanQty);
+          used.forEach((a) => expect(a.PlanQty).toBe(c.PlanQty));
+          expect(used.reduce((s, a) => s + a.AssignedQty, 0)).toBeLessThanOrEqual(c.PlanQty);
         }
       }
       // Đơn của kế hoạch mô phỏng mới mang trạng thái theo kế hoạch

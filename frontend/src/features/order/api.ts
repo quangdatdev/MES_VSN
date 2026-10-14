@@ -316,35 +316,70 @@ export interface Board {
   nonWorkingDays?: Record<string, { date: string; name: string | null }[]>;
 }
 
+/** Trạng thái phân màu cỡ của một kế hoạch: tổng giao mọi chuyền so với SL kế hoạch (phase 5.13) */
+export type AllocationStatus = 'PLANNED' | 'PARTIAL' | 'FULL';
+
+/**
+ * Một dòng của màn Phân bổ màu cỡ: một kế hoạch đã xếp chuyền (`id` là Id kế hoạch). Chuyền, NSBQ là mảng theo thứ tự dàn chuyền,
+ * chỉ gồm chuyền trong phạm vi xem; SL kế hoạch, SL giao, trạng thái là của cả kế hoạch. Cột bị Che là "***", bị Ẩn thì không có.
+ */
 export interface Allocation {
   id: number;
-  planId: number;
   planNo: string;
-  customerName: string;
-  styleCode: string;
-  poBuyDate: string;
+  customerName?: Masked<string>;
+  styleCode?: Masked<string>;
+  poBuyDate?: Masked<string>;
   branchCode: string;
-  lineCode: string;
-  /** Không có khi mã chuyền bị Ẩn hoặc Che (tên suy ra được mã) */
-  lineName?: string;
-  startDate: string;
-  avgOutput: number;
-  endDate: string;
-  shipDate: string;
-  qty: number;
-  assignedQty: Masked<number>;
-  statusCode: string;
+  lineCode?: Masked<string[]>;
+  /** Tên chuyền cùng thứ tự với `lineCode`; không có khi mã chuyền bị Ẩn hoặc Che (tên suy ra được mã) */
+  lineName?: string[];
+  startDate?: Masked<string>;
+  avgOutput?: Masked<number[]>;
+  endDate?: Masked<string>;
+  shipDate?: Masked<string>;
+  qty?: Masked<number>;
+  assignedQty?: Masked<number>;
+  statusCode?: Masked<AllocationStatus>;
+  createdAt: string;
 }
 
-export interface AllocationRow {
-  id?: number;
+/** Một chuyền (dòng dàn chuyền) của kế hoạch trong popup phân màu cỡ */
+export interface AllocationLine {
+  id: number;
+  lineCode?: Masked<string>;
+  lineName?: string;
+  /** SL đã xếp cho chuyền ở Xếp chuyền: tổng giao của chuyền không vượt số này */
+  qty?: Masked<number>;
+  avgOutput?: Masked<number>;
+  startDate?: Masked<string>;
+  endDate?: Masked<string>;
+  statusCode?: Masked<string>;
+  /** Tổng giao đã lưu của chuyền */
+  assignedQty?: Masked<number>;
+  /** Người xem sửa được phần giao của chuyền này */
+  editable: boolean;
+}
+
+/** Một màu cỡ của kế hoạch: SL KHXH; `hiddenQty`: tổng đã giao cho chuyền ngoài phạm vi xem của người xem */
+export interface AllocationCell {
   colorName: string;
   sizeName: string;
-  planQty: number;
-  assignedQty: number;
+  qty?: Masked<number>;
+  hiddenQty?: Masked<number>;
+}
+
+/** Một phần giao đã lưu: chuyền (Id dòng dàn chuyền), màu cỡ, SL giao */
+export interface AllocationRow {
+  id: number;
+  lineId: number;
+  colorName: string;
+  sizeName: string;
+  assignedQty?: Masked<number>;
 }
 
 export interface AllocationDetail extends Allocation {
+  lines: AllocationLine[];
+  colorSizes: AllocationCell[];
   rows: AllocationRow[];
 }
 

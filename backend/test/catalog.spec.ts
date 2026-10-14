@@ -475,12 +475,16 @@ describe('Phase 5.4: danh mục hệ thống', () => {
       ['A01-T54B', 'A01-T54B (chuyền cũ)'],
       ['A01-L12', l12!.name],
     ]);
-    // Phân bổ màu cỡ: danh sách, chi tiết, file xuất không lỗi
+    // Phân bổ màu cỡ (một dòng mỗi kế hoạch, phase 5.13): danh sách, chi tiết, file xuất không lỗi
     const items = (await api().get('/api/v1/order/color-size?pageSize=50&style=TEST-P54-FIXTURE').set(auth(planner)).expect(200)).body.items as any[];
-    expect(items.find((i) => i.id === orphan)).toMatchObject({ lineCode: 'A01-T54B', lineName: 'A01-T54B (chuyền cũ)' });
-    expect(items.find((i) => i.id === normal)).toMatchObject({ lineCode: 'A01-L12', lineName: l12!.name });
-    expect((await api().get(`/api/v1/order/color-size/${orphan}`).set(auth(planner)).expect(200)).body.lineName).toBe('A01-T54B (chuyền cũ)');
-    await api().get('/api/v1/order/color-size/export?style=TEST-P54-FIXTURE').set(auth(planner)).expect(200);
+    expect(items.find((i) => i.id === plan)).toMatchObject({ lineCode: ['A01-T54B', 'A01-L12'], lineName: ['A01-T54B (chuyền cũ)', l12!.name] });
+    const allocation = (await api().get(`/api/v1/order/color-size/${plan}`).set(auth(planner)).expect(200)).body;
+    expect(allocation.lines.map((x: any) => [x.id, x.lineName])).toEqual([
+      [orphan, 'A01-T54B (chuyền cũ)'],
+      [normal, l12!.name],
+    ]);
+    const csv = (await api().get('/api/v1/order/color-size/export?style=TEST-P54-FIXTURE').set(auth(planner)).expect(200)).text;
+    expect(csv).toContain(`A01-T54B (chuyền cũ), ${l12!.name}`);
 
     // Lưu lại dòng cũ (không đổi chuyền) được; thêm việc mới hay chuyển dòng vào mã mồ côi thì không
     const keep = { id: orphan, lineCode: 'A01-T54B', qty: 100, avgOutput: 50, startDate: '2026-12-01' };

@@ -21,7 +21,7 @@ import {
   type ShipmentPlanRow,
 } from './order.repositories';
 import type { OrderDb } from './order.types';
-import { businessFilter, byColorSize, conflict, csKey, day, invalid, isReferenceError, readableQuery, sortOf } from './order.util';
+import { assignedVisible, businessFilter, byColorSize, colorSizeKey, conflict, csKey, day, derived, invalid, isReferenceError, readableQuery, someOf, sortOf, withDerived } from './order.util';
 
 const RESOURCE = 'order.shipment';
 const SORT: Record<string, string> = {
@@ -97,13 +97,6 @@ const EXPORT_COLUMNS = [
 ];
 
 type Level = AccessLevel | undefined;
-
-/** Giá trị của cột suy ra theo mức chặt nhất của các cột nguồn; undefined: bỏ khỏi dữ liệu trả về */
-const derived = (value: unknown, ...lv: Level[]) => (lv.includes('HIDDEN') ? undefined : lv.includes('MASKED') ? MASK : value);
-const withDerived = (out: Record<string, unknown>, values: Record<string, unknown>) => {
-  for (const [key, value] of Object.entries(values)) if (value !== undefined) out[key] = value;
-  return out;
-};
 
 /**
  * Thứ tự PO: ngày xuất rồi số PO, chỉ theo cột người dùng xem được nguyên giá trị ở order.po. Xếp theo cột bị Ẩn/Che cũng lộ
@@ -418,6 +411,7 @@ export class ShipmentService {
     const scope = scopeOf(user);
     await this.plans.assertWritable(scope);
     const before = await this.detail(scope, id);
+    const showAssigned = dto.lines ? await assignedVisible(this.fields, user) : false;
     const set: Record<string, unknown> = {};
     if (dto.poBuyDate !== undefined) set.PoBuyDate = dto.poBuyDate;
     if (dto.shipDate !== undefined) set.ShipDate = dto.shipDate;
@@ -436,6 +430,23 @@ export class ShipmentService {
       if (lines) {
         const scheduled = await this.plans.scheduledQty(scope, id, trx);
         if ((set.PlanQty as number) < scheduled) throw conflict(`Kế hoạch đã xếp chuyền ${scheduled} sản phẩm, không giảm số lượng xuống dưới mức này được.`);
+        // Màu cỡ đã giao cho chuyền ở Phân bổ màu cỡ: không giảm SL KHXH xuống dưới phần đã giao, không bỏ màu cỡ đã giao (phase
+        // 5.13). Chỉ chặn khi SL mới nhỏ hơn SL đang có: kế hoạch cũ giao lệch vài sản phẩm (chia theo tỷ lệ trước 5.13) vẫn sửa được
+        // các màu cỡ khác
+        const planned = new Map(lines.map((l) => [colorSizeKey(l.ColorName, l.SizeName), l.PlanQty]));
+        const saved = new Map((await this.planColorSizes.listByParent(scope, id, 'update', trx)).map((c) => [colorSizeKey(c.ColorName, c.SizeName), c.PlanQty]));
+        const over = (await this.plans.assignedByColorSize(scope, id, trx)).filter((a) => {
+          const k = colorSizeKey(a.ColorName, a.SizeName);
+          const now = planned.get(k) ?? 0;
+          return Number(a.Qty) > now && now < (saved.get(k) ?? 0);
+        });
+        if (over.length) {
+          const details = over.map((a) => {
+            const now = planned.get(colorSizeKey(a.ColorName, a.SizeName)) ?? 0;
+            return showAssigned ? `${a.ColorName}/${a.SizeName}: đã giao ${a.Qty}, SL KHXH mới ${now}` : `${a.ColorName}/${a.SizeName}`;
+          });
+          throw conflict(`Màu cỡ đã giao cho chuyền nhiều hơn SL KHXH mới (${someOf(details, 'màu cỡ')}). Giảm phần giao ở màn Phân bổ màu cỡ trước.`, details);
+        }
         await this.planColorSizes.removeWhere(scope, { parentId: id }, trx);
         await this.planColorSizes.insert(scope, id, lines, trx);
       }

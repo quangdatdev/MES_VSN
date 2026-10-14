@@ -1,77 +1,80 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Errors } from '../../common/app.exception';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { AuditService } from '../../platform/audit/audit.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
 import { inTransaction } from '../../platform/data/transaction';
-import { scopeOf } from '../../platform/data/base.repository';
-import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type FilterSpec } from '../../platform/data/column-filter';
+import { scopeOf, type Scope } from '../../platform/data/base.repository';
+import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type DistinctSource } from '../../platform/data/column-filter';
 import { ExportService } from '../../platform/export/export.service';
 import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { ORDER_DB } from './order.db';
 import { AllocationDto, OrderListQuery, OrderValuesQuery } from './order.dto';
-import { assignedExpr, LineAllocationRepository, LineColorSizeRepository, planExpr, withPlanFilter, type AllocationListRow, type LineColorSizeRow } from './order.repositories';
+import {
+  ALLOCATION_FILTER,
+  hasLines,
+  LineAllocationRepository,
+  LineColorSizeRepository,
+  ShipmentPlanRepository,
+  type AllocationPlanRow,
+  type AllocationStatus,
+  type PlanColorSizeRow,
+  type PlanLineRow,
+} from './order.repositories';
 import type { OrderDb } from './order.types';
-import { csKey, day, invalid, readableQuery, sortOf } from './order.util';
+import { businessFilter, colorSizeKey as cellKey, day, derived, invalid, readableQuery, someOf, withDerived } from './order.util';
 
 const RESOURCE = 'order.colorsize';
-const SORT: Record<string, string> = { lineCode: 'LineCode', startDate: 'StartDate', endDate: 'EndDate', qty: 'Qty', avgOutput: 'AvgOutput', statusCode: 'StatusCode', createdAt: 'CreatedAt' };
 const DEFAULT_SORT = 'createdAt:desc';
-/** Cột lọc được theo giá trị. Khách hàng, mã hàng, PO/Buy date, ngày xuất hàng lấy từ kế hoạch cha như lưới. */
-const FILTER: FilterSpec = {
-  customerName: { expr: planExpr('CustomerName'), kind: 'text' },
-  styleCode: { expr: planExpr('StyleCode'), kind: 'text' },
-  poBuyDate: { expr: planExpr('PoBuyDate'), kind: 'text' },
-  branchCode: { expr: 'BranchCode', kind: 'text' },
-  lineCode: { expr: 'LineCode', kind: 'text' },
-  startDate: { expr: 'StartDate', kind: 'date' },
-  avgOutput: { expr: 'AvgOutput', kind: 'number' },
-  endDate: { expr: 'EndDate', kind: 'date' },
-  shipDate: { expr: planExpr('ShipDate'), kind: 'date' },
-  qty: { expr: 'Qty', kind: 'number' },
-  assignedQty: { expr: assignedExpr, kind: 'number' },
-  statusCode: { expr: 'StatusCode', kind: 'text' },
-  createdAt: { expr: 'CreatedAt', kind: 'datetime' },
-};
+/** Số kế hoạch tối đa một lần xuất file: quá thì báo lọc bớt, không cắt im lặng */
+const EXPORT_MAX = 10_000;
+const STATUS_LABEL: Record<AllocationStatus, string> = { PLANNED: 'Chưa phân màu cỡ', PARTIAL: 'Phân một phần', FULL: 'Đã phân đủ' };
 
-export function presentAllocation(r: AllocationListRow, lineName?: string | null) {
+/**
+ * Một dòng của danh sách: một kế hoạch có dòng dàn chuyền trong phạm vi xem (phase 5.13). Khóa trùng mã cột đăng ký của
+ * order.colorsize để interceptor áp chính sách cột; chuyền, NSBQ là mảng theo thứ tự dàn chuyền.
+ */
+export function presentAllocationPlan(r: AllocationPlanRow, name: (code: string) => string | null) {
+  const codes = r.LineCodes.split(',');
+  const names = codes.map(name);
   return {
     id: r.Id,
-    planId: r.ShipmentPlanId,
     planNo: r.PlanNo,
     customerName: r.CustomerName,
     styleCode: r.StyleCode,
     poBuyDate: r.PoBuyDate,
     branchCode: r.BranchCode,
-    lineCode: r.LineCode,
-    lineName: lineName === null ? undefined : (lineName ?? r.LineCode),
+    lineCode: codes,
+    // Tên chuyền suy ra được mã: mã bị Ẩn, Che thì không trả tên (review 5.1 lượt 2 N12)
+    lineName: names.includes(null) ? undefined : (names as string[]),
     startDate: day(r.StartDate),
-    avgOutput: r.AvgOutput,
+    avgOutput: r.AvgOutputs.split(',').map(Number),
     endDate: day(r.EndDate),
-    shipDate: day(r.PlanShipDate),
-    qty: r.Qty,
-    assignedQty: Number(r.AssignedQty ?? 0),
+    shipDate: day(r.ShipDate),
+    qty: r.PlanQty,
+    assignedQty: Number(r.AssignedQty),
     statusCode: r.StatusCode,
     createdAt: r.CreatedAt,
   };
 }
-
-const presentRow = (r: LineColorSizeRow) => ({ id: r.Id, colorName: r.ColorName, sizeName: r.SizeName, planQty: r.PlanQty, assignedQty: r.AssignedQty });
 
 const EXPORT_COLUMNS = [
   { key: 'customerName', label: 'Khách hàng' },
   { key: 'styleCode', label: 'Mã hàng' },
   { key: 'poBuyDate', label: 'PO Buy date' },
   { key: 'branchName', label: 'Chi nhánh', field: 'branchCode' },
-  { key: 'lineCode', label: 'Chuyền may' },
+  { key: 'lineText', label: 'Chuyền may', field: 'lineCode' },
   { key: 'startDate', label: 'Ngày bắt đầu chuyền' },
-  { key: 'avgOutput', label: 'NSBQ chuyền' },
+  { key: 'avgOutputText', label: 'NSBQ chuyền', field: 'avgOutput' },
   { key: 'endDate', label: 'Ngày kết thúc chuyền' },
   { key: 'shipDate', label: 'Ngày xuất hàng' },
   { key: 'qty', label: 'Số lượng kế hoạch' },
-  { key: 'assignedQty', label: 'Số lượng đã giao' },
-  { key: 'statusCode', label: 'Trạng thái' },
+  { key: 'assignedQty', label: 'Số lượng giao' },
+  { key: 'statusText', label: 'Trạng thái', field: 'statusCode' },
 ];
+
+type NextCell = { line: PlanLineRow; cell: PlanColorSizeRow; qty: number; sort: number };
 
 @Injectable()
 export class ColorSizeService {
@@ -79,6 +82,7 @@ export class ColorSizeService {
     @Inject(ORDER_DB) private readonly db: OrderDb,
     private readonly lines: LineAllocationRepository,
     private readonly rows: LineColorSizeRepository,
+    private readonly plans: ShipmentPlanRepository,
     private readonly org: OrgService,
     private readonly audit: AuditService,
     private readonly exporter: ExportService,
@@ -86,32 +90,33 @@ export class ColorSizeService {
     private readonly catalogs: CatalogLookupService,
   ) {}
 
-  private async sort(user: AuthUser, sort: string | undefined) {
-    return sortOf(SORT, await this.fields.safeSort(user, RESOURCE, sort, DEFAULT_SORT), DEFAULT_SORT);
-  }
-
-  /** Bộ lọc của dòng dàn chuyền (trạng thái, chuyền, lọc theo cột); `except`: cột đang mở popup lọc. */
+  /**
+   * Bộ lọc trên bảng gom một dòng mỗi kế hoạch: dải lọc (ngày xuất, khách hàng, mã hàng, trạng thái, chuyền) và lọc theo cột;
+   * `except`: cột đang mở popup lọc. Chuyền lọc theo từng chuyền của kế hoạch, không theo chuỗi đã nối.
+   */
   private async where(user: AuthUser, q: OrderListQuery, except?: string) {
-    const filters = await readableColumnFilters(this.fields, user, RESOURCE, q.cf, FILTER);
+    const filters = await readableColumnFilters(this.fields, user, RESOURCE, q.cf, ALLOCATION_FILTER);
+    const line = except === 'lineCode' ? undefined : filters.find((f) => f.field === 'lineCode');
     return allOf(
-      <Q extends { where: (...a: any[]) => Q }>(qb: Q): Q => {
-        if (q.status) qb = qb.where('StatusCode', '=', q.status);
-        if (q.line) qb = qb.where('LineCode', '=', q.line);
-        return qb;
-      },
-      columnFilterWhere(filters, FILTER, except),
+      businessFilter(q, { ship: 'r.ShipDate', customer: 'r.CustomerName', style: 'r.StyleCode', status: null }),
+      q.status ? columnFilterWhere([{ field: 'statusCode', mode: 'in', values: [q.status] }], ALLOCATION_FILTER) : null,
+      q.line ? hasLines([q.line]) : null,
+      line ? hasLines(line.values.filter((v): v is string => typeof v === 'string'), line.mode) : null,
+      columnFilterWhere(
+        filters.filter((f) => f.field !== 'lineCode'),
+        ALLOCATION_FILTER,
+        except,
+      ),
     );
   }
 
-  private plan(q: OrderListQuery) {
-    return { shipFrom: q.shipFrom, shipTo: q.shipTo, customer: q.customer, style: q.style };
-  }
-
   async values(user: AuthUser, query: OrderValuesQuery) {
-    const col = await assertFilterField(this.fields, user, RESOURCE, FILTER, query.field);
+    const col = await assertFilterField(this.fields, user, RESOURCE, ALLOCATION_FILTER, query.field);
     const q = await readableQuery(this.fields, user, RESOURCE, query);
-    const where = withPlanFilter({ where: await this.where(user, q, query.field), plan: this.plan(q) });
-    return columnValues(this.lines, scopeOf(user), col, { where, search: query.search });
+    const source: DistinctSource<Scope> = {
+      distinctValues: (scope, c, o) => (query.field === 'lineCode' ? this.lines.planLineValues(scope, o) : this.lines.planValues(scope, c, o)),
+    };
+    return columnValues(source, scopeOf(user), col, { where: await this.where(user, q, query.field), search: query.search });
   }
 
   /**
@@ -125,74 +130,183 @@ export class ColorSizeService {
 
   async list(user: AuthUser, query: OrderListQuery) {
     const q = await readableQuery(this.fields, user, RESOURCE, query);
-    const page = await this.lines.listWithPlan(scopeOf(user), {
+    const page = await this.lines.planPage(scopeOf(user), {
       page: q.page,
       pageSize: q.pageSize,
-      sort: await this.sort(user, q.sort),
+      sort: await this.fields.safeSort(user, RESOURCE, q.sort, DEFAULT_SORT),
       where: await this.where(user, q),
-      plan: this.plan(q),
     });
     const name = await this.lineNames(user);
-    return { ...page, items: page.items.map((r) => presentAllocation(r, name(r.LineCode))) };
-  }
-
-  async get(user: AuthUser, id: number) {
-    const scope = scopeOf(user);
-    const line = await this.lines.getWithPlan(scope, id);
-    const rows = await this.rows.listByParent(scope, id);
-    return { ...presentAllocation(line, (await this.lineNames(user))(line.LineCode)), rows: rows.map(presentRow) };
+    return { ...page, items: page.items.map((r) => presentAllocationPlan(r, name)) };
   }
 
   /**
-   * Lưu số lượng giao theo màu cỡ của một dòng dàn chuyền. Màu cỡ và SL kế hoạch do màn Xếp chuyền đề xuất,
-   * ở đây chỉ nhập số lượng giao: không thêm màu cỡ lạ, mỗi ô không vượt SL kế hoạch của ô đó (review 5.1 #10).
+   * Popup "Phân màu cỡ cho chuyền" của một kế hoạch: chuyền trong phạm vi xem (sửa được hay không, SL đã xếp, SL đã giao), SL KHXH
+   * theo màu cỡ của kế hoạch, phần giao của các chuyền đó. Phần giao của chuyền ngoài phạm vi xem chỉ có tổng theo màu cỡ
+   * (`hiddenQty`, theo chính sách của cột Số lượng giao) để giao diện tính được phần còn lại.
    */
-  async save(user: AuthUser, id: number, dto: AllocationDto) {
+  async get(user: AuthUser, planId: number) {
+    const scope = scopeOf(user);
+    const plan = await this.lines.planRow(scope, planId);
+    const [lines, editable, cells, policy] = await Promise.all([
+      this.lines.planLines(scope, planId, 'view'),
+      this.lines.planLines(scope, planId, 'update'),
+      this.lines.planColorSizes(scope, planId),
+      this.fields.levels(scope.access, RESOURCE),
+    ]);
+    const lineIds = lines.map((l) => l.Id);
+    // Dòng giao 0 là đề xuất theo tỷ lệ của cách làm trước phase 5.13: không phải phần giao
+    const rows = (await this.rows.listByParents(scope, lineIds, 'view')).filter((r) => r.AssignedQty > 0);
+    const hidden = new Map((await this.lines.assignedOutside(scope, planId, lineIds)).map((h) => [cellKey(h.ColorName, h.SizeName), Number(h.Qty)]));
+    const name = await this.lineNames(user);
+    // Đơn vị tổng hợp chỉ đọc: không chuyền nào sửa được (máy chủ cũng chặn khi lưu)
+    const canEdit = new Set(scope.isAggregate ? [] : editable.map((l) => l.Id));
+    const assigned = new Map<number, number>();
+    for (const r of rows) assigned.set(r.ShipmentPlanLineId, (assigned.get(r.ShipmentPlanLineId) ?? 0) + r.AssignedQty);
+    return {
+      ...presentAllocationPlan(plan, name),
+      lines: lines.map((l) => ({
+        id: l.Id,
+        lineCode: l.LineCode,
+        lineName: name(l.LineCode) ?? undefined,
+        qty: l.Qty,
+        avgOutput: l.AvgOutput,
+        startDate: day(l.StartDate),
+        endDate: day(l.EndDate),
+        statusCode: l.StatusCode,
+        assignedQty: assigned.get(l.Id) ?? 0,
+        editable: canEdit.has(l.Id),
+      })),
+      colorSizes: cells.map((c) =>
+        withDerived({ colorName: c.ColorName, sizeName: c.SizeName, qty: c.PlanQty }, { hiddenQty: derived(hidden.get(cellKey(c.ColorName, c.SizeName)) ?? 0, policy.levels.get('assignedQty')) }),
+      ),
+      rows: rows.map((r) => ({ id: r.Id, lineId: r.ShipmentPlanLineId, colorName: r.ColorName, sizeName: r.SizeName, assignedQty: r.AssignedQty })),
+    };
+  }
+
+  /**
+   * Lưu phân màu cỡ của một kế hoạch (phase 5.13): thay toàn bộ phần giao của các chuyền người dùng sửa được (vừa sửa được vừa
+   * xem được, như Xếp chuyền); chuyền khác giữ nguyên và vẫn tính vào tổng. Luật: màu cỡ phải có trong kế hoạch; một chuyền một
+   * màu cỡ một dòng; tổng giao của một màu cỡ trên mọi chuyền không vượt SL KHXH của nó; tổng giao của một chuyền không vượt SL
+   * đã xếp cho chuyền đó (Q2). Khóa kế hoạch rồi mới đọc dòng dàn chuyền, phần giao: cùng thứ tự kế hoạch → dòng → màu cỡ với
+   * Xếp chuyền và sửa kế hoạch xuất hàng.
+   */
+  async save(user: AuthUser, planId: number, dto: AllocationDto) {
     const scope = scopeOf(user);
     await this.lines.assertWritable(scope);
-    const before = await this.get(user, id);
-    await inTransaction(this.db, async (trx) => {
-      await this.lines.lock(scope, id, 'update', trx);
-      const line = await this.lines.getById(scope, id, 'update', trx);
-      const current = await this.rows.listByParent(scope, id, 'update', trx);
-      const byKey = new Map(current.map((r) => [csKey(r.ColorName.toLowerCase(), r.SizeName.toLowerCase()), r]));
+    // FieldPolicyInterceptor chỉ chặn khi body có assignedQty; `rows: []` (bỏ hết phần giao) không có, nên kiểm ở đây, trước khi
+    // đọc kế hoạch (403 không cho dò Id kế hoạch)
+    const level = (await this.fields.levels(scope.access, RESOURCE)).levels.get('assignedQty');
+    if (level && level !== 'EDITABLE') throw Errors.fieldReadonly(['assignedQty'], ['Số lượng giao']);
+    // Id kế hoạch từ client chỉ được dùng để khóa sau khi biết kế hoạch có chuyền người dùng sửa được (không thì 404 như không có)
+    if (!(await this.lines.planLines(scope, planId, 'update')).length) throw Errors.notFound();
+    // Thông báo vượt không nêu số khi người sửa không xem được số lượng (như Xếp chuyền, review lượt 3 P7)
+    const blind = (await this.fields.unreadable(user, RESOURCE, ['qty'])).size > 0;
+    const name = await this.lineNames(user);
+    const log = await inTransaction(this.db, async (trx) => {
+      await this.plans.lockBranchRow(scope, planId, trx);
+      const visible = await this.lines.planLines(scope, planId, 'view', trx);
+      const visibleIds = new Set(visible.map((l) => l.Id));
+      const mine = (await this.lines.planLines(scope, planId, 'update', trx)).filter((l) => visibleIds.has(l.Id));
+      if (!mine.length) throw Errors.notFound();
+      const label = (l: PlanLineRow) => name(l.LineCode) ?? `thứ ${visible.findIndex((v) => v.Id === l.Id) + 1}`;
+      const lineById = new Map(mine.map((l) => [l.Id, l]));
+      const cells = new Map((await this.lines.planColorSizes(scope, planId, trx)).map((c) => [cellKey(c.ColorName, c.SizeName), c]));
+
+      const next = new Map<string, NextCell>();
       const seen = new Set<string>();
-      const errors: string[] = [];
-      for (const r of dto.rows) {
-        const k = csKey(r.colorName.toLowerCase(), r.sizeName.toLowerCase());
-        if (seen.has(k)) throw invalid(`Màu ${r.colorName}, cỡ ${r.sizeName} bị lặp.`);
+      // Câu lỗi nêu chuyền, màu, cỡ: thứ tự gửi lên khác số thứ tự trên lưới (giao diện bỏ dòng trống, dòng 0, dòng khóa)
+      for (const [i, r] of dto.rows.entries()) {
+        const line = lineById.get(r.lineId);
+        if (!line) throw invalid(`Màu ${r.colorName}, cỡ ${r.sizeName} được giao cho chuyền không thuộc kế hoạch này hoặc chuyền bạn không được phân màu cỡ.`);
+        const ck = cellKey(r.colorName, r.sizeName);
+        const cell = cells.get(ck);
+        if (!cell) throw invalid(`Màu ${r.colorName}, cỡ ${r.sizeName} không có trong kế hoạch xuất hàng.`);
+        const k = `${line.Id}\u0000${ck}`;
+        if (seen.has(k)) throw invalid(`Chuyền ${label(line)}, màu ${cell.ColorName}, cỡ ${cell.SizeName} có hai dòng. Gộp thành một dòng.`);
         seen.add(k);
-        const row = byKey.get(k);
-        if (!row) throw invalid(`Màu ${r.colorName}, cỡ ${r.sizeName} không có trong kế hoạch của chuyền này.`);
-        if (r.assignedQty > row.PlanQty) errors.push(`${row.ColorName}/${row.SizeName}: giao ${r.assignedQty} > SL KH ${row.PlanQty}`);
+        if (r.assignedQty > 0) next.set(k, { line, cell, qty: r.assignedQty, sort: i });
       }
-      if (errors.length) throw invalid('Số lượng giao vượt số lượng kế hoạch của màu cỡ.', errors);
-      const next = new Map(dto.rows.map((r) => [csKey(r.colorName.toLowerCase(), r.sizeName.toLowerCase()), r.assignedQty]));
-      let assigned = 0;
-      for (const [k, row] of byKey) {
-        // Màu cỡ không gửi lên thì coi là giao 0
-        const qty = next.get(k) ?? 0;
-        assigned += qty;
-        if (qty !== row.AssignedQty) await this.rows.updateRow(scope, row.Id, { AssignedQty: qty }, trx);
+
+      // Tổng theo màu cỡ gồm phần của chuyền người dùng không sửa được (chỉ đọc tổng); màu cỡ người dùng không giao gì thì
+      // không xét: dữ liệu cũ của chuyền khác lệch không chặn việc lưu phần của mình
+      const others = new Map((await this.lines.assignedOutside(scope, planId, mine.map((l) => l.Id), trx)).map((o) => [cellKey(o.ColorName, o.SizeName), Number(o.Qty)]));
+      const byCell = new Map<string, number>();
+      const byLine = new Map<number, number>();
+      for (const n of next.values()) {
+        const ck = cellKey(n.cell.ColorName, n.cell.SizeName);
+        byCell.set(ck, (byCell.get(ck) ?? 0) + n.qty);
+        byLine.set(n.line.Id, (byLine.get(n.line.Id) ?? 0) + n.qty);
       }
-      if (line.StatusCode === 'PLANNED' || line.StatusCode === 'ALLOCATED') {
-        const status = assigned > 0 ? 'ALLOCATED' : 'PLANNED';
-        if (status !== line.StatusCode) await this.lines.update(scope, id, { StatusCode: status }, trx);
+      const errors: string[] = [];
+      for (const [ck, mineQty] of byCell) {
+        const cell = cells.get(ck)!;
+        const other = others.get(ck) ?? 0;
+        const total = mineQty + other;
+        if (total <= cell.PlanQty) continue;
+        const note = other ? ` (gồm ${other} ở chuyền khác)` : '';
+        errors.push(blind ? `${cell.ColorName}/${cell.SizeName}` : `${cell.ColorName}/${cell.SizeName}: giao ${total}${note} > SL KH ${cell.PlanQty}`);
       }
+      for (const line of mine) {
+        const total = byLine.get(line.Id) ?? 0;
+        if (total > line.Qty) errors.push(blind ? `Chuyền ${label(line)}` : `Chuyền ${label(line)}: giao ${total} > SL xếp chuyền ${line.Qty}`);
+      }
+      if (errors.length) throw invalid(`Số lượng giao vượt số lượng kế hoạch của màu cỡ hoặc số lượng đã xếp cho chuyền (${someOf(errors, 'mục')}).`, errors);
+
+      // Dòng không đổi giữ nguyên; dòng đổi, dòng bỏ (cả dòng 0 của cách làm cũ) xóa rồi thêm lại theo lô: lưu cả bảng vài câu,
+      // không một câu mỗi ô. Tên màu, cỡ ghi theo kế hoạch; PlanQty là bản chụp SL KHXH lúc lưu
+      const current = await this.rows.listByParents(scope, [...lineById.keys()], 'update', trx);
+      const keep = new Set<string>();
+      const had = new Set<string>();
+      const drop: number[] = [];
+      // Chuyền có phần giao đổi: thêm, bỏ, sửa số lượng giao. Dòng chỉ đổi thứ tự (phần giao các chuyền xen kẽ nhau theo
+      // SortOrder) hay bản chụp SL KHXH thì vẫn ghi lại nhưng chuyền không tính là đổi; bỏ dòng 0 cũ cũng vậy
+      const changed = new Set<number>();
+      for (const c of current) {
+        const k = `${c.ShipmentPlanLineId}\u0000${cellKey(c.ColorName, c.SizeName)}`;
+        had.add(k);
+        const n = next.get(k);
+        const same = n && c.AssignedQty === n.qty && c.PlanQty === n.cell.PlanQty && c.SortOrder === n.sort && c.ColorName === n.cell.ColorName && c.SizeName === n.cell.SizeName;
+        if (same) keep.add(k);
+        else drop.push(c.Id);
+        if (n ? c.AssignedQty !== n.qty : c.AssignedQty > 0) changed.add(c.ShipmentPlanLineId);
+      }
+      const insert = [...next]
+        .filter(([k]) => !keep.has(k))
+        .map(([k, n]) => {
+          if (!had.has(k)) changed.add(n.line.Id);
+          return { parentId: n.line.Id, values: { ColorName: n.cell.ColorName, SizeName: n.cell.SizeName, PlanQty: n.cell.PlanQty, AssignedQty: n.qty, SortOrder: n.sort } };
+        });
+
+      // Dòng dàn chuyền trước, phần giao sau: đúng thứ tự kế hoạch → dòng → màu cỡ. Trạng thái Chưa phân ↔ Đã phân màu cỡ theo phần
+      // giao của chuyền (chỉ đổi giữa hai trạng thái này). Chuyền có phần giao đổi được ghi lại người, lúc sửa (ModifiedAt), để dàn
+      // chuyền mô phỏng biết kế hoạch đã có người sửa, kể cả khi chỉ bớt phần giao
+      for (const line of mine) {
+        const flips = line.StatusCode === 'PLANNED' || line.StatusCode === 'ALLOCATED';
+        const status = flips ? ((byLine.get(line.Id) ?? 0) > 0 ? 'ALLOCATED' : 'PLANNED') : line.StatusCode;
+        if (status !== line.StatusCode || changed.has(line.Id)) await this.lines.update(scope, line.Id, { StatusCode: status }, trx);
+      }
+      await this.rows.removeMany(scope, drop, trx);
+      await this.rows.insertMany(scope, insert, trx);
+      const show = (lineId: number, colorName: string, sizeName: string, assignedQty: number) => ({ lineId, lineCode: lineById.get(lineId)!.LineCode, colorName, sizeName, assignedQty });
+      return {
+        before: current.filter((c) => c.AssignedQty > 0).map((c) => show(c.ShipmentPlanLineId, c.ColorName, c.SizeName, c.AssignedQty)),
+        after: [...next.values()].sort((a, b) => a.sort - b.sort).map((n) => show(n.line.Id, n.cell.ColorName, n.cell.SizeName, n.qty)),
+      };
     });
-    const after = await this.get(user, id);
-    await this.audit.log({ userId: user.userId, username: user.username, branchCode: user.branchCode, entityType: 'ShipmentPlanLine', entityId: id, actionCode: 'COLOR_SIZE_ALLOCATE', oldValue: before.rows, newValue: after.rows, ip: user.ip });
-    return after;
+    await this.audit.log({ userId: user.userId, username: user.username, branchCode: user.branchCode, entityType: 'ShipmentPlan', entityId: planId, actionCode: 'COLOR_SIZE_ALLOCATE', oldValue: log.before, newValue: log.after, ip: user.ip });
+    return this.get(user, planId);
   }
 
   async export(user: AuthUser, query: OrderListQuery) {
     const q = await readableQuery(this.fields, user, RESOURCE, query);
-    const rows = await this.lines.listAllWithPlan(scopeOf(user), {
-      sort: await this.sort(user, q.sort),
-      where: await this.where(user, q),
-      plan: this.plan(q),
-    });
+    const rows = await this.lines.planAll(scopeOf(user), { sort: await this.fields.safeSort(user, RESOURCE, q.sort, DEFAULT_SORT), where: await this.where(user, q), limit: EXPORT_MAX });
+    if (rows.length > EXPORT_MAX) throw invalid(`Xuất tối đa ${EXPORT_MAX.toLocaleString('vi-VN')} kế hoạch một lần. Lọc bớt rồi xuất lại.`);
     const name = await this.lineNames(user);
-    return this.exporter.csv(user, RESOURCE, EXPORT_COLUMNS, await this.catalogs.withBranchNames(rows.map((r) => presentAllocation(r, name(r.LineCode)))), `phan-bo-mau-co-${user.branchCode}.csv`);
+    const items = rows.map((r) => {
+      const o = presentAllocationPlan(r, name);
+      return { ...o, lineText: (o.lineName ?? o.lineCode).join(', '), avgOutputText: o.avgOutput.join(', '), statusText: STATUS_LABEL[o.statusCode] };
+    });
+    return this.exporter.csv(user, RESOURCE, EXPORT_COLUMNS, await this.catalogs.withBranchNames(items), `phan-bo-mau-co-${user.branchCode}.csv`);
   }
 }

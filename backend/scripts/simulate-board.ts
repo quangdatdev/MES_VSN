@@ -19,7 +19,7 @@ import type { CoreDatabase } from '../src/platform/database/core.types';
 import { createDb } from '../src/platform/database/db';
 import type { LineStatus, OrderDatabase, PlanStatus, SalesOrderStatus } from '../src/modules/order/order.types';
 import type { SewingDatabase } from '../src/modules/sewing/sewing.types';
-import { apportion } from '../src/modules/order/order.util';
+import { apportion, lineShares } from '../src/modules/order/order.util';
 import { DEFAULT_WORK_CALENDAR, lineDates, nextWorkingDay, readWorkCalendars, type LineDates, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
@@ -314,19 +314,6 @@ export function assignedOf(share: number[], assign: Assign): number[] {
   return share.map((q) => (q > 0 ? Math.max(1, Math.floor(q * 0.6)) : 0));
 }
 
-/**
- * SL kế hoạch theo màu cỡ của từng dòng: tổng mỗi dòng bằng SL dòng, tổng mỗi màu cỡ trên các dòng không vượt SL kế hoạch
- * của màu cỡ đó (chia lần lượt theo phần còn lại, không chia từng dòng độc lập rồi lệch khi cộng theo màu).
- */
-export function lineShares(cells: number[], lineQtys: number[]): number[][] {
-  const left = [...cells];
-  return lineQtys.map((q) => {
-    const share = apportion(Math.min(q, sum(left)), left);
-    share.forEach((s, i) => (left[i] -= s));
-    return share;
-  });
-}
-
 /** Lũy kế các công đoạn sau (cắt, may, endline, hoàn thiện) theo phần thời gian đã may tới hôm nay */
 function progress(plan: SimPlan, today: string) {
   if (!plan.lines.length) return { CutQty: 0, SewnQty: 0, EndlineQty: 0, FinishedQty: 0 };
@@ -356,21 +343,24 @@ export type PrepLines = ReadonlyMap<number, Date | null>;
  * Xóa kế hoạch mô phỏng của một nhà máy (kèm PO, màu cỡ, dòng dàn chuyền, phân màu cỡ) và trả đơn không còn kế hoạch
  * nào về trạng thái lúc nạp (closedAtLoad: Hoàn thành, còn lại: Mới). simulateBranch chỉ chọn đơn đang đúng trạng thái đó,
  * nên trạng thái trả về là trạng thái trước khi mô phỏng.
- * Giữ kế hoạch mô phỏng người dùng đã sửa (trừ khi `all`): kế hoạch, màu cỡ, dòng hay phân màu cỡ có ModifiedAt; dòng thêm
- * sau ở Xếp chuyền; dòng đã nhập ở Kế hoạch chuẩn bị SX (`prepLines`, đọc từ MES_Sewing).
+ * Giữ kế hoạch mô phỏng người dùng đã sửa (trừ khi `all`): kế hoạch, màu cỡ, dòng hay phân màu cỡ có ModifiedAt; dòng dàn
+ * chuyền, phân màu cỡ thêm sau; dòng đã nhập ở Kế hoạch chuẩn bị SX (`prepLines`, đọc từ MES_Sewing).
  */
 export async function clearSimulated(trx: Kysely<OrderDatabase>, branch: string, { prepLines = new Map(), all = false }: { prepLines?: PrepLines; all?: boolean } = {}) {
   const plans = await trx.selectFrom('ShipmentPlan').select(['Id', 'SalesOrderId', 'CreatedAt', 'ModifiedAt']).where('BranchCode', '=', branch).where('PlannerName', '=', PLANNER_NAME).execute();
   if (!plans.length) return { removed: 0, kept: 0 };
   const sim = () => trx.selectFrom('ShipmentPlan').select('Id').where('BranchCode', '=', branch).where('PlannerName', '=', PLANNER_NAME);
   const lines = await trx.selectFrom('ShipmentPlanLine').select(['Id', 'ShipmentPlanId', 'CreatedAt', 'ModifiedAt']).where('BranchCode', '=', branch).where('ShipmentPlanId', 'in', sim()).execute();
+  // Phân màu cỡ người dùng sửa: dòng có ModifiedAt, hoặc dòng lưu sau lúc lập kế hoạch (màn Phân bổ màu cỡ lưu dòng đổi bằng cách
+  // thêm lại, phase 5.13), như dòng dàn chuyền thêm sau
   const editedLines = await trx
     .selectFrom('ShipmentPlanLineColorSize as c')
     .innerJoin('ShipmentPlanLine as l', 'l.Id', 'c.ShipmentPlanLineId')
+    .innerJoin('ShipmentPlan as p', 'p.Id', 'l.ShipmentPlanId')
     .select('l.ShipmentPlanId')
     .distinct()
     .where('c.BranchCode', '=', branch)
-    .where('c.ModifiedAt', 'is not', null)
+    .where((eb) => eb.or([eb('c.ModifiedAt', 'is not', null), eb(sql<number>`DATEDIFF(SECOND, p.CreatedAt, c.CreatedAt)`, '>', TOUCH_MINUTES * 60)]))
     .where('l.ShipmentPlanId', 'in', sim())
     .execute();
   const editedCells = await trx.selectFrom('ShipmentPlanColorSize').select('ShipmentPlanId').distinct().where('BranchCode', '=', branch).where('ModifiedAt', 'is not', null).where('ShipmentPlanId', 'in', sim()).execute();
@@ -544,9 +534,12 @@ export async function simulateBranch(
         p.cells.map((c) => c.planQty),
         p.lines.map((l) => l.qty),
       );
+      // Chỉ lưu phần giao > 0; PlanQty là SL KHXH của màu cỡ ở kế hoạch như lúc lưu ở màn Phân bổ màu cỡ (phase 5.13)
       return p.lines.flatMap((l, m) => {
         const assigned = assignedOf(shares[m], l.assign);
-        return p.cells.map((c, n) => ({ ShipmentPlanLineId: lineId.get(`${idOf(p)}|${m}`), ColorName: c.color, SizeName: c.size, PlanQty: shares[m][n], AssignedQty: assigned[n], SortOrder: n, ...audit }));
+        return p.cells.flatMap((c, n) =>
+          assigned[n] > 0 ? [{ ShipmentPlanLineId: lineId.get(`${idOf(p)}|${m}`), ColorName: c.color, SizeName: c.size, PlanQty: c.planQty, AssignedQty: assigned[n], SortOrder: n, ...audit }] : [],
+        );
       });
     }),
   );

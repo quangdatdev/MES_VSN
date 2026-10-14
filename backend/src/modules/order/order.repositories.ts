@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { sql, type Kysely } from 'kysely';
+import { sql, type Kysely, type RawBuilder, type SqlBool } from 'kysely';
 import { BaseRepository, ChildRepository, type DataAction, type ListOptions, type Page, type Scope } from '../../platform/data/base.repository';
 import { Errors } from '../../common/app.exception';
+import { newestFirst, valueExpr, valueSearch, type FilterColumn, type FilterSpec } from '../../platform/data/column-filter';
 import { ResourceRegistry } from '../../platform/data/resource-registry';
 import { ORDER_DB } from './order.db';
+import { escapeLike } from './order.util';
 import type {
   OrderDb,
   Row,
@@ -26,14 +28,22 @@ export type PlanPoRow = Row<ShipmentPlanPoTable>;
 export type PlanLineRow = Row<ShipmentPlanLineTable>;
 export type LineColorSizeRow = Row<ShipmentPlanLineColorSizeTable>;
 export type LinePlanListRow = ShipmentPlanRow & { ScheduledQty: number; StartDate: Date | null; EndDate: Date | null; LineCount: number };
-export type AllocationListRow = PlanLineRow & {
-  PlanNo: string;
-  CustomerName: string;
-  StyleCode: string;
-  PoBuyDate: string;
-  PlanShipDate: Date;
-  AssignedQty: number;
-};
+type Where = NonNullable<ListOptions['where']>;
+/** Tổng SL giao theo màu cỡ (chỉ số tổng, không có dòng nào) */
+export type AssignedByColorSize = { ColorName: string; SizeName: string; Qty: number };
+
+/**
+ * Tổng SL giao theo màu cỡ của các dòng dàn chuyền (bí danh l) của một kế hoạch, chưa lọc ĐVCS: repository gọi ghép
+ * `branchOnly(…, 'l')`. Dòng giao 0 (đề xuất theo tỷ lệ của cách làm trước phase 5.13) không tính.
+ */
+const assignedByColorSizeQuery = (db: Kysely<any>, planId: number) =>
+  db
+    .selectFrom('ShipmentPlanLineColorSize as a')
+    .innerJoin('ShipmentPlanLine as l', 'l.Id', 'a.ShipmentPlanLineId')
+    .select(['a.ColorName', 'a.SizeName', sql<number>`SUM(a.AssignedQty)`.as('Qty')])
+    .where('l.ShipmentPlanId', '=', planId)
+    .where('a.AssignedQty', '>', 0)
+    .groupBy(['a.ColorName', 'a.SizeName']);
 
 // ---------- Thông tin đơn hàng (order.allocation) ----------
 
@@ -196,6 +206,14 @@ export class ShipmentPlanRepository extends BaseRepository<ShipmentPlanRow> {
     const qb = await this.scoped(db.selectFrom('ShipmentPlan').select('Id').where('Id', '=', planId), scope);
     return !!(await qb.where(sql<boolean>`EXISTS (SELECT 1 FROM dbo.ShipmentPlanLine l WHERE l.ShipmentPlanId = ShipmentPlan.Id)`).executeTakeFirst());
   }
+
+  /**
+   * Tổng SL đã giao (Phân bổ màu cỡ) theo màu cỡ của mọi chuyền của kế hoạch: sửa SL KHXH không xuống dưới số này. Chỉ lọc
+   * ĐVCS, không theo phạm vi người sửa (người sửa kế hoạch không cần quyền Phân bổ màu cỡ). Chỉ trả tổng.
+   */
+  async assignedByColorSize(scope: Scope, planId: number, db: Kysely<any> = this.db): Promise<AssignedByColorSize[]> {
+    return (await (await this.branchOnly(assignedByColorSizeQuery(db, planId), scope, 'l')).execute()) as AssignedByColorSize[];
+  }
 }
 
 @Injectable()
@@ -326,16 +344,6 @@ export class LinePlanLineRepository extends ChildRepository<PlanLineRow> {
 }
 
 @Injectable()
-export class LinePlanColorSizeRepository extends ChildRepository<PlanColorSizeRow> {
-  protected readonly table = 'ShipmentPlanColorSize';
-  protected readonly parentKey = 'ShipmentPlanId';
-
-  constructor(@Inject(ORDER_DB) db: OrderDb, parent: LinePlanRepository) {
-    super(db, parent);
-  }
-}
-
-@Injectable()
 export class LinePlanAllocationRepository extends ChildRepository<LineColorSizeRow> {
   protected readonly table = 'ShipmentPlanLineColorSize';
   protected readonly parentKey = 'ShipmentPlanLineId';
@@ -345,73 +353,234 @@ export class LinePlanAllocationRepository extends ChildRepository<LineColorSizeR
   }
 }
 
-// ---------- Phân bổ màu cỡ (order.colorsize): bảng chính là dòng dàn chuyền, lọc được theo chuyền ----------
+// ---------- Phân bổ màu cỡ (order.colorsize): bảng nguồn là dòng dàn chuyền, màn gom một dòng mỗi kế hoạch ----------
+
+/**
+ * Trạng thái phân màu cỡ của kế hoạch: tổng giao mọi chuyền so với SL kế hoạch (phase 5.13 Q4). Mã đủ là FULL, khác ALLOCATED của
+ * dòng dàn chuyền (đã có phần giao), vì hai mã cùng nằm trong một kết quả popup
+ */
+export type AllocationStatus = 'PLANNED' | 'PARTIAL' | 'FULL';
+
+/** Một dòng của màn Phân bổ màu cỡ: một kế hoạch có dòng dàn chuyền trong phạm vi (LineAllocationRepository.planQuery) */
+export interface AllocationPlanRow {
+  Id: number;
+  PlanNo: string;
+  CustomerName: string;
+  StyleCode: string;
+  PoBuyDate: string;
+  BranchCode: string;
+  ShipDate: Date;
+  PlanQty: number;
+  /** Mã chuyền của các dòng dàn chuyền trong phạm vi, nối bằng dấu phẩy theo thứ tự dàn chuyền */
+  LineCodes: string;
+  /** NSBQ của các dòng đó, cùng thứ tự */
+  AvgOutputs: string;
+  StartDate: Date;
+  EndDate: Date;
+  /** Lúc lưu dòng dàn chuyền đầu tiên (trong phạm vi): lúc kế hoạch hiện ở màn này */
+  CreatedAt: Date;
+  /** Tổng giao của mọi chuyền của kế hoạch */
+  AssignedQty: number;
+  StatusCode: AllocationStatus;
+}
+
+const allocationStatus = sql<AllocationStatus>`CASE WHEN r.AssignedQty <= 0 THEN 'PLANNED' WHEN r.AssignedQty < r.PlanQty THEN 'PARTIAL' ELSE 'FULL' END`;
+
+/**
+ * Cột lọc được theo giá trị trên bảng gom (bí danh r). Chuyền may có mặt để nằm trong danh sách trắng: lọc theo từng chuyền
+ * bằng `hasLines` (chuỗi đã nối không so bằng được), giá trị của popup lọc bằng `planLineValues`. NSBQ là chuỗi liệt kê theo
+ * chuyền (phase 5.13 Q3) nên không lọc, không sắp xếp.
+ */
+export const ALLOCATION_FILTER: FilterSpec = {
+  customerName: { expr: 'r.CustomerName', kind: 'text' },
+  styleCode: { expr: 'r.StyleCode', kind: 'text' },
+  poBuyDate: { expr: 'r.PoBuyDate', kind: 'text' },
+  branchCode: { expr: 'r.BranchCode', kind: 'text' },
+  lineCode: { expr: 'r.LineCodes', kind: 'text' },
+  startDate: { expr: 'r.StartDate', kind: 'date' },
+  endDate: { expr: 'r.EndDate', kind: 'date' },
+  shipDate: { expr: 'r.ShipDate', kind: 'date' },
+  qty: { expr: 'r.PlanQty', kind: 'number' },
+  assignedQty: { expr: 'r.AssignedQty', kind: 'number' },
+  statusCode: { expr: allocationStatus, kind: 'text' },
+  createdAt: { expr: 'r.CreatedAt', kind: 'datetime' },
+};
+
+/** Sắp xếp theo trường JSON của màn: danh sách trắng, không nhận tên cột từ client */
+const ALLOCATION_SORT: Record<string, string | RawBuilder<unknown>> = {
+  customerName: 'r.CustomerName',
+  styleCode: 'r.StyleCode',
+  lineCode: 'r.LineCodes',
+  startDate: 'r.StartDate',
+  endDate: 'r.EndDate',
+  shipDate: 'r.ShipDate',
+  qty: 'r.PlanQty',
+  assignedQty: 'r.AssignedQty',
+  statusCode: allocationStatus,
+  createdAt: 'r.CreatedAt',
+};
+
+/**
+ * "trường:chiều" theo danh sách trắng (trường lạ: mới tạo lên trước); thêm Id cuối để phân trang ổn định. any: câu trên bảng dẫn
+ * xuất r dựng lúc chạy, Kysely không suy được kiểu cột của bảng dẫn xuất lồng hai tầng
+ */
+function allocationOrder(qb: any, sort: string) {
+  const [field, dir] = sort.split(':');
+  const known = Object.prototype.hasOwnProperty.call(ALLOCATION_SORT, field) ? ALLOCATION_SORT[field] : undefined;
+  const expr = known ?? ALLOCATION_SORT.createdAt;
+  return qb.orderBy(typeof expr === 'string' ? sql.ref(expr) : expr, known && dir === 'asc' ? 'asc' : 'desc').orderBy('r.Id', 'desc');
+}
+
+/**
+ * Kế hoạch có ít nhất một chuyền đã chọn trong số chuyền của dòng gom: `in` là các mã được tích, `notIn` là các mã bị bỏ tích (còn
+ * ít nhất một chuyền không bị bỏ). Hai cách chọn cùng một tập chuyền ở popup lọc cho cùng kết quả. Chuỗi mã đã nối tách bằng
+ * STRING_SPLIT (MES_Order đòi compatibility level ≥ 130, migration 0007); mã chuyền theo mẫu ^[A-Z0-9-]{1,20}$ (ScheduleLineDto)
+ * nên không chứa dấu phẩy.
+ */
+export function hasLines(codes: string[], mode: 'in' | 'notIn' = 'in'): Where {
+  const values = codes.length ? sql.join(codes) : null;
+  const hit = mode === 'in' ? (values ? sql`s.value IN (${values})` : sql`1 = 0`) : values ? sql`s.value NOT IN (${values})` : sql`1 = 1`;
+  return (qb) => qb.where(sql<SqlBool>`EXISTS (SELECT 1 FROM STRING_SPLIT(r.LineCodes, ',') s WHERE ${hit})`);
+}
+
+const MAX_PAGE_SIZE = 200;
+const MAX_VALUES = 1000;
 
 @Injectable()
 export class LineAllocationRepository extends BaseRepository<PlanLineRow> {
   protected readonly table = 'ShipmentPlanLine';
   protected readonly resource = 'order.colorsize';
-  protected readonly searchColumns = ['LineCode'];
-  protected readonly sortable = ['Id', 'LineCode', 'StartDate', 'EndDate', 'Qty', 'AvgOutput', 'StatusCode', 'CreatedAt'];
-  protected readonly defaultSort = 'CreatedAt:desc';
 
   constructor(@Inject(ORDER_DB) db: OrderDb, registry: ResourceRegistry) {
     super(db, registry);
   }
 
-  /** Dòng dàn chuyền kèm thông tin kế hoạch (khách hàng, mã hàng, PO/Buy date) và tổng đã phân màu cỡ. */
-  listWithPlan(scope: Scope, opts: ListOptions & { plan?: PlanFilter }, action: DataAction = 'view'): Promise<Page<AllocationListRow>> {
-    return this.list(scope, { ...opts, where: withPlanFilter(opts), select: () => ALLOCATION_COLUMNS }, action) as Promise<Page<AllocationListRow>>;
+  /**
+   * Bảng gom một dòng mỗi kế hoạch có dòng dàn chuyền trong phạm vi của hành động (bí danh r). Phạm vi lọc trên dòng dàn chuyền
+   * trước khi gom (như SalesOrderPoRepository.styles): chuyền, NSBQ (nối theo thứ tự dàn chuyền), ngày vào chuyền sớm nhất, kết
+   * thúc muộn nhất chỉ tính các dòng đó. Cột của kế hoạch đọc theo khóa như cột kế hoạch cha của dòng dàn chuyền; dòng dàn chuyền
+   * mang ĐVCS của kế hoạch (khóa ngoại ghép) nên kế hoạch cũng trong ĐVCS. Tổng giao tính mọi chuyền của kế hoạch, chỉ trả tổng
+   * (như LinePlanLineRepository.totalExcept): kế hoạch phân đủ hay chưa không tùy phạm vi người xem. Trả any như allocationOrder.
+   */
+  private async planQuery(scope: Scope, action: DataAction, db: Kysely<any> = this.db): Promise<any> {
+    const lines = await this.scoped(db.selectFrom('ShipmentPlanLine as l'), scope, action, 'l');
+    const grouped = lines
+      .select([
+        'l.ShipmentPlanId',
+        sql<string>`STRING_AGG(l.LineCode, ',') WITHIN GROUP (ORDER BY l.SortOrder, l.Id)`.as('LineCodes'),
+        sql<string>`STRING_AGG(CAST(l.AvgOutput AS VARCHAR(12)), ',') WITHIN GROUP (ORDER BY l.SortOrder, l.Id)`.as('AvgOutputs'),
+        sql<Date>`MIN(l.StartDate)`.as('StartDate'),
+        sql<Date>`MAX(l.EndDate)`.as('EndDate'),
+        sql<Date>`MIN(l.CreatedAt)`.as('CreatedAt'),
+      ])
+      .groupBy('l.ShipmentPlanId');
+    const base = db
+      .selectFrom(grouped.as('g'))
+      .innerJoin('ShipmentPlan as p', 'p.Id', 'g.ShipmentPlanId')
+      .select([
+        'p.Id',
+        'p.PlanNo',
+        'p.CustomerName',
+        'p.StyleCode',
+        'p.PoBuyDate',
+        'p.BranchCode',
+        'p.ShipDate',
+        'p.PlanQty',
+        'g.LineCodes',
+        'g.AvgOutputs',
+        'g.StartDate',
+        'g.EndDate',
+        'g.CreatedAt',
+        sql<number>`(SELECT COALESCE(SUM(a.AssignedQty), 0) FROM dbo.ShipmentPlanLineColorSize a INNER JOIN dbo.ShipmentPlanLine x ON x.Id = a.ShipmentPlanLineId WHERE x.ShipmentPlanId = p.Id)`.as('AssignedQty'),
+      ]);
+    return db.selectFrom(base.as('r')).selectAll('r').select(allocationStatus.as('StatusCode'));
   }
 
-  listAllWithPlan(scope: Scope, opts: Omit<ListOptions, 'page' | 'pageSize'> & { plan?: PlanFilter }): Promise<AllocationListRow[]> {
-    return this.listAll(scope, { ...opts, where: withPlanFilter(opts), select: () => ALLOCATION_COLUMNS }) as Promise<AllocationListRow[]>;
-  }
-
-  async getWithPlan(scope: Scope, id: number, action: DataAction = 'view'): Promise<AllocationListRow> {
-    const page = await this.listWithPlan(scope, { page: 1, pageSize: 1, where: (qb) => qb.where('Id', '=', id) }, action);
-    if (!page.items[0]) throw Errors.notFound();
-    return page.items[0];
-  }
-}
-
-export interface PlanFilter {
-  shipFrom?: string;
-  shipTo?: string;
-  customer?: string;
-  style?: string;
-}
-
-/** Lọc nghiệp vụ theo cột của kế hoạch cha (ngày xuất, khách hàng, mã hàng). */
-export function withPlanFilter(opts: Pick<ListOptions, 'where'> & { plan?: PlanFilter }) {
-  return <Q extends { where: (...a: any[]) => Q }>(qb: Q): Q => {
+  /** Trang của màn Phân bổ màu cỡ. `sort`: "trường:chiều" (trường JSON, đã qua chính sách cột); `where`: lọc trên bảng gom */
+  async planPage(scope: Scope, opts: { page: number; pageSize: number; sort: string; where?: Where }): Promise<Page<AllocationPlanRow>> {
+    let qb = await this.planQuery(scope, 'view');
     if (opts.where) qb = opts.where(qb);
-    const f = opts.plan;
-    if (!f || !(f.shipFrom || f.shipTo || f.customer || f.style)) return qb;
-    return qb.where((eb: any) => {
-      let sub = eb.selectFrom('ShipmentPlan as p').select('p.Id');
-      if (f.shipFrom) sub = sub.where('p.ShipDate', '>=', f.shipFrom);
-      if (f.shipTo) sub = sub.where('p.ShipDate', '<=', f.shipTo);
-      if (f.customer) sub = sub.where('p.CustomerName', 'like', `%${f.customer.replace(/[%_[]/g, (c) => `[${c}]`)}%`);
-      if (f.style) sub = sub.where('p.StyleCode', 'like', `%${f.style.replace(/[%_[]/g, (c) => `[${c}]`)}%`);
-      return eb('ShipmentPlanId', 'in', sub);
-    });
-  };
-}
+    const total = (await qb.clearSelect().select(sql<number>`COUNT(*)`.as('n')).executeTakeFirstOrThrow()) as { n: number };
+    const pageSize = Math.min(Math.max(1, Math.trunc(opts.pageSize) || 1), MAX_PAGE_SIZE);
+    const page = Math.max(1, Math.trunc(opts.page) || 1);
+    const items = (await allocationOrder(qb, opts.sort)
+      .offset((page - 1) * pageSize)
+      .fetch(pageSize)
+      .execute()) as AllocationPlanRow[];
+    return { items, total: Number(total.n), page, pageSize };
+  }
 
-/** Cột của kế hoạch cha cho mỗi dòng dàn chuyền (truy vấn con theo khóa), dùng cả cho lọc theo cột. */
-export const planExpr = (col: string) => sql`(SELECT p.${sql.ref(col)} FROM dbo.ShipmentPlan p WHERE p.Id = ShipmentPlanLine.ShipmentPlanId)`;
-/** Tổng số lượng đã giao (phân màu cỡ) của mỗi dòng dàn chuyền. */
-export const assignedExpr = sql<number>`(SELECT COALESCE(SUM(a.AssignedQty), 0) FROM dbo.ShipmentPlanLineColorSize a WHERE a.ShipmentPlanLineId = ShipmentPlanLine.Id)`;
-const planCol = (col: string, as: string) => planExpr(col).as(as);
-const ALLOCATION_COLUMNS = [
-  planCol('PlanNo', 'PlanNo'),
-  planCol('CustomerName', 'CustomerName'),
-  planCol('StyleCode', 'StyleCode'),
-  planCol('PoBuyDate', 'PoBuyDate'),
-  planCol('ShipDate', 'PlanShipDate'),
-  assignedExpr.as('AssignedQty'),
-];
+  /** Mọi dòng khớp lọc cho xuất file (phạm vi của quyền export), lấy tối đa `limit` + 1 dòng để bên gọi biết là vượt */
+  async planAll(scope: Scope, opts: { sort: string; where?: Where; limit: number }): Promise<AllocationPlanRow[]> {
+    let qb = await this.planQuery(scope, 'export');
+    if (opts.where) qb = opts.where(qb);
+    return (await allocationOrder(qb, opts.sort).offset(0).fetch(opts.limit + 1).execute()) as AllocationPlanRow[];
+  }
+
+  /** Một kế hoạch của màn; không có chuyền nào trong phạm vi của hành động thì 404 như không tồn tại */
+  async planRow(scope: Scope, planId: number, action: DataAction = 'view', db: Kysely<any> = this.db): Promise<AllocationPlanRow> {
+    const row = await (await this.planQuery(scope, action, db)).where('r.Id', '=', planId).executeTakeFirst();
+    if (!row) throw Errors.notFound();
+    return row as AllocationPlanRow;
+  }
+
+  /** Giá trị khác nhau của một cột của bảng gom cho popup lọc theo cột, theo phạm vi xem và các bộ lọc đang áp */
+  async planValues(scope: Scope, col: FilterColumn, opts: { where?: Where; search?: string; limit: number }): Promise<{ rows: unknown[]; truncated: boolean }> {
+    let qb = await this.planQuery(scope, 'view');
+    if (opts.where) qb = opts.where(qb);
+    const search = valueSearch(col, opts.search);
+    if (search) qb = qb.where(search);
+    const limit = Math.min(Math.max(1, Math.trunc(opts.limit) || 1), MAX_VALUES);
+    const rows = (await qb
+      .clearSelect()
+      .select(valueExpr(col).as('v'))
+      .distinct()
+      .orderBy('v', newestFirst(col) ? 'desc' : 'asc')
+      .offset(0)
+      .fetch(limit + 1)
+      .execute()) as { v: unknown }[];
+    return { rows: rows.slice(0, limit).map((r) => r.v), truncated: rows.length > limit };
+  }
+
+  /** Mã từng chuyền (không phải chuỗi đã nối) trong phạm vi xem, của các kế hoạch khớp bộ lọc: giá trị popup lọc cột Chuyền may */
+  async planLineValues(scope: Scope, opts: { where?: Where; search?: string; limit: number }): Promise<{ rows: unknown[]; truncated: boolean }> {
+    let plans = await this.planQuery(scope, 'view');
+    if (opts.where) plans = opts.where(plans);
+    let qb = await this.scoped(this.db.selectFrom('ShipmentPlanLine as l'), scope, 'view', 'l');
+    qb = qb.where('l.ShipmentPlanId', 'in', plans.clearSelect().select('r.Id'));
+    const search = opts.search?.trim();
+    if (search) qb = qb.where('l.LineCode', 'like', escapeLike(search));
+    const limit = Math.min(Math.max(1, Math.trunc(opts.limit) || 1), MAX_VALUES);
+    const rows = (await qb.select('l.LineCode as v').distinct().orderBy('v', 'asc').offset(0).fetch(limit + 1).execute()) as { v: unknown }[];
+    return { rows: rows.slice(0, limit).map((r) => r.v), truncated: rows.length > limit };
+  }
+
+  /** Dòng dàn chuyền của một kế hoạch trong phạm vi của hành động, theo thứ tự dàn chuyền */
+  async planLines(scope: Scope, planId: number, action: DataAction = 'view', db: Kysely<any> = this.db): Promise<PlanLineRow[]> {
+    const qb = await this.scoped(db.selectFrom('ShipmentPlanLine').selectAll().where('ShipmentPlanId', '=', planId), scope, action);
+    return (await qb.orderBy('SortOrder').orderBy('Id').execute()) as PlanLineRow[];
+  }
+
+  /**
+   * SL KHXH theo màu cỡ của kế hoạch, cho popup Phân bổ màu cỡ: đọc như cột của kế hoạch cha khi kế hoạch có dòng dàn chuyền
+   * trong phạm vi xem (người phân màu cỡ không cần quyền Kế hoạch xuất hàng), không thì rỗng.
+   */
+  async planColorSizes(scope: Scope, planId: number, db: Kysely<any> = this.db): Promise<PlanColorSizeRow[]> {
+    const visible = await this.scoped(db.selectFrom('ShipmentPlanLine').select('ShipmentPlanId').where('ShipmentPlanId', '=', planId), scope, 'view');
+    const qb = await this.branchOnly(db.selectFrom('ShipmentPlanColorSize').selectAll().where('ShipmentPlanId', 'in', visible), scope);
+    return (await qb.orderBy('SortOrder').orderBy('Id').execute()) as PlanColorSizeRow[];
+  }
+
+  /**
+   * Tổng SL giao theo màu cỡ của các chuyền khác của kế hoạch (ngoài `lineIds`). Chỉ lọc ĐVCS, không theo phạm vi chuyền: người
+   * chỉ sửa được chuyền mình vẫn không giao vượt SL kế hoạch (như LinePlanLineRepository.totalExcept). Chỉ trả tổng.
+   */
+  async assignedOutside(scope: Scope, planId: number, lineIds: number[], db: Kysely<any> = this.db): Promise<AssignedByColorSize[]> {
+    let qb = await this.branchOnly(assignedByColorSizeQuery(db, planId), scope, 'l');
+    if (lineIds.length) qb = qb.where('l.Id', 'not in', lineIds);
+    return (await qb.execute()) as AssignedByColorSize[];
+  }
+}
 
 @Injectable()
 export class LineColorSizeRepository extends ChildRepository<LineColorSizeRow> {

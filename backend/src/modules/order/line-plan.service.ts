@@ -13,17 +13,9 @@ import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { ORDER_DB } from './order.db';
 import { BoardQuery, OrderListQuery, OrderValuesQuery, ScheduleDto } from './order.dto';
-import {
-  LinePlanAllocationRepository,
-  LinePlanColorSizeRepository,
-  LinePlanLineRepository,
-  LinePlanRepository,
-  type LinePlanListRow,
-  type PlanColorSizeRow,
-  type PlanLineRow,
-} from './order.repositories';
+import { LinePlanAllocationRepository, LinePlanLineRepository, LinePlanRepository, type LinePlanListRow, type PlanLineRow } from './order.repositories';
 import type { OrderDb } from './order.types';
-import { apportion, businessFilter, conflict, day, invalid, MAX_PRODUCTION_DAYS, num, readableQuery, sortOf } from './order.util';
+import { assignedVisible, businessFilter, conflict, day, invalid, MAX_PRODUCTION_DAYS, num, readableQuery, someOf, sortOf } from './order.util';
 
 const RESOURCE = 'order.lineplan';
 const MAX_BOARD_DAYS = 190;
@@ -131,7 +123,6 @@ export class LinePlanService {
     @Inject(ORDER_DB) private readonly db: OrderDb,
     private readonly plans: LinePlanRepository,
     private readonly lines: LinePlanLineRepository,
-    private readonly planColorSizes: LinePlanColorSizeRepository,
     private readonly allocations: LinePlanAllocationRepository,
     private readonly org: OrgService,
     private readonly audit: AuditService,
@@ -185,7 +176,8 @@ export class LinePlanService {
    * Lưu bảng nhập liệu dàn chuyền của một kế hoạch: thêm, sửa, xóa dòng trong một transaction.
    * Người dùng chỉ nhập chuyền, số lượng, năng suất, ngày vào chuyền. Số ngày SX = làm tròn lên (số lượng / năng suất); số ngày
    * nghỉ, kết thúc vào chuyền, ngày ra chuyền, nhập kho tính theo lịch làm việc của ĐVCS (phase 5.12, work-calendar.ts), không
-   * nhận từ client. Dòng mới được đề xuất sẵn phân màu cỡ theo tỷ lệ kế hoạch (màn Phân bổ màu cỡ chỉnh tiếp).
+   * nhận từ client. Phân màu cỡ cho từng chuyền làm ở màn Phân bổ màu cỡ (phase 5.13): ở đây không đề xuất, chỉ giữ số lượng
+   * của chuyền không dưới phần đã giao; dòng bị xóa thì phần giao của nó bị xóa theo.
    */
   async saveLines(user: AuthUser, id: number, dto: ScheduleDto) {
     const scope = scopeOf(user);
@@ -220,6 +212,8 @@ export class LinePlanService {
     const before = await this.get(user, id);
     // Thông báo vượt số lượng không nêu con số khi người sửa không được xem SL kế hoạch, SL đã xếp (review lượt 3 P7)
     const blindQty = (await this.fields.unreadable(user, RESOURCE, ['planQty', 'scheduledQty'])).size > 0;
+    const showAssigned = await assignedVisible(this.fields, user);
+    const lineName = await this.org.lineNamer();
     await inTransaction(this.db, async (trx) => {
       // Khóa kế hoạch: hai lần lưu cùng lúc phải lần lượt, không cùng vượt SL kế hoạch hay nhân đôi dòng (review 5.1 #8).
       // Rồi khóa các dòng dàn chuyền trước khi chạm phân màu cỡ: cùng thứ tự kế hoạch → dòng → màu cỡ với màn
@@ -259,10 +253,18 @@ export class LinePlanService {
       if (lockedRemoved) throw conflict(`Dòng chuyền ${lockedRemoved.LineCode} đang may hoặc đã xong, không xóa được.`);
       const moved = rows.find((r) => r.id !== undefined && started(existing.find((e) => e.Id === r.id)!.StatusCode) && existing.find((e) => e.Id === r.id)!.LineCode !== r.values.LineCode);
       if (moved) throw conflict('Dòng đang may hoặc đã xong không chuyển sang chuyền khác được.');
+      // Chuyền đã được giao màu cỡ (Phân bổ màu cỡ) không giảm số lượng xuống dưới phần đã giao (phase 5.13 Q2); chỉ xét dòng đang
+      // giảm số lượng. Đọc dưới khóa kế hoạch: lần lưu phân màu cỡ cũng khóa kế hoạch trước, hai bên không chen nhau
+      const assigned = new Map<number, number>();
+      for (const a of await this.allocations.listByParents(scope, [...existingIds], 'update', trx)) assigned.set(a.ShipmentPlanLineId, (assigned.get(a.ShipmentPlanLineId) ?? 0) + a.AssignedQty);
+      const shrunk = rows.filter((r) => r.id !== undefined && r.values.Qty < (assigned.get(r.id) ?? 0) && r.values.Qty < existing.find((e) => e.Id === r.id)!.Qty);
+      if (shrunk.length) {
+        const details = shrunk.map((r) => (showAssigned ? `${lineName(r.values.LineCode as string)}: đã giao ${assigned.get(r.id!)}, số lượng mới ${r.values.Qty}` : lineName(r.values.LineCode as string)));
+        throw conflict(`Chuyền đã được giao màu cỡ nhiều hơn số lượng mới (${someOf(details, 'chuyền')}). Giảm phần giao ở màn Phân bổ màu cỡ trước.`, details);
+      }
       for (const r of removed) await this.allocations.removeWhere(scope, { parentId: r.Id }, trx);
       await this.lines.removeWhere(scope, { parentId: id, ids: removed.map((r) => r.Id) }, trx);
 
-      const planColorSizes = await this.planColorSizes.listByParent(scope, id, 'view', trx);
       // Dòng ghi xong phải còn trong phạm vi xem của người lưu: không thêm hay chuyển dòng sang chuyền chỉ sửa được
       // mà không thấy (dòng sẽ biến khỏi màn hình của họ) – review 5.1 lượt 5
       const ensureVisible = async (lineId: number) => {
@@ -275,14 +277,10 @@ export class LinePlanService {
       };
       for (const r of rows) {
         if (r.id !== undefined) {
-          const old = existing.find((e) => e.Id === r.id)!;
           await this.lines.updateRow(scope, r.id, r.values, trx);
           await ensureVisible(r.id);
-          if (old.Qty !== r.values.Qty) await this.reproportion(scope, r.id, r.values.Qty, trx);
         } else {
-          const lineId = await this.lines.insertOne(scope, id, { ...r.values, StatusCode: 'PLANNED' }, trx);
-          await ensureVisible(lineId);
-          await this.allocations.insert(scope, lineId, this.proposal(planColorSizes, r.values.Qty), trx);
+          await ensureVisible(await this.lines.insertOne(scope, id, { ...r.values, StatusCode: 'PLANNED' }, trx));
         }
       }
       if (plan.StatusCode === 'PLANNED' || plan.StatusCode === 'SCHEDULED') {
@@ -293,21 +291,6 @@ export class LinePlanService {
     const after = await this.get(user, id);
     await this.audit.log({ userId: user.userId, username: user.username, branchCode: user.branchCode, entityType: 'ShipmentPlan', entityId: id, actionCode: 'LINE_SCHEDULE', oldValue: before.lines, newValue: after.lines, ip: user.ip });
     return after;
-  }
-
-  private proposal(planColorSizes: PlanColorSizeRow[], qty: number) {
-    const shares = apportion(qty, planColorSizes.map((c) => c.PlanQty));
-    return planColorSizes.map((c, i) => ({ ColorName: c.ColorName, SizeName: c.SizeName, PlanQty: shares[i], AssignedQty: 0, SortOrder: i }));
-  }
-
-  /** Số lượng dòng dàn chuyền đổi: chia lại SL KH theo màu cỡ; SL giao giữ nguyên nhưng không vượt SL KH mới. */
-  private async reproportion(scope: ReturnType<typeof scopeOf>, lineId: number, qty: number, trx: OrderDb) {
-    const rows = await this.allocations.listByParent(scope, lineId, 'update', trx);
-    const shares = apportion(qty, rows.map((r) => r.PlanQty));
-    for (const [i, r] of rows.entries()) {
-      const assigned = Math.min(r.AssignedQty, shares[i]);
-      if (shares[i] !== r.PlanQty || assigned !== r.AssignedQty) await this.allocations.updateRow(scope, r.Id, { PlanQty: shares[i], AssignedQty: assigned }, trx);
-    }
   }
 
   /** Bảng dàn chuyền: mỗi chuyền một hàng, mỗi ngày một cột; thanh là các dòng dàn chuyền giao với khoảng ngày. */

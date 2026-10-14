@@ -1,5 +1,6 @@
 import { DEFAULT_WORK_CALENDAR, isOffDay, lineDates, type CalendarDay, type WorkCalendar } from '../src/platform/catalog/work-calendar';
-import { assignedOf, cellKey, lineShares, planBoard, type SimOrder, type SimPlan } from '../scripts/simulate-board';
+import { assignedOf, cellKey, planBoard, type SimOrder, type SimPlan } from '../scripts/simulate-board';
+import { lineShares } from '../src/modules/order/order.util';
 
 // Không cần database: phần xếp lịch thuần của dàn chuyền mô phỏng (scripts/simulate-board.ts). Phần ghi DB: simulate-board.db.spec.ts
 const TODAY = '2026-10-10';
