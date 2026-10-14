@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 
 /** Như @IsOptional nhưng không cho null: cột NOT NULL thì null phải trả 422, không lọt xuống DB thành lỗi 500. */
 const Optional = () => ValidateIf((_o, v) => v !== undefined);
@@ -9,6 +9,9 @@ const upper = () => Transform(({ value }) => (typeof value === 'string' ? value.
 const factoryCode = () => Transform(({ value }) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().toUpperCase() : value));
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const HHMM_MESSAGE = { message: 'Giờ dạng HH:mm, ví dụ 07:30.' };
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_MESSAGE = { message: 'Ngày dạng YYYY-MM-DD.' };
+const BRANCH_CODE = /^[A-Z0-9]{1,10}$/;
 
 // ---------- Danh mục đơn giản (Đơn vị tính, Loại đơn hàng…) ----------
 
@@ -87,4 +90,35 @@ export class ExternalRowsQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) page: number = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize: number = 100;
   @IsOptional() @IsString() @MaxLength(60) q?: string;
+}
+
+// ---------- Lịch làm việc theo ĐVCS (phase 5.12) ----------
+
+export class WorkCalendarUpdateDto {
+  /** Thứ nghỉ hằng tuần theo ISO (1 = thứ Hai … 7 = Chủ nhật); phải còn ít nhất một ngày làm việc */
+  @IsArray() @ArrayMaxSize(6, { message: 'Phải còn ít nhất một ngày làm việc trong tuần.' }) @ArrayUnique() @IsInt({ each: true }) @Min(1, { each: true }) @Max(7, { each: true })
+  weeklyOffDays!: number[];
+  @Type(() => Number) @IsInt() @Min(0) @Max(60) outStartOffsetDays!: number;
+  @Type(() => Number) @IsInt() @Min(0) @Max(60) outEndOffsetDays!: number;
+  @Type(() => Number) @IsInt() @Min(0) @Max(60) warehouseStartOffsetDays!: number;
+  @Type(() => Number) @IsInt() @Min(0) @Max(60) warehouseEndOffsetDays!: number;
+}
+
+export class WorkCalendarDaysDto {
+  /** Áp cùng lúc cho nhiều ĐVCS (ví dụ nghỉ Tết toàn công ty) */
+  @IsArray() @ArrayMinSize(1, { message: 'Chọn ít nhất một đơn vị cơ sở.' }) @ArrayMaxSize(50) @ArrayUnique() @Matches(BRANCH_CODE, { each: true, message: 'Mã đơn vị cơ sở không hợp lệ.' })
+  branchCodes!: string[];
+  @Matches(DATE_ONLY, DATE_MESSAGE) from!: string;
+  @Matches(DATE_ONLY, DATE_MESSAGE) to!: string;
+  @IsIn(['OFF', 'WORK'], { message: 'Chọn Nghỉ hoặc Làm bù.' }) dayType!: 'OFF' | 'WORK';
+  @IsOptional() @trim() @IsString() @MaxLength(100) name?: string | null;
+}
+
+export class WorkCalendarYearQuery {
+  @Type(() => Number) @IsInt() @Min(2000) @Max(2100) year!: number;
+}
+
+export class WorkCalendarRangeQuery {
+  @Matches(DATE_ONLY, DATE_MESSAGE) from!: string;
+  @Matches(DATE_ONLY, DATE_MESSAGE) to!: string;
 }

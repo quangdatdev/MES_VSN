@@ -238,8 +238,8 @@ export interface SyncRunRow extends SyncRunInfo {
 
 export interface MesCatalog {
   code: string;
-  /** factory: nhà máy SX (SysProductionFactory); item: danh mục mã, tên (SysCatalog); shift: ca làm việc */
-  kind: 'factory' | 'item' | 'shift';
+  /** factory: nhà máy SX (SysProductionFactory); item: danh mục mã, tên (SysCatalog); shift: ca làm việc; calendar: lịch làm việc theo ĐVCS */
+  kind: 'factory' | 'item' | 'shift' | 'calendar';
   name: string;
   description: string | null;
   total: number;
@@ -297,4 +297,36 @@ export interface ExternalRows {
   pageSize: number;
   columns: { name: string; type: string; key: boolean }[];
   rows: (string | number | boolean | null)[][];
+}
+
+// ---------- Lịch làm việc theo ĐVCS (phase 5.12) ----------
+
+export interface WorkCalendarConfig {
+  /** Thứ nghỉ hằng tuần theo ISO: 1 = thứ Hai … 7 = Chủ nhật */
+  weeklyOffDays: number[];
+  outStartOffsetDays: number;
+  outEndOffsetDays: number;
+  warehouseStartOffsetDays: number;
+  warehouseEndOffsetDays: number;
+}
+
+export interface WorkCalendarItem extends WorkCalendarConfig {
+  branchCode: string;
+  branchName: string;
+  branchActive: boolean;
+  /** false: chưa có lịch riêng, đang dùng lịch mặc định */
+  configured: boolean;
+  dayCount: number;
+}
+
+export interface WorkCalendarList {
+  defaults: WorkCalendarConfig;
+  items: WorkCalendarItem[];
+}
+
+export interface WorkCalendarDayRow {
+  id: number;
+  date: string;
+  dayType: 'OFF' | 'WORK';
+  name: string | null;
 }

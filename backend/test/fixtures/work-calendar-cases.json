@@ -1,0 +1,98 @@
+{
+  "_note": "Bộ ca chung của hàm tính ngày dàn chuyền (phase 5.12): backend/test/work-calendar.spec.ts và frontend/src/test/work-calendar.test.ts cùng chạy, hai bản hàm phải ra cùng kết quả. Kết quả tính tay, không sinh từ code.",
+  "calendars": {
+    "default": { "weeklyOffDays": [7], "outStartOffsetDays": 3, "outEndOffsetDays": 3, "warehouseStartOffsetDays": 2, "warehouseEndOffsetDays": 5, "days": [] },
+    "tet2027": {
+      "weeklyOffDays": [7],
+      "outStartOffsetDays": 3,
+      "outEndOffsetDays": 3,
+      "warehouseStartOffsetDays": 2,
+      "warehouseEndOffsetDays": 5,
+      "days": [
+        { "date": "2027-02-04", "dayType": "OFF", "name": "Tết Nguyên đán" },
+        { "date": "2027-02-05", "dayType": "OFF", "name": "Tết Nguyên đán" },
+        { "date": "2027-02-06", "dayType": "OFF", "name": "Tết Nguyên đán" },
+        { "date": "2027-02-07", "dayType": "OFF", "name": "Tết Nguyên đán" },
+        { "date": "2027-02-08", "dayType": "OFF", "name": "Tết Nguyên đán" },
+        { "date": "2027-02-09", "dayType": "OFF", "name": "Tết Nguyên đán" },
+        { "date": "2027-02-10", "dayType": "OFF", "name": "Tết Nguyên đán" },
+        { "date": "2027-02-14", "dayType": "WORK", "name": "Làm bù" }
+      ]
+    },
+    "pushedHoliday": {
+      "weeklyOffDays": [7],
+      "outStartOffsetDays": 3,
+      "outEndOffsetDays": 3,
+      "warehouseStartOffsetDays": 2,
+      "warehouseEndOffsetDays": 5,
+      "days": [{ "date": "2026-10-12", "dayType": "OFF", "name": "Nghỉ bù" }]
+    },
+    "sundayWork": {
+      "weeklyOffDays": [7],
+      "outStartOffsetDays": 3,
+      "outEndOffsetDays": 3,
+      "warehouseStartOffsetDays": 2,
+      "warehouseEndOffsetDays": 5,
+      "days": [{ "date": "2026-11-15", "dayType": "WORK", "name": "Làm bù Chủ nhật" }]
+    },
+    "weekend": { "weeklyOffDays": [6, 7], "outStartOffsetDays": 0, "outEndOffsetDays": 0, "warehouseStartOffsetDays": 0, "warehouseEndOffsetDays": 0, "days": [] }
+  },
+  "cases": [
+    {
+      "name": "ví dụ Q1: vào thứ Hai 05/10/2026, SX 10 ngày, nghỉ Chủ nhật 11/10",
+      "calendar": "default",
+      "start": "2026-10-05",
+      "productionDays": 10,
+      "expect": { "offDays": 1, "endDate": "2026-10-15", "outStartDate": "2026-10-08", "outEndDate": "2026-10-19", "warehouseStartDate": "2026-10-10", "warehouseEndDate": "2026-10-24" }
+    },
+    {
+      "name": "vào thứ Bảy, Chủ nhật nằm giữa",
+      "calendar": "default",
+      "start": "2026-12-05",
+      "productionDays": 4,
+      "expect": { "offDays": 1, "endDate": "2026-12-09", "outStartDate": "2026-12-09", "outEndDate": "2026-12-12", "warehouseStartDate": "2026-12-11", "warehouseEndDate": "2026-12-18" }
+    },
+    {
+      "name": "vào đúng Chủ nhật: đếm từ thứ Hai, Chủ nhật tính vào số ngày nghỉ",
+      "calendar": "default",
+      "start": "2026-10-11",
+      "productionDays": 1,
+      "expect": { "offDays": 1, "endDate": "2026-10-12", "outStartDate": "2026-10-15", "outEndDate": "2026-10-15", "warehouseStartDate": "2026-10-17", "warehouseEndDate": "2026-10-21" }
+    },
+    {
+      "name": "may một ngày",
+      "calendar": "default",
+      "start": "2026-10-06",
+      "productionDays": 1,
+      "expect": { "offDays": 0, "endDate": "2026-10-06", "outStartDate": "2026-10-09", "outEndDate": "2026-10-09", "warehouseStartDate": "2026-10-12", "warehouseEndDate": "2026-10-15" }
+    },
+    {
+      "name": "Tết 7 ngày nằm giữa, làm bù Chủ nhật sau Tết",
+      "calendar": "tet2027",
+      "start": "2027-02-01",
+      "productionDays": 5,
+      "expect": { "offDays": 7, "endDate": "2027-02-12", "outStartDate": "2027-02-11", "outEndDate": "2027-02-15", "warehouseStartDate": "2027-02-13", "warehouseEndDate": "2027-02-20" }
+    },
+    {
+      "name": "ngày nghỉ chỉ lọt vào khi kết thúc bị Chủ nhật đẩy lùi",
+      "calendar": "pushedHoliday",
+      "start": "2026-10-05",
+      "productionDays": 7,
+      "expect": { "offDays": 2, "endDate": "2026-10-13", "outStartDate": "2026-10-08", "outEndDate": "2026-10-16", "warehouseStartDate": "2026-10-10", "warehouseEndDate": "2026-10-22" }
+    },
+    {
+      "name": "Chủ nhật làm bù tính là ngày làm việc",
+      "calendar": "sundayWork",
+      "start": "2026-11-09",
+      "productionDays": 7,
+      "expect": { "offDays": 0, "endDate": "2026-11-15", "outStartDate": "2026-11-12", "outEndDate": "2026-11-18", "warehouseStartDate": "2026-11-14", "warehouseEndDate": "2026-11-24" }
+    },
+    {
+      "name": "nghỉ thứ Bảy, Chủ nhật; số ngày cộng thêm bằng 0",
+      "calendar": "weekend",
+      "start": "2026-10-09",
+      "productionDays": 2,
+      "expect": { "offDays": 2, "endDate": "2026-10-12", "outStartDate": "2026-10-09", "outEndDate": "2026-10-12", "warehouseStartDate": "2026-10-09", "warehouseEndDate": "2026-10-12" }
+    }
+  ]
+}

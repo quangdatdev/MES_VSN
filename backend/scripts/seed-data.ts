@@ -493,6 +493,23 @@ export const productionFactories = [
   { code: 'A03', name: 'Nhà máy 3', branch: 'A03' },
 ];
 
+/**
+ * Lịch làm việc mẫu (phase 5.12, chỉ máy demo): ngày nghỉ lễ, Tết gần đúng để demo, không phải lịch chính thức; '*' là mọi ĐVCS
+ * mẫu. A01 có một Chủ nhật làm bù, A02 một ngày nghỉ riêng trong khoảng bảng dàn chuyền mặc định, để thấy hai ĐVCS tính khác nhau.
+ * Lịch mặc định (nghỉ Chủ nhật, lệch 3/3/2/5) áp cho mọi ĐVCS mẫu.
+ */
+export const workCalendarSample: { branch: string; from: string; to: string; dayType: 'OFF' | 'WORK'; name: string }[] = [
+  { branch: '*', from: '2026-01-01', to: '2026-01-01', dayType: 'OFF', name: 'Tết Dương lịch (mẫu)' },
+  { branch: '*', from: '2026-02-14', to: '2026-02-22', dayType: 'OFF', name: 'Tết Nguyên đán (mẫu)' },
+  { branch: '*', from: '2026-04-27', to: '2026-04-27', dayType: 'OFF', name: 'Giỗ Tổ Hùng Vương, nghỉ bù (mẫu)' },
+  { branch: '*', from: '2026-04-30', to: '2026-05-01', dayType: 'OFF', name: 'Lễ 30/4, 1/5 (mẫu)' },
+  { branch: '*', from: '2026-09-01', to: '2026-09-02', dayType: 'OFF', name: 'Quốc khánh (mẫu)' },
+  { branch: '*', from: '2027-01-01', to: '2027-01-01', dayType: 'OFF', name: 'Tết Dương lịch (mẫu)' },
+  { branch: '*', from: '2027-02-04', to: '2027-02-10', dayType: 'OFF', name: 'Tết Nguyên đán (mẫu)' },
+  { branch: 'A01', from: '2026-11-15', to: '2026-11-15', dayType: 'WORK', name: 'Làm bù Chủ nhật (mẫu)' },
+  { branch: 'A02', from: '2026-11-20', to: '2026-11-20', dayType: 'OFF', name: 'Nghỉ bảo trì điện (mẫu)' },
+];
+
 /** Ca làm việc mẫu: [mã, tên, bắt đầu, kết thúc, phút nghỉ] */
 export const shifts = [
   ['HC', 'Hành chính', '07:30', '16:30', 60],

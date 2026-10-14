@@ -11,6 +11,7 @@ import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import { createDb } from '../src/platform/database/db';
+import { CatalogLookupService } from '../src/platform/catalog/catalog-lookup.service';
 import { CatalogService } from '../src/platform/catalog/catalog.service';
 import { SyncService } from '../src/platform/sync/sync.service';
 import type { SyncDatabase } from '../src/platform/sync/sync.types';
@@ -156,7 +157,8 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await api().get('/api/v1/admin/catalogs/external/BRAVO.DM_Size/rows').set(auth(planner)).expect(403);
     const o = (await api().get('/api/v1/admin/catalogs').set(auth(admin)).expect(200)).body;
     // Chuyền may không còn là danh mục hệ thống (phase 5.10): chuyền là bộ phận tích "Xưởng sản xuất" ở Nhân sự
-    expect(o.mes.map((c: any) => c.code)).toEqual(['PROD_FACTORY', 'UNIT', 'ORDER_TYPE', 'SHIFT']);
+    expect(o.mes.map((c: any) => c.code)).toEqual(['PROD_FACTORY', 'UNIT', 'ORDER_TYPE', 'SHIFT', 'WORK_CALENDAR']);
+    expect(o.mes.find((c: any) => c.code === 'WORK_CALENDAR').kind).toBe('calendar');
     expect(o.mes.find((c: any) => c.code === 'PROD_FACTORY').kind).toBe('factory');
     // Danh sách ĐVCS cho ô chọn của Nhà máy SX: mọi ĐVCS trừ đơn vị tổng hợp, kèm trạng thái
     expect(o.branches.map((b: any) => b.code)).toEqual(expect.arrayContaining(['A01', 'A02', 'A03']));
@@ -349,6 +351,99 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await api().put(`/api/v1/admin/catalogs/shifts/${created.body.id}`).set(auth(admin)).send({ endTime: '07:00', breakMinutes: 60 }).expect(200);
     const after = ((await api().get('/api/v1/admin/catalogs/shifts').set(auth(admin))).body as any[]).find((s) => s.id === created.body.id);
     expect(after).toMatchObject({ endTime: '07:00', breakMinutes: 60, workMinutes: 480 });
+  });
+
+  it('lịch làm việc theo ĐVCS: chỉ quyền danh mục; không cho đơn vị tổng hợp; đặt khoảng ngày cho nhiều ĐVCS, ghi đè, xóa theo khoảng; có nhật ký (phase 5.12)', async () => {
+    const days = '/api/v1/admin/catalogs/work-calendars/days';
+    const config = { weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5 };
+    await api().get('/api/v1/admin/catalogs/work-calendars').set(auth(planner)).expect(403);
+    await api().put('/api/v1/admin/catalogs/work-calendars/A01').set(auth(planner)).send(config).expect(403);
+    await api().post(days).set(auth(planner)).send({ branchCodes: ['A01'], from: '2031-01-22', to: '2031-01-22', dayType: 'OFF' }).expect(403);
+    await api().delete('/api/v1/admin/catalogs/work-calendars/A01/days?from=2031-01-01&to=2031-01-31').set(auth(planner)).expect(403);
+    const before = (await api().get('/api/v1/admin/catalogs/work-calendars').set(auth(admin)).expect(200)).body;
+    expect(before.defaults).toEqual(config);
+    expect(before.items.map((i: any) => i.branchCode)).toEqual(expect.arrayContaining(['A01', 'A02', 'A03']));
+    expect(before.items.map((i: any) => i.branchCode)).not.toContain('A00');
+    const configured = new Set<string>(before.items.filter((i: any) => i.configured).map((i: any) => i.branchCode));
+    const a03Before = before.items.find((i: any) => i.branchCode === 'A03');
+    try {
+      await api().put('/api/v1/admin/catalogs/work-calendars/A00').set(auth(admin)).send(config).expect(422);
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A01', 'A00'], from: '2031-01-22', to: '2031-01-22', dayType: 'OFF' }).expect(422);
+      await api().put('/api/v1/admin/catalogs/work-calendars/Z99').set(auth(admin)).send(config).expect(404);
+      // Nghỉ cả tuần, ngày bắt đầu ra chuyền sau ngày kết thúc, ngày không có thật, khoảng ngược, khoảng quá dài, loại lạ
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ ...config, weeklyOffDays: [1, 2, 3, 4, 5, 6, 7] }).expect(422);
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ ...config, outStartOffsetDays: 4 }).expect(422);
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ ...config, warehouseStartOffsetDays: 6 }).expect(422);
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ ...config, outEndOffsetDays: 61 }).expect(422);
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A01'], from: '2031-02-30', to: '2031-03-01', dayType: 'OFF' }).expect(422);
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A01'], from: '2031-03-01', to: '2031-02-01', dayType: 'OFF' }).expect(422);
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A01'], from: '2031-01-01', to: '2031-04-01', dayType: 'OFF' }).expect(422);
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A01'], from: '2031-01-22', to: '2031-01-22', dayType: 'HALF' }).expect(422);
+      await api().post(days).set(auth(admin)).send({ branchCodes: [], from: '2031-01-22', to: '2031-01-22', dayType: 'OFF' }).expect(422);
+      // Năm ngoài 2000–2100 (DATE không nhận năm 0000: phải 422, không 500); xóa quá một năm một lần
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A01'], from: '0000-01-01', to: '0000-01-02', dayType: 'OFF' }).expect(422);
+      await api().delete('/api/v1/admin/catalogs/work-calendars/A01/days?from=0000-01-01&to=2031-01-01').set(auth(admin)).expect(422);
+      await api().delete('/api/v1/admin/catalogs/work-calendars/A01/days?from=2030-01-01&to=2031-12-31').set(auth(admin)).expect(422);
+
+      // Tết thử cho hai ĐVCS một lần; rồi đặt lại Chủ nhật 26/01/2031 của A01 thành làm bù (ghi đè ngày đã có)
+      expect((await api().post(days).set(auth(admin)).send({ branchCodes: ['A01', 'A02'], from: '2031-01-22', to: '2031-01-28', dayType: 'OFF', name: ' Tết thử T54 ' }).expect(201)).body).toEqual({ count: 14 });
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A01'], from: '2031-01-26', to: '2031-01-26', dayType: 'WORK', name: 'Làm bù T54' }).expect(201);
+      const inRange = (list: any[]) => list.filter((d) => d.date >= '2031-01-22' && d.date <= '2031-01-28').map((d) => [d.date.slice(8), d.dayType, d.name]);
+      const a01 = (await api().get('/api/v1/admin/catalogs/work-calendars/A01/days?year=2031').set(auth(admin)).expect(200)).body;
+      expect(inRange(a01)).toEqual([
+        ['22', 'OFF', 'Tết thử T54'],
+        ['23', 'OFF', 'Tết thử T54'],
+        ['24', 'OFF', 'Tết thử T54'],
+        ['25', 'OFF', 'Tết thử T54'],
+        ['26', 'WORK', 'Làm bù T54'],
+        ['27', 'OFF', 'Tết thử T54'],
+        ['28', 'OFF', 'Tết thử T54'],
+      ]);
+      const a02 = (await api().get('/api/v1/admin/catalogs/work-calendars/A02/days?year=2031').set(auth(admin)).expect(200)).body;
+      expect(inRange(a02).map(([d, type]) => `${d}${type}`)).toEqual(['22OFF', '23OFF', '24OFF', '25OFF', '26OFF', '27OFF', '28OFF']);
+      // Xóa theo khoảng chỉ ở A02; A01 giữ nguyên
+      expect((await api().delete('/api/v1/admin/catalogs/work-calendars/A02/days?from=2031-01-22&to=2031-01-28').set(auth(admin)).expect(200)).body).toEqual({ deleted: 7 });
+      expect(inRange((await api().get('/api/v1/admin/catalogs/work-calendars/A02/days?year=2031').set(auth(admin))).body)).toEqual([]);
+      expect(inRange((await api().get('/api/v1/admin/catalogs/work-calendars/A01/days?year=2031').set(auth(admin))).body)).toHaveLength(7);
+
+      // Cấu hình A03: nghỉ thứ Bảy, Chủ nhật; số ngày cộng thêm riêng
+      const a03 = { weeklyOffDays: [6, 7], outStartOffsetDays: 1, outEndOffsetDays: 2, warehouseStartOffsetDays: 1, warehouseEndOffsetDays: 1 };
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send(a03).expect(200);
+      const after = (await api().get('/api/v1/admin/catalogs/work-calendars').set(auth(admin)).expect(200)).body;
+      expect(after.items.find((i: any) => i.branchCode === 'A03')).toMatchObject({ configured: true, ...a03 });
+      expect(after.items.find((i: any) => i.branchCode === 'A01')).toMatchObject({ configured: true });
+      // Lưu lại đúng cấu hình đang có: không ghi, không thêm nhật ký
+      const auditCount = async () => Number((await core.selectFrom('SysAuditLog').select(sql<number>`COUNT(*)`.as('N')).where('EntityType', '=', 'SysWorkCalendar').executeTakeFirstOrThrow()).N);
+      const n = await auditCount();
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send(a03).expect(200);
+      expect(await auditCount()).toBe(n);
+
+      // Bảng dàn chuyền ở đơn vị tổng hợp: mỗi ĐVCS ngày nghỉ theo lịch riêng (2031-03-02 là Chủ nhật)
+      await api().post(days).set(auth(admin)).send({ branchCodes: ['A02'], from: '2031-03-05', to: '2031-03-05', dayType: 'OFF', name: 'Nghỉ riêng T54' }).expect(201);
+      const aggregate = await tokenFor('admin', 'A00');
+      const board = (await api().get('/api/v1/order/line-plans/board?from=2031-03-02&to=2031-03-08').set(auth(aggregate)).expect(200)).body;
+      expect(board.nonWorkingDays.A02).toEqual([
+        { date: '2031-03-02', name: null },
+        { date: '2031-03-05', name: 'Nghỉ riêng T54' },
+      ]);
+      expect(board.nonWorkingDays.A01).toEqual([{ date: '2031-03-02', name: null }]);
+
+      const audit = (await api().get('/api/v1/admin/audit?entityType=SysWorkCalendar&pageSize=10').set(auth(admin)).expect(200)).body.items;
+      expect(audit.map((a: any) => a.actionCode)).toEqual(expect.arrayContaining(['WORK_CALENDAR_UPDATE', 'WORK_CALENDAR_DAYS_SET', 'WORK_CALENDAR_DAYS_DELETE']));
+    } finally {
+      // Trả lịch như trước bài thử: ngày năm 2031, cấu hình A03, lịch do bài thử tạo mới
+      await sql`DELETE FROM dbo.SysWorkCalendarDay WHERE CalendarDate BETWEEN '2031-01-01' AND '2031-12-31'`.execute(core);
+      if (configured.has('A03')) {
+        const { weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays } = a03Before;
+        await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays }).expect(200);
+      }
+      for (const code of ['A01', 'A02', 'A03'].filter((c) => !configured.has(c))) {
+        const cal = core.selectFrom('SysWorkCalendar').select('Id').where('BranchCode', '=', code);
+        await core.deleteFrom('SysWorkCalendarDay').where('WorkCalendarId', 'in', cal).execute();
+        await core.deleteFrom('SysWorkCalendar').where('BranchCode', '=', code).execute();
+      }
+      app.get(CatalogLookupService).invalidateWorkCalendars();
+    }
   });
 
   it('danh mục BRAVO chỉ xem: đọc theo trang, tìm theo cột chữ; tên danh mục lạ hoặc không phải danh mục => 404', async () => {

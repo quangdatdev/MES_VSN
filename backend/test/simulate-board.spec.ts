@@ -1,4 +1,4 @@
-import { addWorkingDays } from '../src/modules/order/order.util';
+import { DEFAULT_WORK_CALENDAR, isOffDay, lineDates, type CalendarDay, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { assignedOf, cellKey, lineShares, planBoard, type SimOrder, type SimPlan } from '../scripts/simulate-board';
 
 // Không cần database: phần xếp lịch thuần của dàn chuyền mô phỏng (scripts/simulate-board.ts). Phần ghi DB: simulate-board.db.spec.ts
@@ -38,15 +38,33 @@ describe('Dàn chuyền mô phỏng: xếp lịch', () => {
     }
   });
 
-  it('số ngày, ngày kết thúc tính như màn Xếp chuyền; năng suất tối đa 700; không vào chuyền ngày Chủ nhật', () => {
+  it('số ngày, ngày kết thúc, ra chuyền, nhập kho tính như màn Xếp chuyền; năng suất tối đa 700; không vào chuyền ngày Chủ nhật', () => {
     for (const b of bars) {
       expect(b.qty).toBeGreaterThan(0);
       expect(b.days).toBe(Math.ceil(b.qty / b.avg));
       expect(b.days).toBeLessThanOrEqual(14);
       expect(b.avg).toBeLessThanOrEqual(700);
-      expect(b.end).toBe(addWorkingDays(b.start, b.days + b.off));
+      const dates = lineDates(DEFAULT_WORK_CALENDAR, b.start, b.days)!;
+      expect({ end: b.end, off: b.off, dates: b.dates }).toEqual({ end: dates.endDate, off: dates.offDays, dates });
       expect(new Date(`${b.start}T00:00:00Z`).getUTCDay()).not.toBe(0);
     }
+  });
+
+  it('theo lịch ĐVCS: không vào chuyền ngày nghỉ lễ, ngày tính theo lịch, Chủ nhật làm bù vào chuyền được', () => {
+    // Nghỉ 10 ngày ngay sau hôm nay; Chủ nhật đầu tiên sau đợt nghỉ là ngày làm bù
+    const days = new Map<string, CalendarDay>();
+    for (let i = 2; i < 12; i++) days.set(addDays(TODAY, i), { date: addDays(TODAY, i), dayType: 'OFF', name: 'Nghỉ' });
+    days.set('2026-10-25', { date: '2026-10-25', dayType: 'WORK', name: 'Làm bù' });
+    const calendar: WorkCalendar = { ...DEFAULT_WORK_CALENDAR, days };
+    const list = allLines(planBoard({ branch: 'A01', today: TODAY, lines: LINES, orders: orders(400), calendar }));
+    expect(list.length).toBeGreaterThan(50);
+    for (const b of list) {
+      expect(isOffDay(calendar, b.start)).toBe(false);
+      const dates = lineDates(calendar, b.start, b.days)!;
+      expect({ end: b.end, off: b.off, dates: b.dates }).toEqual({ end: dates.endDate, off: dates.offDays, dates });
+    }
+    // Dòng chạy qua đợt nghỉ có số ngày nghỉ gồm cả đợt nghỉ
+    expect(list.some((b) => b.start <= addDays(TODAY, 2) && b.end >= addDays(TODAY, 11) && b.off >= 10)).toBe(true);
   });
 
   it('trạng thái dòng theo ngày so với hôm nay; dòng đã vào chuyền thì đã giao đủ màu cỡ', () => {

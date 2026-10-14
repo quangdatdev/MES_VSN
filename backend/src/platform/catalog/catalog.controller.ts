@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser, RequirePermission } from '../auth/decorators';
 import {
@@ -10,13 +10,17 @@ import {
   FactoryUpdateDto,
   ShiftCreateDto,
   ShiftUpdateDto,
+  WorkCalendarDaysDto,
+  WorkCalendarRangeQuery,
+  WorkCalendarUpdateDto,
+  WorkCalendarYearQuery,
 } from './catalog.dto';
 import { CatalogService } from './catalog.service';
 
 const id = () => Param('id', ParseIntPipe);
 
 /**
- * Quản trị › Danh mục hệ thống. Không có xóa: danh mục ngừng dùng bằng isActive = false. Chuyền may không còn ở đây
+ * Quản trị › Danh mục hệ thống. Không có xóa (trừ ngày đặc biệt của lịch làm việc): danh mục ngừng dùng bằng isActive = false. Chuyền may không còn ở đây
  * (phase 5.10): chuyền là bộ phận tích "Xưởng sản xuất" ở Nhân sự › Sơ đồ tổ chức.
  */
 @Controller('admin/catalogs')
@@ -45,6 +49,27 @@ export class CatalogController {
 
   @Put('shifts/:id') @RequirePermission('admin.catalog:update')
   async updateShift(@CurrentUser() a: AuthUser, @id() sid: number, @Body() dto: ShiftUpdateDto) { await this.catalogs.updateShift(a, sid, dto); return { ok: true }; }
+
+  // ---- Lịch làm việc theo đơn vị cơ sở (phase 5.12). Xóa ngày đặc biệt là sửa lịch nên dùng quyền sửa ----
+  @Get('work-calendars') @RequirePermission('admin.catalog:view')
+  workCalendars() { return this.catalogs.workCalendars(); }
+
+  @Put('work-calendars/:branchCode') @RequirePermission('admin.catalog:update')
+  async updateWorkCalendar(@CurrentUser() a: AuthUser, @Param('branchCode') code: string, @Body() dto: WorkCalendarUpdateDto) {
+    await this.catalogs.updateWorkCalendar(a, code, dto);
+    return { ok: true };
+  }
+
+  @Get('work-calendars/:branchCode/days') @RequirePermission('admin.catalog:view')
+  workCalendarDays(@Param('branchCode') code: string, @Query() q: WorkCalendarYearQuery) { return this.catalogs.workCalendarDays(code, q.year); }
+
+  @Post('work-calendars/days') @RequirePermission('admin.catalog:update')
+  setWorkCalendarDays(@CurrentUser() a: AuthUser, @Body() dto: WorkCalendarDaysDto) { return this.catalogs.setWorkCalendarDays(a, dto); }
+
+  @Delete('work-calendars/:branchCode/days') @RequirePermission('admin.catalog:update')
+  deleteWorkCalendarDays(@CurrentUser() a: AuthUser, @Param('branchCode') code: string, @Query() q: WorkCalendarRangeQuery) {
+    return this.catalogs.deleteWorkCalendarDays(a, code, q.from, q.to);
+  }
 
   // ---- Danh mục chép từ BRAVO: chỉ xem ----
   @Get('external/:code/rows') @RequirePermission('admin.catalog:view')

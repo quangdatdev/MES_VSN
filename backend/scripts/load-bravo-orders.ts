@@ -24,6 +24,7 @@ import { clearSewingPrep } from './sewing-data';
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { simulateBranch } from './simulate-board';
+import { DEFAULT_WORK_CALENDAR, readWorkCalendars } from '../src/platform/catalog/work-calendar';
 
 /** Con trước cha: không có xóa dây chuyền ở DB */
 const ORDER_TABLES = [
@@ -59,6 +60,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
     if (imported?.added.length) console.log(`Đã thêm đơn vị cơ sở theo BRAVO: ${imported.added.map((b) => b.code).join(', ')}.`);
     // Chuyền của dàn chuyền mô phỏng: bộ phận tích "Xưởng sản xuất" ở MES_Hr (phase 5.10); reset-demo nạp lại sơ đồ tổ chức trước
     const { branches, linesOf, plannerId } = await readLines(core);
+    const calendars = await readWorkCalendars(core);
     if (!branches.length) throw new Error('MES_Core chưa có đơn vị cơ sở nào đang dùng: chạy npm run seed trước.');
     // Đơn vị tính BRAVO (mã không dấu) đổi sang tên theo danh mục Đơn vị tính (Quản trị › Danh mục hệ thống)
     const unitNames = new Map(
@@ -162,7 +164,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
 
       if (plans) {
         for (const b of branches) {
-          const s = await simulateBranch(trx, { branch: b, lines: linesOf(b), today, plannerId });
+          const s = await simulateBranch(trx, { branch: b, lines: linesOf(b), today, plannerId, calendar: calendars.get(b) ?? DEFAULT_WORK_CALENDAR });
           if (s.plans) bump(b, 'kế hoạch mô phỏng', s.plans);
           if (s.lines) bump(b, 'dòng dàn chuyền mô phỏng', s.lines);
         }

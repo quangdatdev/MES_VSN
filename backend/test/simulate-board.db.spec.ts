@@ -5,6 +5,7 @@ import type { HrDatabase } from '../src/modules/hr/hr.types';
 import type { OrderDatabase } from '../src/modules/order/order.types';
 import { readLines } from '../scripts/script-db';
 import { clearSimulated, PLANNER_NAME, simulateBranch } from '../scripts/simulate-board';
+import { DEFAULT_WORK_CALENDAR } from '../src/platform/catalog/work-calendar';
 
 // Phần ghi database của dàn chuyền mô phỏng (scripts/simulate-board.ts) và chuyền đọc từ MES_Hr (scripts/script-db.ts): cần
 // SQL Server đã migrate. Mọi dòng nằm trong transaction được hủy ở cuối bài, không đổi dữ liệu.
@@ -155,7 +156,7 @@ describe('Dàn chuyền mô phỏng: ghi database (rollback, không đổi dữ 
       expect(await statusOf(openOrder)).toBe('NEW');
 
       // 2. Xếp mới
-      const stats = await simulateBranch(trx, { branch: B, lines: LINES6, today: TODAY, plannerId: null, prepLines });
+      const stats = await simulateBranch(trx, { branch: B, lines: LINES6, today: TODAY, plannerId: null, prepLines, calendar: DEFAULT_WORK_CALENDAR });
       expect(stats).toMatchObject({ removed: 0, kept: 5 });
       expect(stats.plans).toBeGreaterThan(20);
       expect(await planIds(OTHER)).toEqual([other]);

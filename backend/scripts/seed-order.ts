@@ -2,7 +2,8 @@
 // Chuỗi: đơn hàng → PO + màu cỡ → kế hoạch xuất hàng → dàn chuyền (bảng Gantt) → phân màu cỡ cho chuyền.
 import { sql, type Kysely } from 'kysely';
 import type { OrderDatabase } from '../src/modules/order/order.types';
-import { addWorkingDays, apportion } from '../src/modules/order/order.util';
+import { apportion } from '../src/modules/order/order.util';
+import { lineDates, nextWorkingDay, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { COLORS, CUSTOMERS, DESTINATIONS, LINE_COUNT, ORDER_COUNT, PRODUCTS, SCHEDULE_START, SIZES, STAFF, lineCode, prng } from './seed-data';
 
 /** Ngày demo: tiến độ (đang sản xuất, lũy kế) tính theo mốc này để dữ liệu không đổi theo ngày chạy. */
@@ -22,7 +23,7 @@ const daysBetween = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 
  */
 const factoryOf = (branch: string, i: number) => ((branch === 'A01' && i % 3 === 2) || (branch === 'A02' && i % 6 === 5) ? 'A01-B' : branch);
 
-export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, createdBy: number | null, plannerName: string) {
+export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, createdBy: number | null, plannerName: string, calendar: WorkCalendar) {
   const seed = [...branch].reduce((s, c) => s * 31 + c.charCodeAt(0), 7);
   const rnd = prng(seed);
   const int = (a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
@@ -174,10 +175,13 @@ export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, crea
         const q = lineQty[m];
         if (q <= 0) continue;
         const avg = 50 * int(5, 12);
-        const start = addDays(cursor.get(code)!, int(0, 1));
+        const start = nextWorkingDay(calendar, addDays(cursor.get(code)!, int(0, 1)));
         const days = Math.ceil(q / avg);
-        const off = rnd() < 0.2 ? 1 : 0;
-        const end = addWorkingDays(start, days + off);
+        // Trước phase 5.12 lần rút này là "ngày nghỉ khác" nhập tay: giữ lần rút để các số ngẫu nhiên sau không đổi (dữ liệu mẫu như cũ)
+        rnd();
+        const dates = start && lineDates(calendar, start, days);
+        if (!start || !dates) throw new Error(`Lịch làm việc của ${branch} không đủ ngày làm việc để xếp dàn chuyền mẫu.`);
+        const end = dates.endDate;
         cursor.set(code, addDays(end, 1));
         const inProduction = start <= TODAY;
         started ||= inProduction;
@@ -191,12 +195,12 @@ export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, crea
             AvgOutput: avg,
             StartDate: start,
             ProductionDays: days,
-            OffDays: off,
+            OffDays: dates.offDays,
             EndDate: end,
-            OutStartDate: addDays(start, 1),
-            OutEndDate: addDays(end, 1),
-            WarehouseStartDate: addDays(start, 2),
-            WarehouseEndDate: addDays(end, 2),
+            OutStartDate: dates.outStartDate,
+            OutEndDate: dates.outEndDate,
+            WarehouseStartDate: dates.warehouseStartDate,
+            WarehouseEndDate: dates.warehouseEndDate,
             StatusCode: inProduction ? 'IN_PRODUCTION' : allocated ? 'ALLOCATED' : 'PLANNED',
             SortOrder: m,
             ...audit,

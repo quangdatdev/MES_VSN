@@ -3,6 +3,7 @@ import { TimePicker } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import {
   IconBuildingFactory2,
+  IconCalendarEvent,
   IconChecklist,
   IconClock,
   IconHierarchy2,
@@ -32,6 +33,7 @@ import { HR_KEYS } from '../hr/api';
 import { fold } from '../hr/tree';
 import type { PrepStep } from '../sewing/api';
 import { PREP_STEPS_KEY, PrepStepsPane } from './PrepStepsPane';
+import { WorkCalendarPane } from './WorkCalendarPane';
 import type { AdminDepartmentType, AdminFactory, CatalogItem, CatalogOverview, CatalogShift, ExternalCatalog, ExternalRows, MesCatalog } from './types';
 
 const KEY = ['admin', 'catalogs'] as const;
@@ -41,7 +43,7 @@ const OVERVIEW_QUERY = { queryKey: KEY, queryFn: () => api<CatalogOverview>('/ad
 const DEFAULT_CATALOG = 'PROD_FACTORY';
 /** Mã khung Chuyền may cũ (bỏ ở phase 5.10): liên kết cũ ?c=LINE nói chuyền đã sang Nhân sự */
 const OLD_LINES = 'LINE';
-const KIND_ICON = { factory: IconBuildingFactory2, shift: IconClock, item: IconListDetails } as const;
+const KIND_ICON = { factory: IconBuildingFactory2, shift: IconClock, item: IconListDetails, calendar: IconCalendarEvent } as const;
 
 /** Thời điểm UTC từ API hiện theo giờ máy */
 const when = (iso: string | null) => (iso ? fmtDateTime(iso) : 'chưa chép');
@@ -127,6 +129,7 @@ export default function CatalogsPage() {
           {currentMes?.kind === 'factory' && <FactoriesPane info={currentMes} />}
           {currentMes?.kind === 'item' && <ItemsPane key={currentMes.code} info={currentMes} />}
           {currentMes?.kind === 'shift' && <ShiftsPane info={currentMes} />}
+          {currentMes?.kind === 'calendar' && <WorkCalendarPane info={currentMes} />}
           {currentExt && <ExternalPane key={currentExt.code} info={currentExt} />}
           {selected === PREP.code && <PrepStepsPane />}
           {selected === DEPT_TYPE.code && <DepartmentTypesPane />}

@@ -4,7 +4,7 @@
 //
 // Tình huống sinh ra (mỗi nhà máy đủ đơn đều có, không phụ thuộc may rủi):
 //   - dòng dàn chuyền: đã xong, đang may, đã xếp và đã phân màu cỡ (đủ hoặc một phần), đã xếp chưa phân màu cỡ (có dòng
-//     sát ngày vào chuyền); chuyền trống giữa hai việc, một chuyền chờ việc lâu ngay sau hôm nay; ngày nghỉ khác;
+//     sát ngày vào chuyền); chuyền trống giữa hai việc, một chuyền chờ việc lâu ngay sau hôm nay; ngày nghỉ theo lịch ĐVCS;
 //   - kế hoạch: một chuyền hay nhiều chuyền; xếp đủ hay chỉ xếp một phần; chưa xếp chuyền; đơn tách hai đợt xuất;
 //     may xong sau ngày xuất.
 // Đơn còn mở có ngày xuất thật gần hôm nay vào trước. Nhà máy thiếu đơn còn mở (dữ liệu BRAVO cũ) thì dùng cả đơn đã đóng
@@ -19,7 +19,8 @@ import type { CoreDatabase } from '../src/platform/database/core.types';
 import { createDb } from '../src/platform/database/db';
 import type { LineStatus, OrderDatabase, PlanStatus, SalesOrderStatus } from '../src/modules/order/order.types';
 import type { SewingDatabase } from '../src/modules/sewing/sewing.types';
-import { addWorkingDays, apportion } from '../src/modules/order/order.util';
+import { apportion } from '../src/modules/order/order.util';
+import { DEFAULT_WORK_CALENDAR, lineDates, nextWorkingDay, readWorkCalendars, type LineDates, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { prng } from './seed-data';
@@ -69,9 +70,12 @@ export interface SimLine {
   qty: number;
   avg: number;
   days: number;
+  /** Số ngày nghỉ theo lịch ĐVCS, như màn Xếp chuyền tính */
   off: number;
   start: string;
   end: string;
+  /** Ngày ra chuyền, nhập kho theo lịch ĐVCS */
+  dates: LineDates;
   status: LineStatus;
   assign: Assign;
 }
@@ -95,8 +99,6 @@ interface Job {
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 const addDays = (d: string, n: number) => ymd(new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000));
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
-const isSunday = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
-const workday = (d: string) => (isSunday(d) ? addDays(d, 1) : d);
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
 const qtyOf = (cells: { qty: number }[]) => sum(cells.map((c) => c.qty));
 const push = <K, V>(m: Map<K, V[]>, k: K, v: V) => {
@@ -111,7 +113,27 @@ export const cellKey = (color: string, size: string) => `${color.normalize('NFC'
  * Xếp lịch mô phỏng cho một nhà máy (hàm thuần, xác định theo nhà máy và ngày): lần lượt lấy chuyền rảnh sớm nhất, giao
  * đơn kế tiếp, tới khi mọi chuyền kín tới hôm nay + AHEAD_DAYS hoặc hết đơn. Trạng thái dòng tính theo ngày so với hôm nay.
  */
-export function planBoard({ branch, today, lines, orders, busy = [] }: { branch: string; today: string; lines: string[]; orders: SimOrder[]; busy?: BusyBar[] }): SimPlan[] {
+export function planBoard({
+  branch,
+  today,
+  lines,
+  orders,
+  busy = [],
+  calendar = DEFAULT_WORK_CALENDAR,
+}: {
+  branch: string;
+  today: string;
+  lines: string[];
+  orders: SimOrder[];
+  busy?: BusyBar[];
+  calendar?: WorkCalendar;
+}): SimPlan[] {
+  const noDays = () => new Error(`Lịch làm việc của ${branch} không đủ ngày làm việc để xếp dàn chuyền. Kiểm tra Danh mục hệ thống › Lịch làm việc.`);
+  const workday = (d: string) => {
+    const w = nextWorkingDay(calendar, d);
+    if (!w) throw noDays();
+    return w;
+  };
   const rnd = prng([...`${branch}|${today}`].reduce((s, c) => (s * 31 + c.charCodeAt(0)) >>> 0, 7));
   const int = (a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
   // Tình huống chính phải có ở mọi nhà máy: xảy ra theo xác suất, chưa gặp sau 3 lần đủ điều kiện thì ép
@@ -228,11 +250,14 @@ export function planBoard({ branch, today, lines, orders, busy = [] }: { branch:
       const target = Math.min(MAX_DAYS, Math.max(2, Math.ceil(qty / int(250, MAX_AVG))));
       const avg = Math.ceil(qty / target);
       const days = Math.ceil(qty / avg);
-      const off = rnd() < 0.15 ? int(1, 2) : 0;
       let end = '';
+      let dates: LineDates;
       for (;;) {
         start = workday(start);
-        end = addWorkingDays(start, days + off);
+        const found = lineDates(calendar, start, days);
+        if (!found) throw noDays();
+        dates = found;
+        end = dates.endDate;
         const hit = busyOf.get(code)?.find((b) => start <= b.end && end >= b.start);
         if (!hit) break;
         start = addDays(hit.end, 1);
@@ -243,7 +268,7 @@ export function planBoard({ branch, today, lines, orders, busy = [] }: { branch:
         continue;
       }
       cursor.set(code, addDays(end, 1));
-      simLines.push({ lineCode: code, qty, avg, days, off, start, end, ...lineState(start, end) });
+      simLines.push({ lineCode: code, qty, avg, days, off: dates.offDays, start, end, dates, ...lineState(start, end) });
     }
     if (job.batch === 0 && simLines.length) firstStart.set(job.order.id, simLines.map((l) => l.start).sort()[0]);
     // Kế hoạch đã may xong mà còn SL chưa xếp (chuyền nhận tối đa MAX_AVG × MAX_DAYS, chuyền kín): thu kế hoạch về đúng SL đã
@@ -390,7 +415,15 @@ export async function clearSimulated(trx: Kysely<OrderDatabase>, branch: string,
  */
 export async function simulateBranch(
   trx: Kysely<OrderDatabase>,
-  { branch, lines, today, plannerId, prepLines, all }: { branch: string; lines: string[]; today: string; plannerId: number | null; prepLines?: PrepLines; all?: boolean },
+  {
+    branch,
+    lines,
+    today,
+    plannerId,
+    prepLines,
+    all,
+    calendar,
+  }: { branch: string; lines: string[]; today: string; plannerId: number | null; prepLines?: PrepLines; all?: boolean; calendar: WorkCalendar },
 ) {
   const { removed, kept } = await clearSimulated(trx, branch, { prepLines, all });
   const busy = (await trx.selectFrom('ShipmentPlanLine').select(['LineCode', 'StartDate', 'EndDate']).where('BranchCode', '=', branch).execute()).map((b) => ({
@@ -438,6 +471,7 @@ export async function simulateBranch(
     today,
     lines,
     busy,
+    calendar,
     orders: candidates.map((o) => ({ id: o.Id, shipDate: ymd(o.ShipDate as Date), closed: o.StatusCode === 'DONE', cells: [...(cellsOf.get(o.Id)?.values() ?? [])] })),
   });
 
@@ -490,10 +524,10 @@ export async function simulateBranch(
         ProductionDays: l.days,
         OffDays: l.off,
         EndDate: l.end,
-        OutStartDate: addDays(l.start, 1),
-        OutEndDate: addDays(l.end, 1),
-        WarehouseStartDate: addDays(l.start, 2),
-        WarehouseEndDate: addDays(l.end, 2),
+        OutStartDate: l.dates.outStartDate,
+        OutEndDate: l.dates.outEndDate,
+        WarehouseStartDate: l.dates.warehouseStartDate,
+        WarehouseEndDate: l.dates.warehouseEndDate,
         StatusCode: l.status,
         SortOrder: m,
         ...audit,
@@ -583,13 +617,14 @@ async function main() {
   const order = createDb<OrderDatabase>(env.db.orderName, { requestTimeoutMs: 10 * 60_000 });
   try {
     const { branches, linesOf, plannerId } = await readLines(core);
+    const calendars = await readWorkCalendars(core);
     const prep = all ? new Map<number, Date | null>() : await prepLines();
     const today = localToday();
     const stats: Record<string, Record<string, number>> = {};
     let stuck = 0;
     await order.transaction().execute(async (trx) => {
       for (const branch of branches) {
-        const s = await simulateBranch(trx, { branch, lines: linesOf(branch), today, plannerId, prepLines: prep, all });
+        const s = await simulateBranch(trx, { branch, lines: linesOf(branch), today, plannerId, prepLines: prep, all, calendar: calendars.get(branch) ?? DEFAULT_WORK_CALENDAR });
         stats[branch] = { 'kế hoạch cũ đã xóa': s.removed, 'giữ lại (người dùng đã sửa)': s.kept, 'kế hoạch mô phỏng': s.plans, 'dòng dàn chuyền': s.lines };
         stuck += s.stuck;
       }

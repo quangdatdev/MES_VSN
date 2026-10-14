@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CORE_DB, type CoreDb } from '../database/database.module';
 import { SyncService } from '../sync/sync.service';
+import { DEFAULT_WORK_CALENDAR, readWorkCalendars, type WorkCalendar } from './work-calendar';
 
 export interface CatalogOption {
   code: string;
@@ -26,6 +27,11 @@ export class CatalogLookupService {
   private cache = new Map<string, { at: number; items: CatalogEntry[] }>();
   private branches: { at: number; names: Map<string, string> } | null = null;
   private factories: { at: number; items: FactoryEntry[] } | null = null;
+  private calendars: { at: number; byBranch: Map<string, WorkCalendar> } | null = null;
+  /** Lần đọc lịch đang chạy: bảng dàn chuyền ở đơn vị tổng hợp hỏi lịch nhiều ĐVCS cùng lúc thì đọc chung một lần */
+  private loadingCalendars: Promise<Map<string, WorkCalendar>> | null = null;
+  /** Tăng mỗi lần sửa lịch làm việc: lần đọc bắt đầu trước khi sửa không ghi lịch cũ vào cache */
+  private calendarGen = 0;
   /** Lần đọc tên chi nhánh đang chạy: các request đến cùng lúc khi cache hết hạn dùng chung, không mỗi request đọc một lần */
   private loadingBranches: Promise<Map<string, string>> | null = null;
   /** Lần đọc danh mục BRAVO trước có lỗi không: chỉ ghi cảnh báo khi đổi trạng thái, không mỗi 30 giây một lần */
@@ -132,5 +138,30 @@ export class CatalogLookupService {
   /** Gọi sau khi sửa danh mục Nhà máy SX */
   invalidateFactories() {
     this.factories = null;
+  }
+
+  /** Lịch làm việc của ĐVCS (phase 5.12); chưa cấu hình thì lịch mặc định (nghỉ Chủ nhật, lệch 3/3/2/5) */
+  async workCalendar(branchCode: string): Promise<WorkCalendar> {
+    if (this.calendars && Date.now() - this.calendars.at < CatalogLookupService.TTL_MS) return this.calendars.byBranch.get(branchCode) ?? DEFAULT_WORK_CALENDAR;
+    if (!this.loadingCalendars) {
+      const gen = this.calendarGen;
+      const loading: Promise<Map<string, WorkCalendar>> = readWorkCalendars(this.db)
+        .then((byBranch) => {
+          if (gen === this.calendarGen) this.calendars = { at: Date.now(), byBranch };
+          return byBranch;
+        })
+        .finally(() => {
+          if (this.loadingCalendars === loading) this.loadingCalendars = null;
+        });
+      this.loadingCalendars = loading;
+    }
+    return (await this.loadingCalendars).get(branchCode) ?? DEFAULT_WORK_CALENDAR;
+  }
+
+  /** Gọi sau khi sửa lịch làm việc ở Danh mục hệ thống */
+  invalidateWorkCalendars() {
+    this.calendars = null;
+    this.loadingCalendars = null;
+    this.calendarGen++;
   }
 }
