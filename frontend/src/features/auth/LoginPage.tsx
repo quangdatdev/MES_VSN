@@ -129,7 +129,7 @@ export function LoginPage() {
         <LoginClock />
       </header>
       <section className="login-hero" aria-label="Khẩu hiệu Vietsun">
-        <p className="login-kicker">MES System</p>
+        <p className="login-kicker">MES VSN</p>
         {/* lang="en": trình đọc màn hình đọc đúng giọng tiếng Anh */}
         <ul className="login-values" lang="en">
           {CORE_VALUES.map((value) => (
@@ -154,7 +154,7 @@ export function LoginPage() {
       <footer className="login-footer">
         <p className="login-meta">
           <span>Vietsun Group</span>
-          <span>MES System</span>
+          <span>HQ5</span>
           <span>Version {__APP_VERSION__}</span>
         </p>
         <p className="login-slogan">Warming Your Life</p>
