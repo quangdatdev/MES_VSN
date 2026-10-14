@@ -24,7 +24,7 @@
   header p { margin: 4px auto 0; max-width: 860px; color: #d1d5db; font-size: 14px; }
   main { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; overflow-wrap: anywhere; }
   nav { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-  nav a { flex: 1 1 340px; text-decoration: none; color: var(--text); background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--brand); border-radius: 10px; padding: 14px 16px; }
+  nav a { flex: 1 1 260px; text-decoration: none; color: var(--text); background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--brand); border-radius: 10px; padding: 14px 16px; }
   nav a b { display: block; font-size: 18px; }
   nav a span { color: var(--muted); font-size: 14px; }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
@@ -50,6 +50,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 15px; table-layout: fixed; }
   td { border-top: 1px solid var(--line); padding: 8px 6px; vertical-align: top; }
   td:first-child { width: 30%; }
+  .dirs td:first-child { width: 34%; font-weight: 600; }
   details { margin-top: 8px; }
   summary { cursor: pointer; color: var(--brand-ink); font-weight: 600; }
 </style>
@@ -57,81 +58,143 @@
 <body>
 <header>
   <h1>Hướng dẫn chạy MES trên máy chủ</h1>
-  <p>Ví dụ dưới đây: mã nguồn (thư mục git) ở <b>D:\MES</b>, web chạy từ <b>D:\MES-run</b>. Máy chủ để chỗ khác thì đổi đường dẫn cho đúng. Mở PowerShell, chạy các lệnh dưới đây.</p>
+  <p>Mã nguồn ở <b>F:\App\MES_VSN</b>, web chạy từ <b>F:\App\MES-run</b>. Mở PowerShell bằng tài khoản Windows đang chạy pm2, chạy các lệnh dưới đây.</p>
 </header>
 <main>
   <nav>
     <a href="#cai-moi"><b>1. Cài đặt mới</b><span>Làm một lần, lần đầu chuyển sang cách chạy mới</span></a>
-    <a href="#cap-nhat"><b>2. Có code mới (git pull)</b><span>Làm mỗi lần cập nhật</span></a>
+    <a href="#cap-nhat"><b>2. Có code mới</b><span>Làm mỗi lần cập nhật</span></a>
     <a href="#cau-hinh"><b>3. File cấu hình .env</b><span>Cần những dòng gì, sửa xong làm gì</span></a>
     <a href="#phien-ban"><b>4. Phiên bản, quay về bản cũ</b><span>Xem đang chạy bản nào, lùi khi bản mới lỗi</span></a>
+    <a href="#su-co"><b>5. Khi có vấn đề</b><span>Script báo lỗi, cảnh báo thì làm gì</span></a>
   </nav>
 
-  <div class="note ok"><b>Vì sao có thêm thư mục D:\MES-run?</b> Web đang chạy giữ file trong <code>node_modules</code> và <code>dist</code>,
-  nên <code>npm ci</code>, build ngay tại D:\MES thì phải dừng web (như cách cũ). Script cài gói và build bản mới ở thư mục riêng
-  <code>D:\MES-run\releases\&lt;ngày-giờ&gt;</code> trong lúc bản cũ vẫn chạy, xong mới chuyển web sang bản mới trong vài giây.
-  D:\MES chỉ còn dùng để <code>git pull</code>.</div>
+  <section id="hai-thu-muc">
+    <h2>Hai thư mục trên máy chủ</h2>
+    <p>Mỗi thư mục một việc, không dùng lẫn.</p>
+    <table class="dirs">
+      <tr><td><code>F:\App\MES_VSN</code><br><span class="muted">mã nguồn (thư mục git)</span></td>
+        <td>Chỉ để lấy code mới và gõ lệnh triển khai. Web không chạy từ đây. <b>Không sửa file</b> trong thư mục này: có file bị sửa thì lần cập nhật sau script không lấy được code.</td></tr>
+      <tr><td><code>F:\App\MES-run</code><br><span class="muted">nơi web chạy</span></td>
+        <td>Script tạo và quản lý. Mỗi lần cập nhật là một bản riêng trong <code>releases\</code>. Người vận hành chỉ sửa đúng một file: <code>shared\.env</code> (<a href="#cau-hinh">mục 3</a>).</td></tr>
+    </table>
+    <div class="note ok"><b>Vì sao tách hai thư mục?</b> Web đang chạy giữ file trong <code>node_modules</code> và <code>dist</code>, nên cài gói, build ngay chỗ đang chạy thì phải dừng web.
+      Script cài gói, build bản mới trong <code>F:\App\MES-run\releases\&lt;ngày-giờ&gt;</code> trong lúc bản cũ vẫn chạy, xong mới chuyển web sang bản mới trong vài giây.</div>
+  </section>
 
   <section id="cai-moi">
     <h2>1. Cài đặt mới</h2>
-    <p>Làm một lần. Nên làm ngoài giờ: web sẽ dừng khoảng 1 phút.</p>
+    <p>Làm một lần, khi máy chủ còn chạy MES theo cách cũ (pm2 chạy thẳng trong F:\App\MES_VSN). Nên làm ngoài giờ: web sẽ dừng khoảng 1 phút.</p>
     <ol class="steps">
       <li>
         <b>Sao lưu 5 database</b>
         MES_Core, MES_Order, MES_Sewing, MES_Hr, MES_Sync.
       </li>
       <li>
-        <b>Lấy code mới</b>
-        <div class="cmd"><pre>cd D:\MES
-git pull</pre><button type="button">Chép</button></div>
+        <b>Kiểm máy</b>
+        <div class="cmd"><pre>node -v
+pm2 -v
+pm2 ls
+git -C F:\App\MES_VSN status</pre><button type="button">Chép</button></div>
+        Cần thấy: Node <code>v22.x</code>, pm2 <code>7.0.4</code>. Ghi lại tên app MES trong bảng <code>pm2 ls</code> (thường là <code>mes</code>).
+        Dòng cuối phải báo <code>nothing to commit, working tree clean</code>; có file bị sửa thì dừng lại, hỏi người viết code.
       </li>
       <li>
-        <b>Tạo thư mục chạy, chép file cấu hình</b>
-        <div class="cmd"><pre>mkdir D:\MES-run\shared
-copy D:\MES\backend\.env D:\MES-run\shared\.env</pre><button type="button">Chép</button></div>
-        Mở file vừa chép, kiểm đủ các dòng ở <a href="#cau-hinh">mục 3</a>. File cũ thường thiếu <code>NODE_ENV=production</code>.
+        <b>Lấy code mới</b>
+        <div class="cmd"><pre>cd F:\App\MES_VSN
+git pull --ff-only</pre><button type="button">Chép</button></div>
+        Lần này phải tự lấy để có thư mục <code>deploy\</code>. Từ lần sau script tự làm.
+      </li>
+      <li>
+        <b>Tạo thư mục chạy, chép cấu hình, khóa quyền</b>
+        Mở PowerShell bằng <strong>Run as administrator</strong> (cùng tài khoản Windows đang chạy pm2):
+        <div class="cmd"><pre>New-Item -ItemType Directory F:\App\MES-run\shared
+Copy-Item F:\App\MES_VSN\backend\.env F:\App\MES-run\shared\.env
+icacls F:\App\MES-run /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "${env:USERDOMAIN}\${env:USERNAME}:(OI)(CI)F"</pre><button type="button">Chép</button></div>
+        <ul>
+          <li>Lệnh <code>icacls</code>: chỉ quản trị máy, SYSTEM và tài khoản của bạn được mở <code>F:\App\MES-run</code>, vì thư mục này chứa mật khẩu database. Ổ F: thường mặc định cho mọi người dùng trong máy đọc được.</li>
+          <li>pm2 chạy bằng tài khoản khác tài khoản đang đăng nhập: thêm tài khoản đó vào cuối lệnh <code>icacls</code>, dạng <code>"&lt;MÁY&gt;\&lt;tài khoản&gt;:(OI)(CI)F"</code>.</li>
+          <li><code>F:\App\MES-run</code> đã có từ trước thì nó phải trống (hoặc chỉ có <code>shared</code>); có thứ khác thì script từ chối chạy.</li>
+        </ul>
+        Mở file <code>F:\App\MES-run\shared\.env</code>, kiểm đủ các dòng ở <a href="#cau-hinh">mục 3</a>. File cũ thường thiếu <code>NODE_ENV=production</code>.
       </li>
       <li>
         <b>Chạy</b>
-        <div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run</pre><button type="button">Chép</button></div>
-        Khi hỏi <code>Đã sao lưu 5 database chưa?</code> thì gõ <code>y</code> rồi Enter.
-        Chờ vài phút tới khi thấy dòng <code>Đang chạy: ...</code> là xong.
-        <div class="note">Script tự dừng app pm2 cũ tên <code>mes</code> và tạo app mới. Nếu app cũ tên khác (xem bằng <code>pm2 ls</code>), thêm <code>--replace &lt;tên app cũ&gt;</code> vào cuối lệnh.</div>
+        Quay lại cửa sổ PowerShell thường (không cần quyền quản trị):
+        <div class="cmd"><pre>cd F:\App\MES_VSN
+node deploy\deploy.cjs --root F:\App\MES-run</pre><button type="button">Chép</button></div>
+        Khi hỏi <code>... Đã sao lưu 5 database chưa? (y/N)</code> thì gõ <code>y</code> rồi Enter.
+        Script build vài phút (web cũ vẫn chạy), rồi dừng web cũ, cập nhật database, chạy bản mới.
+        Thấy dòng <code>Đang chạy: ...</code> và <code>Thời gian web gián đoạn: khoảng ... giây</code> là xong.
+        <div class="note">
+          <ul>
+            <li>App cũ tên <code>mes</code>: chạy nguyên lệnh trên, script tự thay app cũ.</li>
+            <li>App cũ tên khác (xem ở bước 2): thêm <code>--replace &lt;tên app cũ&gt;</code> vào cuối lệnh.</li>
+            <li>Bản cũ chạy bằng dịch vụ Windows (NSSM...) thay vì pm2: dừng và gỡ dịch vụ đó trước.</li>
+          </ul>
+        </div>
       </li>
       <li>
         <b>Kiểm tra</b>
-        <div class="cmd"><pre>pm2 ls</pre><button type="button">Chép</button></div>
-        Thấy app <code>mes</code>, cột status là <code>online</code>. Mở web, đăng nhập thử.
-        <div class="note ok">Nếu trước đây máy chủ đã tự bật pm2 khi khởi động lại máy thì giữ nguyên, không cần làm gì thêm.</div>
+        <div class="cmd"><pre>pm2 ls
+cd F:\App\MES_VSN
+node deploy\deploy.cjs --root F:\App\MES-run --status</pre><button type="button">Chép</button></div>
+        <ul>
+          <li><code>pm2 ls</code>: app <code>mes</code>, mode <code>cluster</code>, status <code>online</code>.</li>
+          <li>Kết quả <code>--status</code> có <code>pm2: online (theo ecosystem)</code> và dòng <code>Kiểm sống ...: ok</code>.</li>
+          <li>Mở web, đăng nhập, bấm F5: vẫn còn đăng nhập.</li>
+          <li>File <code>F:\App\MES-run\logs\mes-error.log</code> không có lỗi lúc khởi động.</li>
+        </ul>
+      </li>
+      <li>
+        <b>Tự chạy khi khởi động lại máy</b>
+        Script đã lưu danh sách app mới của pm2 (<code>pm2 save</code>).
+        <ul>
+          <li>Máy chủ đang tự bật pm2 bằng <code>pm2 resurrect</code> (Task Scheduler, pm2-installer...): giữ nguyên, không cần làm gì.</li>
+          <li>Cách đang dùng gọi thẳng <code>pm2 start F:\App\MES_VSN\...</code>: đổi thành <code>pm2 resurrect</code>, nếu không thì sau khi khởi động lại máy, web chạy lại bản cũ trong thư mục mã nguồn.</li>
+          <li>Chưa có cách nào: xem phần dưới.</li>
+        </ul>
+        <details>
+          <summary>Tạo tác vụ tự chạy pm2 khi khởi động máy</summary>
+          <p>Mở PowerShell bằng Run as administrator. Thay <code>&lt;MÁY&gt;</code>, <code>&lt;tài khoản&gt;</code> bằng tài khoản chạy pm2; <code>/RP *</code> sẽ hỏi mật khẩu của tài khoản đó.</p>
+          <div class="cmd"><pre>schtasks /Create /TN "MES pm2 resurrect" /SC ONSTART /DELAY 0001:00 /RL HIGHEST /RU "&lt;MÁY&gt;\&lt;tài khoản&gt;" /RP * /TR "C:\Users\&lt;tài khoản&gt;\AppData\Roaming\npm\pm2.cmd resurrect"</pre><button type="button">Chép</button></div>
+          <p class="muted">Lệnh này chưa thử trên máy chủ. Thử bằng cách khởi động lại máy ngoài giờ, rồi kiểm như bước 6.</p>
+        </details>
+      </li>
+      <li>
+        <b>Dọn (không bắt buộc)</b>
+        Sau vài ngày chạy ổn, xóa file cấu hình cũ trong thư mục mã nguồn để mật khẩu database chỉ còn ở một nơi:
+        <div class="cmd"><pre>Remove-Item F:\App\MES_VSN\backend\.env</pre><button type="button">Chép</button></div>
+        <span class="muted">Các thư mục <code>node_modules</code>, <code>backend\dist</code>, <code>frontend\dist</code> trong F:\App\MES_VSN cũng không còn dùng. Cứ để đó, không ảnh hưởng gì.</span>
       </li>
     </ol>
     <details>
       <summary>Máy chủ mới hoàn toàn (chưa có gì)?</summary>
-      <p>Trước bước 1, làm thêm:</p>
       <ul>
-        <li>Cài Node.js 22, Git, SQL Server (5 database và tài khoản SQL đã có).</li>
-        <li>Cài pm2: <code>npm install -g pm2@7.0.4</code></li>
-        <li>Lấy mã nguồn: <code>git clone &lt;địa chỉ repo&gt; D:\MES</code></li>
-        <li>Ở bước 3: không có file để chép, tạo <code>D:\MES-run\shared\.env</code> theo mẫu ở <a href="#cau-hinh">mục 3</a>.</li>
+        <li>Cài Node.js 22, Git, SQL Server (5 database và login SQL của ứng dụng đã có). Cài pm2: <code>npm install -g pm2@7.0.4</code></li>
+        <li>Ổ F: phải là ổ NTFS gắn trên chính máy chủ, không phải ổ mạng: script cần tạo liên kết thư mục (junction).</li>
+        <li>Lấy mã nguồn: <code>git clone &lt;địa chỉ repo&gt; F:\App\MES_VSN</code></li>
+        <li>Bỏ bước 2 phần <code>pm2 ls</code> (chưa có app cũ). Ở bước 4: không có file để chép, bỏ dòng <code>Copy-Item</code>, tạo <code>F:\App\MES-run\shared\.env</code> theo mẫu ở <a href="#cau-hinh">mục 3</a>; vẫn chạy <code>icacls</code>.</li>
+        <li>Sau bước 6: đăng nhập <code>admin</code> bằng mật khẩu <code>DEMO_PASSWORD</code>, tạo tài khoản quản trị riêng, chạy đồng bộ lần đầu. Chi tiết: tài liệu <code>11-van-hanh.md</code>, mục Cài ứng dụng.</li>
       </ul>
     </details>
   </section>
 
   <section id="cap-nhat">
-    <h2>2. Có code mới (git pull về để chạy)</h2>
-    <p>Làm mỗi lần có bản mới. Không tự dừng pm2, không tự chạy npm ci, build: script làm hết.</p>
+    <h2>2. Có code mới</h2>
+    <p>Làm mỗi lần có bản mới. Không tự dừng pm2, không tự chạy <code>git pull</code>, <code>npm ci</code>, build: script làm hết.</p>
     <ol class="steps">
       <li>
         <b>Chạy một lệnh</b>
-        <div class="cmd"><pre>cd D:\MES
-node deploy\deploy.cjs --root D:\MES-run</pre><button type="button">Chép</button></div>
+        <div class="cmd"><pre>cd F:\App\MES_VSN
+node deploy\deploy.cjs --root F:\App\MES-run</pre><button type="button">Chép</button></div>
         Script tự <code>git pull</code>, chạy <code>npm ci</code> và <code>npm run build</code> trong thư mục bản mới, chạy <code>npm run migrate</code>, rồi chuyển pm2 sang bản mới. Trong lúc cài gói, build, web vẫn chạy bản cũ.
       </li>
       <li>
         <b>Nếu script hỏi "Đã sao lưu 5 database chưa?"</b>
-        Nghĩa là bản mới có thay đổi database. Sao lưu 5 database rồi gõ <code>y</code>, Enter.
+        Nghĩa là bản mới có thay đổi database (script in danh sách dưới dòng <code>Migration mới:</code>). Sao lưu 5 database rồi gõ <code>y</code>, Enter.
         <div class="note">Lúc này web sẽ dừng khoảng 20–60 giây. Nên làm ngoài giờ.<br>
-        Nếu người viết code báo bản này <b>chỉ thêm bảng, thêm cột</b> thì thêm <code>--online-migrate</code> vào cuối lệnh ở bước 1: web không dừng.</div>
+        Nếu người viết code báo bản này <b>chỉ thêm bảng, thêm cột</b> thì thêm <code>--online-migrate</code> vào cuối lệnh ở bước 1: web không dừng (script vẫn hỏi sao lưu).</div>
         Không hỏi gì thì web không dừng chút nào.
       </li>
       <li>
@@ -140,11 +203,12 @@ node deploy\deploy.cjs --root D:\MES-run</pre><button type="button">Chép</butto
         Ghi vào sổ vận hành: ngày giờ và dòng <code>Đang chạy: ...</code> (<a href="#phien-ban">mục 4</a>).
       </li>
     </ol>
+    <p class="muted">Script chỉ đưa lên những gì người viết code đã commit và push. Bản vừa sửa mà chưa push thì lệnh trên báo <code>Bản đang chạy đã là commit này</code>: gõ <code>n</code>, chờ người viết code push.</p>
   </section>
 
   <section id="cau-hinh">
     <h2>3. File cấu hình .env</h2>
-    <p>Máy chủ chỉ có một file cấu hình: <code>D:\MES-run\shared\.env</code>. Script tự chép file này vào từng bản. Không sửa bản chép trong <code>D:\MES-run\current</code>: lần triển khai sau sẽ ghi đè.</p>
+    <p>Máy chủ chỉ có một file cấu hình: <code>F:\App\MES-run\shared\.env</code>. Script tự chép file này vào từng bản. Không sửa bản chép trong <code>F:\App\MES-run\current</code> hay <code>releases\</code>: lần triển khai sau sẽ ghi đè.</p>
 
     <h3>Mẫu cho máy chủ chạy http:// trong mạng nội bộ</h3>
     <p class="muted">Thay phần trong dấu &lt; &gt; bằng giá trị thật. Tên 5 database đúng mặc định (MES_Core, MES_Order, MES_Sewing, MES_Hr, MES_Sync) thì không cần ghi.</p>
@@ -189,46 +253,51 @@ TRUST_PROXY=</pre><button type="button">Chép</button></div>
     <h3>Sửa file xong</h3>
     <ul>
       <li>Thông thường: chạy lệnh dưới. Script kiểm cấu hình trước; sai thì giữ cấu hình cũ, web không bị ảnh hưởng.
-        <div class="cmd"><pre>cd D:\MES
-node deploy\deploy.cjs --root D:\MES-run --sync-env</pre><button type="button">Chép</button></div></li>
+        <div class="cmd"><pre>cd F:\App\MES_VSN
+node deploy\deploy.cjs --root F:\App\MES-run --sync-env</pre><button type="button">Chép</button></div></li>
       <li>Đổi các dòng <code>DB_TRUNGGIAN_...</code>, <code>DB_OSM_...</code> (nguồn đồng bộ): phải chạy lại migrate để trỏ sang view mới. Chạy lệnh dưới thay cho <code>--sync-env</code>; khi hỏi <code>Bản đang chạy đã là commit này. Vẫn triển khai lại?</code> thì gõ <code>y</code>. Web không dừng.
-        <div class="cmd"><pre>cd D:\MES
-node deploy\deploy.cjs --root D:\MES-run --no-pull</pre><button type="button">Chép</button></div>
-        <span class="muted">Script không hỏi câu đó mà hỏi sao lưu: D:\MES đang có code mới hơn bản đang chạy, làm như <a href="#cap-nhat">mục 2</a>.</span></li>
+        <div class="cmd"><pre>cd F:\App\MES_VSN
+node deploy\deploy.cjs --root F:\App\MES-run --no-pull</pre><button type="button">Chép</button></div>
+        <span class="muted">Script không hỏi câu đó mà hỏi sao lưu: F:\App\MES_VSN đang có code mới hơn bản đang chạy, làm như <a href="#cap-nhat">mục 2</a>.</span></li>
     </ul>
   </section>
 
   <section id="phien-ban">
     <h2>4. Phiên bản, quay về bản cũ</h2>
     <p>Mỗi lần triển khai là một bản riêng, đặt tên theo ngày giờ. Bản cũ vẫn nằm trên đĩa nên quay về chỉ mất vài giây, không phải build lại.</p>
-    <pre class="out">D:\MES-run\
+    <pre class="out">F:\App\MES-run\
   releases\20261013-160000\   một bản: code đúng commit, đã build, kèm .env
   releases\20261015-180000\
   current                     trỏ vào bản đang chạy
   shared\.env                 file cấu hình duy nhất
-  logs\                       mes-out.log, mes-error.log</pre>
+  logs\                       mes-out.log, mes-error.log
+  ecosystem.config.cjs        cấu hình pm2, script tự chép
+  .mes-deploy                 đánh dấu thư mục triển khai, không xóa</pre>
 
     <h3>Xem đang chạy bản nào</h3>
-    <div class="cmd"><pre>cd D:\MES
-node deploy\deploy.cjs --root D:\MES-run --status</pre><button type="button">Chép</button></div>
+    <div class="cmd"><pre>cd F:\App\MES_VSN
+node deploy\deploy.cjs --root F:\App\MES-run --status</pre><button type="button">Chép</button></div>
     Kết quả ví dụ, bản mới nhất ở trên:
-    <pre class="out">* 20261020-090000  Sửa màn Phân bổ PO
-  20261015-180000  Phase 1 : Done
-  20261013-160000  Cách triển khai mới
-pm2: online (theo ecosystem)</pre>
+    <pre class="out">Thư mục triển khai: F:\App\MES-run
+* 20261020-090000  a1b2c3d Sửa màn Phân bổ PO
+  20261015-180000  d4e5f6a Lịch làm việc theo ĐVCS
+  20261013-160000  b7c8d9e Cách triển khai mới
+pm2: online (theo ecosystem)
+Kiểm sống http://127.0.0.1:8000/api/v1/health: ok</pre>
     <ul>
-      <li><code>*</code> là bản đang chạy. Chữ sau tên bản là nội dung commit người viết code ghi.</li>
+      <li><code>*</code> là bản đang chạy. Sau tên bản là mã commit và nội dung commit người viết code ghi.</li>
       <li>Bản có chữ <code>(build xong, chưa chạy được)</code> hoặc <code>(build lỗi hoặc đang làm)</code> là bản hỏng, không dùng để quay về.</li>
+      <li><code>Kiểm sống ...: không trả lời</code> nghĩa là web không chạy: xem <a href="#su-co">mục 5</a>.</li>
     </ul>
 
     <h3>Quay về bản trước</h3>
-    <div class="cmd"><pre>cd D:\MES
-node deploy\deploy.cjs --root D:\MES-run --rollback</pre><button type="button">Chép</button></div>
+    <div class="cmd"><pre>cd F:\App\MES_VSN
+node deploy\deploy.cjs --root F:\App\MES-run --rollback</pre><button type="button">Chép</button></div>
     <ul>
       <li>Script in bản đang chạy và bản sẽ quay về, rồi hỏi <code>Quay về bản trước?</code>: gõ <code>y</code>, Enter. Thấy <code>Đang chạy: ...</code> là xong, báo người dùng bấm F5.</li>
       <li>Về bản <b>đã từng chạy được</b> gần nhất trước bản hiện tại. Chạy thêm lần nữa thì lùi tiếp một bản.</li>
       <li>Bản quay về dùng file <code>shared\.env</code> hiện tại.</li>
-      <li>Bản mới vừa triển khai mà không khởi động được thì script tự quay về (khi bản đó không đổi database), không cần chạy lệnh này.</li>
+      <li>Bản mới vừa triển khai mà không khởi động được thì script tự quay về (khi lần đó web không phải dừng để cập nhật database), không cần chạy lệnh này.</li>
       <li>Muốn lên lại bản mới nhất: làm như <a href="#cap-nhat">mục 2</a>.</li>
     </ul>
 
@@ -245,9 +314,9 @@ node deploy\deploy.cjs --root D:\MES-run --rollback</pre><button type="button">C
 
     <h3>Về một bản cũ hơn (đã bị xóa)</h3>
     Build lại từ lịch sử git, mất vài phút như một lần triển khai. Xem danh sách commit, lấy mã ở đầu dòng:
-    <div class="cmd"><pre>cd D:\MES
+    <div class="cmd"><pre>cd F:\App\MES_VSN
 git log --oneline -20</pre><button type="button">Chép</button></div>
-    <div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --ref &lt;mã commit hoặc tag&gt;</pre><button type="button">Chép</button></div>
+    <div class="cmd"><pre>node deploy\deploy.cjs --root F:\App\MES-run --ref &lt;mã commit hoặc tag&gt;</pre><button type="button">Chép</button></div>
     <div class="note">Cách này <b>không</b> cảnh báo về database như <code>--rollback</code>. Bản còn giữ thì dùng <code>--rollback</code>; về bản cũ hơn nữa thì hỏi người viết code trước.</div>
 
     <h3>Để dễ theo dõi</h3>
@@ -258,19 +327,24 @@ git log --oneline -20</pre><button type="button">Chép</button></div>
   </section>
 
   <section id="su-co">
-    <h2>Khi có vấn đề</h2>
+    <h2>5. Khi có vấn đề</h2>
+    <p>Các lệnh trong bảng chạy sau <code>cd F:\App\MES_VSN</code>.</p>
     <table>
-      <tr><td>Script báo <code>... đã quay về ...</code></td><td>Bản mới bị lỗi, script đã tự chạy lại bản cũ. Web vẫn dùng được. Gửi file <code>D:\MES-run\logs\mes-error.log</code> cho người viết code.</td></tr>
-      <tr><td>Muốn quay lại bản trước</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --rollback</pre><button type="button">Chép</button></div>Đọc <a href="#phien-ban">mục 4</a> trước nếu bản mới có thay đổi database.</td></tr>
-      <tr><td>Xem đang chạy bản nào</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --status</pre><button type="button">Chép</button></div></td></tr>
-      <tr><td>Sửa cấu hình (mật khẩu DB, cổng...)</td><td>Sửa file <code>D:\MES-run\shared\.env</code>, rồi chạy:<div class="cmd"><pre>node deploy\deploy.cjs --root D:\MES-run --sync-env</pre><button type="button">Chép</button></div>Đổi nguồn đồng bộ thì xem <a href="#cau-hinh">mục 3</a>.</td></tr>
+      <tr><td>Script báo <code>... đã quay về ...</code></td><td>Bản mới bị lỗi, script đã tự chạy lại bản cũ. Web vẫn dùng được. Gửi file <code>F:\App\MES-run\logs\mes-error.log</code> cho người viết code.</td></tr>
+      <tr><td>Muốn quay lại bản trước</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root F:\App\MES-run --rollback</pre><button type="button">Chép</button></div>Đọc <a href="#phien-ban">mục 4</a> trước nếu bản mới có thay đổi database.</td></tr>
+      <tr><td>Xem đang chạy bản nào</td><td><div class="cmd"><pre>node deploy\deploy.cjs --root F:\App\MES-run --status</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td>Sửa cấu hình (mật khẩu DB, cổng...)</td><td>Sửa file <code>F:\App\MES-run\shared\.env</code>, rồi chạy:<div class="cmd"><pre>node deploy\deploy.cjs --root F:\App\MES-run --sync-env</pre><button type="button">Chép</button></div>Đổi nguồn đồng bộ thì xem <a href="#cau-hinh">mục 3</a>.</td></tr>
       <tr><td>Tải lại trang thì mất đăng nhập; cứ 15 phút phải đăng nhập lại</td><td>Web chạy <code>http://</code> mà <code>COOKIE_SECURE</code> đang bật. Sửa thành <code>COOKIE_SECURE=false</code> trong <code>shared\.env</code> rồi chạy <code>--sync-env</code>.</td></tr>
       <tr><td>Script báo <code>Cảnh báo: bản này thêm biến môi trường ...</code></td><td>Bản mới cần thêm dòng cấu hình. Hỏi người viết code giá trị, thêm vào <code>shared\.env</code> rồi chạy <code>--sync-env</code>.</td></tr>
       <tr><td>Script báo <code>Cấu hình .env không hợp lệ ...</code></td><td>Sửa <code>shared\.env</code> theo dòng lỗi rồi chạy lại lệnh vừa chạy. Bản đang chạy không bị ảnh hưởng.</td></tr>
-      <tr><td>Script báo <code>Cảnh báo: ... cho Everyone, Authenticated Users, Users truy cập</code></td><td>Thư mục <code>D:\MES-run</code> (chứa mật khẩu DB) đang mở cho mọi người đọc. Mở PowerShell bằng quyền quản trị, chạy lệnh <code>icacls</code> mà script in ra.</td></tr>
+      <tr><td>Script báo <code>Cảnh báo: F:\App\MES-run cho Everyone, Authenticated Users, Users truy cập</code></td><td>Thư mục chứa mật khẩu DB đang mở cho mọi người trong máy đọc. Mở PowerShell bằng Run as administrator, chạy lệnh <code>icacls</code> mà script in ra (giống bước 4 của <a href="#cai-moi">mục 1</a>).</td></tr>
+      <tr><td>Script báo <code>Lệnh lỗi ... git ... pull --ff-only</code></td><td>Thư mục F:\App\MES_VSN có file bị sửa, hoặc lệch với bản trên git. Chạy lệnh dưới, gửi kết quả cho người viết code; không tự xóa, sửa file. Bản đang chạy không bị ảnh hưởng.<div class="cmd"><pre>git -C F:\App\MES_VSN status</pre><button type="button">Chép</button></div></td></tr>
+      <tr><td>Script báo <code>Đang có lần triển khai khác (... deploy.lock ...)</code></td><td>Mỗi lúc chỉ chạy được một lần. Kiểm không còn cửa sổ nào đang chạy script (lần trước bị tắt ngang cũng để lại file này), rồi xóa file <code>F:\App\MES-run\deploy.lock</code> và chạy lại.</td></tr>
+      <tr><td>Lần đầu, script báo <code>F:\App\MES-run đã có nội dung (...) mà không phải thư mục triển khai</code></td><td>Thư mục chạy phải trống hoặc chỉ có <code>shared\.env</code>. Chuyển các file lạ ra chỗ khác rồi chạy lại.</td></tr>
+      <tr><td>Script báo <code>Có tiến trình đang trả lời ở ... mà pm2 chưa có app "mes"</code></td><td>Web cũ chạy bằng app pm2 tên khác hoặc bằng dịch vụ Windows. Làm theo ghi chú ở bước 5 của <a href="#cai-moi">mục 1</a>.</td></tr>
       <tr><td>Thông báo khác</td><td>Đọc dòng <code>Lỗi:</code> script in ra, thường có ghi cách xử lý. Chi tiết: tài liệu <code>11-van-hanh.md</code>, mục Cập nhật bản mới lên máy chủ.</td></tr>
     </table>
-    <p class="muted">Chạy các lệnh bằng đúng tài khoản Windows đang chạy pm2. Không sửa file trong <code>D:\MES-run\current</code>, không xóa file <code>.mes-deploy</code>.</p>
+    <p class="muted">Chạy các lệnh bằng đúng tài khoản Windows đang chạy pm2. Không sửa file trong <code>F:\App\MES-run\current</code> hay <code>releases\</code>, không xóa file <code>.mes-deploy</code>, không sửa file trong <code>F:\App\MES_VSN</code>.</p>
   </section>
 </main>
 <script>

@@ -67,7 +67,7 @@ function parseArgs(argv, repo) {
     else fail(`Không hiểu tham số ${a}.\n\n${USAGE}`);
   }
   if (o.mode === 'help') return o;
-  if (!o.root) fail(`Thiếu --root <thư mục triển khai>, ví dụ --root D:\\MES-run.\n\n${USAGE}`);
+  if (!o.root) fail(`Thiếu --root <thư mục triển khai>, ví dụ --root F:\\App\\MES-run.\n\n${USAGE}`);
   if (!Number.isInteger(o.keep) || o.keep < 2) fail('--keep phải là số nguyên từ 2 trở lên.');
   if (isInside(o.root, repo)) fail(`--root không được nằm trong thư mục mã nguồn ${repo}.`);
   if (isInside(repo, o.root)) fail(`--root không được chứa thư mục mã nguồn ${repo}.`);
