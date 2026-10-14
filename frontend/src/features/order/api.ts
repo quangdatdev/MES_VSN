@@ -142,9 +142,19 @@ export interface PlanLine {
   planQty?: number;
 }
 
+/** Dòng màu cỡ của GET /shipment-plans/:id: số theo chính sách cột của cột nguồn (Ẩn thì không có khóa, Che thì "***") */
+export interface PlanDetailLine {
+  colorName: string;
+  sizeName: string;
+  originalQty?: Masked<number>;
+  plannedQty?: Masked<number>;
+  remainingQty?: Masked<number>;
+  planQty?: Masked<number>;
+}
+
 export interface ShipmentPlanDetail extends ShipmentPlan {
   poIds: number[];
-  lines: PlanLine[];
+  lines: PlanDetailLine[];
 }
 
 export interface Candidate {

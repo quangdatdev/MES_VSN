@@ -98,6 +98,13 @@ const EXPORT_COLUMNS = [
 
 type Level = AccessLevel | undefined;
 
+/** Giá trị của cột suy ra theo mức chặt nhất của các cột nguồn; undefined: bỏ khỏi dữ liệu trả về */
+const derived = (value: unknown, ...lv: Level[]) => (lv.includes('HIDDEN') ? undefined : lv.includes('MASKED') ? MASK : value);
+const withDerived = (out: Record<string, unknown>, values: Record<string, unknown>) => {
+  for (const [key, value] of Object.entries(values)) if (value !== undefined) out[key] = value;
+  return out;
+};
+
 /**
  * Thứ tự PO: ngày xuất rồi số PO, chỉ theo cột người dùng xem được nguyên giá trị ở order.po. Xếp theo cột bị Ẩn/Che cũng lộ
  * thứ tự giá trị (review 5.1 #2, review 5.9.14 #1); không còn cột nào thì theo Id.
@@ -125,14 +132,11 @@ export function presentPlanPo(r: SalesOrderPoRow, qtyLevel: Level, statusLevel: 
     qty: r.Qty,
     statusCode: r.StatusCode,
   };
-  const derived = (value: unknown, ...lv: Level[]) => (lv.includes('HIDDEN') ? undefined : lv.includes('MASKED') ? MASK : value);
-  const put = (key: string, value: unknown) => {
-    if (value !== undefined) out[key] = value;
-  };
-  put('confirmedAt', derived(r.ConfirmedAt, statusLevel));
-  put('confirmedQty', derived(confirmed ? r.Qty : 0, qtyLevel, statusLevel));
-  put('unconfirmedQty', derived(confirmed ? 0 : r.Qty, qtyLevel, statusLevel));
-  return out;
+  return withDerived(out, {
+    confirmedAt: derived(r.ConfirmedAt, statusLevel),
+    confirmedQty: derived(confirmed ? r.Qty : 0, qtyLevel, statusLevel),
+    unconfirmedQty: derived(confirmed ? 0 : r.Qty, qtyLevel, statusLevel),
+  });
 }
 
 interface DraftLine {
@@ -141,6 +145,24 @@ interface DraftLine {
   originalQty: number;
   plannedQty: number;
   remainingQty: number;
+}
+
+type PlanLine = DraftLine & { planQty: number };
+
+/**
+ * Một dòng màu cỡ của GET /:id (popup Sửa, khung Màu cỡ dưới danh sách, task 5.9.15), cột suy ra theo cột nguồn như
+ * presentPlanPo: Số lượng gốc là SL màu cỡ của PO nên theo `qty` của order.po; SL đã tạo KHXH là SL KHXH của các kế hoạch
+ * khác nên theo `planQty`; SL còn lại lộ cả hai nên theo mức chặt hơn. `planQty` do interceptor áp theo tên khóa.
+ */
+export function presentPlanLine(l: PlanLine, poQtyLevel: Level, planQtyLevel: Level) {
+  return withDerived(
+    { colorName: l.colorName, sizeName: l.sizeName, planQty: l.planQty },
+    {
+      originalQty: derived(l.originalQty, poQtyLevel),
+      plannedQty: derived(l.plannedQty, planQtyLevel),
+      remainingQty: derived(l.remainingQty, poQtyLevel, planQtyLevel),
+    },
+  );
 }
 
 @Injectable()
@@ -186,19 +208,31 @@ export class ShipmentService {
     return { ...page, items: page.items.map(presentPlan) };
   }
 
-  async get(user: AuthUser, id: number) {
-    const scope = scopeOf(user);
+  /** Kế hoạch kèm PO và màu cỡ, số chưa áp chính sách cột: dùng khi sửa (nhật ký ghi số thật). */
+  private async detail(scope: Scope, id: number) {
     const plan = await this.plans.getById(scope, id);
     const [colorSizes, links] = await Promise.all([this.planColorSizes.listByParent(scope, id), this.planPos.listByParent(scope, id)]);
     const planned = await this.plannedMap(plan.SalesOrderId, id);
     return {
       ...presentPlan(plan),
       poIds: links.map((l) => l.SalesOrderPoId),
-      lines: colorSizes.map((c) => {
+      lines: colorSizes.map((c): PlanLine => {
         const other = planned.get(csKey(c.ColorName, c.SizeName)) ?? 0;
         return { colorName: c.ColorName, sizeName: c.SizeName, originalQty: c.OriginalQty, plannedQty: other, remainingQty: Math.max(0, c.OriginalQty - other), planQty: c.PlanQty };
       }),
     };
+  }
+
+  /**
+   * GET /:id. Khung Màu cỡ hiện cho mọi người xem kế hoạch, nên số lấy từ PO và từ kế hoạch khác phải theo chính sách cột của
+   * cột nguồn (review 5.9.15 H1, H2). Không có quyền xem PO ở Cập nhật tỷ lệ cắt thì coi SL PO như bị Ẩn.
+   * Lưới của popup (GET draft) chưa áp: chỉ người lập kế hoạch dùng (review 5.1 P7, N4).
+   */
+  async get(user: AuthUser, id: number) {
+    const scope = scopeOf(user);
+    const [plan, own, po] = await Promise.all([this.detail(scope, id), this.fields.levels(scope.access, RESOURCE), this.fields.levels(scope.access, 'order.po')]);
+    const poQty: Level = scope.access.permissions.has('order.po:view') ? po.levels.get('qty') : 'HIDDEN';
+    return { ...plan, lines: plan.lines.map((l) => presentPlanLine(l, poQty, own.levels.get('planQty'))) };
   }
 
   private async plannedMap(salesOrderId: number, excludePlanId?: number, db?: OrderDb) {
@@ -383,7 +417,7 @@ export class ShipmentService {
   async update(user: AuthUser, id: number, dto: ShipmentPlanUpdateDto) {
     const scope = scopeOf(user);
     await this.plans.assertWritable(scope);
-    const before = await this.get(user, id);
+    const before = await this.detail(scope, id);
     const set: Record<string, unknown> = {};
     if (dto.poBuyDate !== undefined) set.PoBuyDate = dto.poBuyDate;
     if (dto.shipDate !== undefined) set.ShipDate = dto.shipDate;

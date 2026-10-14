@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Grid, Group, Modal, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Grid, Group, Modal, SegmentedControl, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconAlertCircle, IconListSearch, IconPencil, IconPlus, IconTrash, IconWand } from '@tabler/icons-react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +22,7 @@ import { useMobile } from '../../lib/useMobile';
 import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
 import { factoryLabel } from './factoryLabel';
-import { emptyFilter, type Candidate, type CandidatePo, type OrderFilter, type PlanLine, type PlanPo, type PlanPoList, type ShipmentPlan, type ShipmentPlanDetail } from './api';
+import { emptyFilter, type Candidate, type CandidatePo, type OrderFilter, type PlanDetailLine, type PlanLine, type PlanPo, type PlanPoList, type ShipmentPlan, type ShipmentPlanDetail } from './api';
 import { EmptyState, ExportButton, filterParams, IssueList, loadError, OrderFilters, PICK_ROW, PLAN_STATUS, PO_STATUS, StatusBadge, useCanWrite, useCustomers, usePagedList } from './common';
 
 const RESOURCE = 'order.shipment';
@@ -163,10 +163,123 @@ export default function ShipmentPage() {
             }
           />
         </div>
-        <PlanPoPane plan={selected} />
+        <PlanDetailPane plan={selected} />
       </div>
       {dialog && <PlanDialog planId={dialog.planId} onClose={() => setDialog(null)} onDone={refreshAfterClose} />}
     </WorkPage>
+  );
+}
+
+const NO_PLAN_LINES: PlanDetailLine[] = [];
+// Ký tự NUL không có trong tên màu, cỡ (như csKey của máy chủ): nối bằng "|" thì màu "A|B" cỡ "C" trùng màu "A" cỡ "B|C"
+const lineKey = (l: Pick<PlanLine, 'colorName' | 'sizeName'>) => `${l.colorName}\u0000${l.sizeName}`;
+
+type DetailView = 'lines' | 'pos';
+
+/**
+ * Khung dưới danh sách, theo kế hoạch đang chọn: màu cỡ (mặc định, task 5.9.15) hoặc PO (task 5.9.14). Khung và tiêu đề giữ
+ * nguyên khi đổi, chỉ lưới đổi: nút chuyển không bị gỡ nên không mất focus khi chọn bằng phím mũi tên. Chỉ tải phần đang xem.
+ */
+function PlanDetailPane({ plan }: { plan: ShipmentPlan | null }) {
+  const [view, setView] = useState<DetailView>('lines');
+  const pos = usePlanPos(plan, view === 'pos');
+  return (
+    <div className="pane">
+      <div className="pane-title" style={{ flexWrap: 'wrap' }}>
+        <Group gap={8} wrap="nowrap">
+          <SegmentedControl
+            size="xs"
+            aria-label="Chi tiết của kế hoạch"
+            value={view}
+            onChange={(v) => setView(v as DetailView)}
+            data={[
+              { value: 'lines', label: 'Màu cỡ' },
+              { value: 'pos', label: 'PO' },
+            ]}
+          />
+          {plan && typeof plan.planNo === 'string' && (
+            <Text span size="xs" c="dimmed" fw={400} style={{ whiteSpace: 'nowrap' }}>
+              {plan.planNo}
+            </Text>
+          )}
+        </Group>
+        {view === 'pos' && <PlanPoSummary pos={pos} />}
+      </div>
+      {view === 'lines' ? <PlanLineGrid plan={plan} /> : <PlanPoGrid plan={plan} pos={pos} />}
+    </div>
+  );
+}
+
+/** Cột màu cỡ dùng chung cho khung Màu cỡ và lưới xem trong popup; cột SL KHXH mỗi nơi tự thêm */
+const LINE_COLUMNS: Column<PlanDetailLine>[] = [
+  { key: 'colorName', title: 'Tên màu SP', field: null, minWidth: 150 },
+  { key: 'sizeName', title: 'Tên cỡ SP', field: null },
+  { key: 'originalQty', title: 'Số lượng gốc', format: 'number', field: null },
+  { key: 'plannedQty', title: 'SL đã tạo KHXH', format: 'number', field: null },
+  { key: 'remainingQty', title: 'SL còn lại', format: 'number', field: null },
+];
+// SL KHXH theo chính sách cột "Số lượng KH" của kế hoạch (máy chủ đã Ẩn hoặc Che trong dữ liệu trả về)
+const PLAN_LINE_COLUMNS: Column<PlanDetailLine>[] = [
+  ...LINE_COLUMNS,
+  { key: 'planQty', title: 'SL KHXH', format: 'number', render: (l) => (typeof l.planQty === 'number' ? <b>{fmtNum(l.planQty)}</b> : <span className="cell-empty">–</span>) },
+];
+
+/**
+ * Lưới "Màu cỡ": số đã lưu của kế hoạch, cùng nguồn với popup Sửa (GET /:id). SL đã tạo KHXH là của các kế hoạch khác
+ * cùng đơn; Số lượng gốc là số lúc lưu SL kế hoạch lần cuối (popup Sửa lấy theo màu cỡ hiện tại của PO). Cột suy ra theo
+ * cột nguồn như máy chủ: Số lượng gốc theo SL của PO ở Cập nhật tỷ lệ cắt, SL đã tạo KHXH theo SL KHXH, SL còn lại theo cả hai.
+ */
+function PlanLineGrid({ plan }: { plan: ShipmentPlan | null }) {
+  const policy = useFieldPolicy(RESOURCE);
+  const poPolicy = useFieldPolicy('order.po');
+  const canViewPo = useCan('order.po:view');
+  const detail = useQuery({
+    queryKey: ['order', 'shipment-detail', plan?.id],
+    queryFn: () => api<ShipmentPlanDetail>(`/order/shipment-plans/${plan!.id}`),
+    enabled: !!plan,
+  });
+  const columns = useMemo(() => {
+    const poHidden = !canViewPo || poPolicy.level('qty') === 'HIDDEN';
+    const planHidden = policy.level('planQty') === 'HIDDEN';
+    return PLAN_LINE_COLUMNS.filter((c) => (c.key === 'originalQty' ? !poHidden : c.key === 'plannedQty' ? !planHidden : c.key === 'remainingQty' ? !poHidden && !planHidden : true));
+  }, [policy, poPolicy, canViewPo]);
+  const rows = plan ? (detail.data?.lines ?? NO_PLAN_LINES) : NO_PLAN_LINES;
+  // Cột bị Che hoặc Ẩn thì không có tổng (sumOf trả null)
+  const originalSum = sumOf(rows.map((l) => l.originalQty));
+  const planSum = sumOf(rows.map((l) => l.planQty));
+
+  return (
+    <DataGrid
+      label="Màu cỡ của kế hoạch"
+      fill
+      dense
+      columns={columns}
+      rows={rows}
+      rowKey={lineKey}
+      policy={policy}
+      loading={detail.isFetching && !!plan}
+      error={plan ? loadError(detail.error, 'Không tải được màu cỡ của kế hoạch.') : null}
+      onRetry={() => void detail.refetch()}
+      empty={plan ? 'Kế hoạch này chưa có màu cỡ.' : 'Bấm một kế hoạch ở lưới trên để xem màu cỡ.'}
+      footer={
+        rows.length > 0 && (
+          <Text size="sm" px={8} py={4}>
+            Tổng {rows.length} màu cỡ
+            {originalSum !== null && (
+              <>
+                : số lượng gốc <b>{fmtNum(originalSum)}</b>
+              </>
+            )}
+            {planSum !== null && (
+              <>
+                {originalSum !== null ? ', ' : ': '}SL KHXH <b>{fmtNum(planSum)}</b>
+              </>
+            )}
+            .{originalSum !== null && ' Số lượng gốc là số lúc lưu kế hoạch.'}
+          </Text>
+        )
+      }
+    />
   );
 }
 
@@ -183,17 +296,17 @@ const PLAN_PO_COLUMNS: Column<PlanPo>[] = [
 ];
 
 /**
- * Khung "PO của kế hoạch" dưới danh sách (task 5.9.14): PO đã chọn khi lập kế hoạch đang chọn, PO nào đã xác nhận ở Cập nhật
- * tỷ lệ cắt, số lượng đã xác nhận, chưa xác nhận. Số là của cả PO (một PO có thể nằm trong nhiều kế hoạch). Cột theo chính
- * sách cột của Cập nhật tỷ lệ cắt; cột suy ra bỏ khi cột nguồn bị Ẩn, như máy chủ.
+ * Dữ liệu "PO của kế hoạch" (task 5.9.14): PO đã chọn khi lập kế hoạch đang chọn, PO nào đã xác nhận ở Cập nhật tỷ lệ cắt,
+ * số lượng đã xác nhận, chưa xác nhận. Số là của cả PO (một PO có thể nằm trong nhiều kế hoạch). Cột theo chính sách cột của
+ * Cập nhật tỷ lệ cắt; cột suy ra bỏ khi cột nguồn bị Ẩn, như máy chủ. `enabled`: chỉ tải khi đang xem khung PO.
  */
-function PlanPoPane({ plan }: { plan: ShipmentPlan | null }) {
+function usePlanPos(plan: ShipmentPlan | null, enabled: boolean) {
   const policy = useFieldPolicy('order.po');
   const canView = useCan('order.po:view');
-  const pos = useQuery({
+  const query = useQuery({
     queryKey: ['order', 'shipment-pos', plan?.id],
     queryFn: () => api<PlanPoList>(`/order/shipment-plans/${plan!.id}/pos`),
-    enabled: !!plan && canView,
+    enabled: enabled && !!plan && canView,
   });
   const columns = useMemo(() => {
     const statusHidden = policy.level('statusCode') === 'HIDDEN';
@@ -201,15 +314,42 @@ function PlanPoPane({ plan }: { plan: ShipmentPlan | null }) {
     return PLAN_PO_COLUMNS.filter((c) => (c.key === 'confirmedAt' ? !statusHidden : c.key === 'confirmedQty' || c.key === 'unconfirmedQty' ? !statusHidden && !qtyHidden : true));
   }, [policy]);
 
-  const rows = plan && canView ? (pos.data?.items ?? []) : [];
-  const hidden = plan && canView ? (pos.data?.hiddenCount ?? 0) : 0;
+  const rows = plan && canView ? (query.data?.items ?? []) : [];
+  const hidden = plan && canView ? (query.data?.hiddenCount ?? 0) : 0;
   // Trạng thái bị Che hoặc Ẩn thì không đếm được PO đã xác nhận; số lượng bị Che hoặc Ẩn thì không có tổng (sumOf trả null)
   const statusKnown = rows.every((p) => p.statusCode === 'CONFIRMED' || p.statusCode === 'DRAFT');
   const confirmedCount = rows.filter((p) => p.statusCode === 'CONFIRMED').length;
-  const confirmedSum = sumOf(rows.map((p) => p.confirmedQty));
-  const unconfirmedSum = sumOf(rows.map((p) => p.unconfirmedQty));
-  const total = sumOf(rows.map((p) => p.qty));
+  return {
+    policy,
+    canView,
+    query,
+    columns,
+    rows,
+    hidden,
+    statusKnown,
+    confirmedCount,
+    confirmedSum: sumOf(rows.map((p) => p.confirmedQty)),
+    unconfirmedSum: sumOf(rows.map((p) => p.unconfirmedQty)),
+    total: sumOf(rows.map((p) => p.qty)),
+  };
+}
+type PlanPos = ReturnType<typeof usePlanPos>;
+
+/** Tóm tắt trên tiêu đề khung PO: đã xác nhận / chưa xác nhận */
+function PlanPoSummary({ pos }: { pos: PlanPos }) {
+  const { rows, statusKnown, confirmedCount, confirmedSum, unconfirmedSum } = pos;
+  if (rows.length === 0 || !statusKnown) return null;
   const amount = (sum: number | null, count: number) => (sum === null ? `${count} PO` : count === 0 ? fmtNum(sum) : `${fmtNum(sum)} (${count} PO)`);
+  return (
+    <Group gap={6} wrap="wrap" justify="flex-end">
+      <Badge variant="light" color={PO_STATUS.CONFIRMED.color}>Đã xác nhận: {amount(confirmedSum, confirmedCount)}</Badge>
+      <Badge variant="light" color={PO_STATUS.DRAFT.color}>Chưa xác nhận: {amount(unconfirmedSum, rows.length - confirmedCount)}</Badge>
+    </Group>
+  );
+}
+
+function PlanPoGrid({ plan, pos }: { plan: ShipmentPlan | null; pos: PlanPos }) {
+  const { policy, canView, query, columns, rows, hidden, total } = pos;
   const empty = !plan
     ? 'Bấm một kế hoạch ở lưới trên để xem PO.'
     : !canView
@@ -219,47 +359,29 @@ function PlanPoPane({ plan }: { plan: ShipmentPlan | null }) {
         : 'Kế hoạch này chưa gắn PO.';
 
   return (
-    <div className="pane">
-      <div className="pane-title">
-        <span>
-          PO của kế hoạch{' '}
-          {plan && typeof plan.planNo === 'string' && (
-            <Text span size="xs" c="dimmed" fw={400} style={{ whiteSpace: 'nowrap' }}>
-              {plan.planNo}
-            </Text>
-          )}
-        </span>
-        {rows.length > 0 && statusKnown && (
-          <Group gap={6} wrap="wrap" justify="flex-end">
-            <Badge variant="light" color={PO_STATUS.CONFIRMED.color}>Đã xác nhận: {amount(confirmedSum, confirmedCount)}</Badge>
-            <Badge variant="light" color={PO_STATUS.DRAFT.color}>Chưa xác nhận: {amount(unconfirmedSum, rows.length - confirmedCount)}</Badge>
-          </Group>
-        )}
-      </div>
-      <DataGrid
-        label="PO của kế hoạch"
-        fill
-        dense
-        columns={columns}
-        rows={rows}
-        rowKey={(p) => p.id}
-        policy={policy}
-        loading={pos.isFetching && !!plan && canView}
-        error={plan && canView ? loadError(pos.error, 'Không tải được PO của kế hoạch.') : null}
-        onRetry={() => void pos.refetch()}
-        empty={empty}
-        footer={
-          rows.length > 0 && (
-            <Text size="sm" px={8} py={4}>
-              {total === null ? `${rows.length} PO.` : <>Tổng {rows.length} PO: <b>{fmtNum(total)}</b>.</>}
-              {/* Số trong lưới là của cả PO (một PO có thể nằm trong nhiều kế hoạch): luôn nói rõ, kể cả khi không xem được SL kế hoạch */}
-              {policy.visible('qty') && <> Số lượng là của cả PO{typeof plan?.planQty === 'number' ? <>; kế hoạch này lấy <b>{fmtNum(plan.planQty)}</b>.</> : '.'}</>}
-              {hidden > 0 && <> Còn {hidden} PO bạn không được xem.</>}
-            </Text>
-          )
-        }
-      />
-    </div>
+    <DataGrid
+      label="PO của kế hoạch"
+      fill
+      dense
+      columns={columns}
+      rows={rows}
+      rowKey={(p) => p.id}
+      policy={policy}
+      loading={query.isFetching && !!plan && canView}
+      error={plan && canView ? loadError(query.error, 'Không tải được PO của kế hoạch.') : null}
+      onRetry={() => void query.refetch()}
+      empty={empty}
+      footer={
+        rows.length > 0 && (
+          <Text size="sm" px={8} py={4}>
+            {total === null ? `${rows.length} PO.` : <>Tổng {rows.length} PO: <b>{fmtNum(total)}</b>.</>}
+            {/* Số trong lưới là của cả PO (một PO có thể nằm trong nhiều kế hoạch): luôn nói rõ, kể cả khi không xem được SL kế hoạch */}
+            {policy.visible('qty') && <> Số lượng là của cả PO{typeof plan?.planQty === 'number' ? <>; kế hoạch này lấy <b>{fmtNum(plan.planQty)}</b>.</> : '.'}</>}
+            {hidden > 0 && <> Còn {hidden} PO bạn không được xem.</>}
+          </Text>
+        )
+      }
+    />
   );
 }
 
@@ -270,8 +392,7 @@ interface Picked {
 }
 
 type PlanSheetRow = Omit<PlanLine, 'planQty'> & { key: string; planQty: number | null };
-const NO_PLAN_LINES: PlanLine[] = [];
-const lineKey = (l: Pick<PlanLine, 'colorName' | 'sizeName'>) => `${l.colorName}|${l.sizeName}`;
+const NO_DRAFT_LINES: PlanLine[] = [];
 /** Lưới SL KHXH: chỉ cột SL KHXH nhập được (dán cả cột từ Excel); vượt SL còn lại tô đỏ */
 const PLAN_SHEET: SheetColumn<PlanSheetRow>[] = [
   sheetReadonly<PlanSheetRow>('Tên màu SP', (r) => r.colorName, (r) => r.colorName, { minWidth: 150, grow: 2 }),
@@ -325,7 +446,7 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
     queryFn: () => api<PlanLine[]>(`/order/shipment-plans/draft${qs({ salesOrderId, poIds: poIds.join(','), excludePlanId: planId ?? undefined })}`),
     enabled: !!salesOrderId && poIds.length > 0,
   });
-  const lines = draft.data ?? NO_PLAN_LINES;
+  const lines = draft.data ?? NO_DRAFT_LINES;
   const qtyOf = (l: PlanLine) => Number(qty[lineKey(l)]) || 0;
   const total = lines.reduce((s, l) => s + qtyOf(l), 0);
   const over = lines.filter((l) => qtyOf(l) > l.remainingQty);
@@ -380,14 +501,7 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
 
   // Lưới xem (không được nhập số lượng, đang tải, lỗi, chưa chọn mã hàng)
   const columns = useMemo<Column<PlanLine>[]>(
-    () => [
-      { key: 'colorName', title: 'Tên màu SP', field: null },
-      { key: 'sizeName', title: 'Tên cỡ SP', field: null },
-      { key: 'originalQty', title: 'Số lượng gốc', format: 'number', field: null },
-      { key: 'plannedQty', title: 'SL đã tạo KHXH', format: 'number', field: null },
-      { key: 'remainingQty', title: 'SL còn lại', format: 'number', field: null },
-      { key: 'planQty', title: 'SL KHXH', field: null, width: 130, render: (l) => fmtNum(qty[lineKey(l)]) },
-    ],
+    () => [...LINE_COLUMNS, { key: 'planQty', title: 'SL KHXH', field: null, width: 130, render: (l) => fmtNum(qty[lineKey(l)]) }],
     [qty],
   );
   // Dòng của lưới nhập chỉ dựng lại khi màu cỡ hoặc số đã nhập đổi (gõ PO/Buy date không vẽ lại các ô của lưới)

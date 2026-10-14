@@ -1,10 +1,10 @@
 import { MantineProvider } from '@mantine/core';
 import { ModalsProvider } from '@mantine/modals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlanPo, PlanPoList, ShipmentPlan } from '../features/order/api';
+import type { PlanDetailLine, PlanLine, PlanPo, PlanPoList, ShipmentPlan, ShipmentPlanDetail } from '../features/order/api';
 import ShipmentPage from '../features/order/ShipmentPage';
 import { api } from '../lib/api';
 import { useSession } from '../store/session';
@@ -15,7 +15,7 @@ vi.mock('../lib/api', async (importOriginal) => {
   return { ...mod, api: vi.fn() };
 });
 
-// Khung "PO của kế hoạch" dưới danh sách Kế hoạch xuất hàng (task 5.9.14), dữ liệu giả
+// Khung dưới danh sách Kế hoạch xuất hàng: Màu cỡ (mặc định) và PO của kế hoạch (task 5.9.14), dữ liệu giả
 const plan = {
   id: 7,
   planNo: 'KH-A01-000007',
@@ -52,17 +52,23 @@ const po = (over: Partial<PlanPo> = {}): PlanPo => ({
 });
 const confirmed = po({ id: 2, poCode: 'PO-THU-2', poNumber: '4500002', qty: 200, statusCode: 'CONFIRMED', confirmedAt: '2026-10-10T03:00:00.000Z', confirmedQty: 200, unconfirmedQty: 0 });
 
-function serve(pos: PlanPoList) {
+const line = (over: Partial<PlanLine> = {}): PlanLine => ({ colorName: 'Red', sizeName: '36', originalQty: 30, plannedQty: 10, remainingQty: 20, planQty: 12, ...over });
+const LINES = [line(), line({ sizeName: '38', originalQty: 55, plannedQty: 0, remainingQty: 55, planQty: 40 })];
+
+function serve(pos: PlanPoList, lines: PlanDetailLine[] = LINES) {
   vi.mocked(api).mockImplementation((async (raw: string) => {
     const path = String(raw ?? '');
     if (path === '/me/branch-names') return [{ code: 'A01', name: 'Vietsun Phú Yên' }];
     if (path === '/order/sales-orders/options') return { customers: [], seasons: [], orderTypes: [], orderTypeNames: {}, units: [], factories: [] };
     if (path.startsWith('/order/shipment-plans?')) return { items: [plan], total: 1, page: 1, pageSize: 100 };
     if (path === '/order/shipment-plans/7/pos') return pos;
+    if (path === '/order/shipment-plans/7') return { ...plan, poIds: [1, 2], lines } satisfies ShipmentPlanDetail;
     throw new Error(`Chưa giả lập ${path}`);
   }) as unknown as typeof api);
 }
-const posCalls = () => vi.mocked(api).mock.calls.map((c) => String(c[0])).filter((p) => p.endsWith('/pos'));
+const calls = () => vi.mocked(api).mock.calls.map((c) => String(c[0]));
+const posCalls = () => calls().filter((p) => p.endsWith('/pos'));
+const detailCalls = () => calls().filter((p) => p === '/order/shipment-plans/7');
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -92,8 +98,14 @@ function signIn(permissions: string[], fieldPolicies: Record<string, Record<stri
 }
 
 const pane = () => screen.getByRole('table', { name: 'PO của kế hoạch' });
+const linePane = () => screen.getByRole('table', { name: 'Màu cỡ của kế hoạch' });
 async function pickPlan() {
   fireEvent.click(await screen.findByText('KH-A01-000007'));
+}
+function renderPos() {
+  const r = renderPage();
+  fireEvent.click(screen.getByRole('radio', { name: 'PO' }));
+  return r;
 }
 
 describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
@@ -104,7 +116,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
   it('chưa chọn kế hoạch thì hướng dẫn; chọn thì hiện PO, tổng đã xác nhận, chưa xác nhận và số kế hoạch lấy', async () => {
     signIn(['order.shipment:view', 'order.po:view']);
     serve({ items: [confirmed, po()], hiddenCount: 0 });
-    renderPage();
+    renderPos();
     expect(await screen.findByText('Bấm một kế hoạch ở lưới trên để xem PO.')).toBeInTheDocument();
     expect(posCalls()).toEqual([]);
     await pickPlan();
@@ -119,7 +131,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
   it('không có quyền xem PO: báo lý do, không gọi API', async () => {
     signIn(['order.shipment:view']);
     serve({ items: [], hiddenCount: 0 });
-    renderPage();
+    renderPos();
     await pickPlan();
     expect(await screen.findByText('Bạn không được xem PO ở màn Cập nhật tỷ lệ cắt nên không thấy trạng thái xác nhận.')).toBeInTheDocument();
     expect(posCalls()).toEqual([]);
@@ -128,7 +140,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
   it('số lượng bị Che: không có tổng số lượng, chỉ đếm PO; Trạng thái bị Ẩn: bỏ cột suy ra và phần tóm tắt', async () => {
     signIn(['order.shipment:view', 'order.po:view'], { 'order.po': { qty: 'MASKED' } });
     serve({ items: [{ ...confirmed, qty: '***', confirmedQty: '***', unconfirmedQty: '***' }, { ...po(), qty: '***', confirmedQty: '***', unconfirmedQty: '***' }], hiddenCount: 0 });
-    const first = renderPage();
+    const first = renderPos();
     await pickPlan();
     expect(await screen.findByText('Đã xác nhận: 1 PO')).toBeInTheDocument();
     expect(screen.getByText('Chưa xác nhận: 1 PO')).toBeInTheDocument();
@@ -139,7 +151,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
     signIn(['order.shipment:view', 'order.po:view'], { 'order.po': { statusCode: 'HIDDEN' } });
     const strip = ({ statusCode: _s, confirmedAt: _a, confirmedQty: _c, unconfirmedQty: _u, ...rest }: PlanPo) => rest;
     serve({ items: [strip(confirmed), strip(po())], hiddenCount: 0 });
-    renderPage();
+    renderPos();
     await pickPlan();
     expect(await within(pane()).findByText('4500002')).toBeInTheDocument();
     const headers = within(pane()).getAllByRole('columnheader').map((h) => h.textContent);
@@ -151,7 +163,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
     signIn(['order.shipment:view', 'order.po:view'], { 'order.po': { statusCode: 'MASKED' } });
     const masked = (p: PlanPo): PlanPo => ({ ...p, statusCode: '***', confirmedAt: '***', confirmedQty: '***', unconfirmedQty: '***' });
     serve({ items: [masked(confirmed), masked(po())], hiddenCount: 0 });
-    renderPage();
+    renderPos();
     await pickPlan();
     expect(await screen.findByText(/^Tổng 2 PO:/)).toHaveTextContent('Tổng 2 PO: 3.200. Số lượng là của cả PO; kế hoạch này lấy 900.');
     expect(screen.queryByText(/^Đã xác nhận:/)).not.toBeInTheDocument();
@@ -167,7 +179,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
       if (String(raw).endsWith('/pos') && fail) throw new Error('mạng lỗi');
       return (ok as (...a: unknown[]) => unknown)(raw, ...rest);
     }) as unknown as typeof api);
-    renderPage();
+    renderPos();
     await pickPlan();
     expect(await screen.findByText('Không tải được PO của kế hoạch.')).toBeInTheDocument();
     fail = false;
@@ -179,15 +191,124 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
   it('PO ngoài phạm vi được xem: báo số PO không được xem', async () => {
     signIn(['order.shipment:view', 'order.po:view']);
     serve({ items: [po()], hiddenCount: 2 });
-    const first = renderPage();
+    const first = renderPos();
     await pickPlan();
     expect(await screen.findByText(/Còn 2 PO bạn không được xem\./)).toBeInTheDocument();
     first.unmount();
 
     vi.mocked(api).mockReset();
     serve({ items: [], hiddenCount: 3 });
-    renderPage();
+    renderPos();
     await pickPlan();
     expect(await screen.findByText('Bạn không được xem 3 PO của kế hoạch này.')).toBeInTheDocument();
+  });
+});
+
+describe('Kế hoạch xuất hàng: Màu cỡ của kế hoạch', () => {
+  beforeEach(() => {
+    vi.mocked(api).mockReset();
+  });
+
+  const footer = () => screen.getByText(/^Tổng 2 màu cỡ/);
+  const headers = () => within(linePane()).getAllByRole('columnheader').map((h) => h.textContent ?? '');
+
+  it('mặc định xem màu cỡ: chọn kế hoạch thì hiện số đã lưu của kế hoạch như popup Sửa, kèm tổng; không tải PO', async () => {
+    signIn(['order.shipment:view', 'order.po:view']);
+    serve({ items: [confirmed], hiddenCount: 0 });
+    renderPage();
+    expect(await screen.findByText('Bấm một kế hoạch ở lưới trên để xem màu cỡ.')).toBeInTheDocument();
+    expect(detailCalls()).toEqual([]);
+    await pickPlan();
+    const row = (await within(linePane()).findByText('36')).closest('tr')!;
+    expect([...row.querySelectorAll('td')].map((td) => td.textContent).slice(-6)).toEqual(['Red', '36', '30', '10', '20', '12']);
+    for (const title of ['Tên màu SP', 'Tên cỡ SP', 'Số lượng gốc', 'SL đã tạo KHXH', 'SL còn lại', 'SL KHXH']) expect(headers().some((h) => h.includes(title))).toBe(true);
+    expect(footer()).toHaveTextContent('Tổng 2 màu cỡ: số lượng gốc 85, SL KHXH 52. Số lượng gốc là số lúc lưu kế hoạch.');
+    expect(detailCalls()).toEqual(['/order/shipment-plans/7']);
+    expect(posCalls()).toEqual([]);
+
+    // Đổi qua PO rồi về: nút chuyển giữ nguyên (không gỡ ra dựng lại, người dùng bàn phím không mất focus), vẫn kế hoạch đó
+    const poRadio = screen.getByRole('radio', { name: 'PO' });
+    fireEvent.click(poRadio);
+    expect(await within(pane()).findByText('4500002')).toBeInTheDocument();
+    expect(poRadio.isConnected).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: 'Màu cỡ' }));
+    expect(await within(linePane()).findByText('38')).toBeInTheDocument();
+    expect(poRadio.isConnected).toBe(true);
+  });
+
+  it('SL KHXH bị Ẩn: bỏ SL KHXH và cột suy ra (SL đã tạo KHXH, SL còn lại); bị Che: hiện *** và không cộng SL KHXH', async () => {
+    signIn(['order.shipment:view', 'order.po:view'], { 'order.shipment': { planQty: 'HIDDEN' } });
+    // Như máy chủ: Ẩn thì bỏ khóa, Che thì "***"
+    serve({ items: [], hiddenCount: 0 }, LINES.map(({ planQty: _q, plannedQty: _p, remainingQty: _r, ...l }) => l));
+    const first = renderPage();
+    await pickPlan();
+    expect(await within(linePane()).findByText('38')).toBeInTheDocument();
+    expect(headers().some((h) => h.includes('SL KHXH') || h.includes('SL đã tạo KHXH') || h.includes('SL còn lại'))).toBe(false);
+    expect(footer()).toHaveTextContent('Tổng 2 màu cỡ: số lượng gốc 85. Số lượng gốc là số lúc lưu kế hoạch.');
+    first.unmount();
+
+    vi.mocked(api).mockReset();
+    signIn(['order.shipment:view', 'order.po:view'], { 'order.shipment': { planQty: 'MASKED' } });
+    serve({ items: [], hiddenCount: 0 }, LINES.map((l) => ({ ...l, planQty: '***', plannedQty: '***', remainingQty: '***' })));
+    renderPage();
+    await pickPlan();
+    expect(await within(linePane()).findAllByText('***')).toHaveLength(6);
+    expect(footer()).toHaveTextContent('Tổng 2 màu cỡ: số lượng gốc 85. Số lượng gốc là số lúc lưu kế hoạch.');
+  });
+
+  it('không có quyền xem PO: bỏ Số lượng gốc và SL còn lại (lộ SL màu cỡ của PO), vẫn có SL KHXH', async () => {
+    signIn(['order.shipment:view']);
+    serve({ items: [], hiddenCount: 0 }, LINES.map(({ originalQty: _o, remainingQty: _r, ...l }) => l));
+    renderPage();
+    await pickPlan();
+    expect(await within(linePane()).findByText('38')).toBeInTheDocument();
+    expect(headers().some((h) => h.includes('Số lượng gốc') || h.includes('SL còn lại'))).toBe(false);
+    expect(headers().some((h) => h.includes('SL đã tạo KHXH'))).toBe(true);
+    expect(footer()).toHaveTextContent(/^Tổng 2 màu cỡ: SL KHXH 52\.$/);
+  });
+
+  it('khung đã tải rồi mở Sửa: popup tải lại kế hoạch và điền theo số vừa tải, không theo số khung đang giữ', async () => {
+    signIn(['order.shipment:view', 'order.shipment:update', 'order.po:view']);
+    serve({ items: [], hiddenCount: 0 });
+    const ok = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation((async (raw: string, ...rest: unknown[]) => {
+      const path = String(raw);
+      if (path.startsWith('/order/shipment-plans/draft?')) return LINES.map(({ planQty: _q, ...l }) => l);
+      // Người khác vừa sửa: lần tải thứ hai Red/36 còn 9 (khung đang giữ 12)
+      if (path === '/order/shipment-plans/7' && detailCalls().length > 1) return { ...plan, poIds: [1, 2], lines: [line({ planQty: 9 }), LINES[1]] } satisfies ShipmentPlanDetail;
+      return (ok as (...a: unknown[]) => unknown)(raw, ...rest);
+    }) as unknown as typeof api);
+    renderPage();
+    await pickPlan();
+    expect(await within(linePane()).findByText('36')).toBeInTheDocument();
+    expect(detailCalls()).toHaveLength(1);
+    fireEvent.doubleClick(within(screen.getByRole('table', { name: 'Danh sách kế hoạch xuất hàng' })).getByText('KH-A01-000007'));
+    expect(await screen.findByText('Sửa kế hoạch KH-A01-000007')).toBeInTheDocument();
+    expect(detailCalls()).toHaveLength(2);
+    await waitFor(() => expect(screen.getByLabelText('SL sản phẩm')).toHaveValue('49'));
+  });
+
+  it('kế hoạch chưa có màu cỡ thì báo; tải lỗi thì báo và Thử lại được', async () => {
+    signIn(['order.shipment:view']);
+    serve({ items: [], hiddenCount: 0 }, []);
+    const first = renderPage();
+    await pickPlan();
+    expect(await screen.findByText('Kế hoạch này chưa có màu cỡ.')).toBeInTheDocument();
+    first.unmount();
+
+    vi.mocked(api).mockReset();
+    let fail = true;
+    serve({ items: [], hiddenCount: 0 });
+    const ok = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation((async (raw: string, ...rest: unknown[]) => {
+      if (String(raw) === '/order/shipment-plans/7' && fail) throw new Error('mạng lỗi');
+      return (ok as (...a: unknown[]) => unknown)(raw, ...rest);
+    }) as unknown as typeof api);
+    renderPage();
+    await pickPlan();
+    expect(await screen.findByText('Không tải được màu cỡ của kế hoạch.')).toBeInTheDocument();
+    fail = false;
+    fireEvent.click(within(linePane()).getByRole('button', { name: 'Thử lại' }));
+    expect(await within(linePane()).findByText('36')).toBeInTheDocument();
   });
 });
