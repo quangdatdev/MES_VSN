@@ -106,6 +106,7 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
   const copyId = async (shipmentPlanId: number) => (await cutting.selectFrom('CuttingPlan').select('Id').where('ShipmentPlanId', '=', shipmentPlanId).executeTakeFirstOrThrow()).Id;
   const detail = async (token: string, id: number, date?: string) => (await api().get(`/api/v1/cutting/progress/${id}${date ? `?date=${date}` : ''}`).set(auth(token)).expect(200)).body;
   const save = (token: string, id: number, date: string, items: object[]) => api().put(`/api/v1/cutting/progress/${id}`).set(auth(token)).send({ date, items });
+  const planCutQty = async (id: number) => (await order.selectFrom('ShipmentPlan').select('CutQty').where('Id', '=', id).executeTakeFirstOrThrow()).CutQty;
   const cell = (body: any, color: string, size: string) => body.items.find((i: any) => i.colorName === color && i.sizeName === size);
 
   beforeAll(async () => {
@@ -172,7 +173,7 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
     await api().get(`/api/v1/cutting/progress/${await copyId(fx.planA02)}`).set(auth(planner)).expect(404);
   });
 
-  it('lưu theo ngày: Trong ngày theo ngày đang xem, Lũy kế và +/- trên mọi ngày; cắt vượt được; 0 là xóa; có nhật ký', async () => {
+  it('lưu theo ngày: Trong ngày theo ngày đang xem, Lũy kế và +/- trên mọi ngày; 0 là xóa; có nhật ký', async () => {
     const planner = await tokenFor('kehoach.a', 'A01');
     const id = await copyId(fx.planA01);
     await save(planner, id, YESTERDAY, [
@@ -180,29 +181,104 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
       { colorName: 'PERFORMANCE', sizeName: '(REG) M', dayQty: 300 },
     ]).expect(200);
     // Tên gõ khác hoa thường, thừa khoảng trắng cuối vẫn khớp màu cỡ của kế hoạch (như UNIQUE trong database)
-    const saved = (await save(planner, id, TODAY, [{ colorName: 'dusted blue_401 ', sizeName: '(reg) xs', dayQty: 45 }]).expect(200)).body;
+    const saved = (await save(planner, id, TODAY, [{ colorName: 'dusted blue_401 ', sizeName: '(reg) xs', dayQty: 40 }]).expect(200)).body;
     expect(saved.date).toBe(TODAY);
-    expect(cell(saved, 'DUSTED BLUE_401', '(REG) XS')).toMatchObject({ dayQty: 45, cutQty: 105, diffQty: 5 });
+    expect(cell(saved, 'DUSTED BLUE_401', '(REG) XS')).toMatchObject({ dayQty: 40, cutQty: 100, diffQty: 0 });
 
     const y = await detail(planner, id, YESTERDAY);
-    expect(cell(y, 'DUSTED BLUE_401', '(REG) XS')).toMatchObject({ dayQty: 60, cutQty: 105, diffQty: 5 });
+    expect(cell(y, 'DUSTED BLUE_401', '(REG) XS')).toMatchObject({ dayQty: 60, cutQty: 100, diffQty: 0 });
     expect(cell(y, 'PERFORMANCE', '(REG) M')).toMatchObject({ dayQty: 300, cutQty: 300, diffQty: 0 });
     expect(cell(y, 'DUSTED BLUE_401', '(REG) S')).toMatchObject({ dayQty: null, cutQty: 0, diffQty: -200 });
-    expect(y).toMatchObject({ cutQty: 405, diffQty: -195, statusCode: 'CUTTING', entryDays: 2 });
+    expect(y).toMatchObject({ cutQty: 400, diffQty: -200, statusCode: 'CUTTING', entryDays: 2 });
     const older = await detail(planner, id, addDays(TODAY, -5));
-    expect(cell(older, 'DUSTED BLUE_401', '(REG) XS')).toMatchObject({ dayQty: null, cutQty: 105 });
+    expect(cell(older, 'DUSTED BLUE_401', '(REG) XS')).toMatchObject({ dayQty: null, cutQty: 100 });
 
     const row = rowOf(await list(planner), 'TEST-P514-A');
-    expect(row).toMatchObject({ cutQty: 405, diffQty: -195, statusCode: 'CUTTING', lastCutDate: TODAY });
+    expect(row).toMatchObject({ cutQty: 400, diffQty: -200, statusCode: 'CUTTING', lastCutDate: TODAY });
 
     // 0 xóa số của ngày đó
     await save(planner, id, TODAY, [{ colorName: 'DUSTED BLUE_401', sizeName: '(REG) XS', dayQty: 0 }]).expect(200);
     expect(cell(await detail(planner, id, TODAY), 'DUSTED BLUE_401', '(REG) XS')).toMatchObject({ dayQty: null, cutQty: 60 });
     expect(await cutting.selectFrom('CuttingPlanDaily').select('Id').where('CuttingPlanId', '=', id).where('EntryDate', '=', TODAY as any).execute()).toHaveLength(0);
+    // Cột LK cắt của Kế hoạch xuất hàng theo Lũy kế sau mỗi lần lưu (quyết định 13.6): 60 + 300
+    expect(await planCutQty(fx.planA01)).toBe(360);
 
     const logs = await core.selectFrom('SysAuditLog').select(['ActionCode', 'NewValue']).where('EntityType', '=', 'CuttingPlan').where('EntityId', '=', String(id)).orderBy('Id', 'desc').execute();
     expect(logs.length).toBeGreaterThanOrEqual(3);
     expect(JSON.parse(logs[0].NewValue!)).toMatchObject({ planNo: 'TEST-P514-A', date: TODAY, cells: [{ colorName: 'DUSTED BLUE_401', sizeName: '(REG) XS', dayQty: null }] });
+  });
+
+  describe('Lũy kế không vượt Kế hoạch của màu cỡ (quyết định 13.7)', () => {
+    let planId = 0;
+    let id = 0;
+    let planner = '';
+    const s = { colorName: 'NAVY', sizeName: 'S' };
+    const m = { colorName: 'NAVY', sizeName: 'M' };
+    const setPlan = (q: number) => order.updateTable('ShipmentPlanColorSize').set({ PlanQty: q }).where('ShipmentPlanId', '=', planId).where('SizeName', '=', 'S').execute();
+    const qtyOf = async (date: string) => {
+      const d = await detail(planner, id, date);
+      return { s: cell(d, 'NAVY', 'S'), m: cell(d, 'NAVY', 'M') };
+    };
+
+    beforeEach(async () => {
+      planner = await tokenFor('kehoach.a', 'A01');
+      planId = await plan('A01', fx.orderA01, 'E', [['NAVY', 'S', 100], ['NAVY', 'M', 50]]);
+      await list(planner);
+      id = await copyId(planId);
+      await save(planner, id, YESTERDAY, [{ ...s, dayQty: 60 }]).expect(200);
+    });
+
+    afterEach(async () => {
+      // Dọn cả số cắt trước: xóa thẳng kế hoạch nguồn còn số cắt thì bản chép bị giữ lại (quyết định 13.2)
+      await cutting.deleteFrom('CuttingPlanDaily').where('CuttingPlanId', '=', id).execute();
+      await cutting.deleteFrom('CuttingPlan').where('Id', '=', id).execute();
+      await order.deleteFrom('ShipmentPlanColorSize').where('ShipmentPlanId', '=', planId).execute();
+      await order.deleteFrom('ShipmentPlan').where('Id', '=', planId).execute();
+    });
+
+    it('tăng số làm vượt thì 422, nêu màu cỡ không nêu số, không ghi ô nào của lần lưu; vừa đủ Kế hoạch thì được; ngày khác cũng tính mọi ngày', async () => {
+      await save(planner, id, TODAY, [{ ...s, dayQty: 40 }]).expect(200);
+      const over = await save(planner, id, TODAY, [{ ...m, dayQty: 5 }, { ...s, dayQty: 41 }]).expect(422);
+      expect(over.body.error.message).toBe('Lũy kế vượt Kế hoạch ở NAVY/S. Muốn cắt thêm, điều chỉnh Kế hoạch xuất hàng trước.');
+      expect(over.body.error.details).toEqual({ cells: ['NAVY/S'] });
+      const t = await qtyOf(TODAY);
+      expect(t.s).toMatchObject({ dayQty: 40, cutQty: 100, diffQty: 0 });
+      expect(t.m).toMatchObject({ dayQty: null, cutQty: 0 });
+      await save(planner, id, addDays(TODAY, -3), [{ ...s, dayQty: 1 }]).expect(422);
+      expect(await planCutQty(planId)).toBe(100);
+    });
+
+    it('kế hoạch giảm sau khi cắt: ô đã vượt giảm được (cả xóa ô), tăng thì không; tăng kế hoạch rồi lưu ngay không cần tải lại popup', async () => {
+      await save(planner, id, TODAY, [{ ...s, dayQty: 40 }]).expect(200);
+      // Popup không tải lại: lần lưu tự chép kế hoạch mới
+      await setPlan(80);
+      await save(planner, id, TODAY, [{ ...s, dayQty: 30 }]).expect(200);
+      await save(planner, id, TODAY, [{ ...s, dayQty: 31 }]).expect(422);
+      expect((await qtyOf(TODAY)).s).toMatchObject({ planQty: 80, dayQty: 30, cutQty: 90, diffQty: 10 });
+      await save(planner, id, TODAY, [{ ...s, dayQty: null }]).expect(200);
+      expect((await qtyOf(TODAY)).s).toMatchObject({ dayQty: null, cutQty: 60 });
+      await setPlan(150);
+      await save(planner, id, TODAY, [{ ...s, dayQty: 90 }]).expect(200);
+      expect(await planCutQty(planId)).toBe(150);
+    });
+
+    it('hai người lưu cùng lúc hai ngày khác nhau: không cùng vượt (một lần 200, một lần 422)', async () => {
+      // Hôm qua 60; mỗi lần riêng lẻ 60 + 30 = 90 ≤ 100, cả hai thì 120
+      const res = await Promise.all([save(planner, id, TODAY, [{ ...s, dayQty: 30 }]), save(planner, id, addDays(TODAY, -2), [{ ...s, dayQty: 30 }])]);
+      expect(res.map((r) => r.status).sort()).toEqual([200, 422]);
+      expect((await qtyOf(TODAY)).s).toMatchObject({ cutQty: 90 });
+    });
+  });
+
+  it('lưu khi kế hoạch nguồn vừa bị xóa mà chưa có số cắt (bản chép bị dọn lúc chép lại): 409, không phải 404', async () => {
+    const planner = await tokenFor('kehoach.a', 'A01');
+    const planId = await plan('A01', fx.orderA01, 'F', [['OLIVE', 'L', 20]]);
+    await list(planner);
+    const id = await copyId(planId);
+    await order.deleteFrom('ShipmentPlanColorSize').where('ShipmentPlanId', '=', planId).execute();
+    await order.deleteFrom('ShipmentPlan').where('Id', '=', planId).execute();
+    await save(planner, id, TODAY, [{ colorName: 'OLIVE', sizeName: 'L', dayQty: 1 }]).expect(409);
+    await save(planner, id, TODAY, [{ colorName: 'OLIVE', sizeName: 'L', dayQty: 1 }]).expect(404);
   });
 
   it('kiểm đầu vào: ngày tương lai, số âm, số lẻ, màu cỡ ngoài kế hoạch, gửi trùng: 422, không ghi gì', async () => {
@@ -288,6 +364,7 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
     const removed = (await api().delete(`/api/v1/cutting/progress/${id}/entries`).set(auth(admin)).expect(200)).body;
     expect(removed).toMatchObject({ removedDays: 1, planRemoved: false });
     expect(await cutting.selectFrom('CuttingPlanDaily').select('Id').where('CuttingPlanId', '=', id).execute()).toHaveLength(0);
+    expect(await planCutQty(fx.planA01)).toBe(0);
     const log = await core.selectFrom('SysAuditLog').select('ActionCode').where('EntityType', '=', 'CuttingPlan').where('EntityId', '=', String(id)).orderBy('Id', 'desc').executeTakeFirstOrThrow();
     expect(log.ActionCode).toBe('DELETE_ENTRIES');
 
@@ -306,7 +383,7 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
     // Mất nguồn ngoài luồng xóa của màn (script, chen giữa lúc kiểm và lúc xóa)
     await order.deleteFrom('ShipmentPlanColorSize').where('ShipmentPlanId', '=', planId).execute();
     await order.deleteFrom('ShipmentPlan').where('Id', '=', planId).execute();
-    // Lưu trước khi chép lại: kế hoạch nguồn không còn nên 409
+    // Lần lưu chép lại trước: kế hoạch nguồn không còn mà có số cắt thì bản chép bị tách khỏi nguồn, 409
     await save(admin, id, TODAY, [{ colorName: 'GREEN', sizeName: 'M', dayQty: 31 }]).expect(409);
 
     const row = rowOf(await list(admin), 'TEST-P514-C');
@@ -357,6 +434,21 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
       await cutting.deleteFrom('CuttingPlanDaily').where('BranchCode', '=', BR).execute();
       await cutting.deleteFrom('CuttingPlan').where('BranchCode', '=', BR).execute();
     }
+  });
+
+  it('LK cắt của Kế hoạch xuất hàng lệch (sửa ngoài luồng, lần ghi sau khi lưu bị lỗi): lần mở màn sau đối chiếu lại theo Lũy kế (quyết định 13.6)', async () => {
+    const planner = await tokenFor('kehoach.a', 'A01');
+    const planId = await plan('A01', fx.orderA01, 'D', [['BLUE', 'S', 40]]);
+    await list(planner);
+    await save(planner, await copyId(planId), TODAY, [{ colorName: 'BLUE', sizeName: 'S', dayQty: 12 }]).expect(200);
+    expect(await planCutQty(planId)).toBe(12);
+    await order.updateTable('ShipmentPlan').set({ CutQty: 999 }).where('Id', '=', planId).execute();
+    // Không cần kế hoạch đổi: mỗi lần mở màn đều đối chiếu, chỉ ghi dòng lệch
+    await list(planner);
+    expect(await planCutQty(planId)).toBe(12);
+    // Màn Kế hoạch xuất hàng đọc đúng cột này
+    const shipment = (await api().get(`/api/v1/order/shipment-plans?style=${STYLE}-D&pageSize=10`).set(auth(planner)).expect(200)).body;
+    expect(shipment.items.find((r: any) => r.id === planId)?.cutQty).toBe(12);
   });
 
   it('xuất file theo chính sách cột', async () => {

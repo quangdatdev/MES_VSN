@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CuttingCell } from '../features/cutting/api';
-import { changes, diffOf, liveCut, rowsOf, saveIssue, settle, TOTAL_KEY, type CutRow } from '../features/cutting/cuttingProgressRules';
+import { changes, diffOf, keptOverPlan, liveCut, overPlan, reapply, rowsOf, saveIssue, settle, TOTAL_KEY, type CutRow } from '../features/cutting/cuttingProgressRules';
 
 // Đồng bộ tiến độ cắt (phase 5.14, quyết định 13.3): +/- = Lũy kế − Kế hoạch như ảnh mẫu; Lũy kế tính trên mọi ngày, số đang gõ
 // thay số đã lưu của ngày đang xem; dòng Tổng ghim đầu lưới
@@ -14,7 +14,7 @@ const cell = (colorName: string, sizeName: string, planQty: number, dayQty: numb
   cutQty,
   diffQty: cutQty - planQty,
 });
-// Như ảnh mẫu: XS chưa cắt, M đã cắt 6.373 (hôm khác), S cắt vượt 1
+// Như ảnh mẫu: XS chưa cắt, M đã cắt 6.373 (hôm khác), S vượt 1 (kế hoạch giảm sau khi cắt: quyết định 13.7 không cho nhập vượt)
 const sample = [cell('DUSTED BLUE_401', '(REG) XS', 1396, null, 0), cell('DUSTED BLUE_401', '(REG) M', 6379, null, 6373), cell('PERFORMANCE', '(REG) S', 4358, 1000, 4359)];
 const all = () => true;
 
@@ -78,5 +78,46 @@ describe('Đồng bộ tiến độ cắt: tính toán của popup', () => {
     const rows = rowsOf({ items: sample });
     const next = settle(rows.map((r) => (r.sizeName === '(REG) XS' ? { ...r, dayQty: 2_000_000 } : r)), rows, all);
     expect(saveIssue(next)).toContain('DUSTED BLUE_401/(REG) XS');
+  });
+
+  it('Lũy kế không vượt Kế hoạch (quyết định 13.7): tăng số làm vượt thì chưa lưu được; bằng Kế hoạch, giảm số ô đã vượt thì được', () => {
+    const rows = rowsOf({ items: sample });
+    expect(overPlan(rows.find((r) => r.sizeName === '(REG) S')!)).toBe(true);
+    expect(overPlan(rows[0])).toBe(false);
+    const raise = settle(rows.map((r) => (r.sizeName === '(REG) M' ? { ...r, dayQty: 7 } : r)), rows, all);
+    expect(saveIssue(raise)).toBe('Lũy kế vượt Kế hoạch ở DUSTED BLUE_401/(REG) M. Muốn cắt thêm, điều chỉnh Kế hoạch xuất hàng trước.');
+    expect(saveIssue(settle(rows.map((r) => (r.sizeName === '(REG) M' ? { ...r, dayQty: 6 } : r)), rows, all))).toBeNull();
+    // S đã vượt từ trước: giảm số của ngày được (vẫn vượt), tăng thì không
+    expect(saveIssue(settle(rows.map((r) => (r.sizeName === '(REG) S' ? { ...r, dayQty: 999 } : r)), rows, all))).toBeNull();
+    expect(saveIssue(settle(rows.map((r) => (r.sizeName === '(REG) S' ? { ...r, dayQty: 1001 } : r)), rows, all))).toContain('PERFORMANCE/(REG) S');
+  });
+
+  it('đếm màu cỡ vượt từ trước (chỉ giảm được); màu cỡ đã bỏ khỏi kế hoạch không tô đỏ', () => {
+    const rows = rowsOf({ items: [...sample, cell('OLD', 'XL', 0, null, 5, false)] });
+    expect(keptOverPlan(rows)).toBe(1);
+    expect(overPlan(rows.find((r) => r.colorName === 'OLD')!)).toBe(false);
+    // Tăng S thì thành ô đang chặn, không còn là "vượt từ trước"
+    expect(keptOverPlan(settle(rows.map((r) => (r.sizeName === '(REG) S' ? { ...r, dayQty: 1001 } : r)), rows, all))).toBe(0);
+  });
+
+  it('tải lại Kế hoạch giữ số đang nhập theo màu cỡ: tăng kế hoạch thì lưu được; ô không còn sửa được theo số đã lưu', () => {
+    const rows = rowsOf({ items: sample });
+    const typed = settle(rows.map((r) => (r.sizeName === '(REG) M' ? { ...r, dayQty: 20 } : r.sizeName === '(REG) S' ? { ...r, dayQty: null } : r)), rows, all);
+    expect(saveIssue(typed)).toContain('DUSTED BLUE_401/(REG) M');
+    const fresh = [cell('DUSTED BLUE_401', '(REG) XS', 1396, null, 0), cell('DUSTED BLUE_401', '(REG) M', 6400, null, 6373), cell('PERFORMANCE', '(REG) S', 4358, 1000, 4359, false)];
+    const next = reapply({ items: fresh }, typed);
+    expect(next.find((r) => r.sizeName === '(REG) M')).toMatchObject({ planQty: 6400, dayQty: 20, savedDay: null });
+    expect(next.find((r) => r.sizeName === '(REG) S')!.dayQty).toBe(1000);
+    expect(next[0].dayQty).toBe(1020);
+    expect(changes(next)).toEqual([{ colorName: 'DUSTED BLUE_401', sizeName: '(REG) M', dayQty: 20 }]);
+    expect(saveIssue(next)).toBeNull();
+  });
+
+  it('Kế hoạch bị Che: không kiểm vượt ở giao diện (máy chủ kiểm khi lưu)', () => {
+    const masked: CuttingCell[] = [{ colorName: 'A', sizeName: 'S', inPlan: true, planQty: '***', dayQty: null, cutQty: 10, diffQty: '***' }];
+    const rows = rowsOf({ items: masked });
+    const next = settle(rows.map((r) => (r.total ? r : { ...r, dayQty: 500 })), rows, all);
+    expect(overPlan(next[1])).toBe(false);
+    expect(saveIssue(next)).toBeNull();
   });
 });

@@ -76,4 +76,18 @@ export class ShipmentPlanFeed {
     const at = await this.repo.createdAt(plan.id, plan.branchCode);
     return !!at && Math.abs(at.getTime() - plan.createdAt.getTime()) < 5;
   }
+
+  /** LK cắt hiện có của các kế hoạch của ĐVCS phiên (A00: mọi ĐVCS), để module Cắt chỉ ghi dòng lệch (quyết định 13.6) */
+  async cutQtyOf(scope: Scope): Promise<{ id: number; branchCode: string; createdAt: Date; cutQty: number }[]> {
+    return (await this.repo.cutQtyOf(branchOf(scope))).map((r) => ({ id: r.Id, branchCode: r.BranchCode, createdAt: r.CreatedAt, cutQty: r.CutQty }));
+  }
+
+  /**
+   * Ghi Lũy kế cắt vào cột LK cắt của Kế hoạch xuất hàng (quyết định 13.6). Số do module Cắt tính từ dữ liệu của nó; chỉ ghi kế hoạch
+   * thuộc ĐVCS của phiên (A00: mọi ĐVCS). Trả số kế hoạch đã đổi.
+   */
+  setCutQty(scope: Scope, rows: { id: number; branchCode: string; createdAt: Date; cutQty: number }[]): Promise<number> {
+    const branch = branchOf(scope);
+    return this.repo.setCutQty(branch === null ? rows : rows.filter((r) => r.branchCode === branch));
+  }
 }

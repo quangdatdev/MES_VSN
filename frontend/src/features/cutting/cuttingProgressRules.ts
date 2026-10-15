@@ -56,6 +56,40 @@ export function diffOf(r: CutRow): number | string | undefined {
   return cut === MASK || r.planQty === MASK ? MASK : undefined;
 }
 
+/**
+ * Lũy kế đang vượt Kế hoạch (để tô đỏ), cả màu cỡ đã vượt từ trước vì kế hoạch giảm sau khi cắt. Màu cỡ đã bỏ khỏi kế hoạch (Kế hoạch 0)
+ * không tính: đã có dòng nhắc riêng, không sửa được.
+ */
+export function overPlan(r: CutRow): boolean {
+  const cut = liveCut(r);
+  return !r.total && r.inPlan && typeof cut === 'number' && typeof r.planQty === 'number' && cut > r.planQty;
+}
+
+/** Màu cỡ vừa tăng số làm Lũy kế vượt Kế hoạch: không lưu được (quyết định 13.7, máy chủ kiểm lại). Giảm số thì luôn được. */
+export function raisedOverPlan(rows: CutRow[]): CutRow[] {
+  return rows.filter((r) => overPlan(r) && (r.dayQty ?? 0) > (r.savedDay ?? 0));
+}
+
+/** Số màu cỡ đã vượt mà không do số đang nhập (kế hoạch xuất hàng giảm sau khi cắt): chỉ giảm được số */
+export function keptOverPlan(rows: CutRow[]): number {
+  return rows.filter((r) => overPlan(r) && (r.dayQty ?? 0) <= (r.savedDay ?? 0)).length;
+}
+
+/**
+ * Dòng từ dữ liệu vừa tải lại (Kế hoạch mới) mà giữ số đang nhập của các ô đã sửa, theo màu cỡ: tăng kế hoạch xuất hàng khi popup đang
+ * mở thì không phải gõ lại. Ô không còn sửa được (màu cỡ bị bỏ, bị Che) thì theo số đã lưu.
+ */
+export function reapply(fresh: Pick<CuttingDetail, 'items'>, typed: CutRow[]): CutRow[] {
+  const base = rowsOf(fresh);
+  const keyOf = (r: { colorName: string; sizeName: string }) => `${r.colorName}\u0000${r.sizeName}`;
+  const edits = new Map(changes(typed).map((c) => [keyOf(c), c.dayQty]));
+  const next = base.map((r) => {
+    const v = edits.get(keyOf(r));
+    return r.total || v === undefined ? r : { ...r, dayQty: v || null };
+  });
+  return settle(next, base, (r) => !r.total && r.inPlan && !r.dayMasked);
+}
+
 /** Dòng Tổng: cộng các màu cỡ; cột nào có ô bị Che thì tổng cũng che */
 function totalRow(cells: CutRow[]): CutRow {
   const sum = (pick: (r: CutRow) => number | string | null | undefined) => {
@@ -112,5 +146,7 @@ export const MAX_DAY_QTY = 1_000_000;
 export function saveIssue(rows: CutRow[]): string | null {
   const over = rows.filter((r) => !r.total && (r.dayQty ?? 0) > MAX_DAY_QTY);
   if (over.length) return `Số trong ngày tối đa ${MAX_DAY_QTY.toLocaleString('vi-VN')} mỗi màu cỡ (${over.map((r) => `${r.colorName}/${r.sizeName}`).slice(0, 3).join(', ')}).`;
+  const raised = raisedOverPlan(rows);
+  if (raised.length) return `Lũy kế vượt Kế hoạch ở ${raised.map((r) => `${r.colorName}/${r.sizeName}`).slice(0, 3).join(', ')}${raised.length > 3 ? ` và ${raised.length - 3} màu cỡ khác` : ''}. Muốn cắt thêm, điều chỉnh Kế hoạch xuất hàng trước.`;
   return changes(rows).length ? null : 'Chưa có thay đổi nào';
 }

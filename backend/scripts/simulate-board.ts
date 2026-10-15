@@ -315,18 +315,20 @@ export function assignedOf(share: number[], assign: Assign): number[] {
   return share.map((q) => (q > 0 ? Math.max(1, Math.floor(q * 0.6)) : 0));
 }
 
-/** Lũy kế các công đoạn sau (cắt, may, endline, hoàn thiện) theo phần thời gian đã may tới hôm nay */
+/**
+ * Lũy kế các công đoạn sau (may, endline, hoàn thiện) theo phần thời gian đã may tới hôm nay. LK cắt luôn 0: lấy từ màn Đồng bộ tiến độ
+ * cắt (quyết định 13.6), module Cắt ghi vào khi mở màn.
+ */
 function progress(plan: SimPlan, today: string) {
   if (!plan.lines.length) return { CutQty: 0, SewnQty: 0, EndlineQty: 0, FinishedQty: 0 };
-  if (plan.status === 'DONE') return { CutQty: plan.planQty, SewnQty: plan.planQty, EndlineQty: plan.planQty, FinishedQty: plan.planQty };
+  if (plan.status === 'DONE') return { CutQty: 0, SewnQty: plan.planQty, EndlineQty: plan.planQty, FinishedQty: plan.planQty };
   const scheduled = sum(plan.lines.map((l) => l.qty));
   const from = plan.lines.map((l) => l.start).sort()[0];
   const to = plan.lines.map((l) => l.end).sort().at(-1)!;
   const frac = Math.max(0, Math.min(1, daysBetween(from, today) / Math.max(1, daysBetween(from, to))));
   const sewn = Math.round(scheduled * frac);
-  const started = plan.status === 'IN_PRODUCTION';
   return {
-    CutQty: Math.min(plan.planQty, Math.round(sewn * 1.18 + (started ? scheduled * 0.1 : 0))),
+    CutQty: 0,
     SewnQty: sewn,
     EndlineQty: Math.round(sewn * 0.92),
     FinishedQty: Math.round(sewn * 0.8),

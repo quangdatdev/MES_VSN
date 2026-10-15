@@ -11,7 +11,7 @@ import { PolicyHint } from '../../components/PolicyHint';
 import { SheetGrid, sheetNumber, sheetReadonly, type SheetColumn } from '../../components/SheetGrid';
 import { WorkPage } from '../../components/WorkPage';
 import { useAfterClose } from '../../lib/afterClose';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { confirmAction, confirmDiscard } from '../../lib/confirm';
 import { MASK, useFieldPolicy } from '../../lib/fieldPolicy';
 import { fmtDate, fmtNum, sumOf } from '../../lib/format';
@@ -21,7 +21,7 @@ import { useMobile } from '../../lib/useMobile';
 import { useSession } from '../../store/session';
 import { EmptyState, ExportButton, loadError, OrderFilters, PICK_ROW, StatusBadge, useCanWrite, useCustomers, usePagedList } from '../order/common';
 import type { CuttingDetail, CuttingPlan } from './api';
-import { changes, diffOf, liveCut, rowsOf, saveIssue, settle, type CutRow } from './cuttingProgressRules';
+import { changes, diffOf, keptOverPlan, liveCut, overPlan, raisedOverPlan, reapply, rowsOf, saveIssue, settle, type CutRow } from './cuttingProgressRules';
 
 const RESOURCE = 'cutting.progress';
 
@@ -160,8 +160,9 @@ function CuttingModal({ planId, onClose, onSaved }: { planId: number; onClose: (
   // null: ngày máy chủ chọn (hôm nay theo giờ Việt Nam)
   const [date, setDate] = useState<string | null>(null);
   const key = ['order', 'cutting', planId, date];
+  const fetchDetail = () => api<CuttingDetail>(`/cutting/progress/${planId}${date ? `?date=${date}` : ''}`);
   // Không tự tải lại khi quay lại cửa sổ hay có mạng lại: tải lại nền sẽ đè lên số đang nhập
-  const detail = useQuery({ queryKey: key, queryFn: () => api<CuttingDetail>(`/cutting/progress/${planId}${date ? `?date=${date}` : ''}`), refetchOnMount: 'always', refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const detail = useQuery({ queryKey: key, queryFn: fetchDetail, refetchOnMount: 'always', refetchOnWindowFocus: false, refetchOnReconnect: false });
   const plan = detail.data;
   const [rows, setRows] = useState<CutRow[]>([]);
   const [loaded, setLoaded] = useState<CuttingDetail | null>(null);
@@ -200,7 +201,22 @@ function CuttingModal({ planId, onClose, onSaved }: { planId: number; onClose: (
       setChanged(true);
       toastOk(`Đã lưu số cắt ngày ${fmtDate(res.date)} của ${title}.`, 'Đã lưu');
     },
-    onError: (e) => toastError(e, 'Chưa lưu được'),
+    onError: (e) => {
+      toastError(e, 'Chưa lưu được');
+      // 422 có thể do Kế hoạch đã đổi khi popup đang mở (quyết định 13.7): tải lại để ô vượt hiện đúng, giữ số đang nhập
+      if (e instanceof ApiError && e.status === 422) reloadPlan.mutate();
+    },
+  });
+
+  // Tải lại Kế hoạch mà giữ số đang nhập: tăng kế hoạch xuất hàng ở màn khác rồi quay lại lưu, không phải đóng popup
+  const reloadPlan = useMutation({
+    mutationFn: fetchDetail,
+    onSuccess: (res) => {
+      qc.setQueryData(key, res);
+      setRows((typed) => reapply(res, typed));
+      setLoaded(res);
+    },
+    onError: (e) => toastError(e, 'Chưa tải lại được kế hoạch'),
   });
 
   const removeEntries = useMutation({
@@ -251,11 +267,11 @@ function CuttingModal({ planId, onClose, onSaved }: { planId: number; onClose: (
       sheetReadonly<CutRow>('Lũy kế', (r) => (!r.total && liveCut(r) === 0 ? '' : qtyText(liveCut(r))), (r) => {
         const v = liveCut(r);
         return typeof v === 'number' ? v : null;
-      }, { minWidth: 100, align: 'right', className: (r) => cls(r) }),
+      }, { minWidth: 100, align: 'right', className: (r) => cls(r, overPlan(r) ? 'sheet-error' : undefined) }),
       sheetReadonly<CutRow>('+ / -', (r) => qtyText(diffOf(r)), (r) => {
         const v = diffOf(r);
         return typeof v === 'number' ? v : null;
-      }, { minWidth: 90, align: 'right', className: (r) => cls(r) }),
+      }, { minWidth: 90, align: 'right', className: (r) => cls(r, overPlan(r) ? 'sheet-error' : undefined) }),
     ];
     // Cột dựng một lần: quyền sửa đọc qua ref
   }, []);
@@ -263,6 +279,8 @@ function CuttingModal({ planId, onClose, onSaved }: { planId: number; onClose: (
   const info = (label: string, value: unknown) => <TextInput label={label} value={textOf(value)} readOnly className="field-readonly" />;
   const issue = ready ? saveIssue(rows) : 'Đang tải số cắt…';
   const removed = rows.filter((r) => !r.total && !r.inPlan).length;
+  const overBefore = keptOverPlan(rows);
+  const raised = canEdit && raisedOverPlan(rows).length > 0;
 
   return (
     // Esc trong lưới là thoát sửa ô: không để nó đóng popup khi đang nhập được
@@ -291,6 +309,11 @@ function CuttingModal({ planId, onClose, onSaved }: { planId: number; onClose: (
         {removed > 0 && (
           <Text size="sm" c="dimmed">
             {removed} màu cỡ đã bị bỏ khỏi kế hoạch xuất hàng nhưng còn số cắt: hiện ở cuối lưới, Kế hoạch 0, chỉ xem.
+          </Text>
+        )}
+        {overBefore > 0 && (
+          <Text size="sm" c="dimmed">
+            {overBefore} màu cỡ có Lũy kế vượt Kế hoạch do kế hoạch xuất hàng đã giảm sau khi cắt: chỉ giảm được số đã nhập.
           </Text>
         )}
         <div style={{ height: mobile ? 'min(60vh, 520px)' : 'min(52vh, 500px)', minHeight: 260, display: 'flex', flexDirection: 'column' }}>
@@ -322,6 +345,16 @@ function CuttingModal({ planId, onClose, onSaved }: { planId: number; onClose: (
             </Center>
           )}
         </div>
+        {raised && (
+          <Group gap="xs" wrap="nowrap" justify="space-between">
+            <Text size="sm" c="red">
+              Lũy kế vượt Kế hoạch ở ô tô đỏ. Muốn cắt thêm, điều chỉnh Kế hoạch xuất hàng trước rồi tải lại; số đang nhập được giữ.
+            </Text>
+            <Button size="xs" variant="default" loading={reloadPlan.isPending} onClick={() => reloadPlan.mutate()} style={{ flexShrink: 0 }}>
+              Tải lại kế hoạch
+            </Button>
+          </Group>
+        )}
         <Group justify="space-between" gap="xs">
           <Group gap="xs">
             {canEdit && (

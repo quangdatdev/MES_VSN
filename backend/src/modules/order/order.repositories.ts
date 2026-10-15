@@ -286,6 +286,33 @@ export class ShipmentPlanFeedRepository {
     const r = await this.db.selectFrom('ShipmentPlan').select('CreatedAt').where('Id', '=', id).where('BranchCode', '=', branchCode).executeTakeFirst();
     return r?.CreatedAt;
   }
+
+  /** LK cắt hiện có của các kế hoạch cùng cách lọc ĐVCS như plans(): module Cắt so với Lũy kế rồi chỉ ghi dòng lệch (quyết định 13.6) */
+  cutQtyOf(branchCode: string | null) {
+    let qb = this.db.selectFrom('ShipmentPlan').select(['Id', 'BranchCode', 'CreatedAt', 'CutQty']);
+    if (branchCode !== null) qb = qb.where('BranchCode', '=', branchCode);
+    return qb.execute();
+  }
+
+  /**
+   * Ghi Lũy kế cắt của module Cắt vào cột LK cắt (quyết định 13.6): chỉ kế hoạch khớp Id + ĐVCS + thời điểm tạo (dung sai 5 ms) và
+   * đang khác số mới. Không đổi ModifiedAt: số tổng hợp từ module Cắt, không phải người dùng sửa kế hoạch (dấu phiên bản của
+   * ShipmentPlanFeed không đổi theo). Trả số kế hoạch đã đổi.
+   */
+  async setCutQty(rows: { id: number; branchCode: string; createdAt: Date; cutQty: number }[]): Promise<number> {
+    let changed = 0;
+    // 4 tham số mỗi dòng: dưới giới hạn 2.100 tham số của SQL Server
+    for (let i = 0; i < rows.length; i += 400) {
+      const values = sql.join(rows.slice(i, i + 400).map((r) => sql`(${r.id}, ${r.branchCode}, ${r.createdAt}, ${Math.min(r.cutQty, 2_147_483_647)})`));
+      const res = await sql`UPDATE p SET CutQty = v.CutQty
+        FROM dbo.ShipmentPlan p
+        JOIN (VALUES ${values}) AS v (Id, BranchCode, CreatedAt, CutQty)
+          ON p.Id = v.Id AND p.BranchCode = v.BranchCode AND ABS(DATEDIFF_BIG(MILLISECOND, p.CreatedAt, v.CreatedAt)) < 5
+        WHERE p.CutQty <> v.CutQty`.execute(this.db);
+      changed += Number(res.numAffectedRows ?? 0);
+    }
+    return changed;
+  }
 }
 
 @Injectable()

@@ -229,7 +229,8 @@ export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, crea
         .updateTable('ShipmentPlan')
         .set({
           StatusCode: started ? 'IN_PRODUCTION' : 'SCHEDULED',
-          CutQty: Math.min(planQty, Math.round(sewn * 1.18 + (started ? planQty * 0.1 : 0))),
+          // LK cắt lấy từ màn Đồng bộ tiến độ cắt (quyết định 13.6): không điền số giả
+          CutQty: 0,
           SewnQty: sewn,
           EndlineQty: Math.round(sewn * 0.92),
           FinishedQty: Math.round(sewn * 0.8),

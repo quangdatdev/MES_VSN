@@ -16,6 +16,7 @@ export type CuttingPlanListRow = CuttingPlanRow & { CutQty: number; LastCutDate:
 
 const logger = new Logger('CuttingPlanSync');
 const SYNC_LOCK = 'MES_Cutting.CuttingPlan.sync';
+const CUT_QTY_LOCK = 'MES_Cutting.CutQty.push';
 const day = (d: Date | string) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 /** Hai thời điểm là một: driver gửi Date theo kiểu datetime cũ nên giá trị đã chép lệch vài mili giây so với nguồn DATETIME2(3) */
 export const sameInstant = (a: Date, b: Date) => Math.abs(a.getTime() - b.getTime()) < 5;
@@ -220,6 +221,37 @@ export class CuttingPlanRepository extends BaseRepository<CuttingPlanRow> {
         for (let i = 0; i < rows.length; i += 200) await trx.insertInto('CuttingPlanColorSize').values(rows.slice(i, i + 200)).execute();
       }
       return { added: added.length, updated, removed: drop.length, detached: detach.length };
+    });
+  }
+
+  /**
+   * Lũy kế cắt của các bản chép còn nguồn (0 khi chưa cắt) của một ĐVCS (null: mọi ĐVCS), giới hạn theo `ids` nếu có: để ghi sang cột
+   * LK cắt của Kế hoạch xuất hàng (quyết định 13.6). Việc của hệ thống, ĐVCS do service truyền từ phiên.
+   */
+  async cutTotals(branchCode: string | null, ids?: number[], db: CuttingDb = this.db): Promise<{ ShipmentPlanId: number; BranchCode: string; SourceCreatedAt: Date; CutQty: number }[]> {
+    let qb = db
+      .selectFrom('CuttingPlan')
+      .select(['ShipmentPlanId', 'BranchCode', 'SourceCreatedAt', CUT_QTY.as('CutQty')])
+      .where('ShipmentPlanId', 'is not', null);
+    if (branchCode !== null) qb = qb.where('BranchCode', '=', branchCode);
+    if (ids) {
+      if (!ids.length) return [];
+      qb = qb.where('Id', 'in', ids);
+    }
+    const rows = await qb.execute();
+    return rows.map((r) => ({ ShipmentPlanId: r.ShipmentPlanId!, BranchCode: r.BranchCode, SourceCreatedAt: r.SourceCreatedAt, CutQty: Number(r.CutQty) }));
+  }
+
+  /**
+   * Chạy `fn` khi giữ khóa ứng dụng ghi LK cắt (quyết định 13.6): mọi tiến trình backend (pm2 cluster) xếp hàng, lần ghi đọc Lũy kế khi tới
+   * lượt nên lần đọc trước không ghi đè số mới hơn của lần lưu chen giữa (review Q7 M6). Khóa nằm trong transaction của MES_Cutting, giữ
+   * tới khi `fn` xong (kể cả phần ghi sang MES_Order).
+   */
+  withCutQtyLock<T>(fn: (db: CuttingDb) => Promise<T>): Promise<T> {
+    return inTransaction(this.db, async (trx) => {
+      const lock = await sql<{ r: number }>`DECLARE @r INT; EXEC @r = sp_getapplock @Resource = ${CUT_QTY_LOCK}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000; SELECT @r AS r`.execute(trx);
+      if ((lock.rows[0]?.r ?? -1) < 0) throw new Error('Đang có lần ghi LK cắt khác, thử lại sau');
+      return fn(trx as unknown as CuttingDb);
     });
   }
 

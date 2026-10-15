@@ -108,18 +108,21 @@ export class CuttingProgressService implements OnModuleInit {
   /** Lần chép đang chạy theo ĐVCS: request đến cùng lúc chờ lần đang chạy */
   private readonly syncing = new Map<string, Promise<void>>();
 
-  /** Chép kế hoạch xuất hàng của ĐVCS đang làm việc (A00: mọi ĐVCS) trước khi đọc, để màn luôn theo Kế hoạch xuất hàng */
-  private sync(user: AuthUser): Promise<void> {
+  /**
+   * Chép kế hoạch xuất hàng của ĐVCS đang làm việc (A00: mọi ĐVCS) trước khi đọc, để màn luôn theo Kế hoạch xuất hàng. `reconcile` false:
+   * không đối chiếu LK cắt (đường lưu đã ghi LK cắt của kế hoạch đang lưu, không xếp hàng khóa ghi LK cắt cho cả ĐVCS: review 13.7 M8).
+   */
+  private sync(user: AuthUser, reconcile = true): Promise<void> {
     const scope = scopeOf(user);
     const key = scope.isAggregate ? '*' : scope.branchCode;
     const running = this.syncing.get(key);
     if (running) return running;
-    const job = this.syncOnce(scope).finally(() => this.syncing.delete(key));
+    const job = this.syncOnce(scope, reconcile).finally(() => this.syncing.delete(key));
     this.syncing.set(key, job);
     return job;
   }
 
-  private async syncOnce(scope: Scope) {
+  private async syncOnce(scope: Scope, reconcile: boolean) {
     const branch = scope.isAggregate ? null : scope.branchCode;
     const key = branch ?? '*';
     try {
@@ -132,6 +135,43 @@ export class CuttingProgressService implements OnModuleInit {
       // Chép lỗi (hết thời gian chờ khóa, mất kết nối MES_Order): vẫn trả bản chép hiện có, lần sau chép lại
       this.synced.delete(key);
       syncLogger.warn(`Chưa chép được kế hoạch xuất hàng (${key}): ${(e as Error)?.message ?? e}`);
+    } finally {
+      if (reconcile) await this.reconcileCutQty(scope);
+    }
+  }
+
+  /**
+   * Đối chiếu cột LK cắt của Kế hoạch xuất hàng với Lũy kế (quyết định 13.6) mỗi lần mở màn: chỉ ghi kế hoạch lệch (kế hoạch mới, lần ghi
+   * sau khi lưu bị lỗi, sửa ngoài luồng). Lỗi thì chỉ log: màn vẫn mở được, lần sau đối chiếu lại.
+   */
+  private async reconcileCutQty(scope: Scope) {
+    try {
+      await this.repo.withCutQtyLock(async (db) => {
+        const totals = await this.repo.cutTotals(scope.isAggregate ? null : scope.branchCode, undefined, db);
+        const current = new Map((await this.feed.cutQtyOf(scope)).map((p) => [p.id, p]));
+        const stale = totals.filter((t) => {
+          const p = current.get(t.ShipmentPlanId);
+          return !!p && p.branchCode === t.BranchCode && Math.abs(p.createdAt.getTime() - t.SourceCreatedAt.getTime()) < 5 && p.cutQty !== t.CutQty;
+        });
+        if (stale.length) await this.feed.setCutQty(scope, stale.map((r) => ({ id: r.ShipmentPlanId, branchCode: r.BranchCode, createdAt: r.SourceCreatedAt, cutQty: r.CutQty })));
+      });
+    } catch (e) {
+      syncLogger.warn(`Chưa đối chiếu được LK cắt với Kế hoạch xuất hàng (${scope.isAggregate ? '*' : scope.branchCode}): ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /**
+   * Ghi LK cắt của một kế hoạch sau khi lưu hoặc xóa số cắt (MES_Cutting đã commit; hai database không có transaction chung). Lỗi thì không
+   * làm hỏng lần lưu: log, lần mở màn sau đối chiếu lại (reconcileCutQty).
+   */
+  private async pushAfterWrite(scope: Scope, id: number) {
+    try {
+      await this.repo.withCutQtyLock(async (db) => {
+        const rows = await this.repo.cutTotals(scope.isAggregate ? null : scope.branchCode, [id], db);
+        await this.feed.setCutQty(scope, rows.map((r) => ({ id: r.ShipmentPlanId, branchCode: r.BranchCode, createdAt: r.SourceCreatedAt, cutQty: r.CutQty })));
+      });
+    } catch (e) {
+      syncLogger.warn(`Chưa ghi được LK cắt sang Kế hoạch xuất hàng (bản chép ${id}): ${(e as Error)?.message ?? e}`);
     }
   }
 
@@ -212,11 +252,11 @@ export class CuttingProgressService implements OnModuleInit {
    * Popup một kế hoạch theo Ngày nhập liệu (quyết định 13.3): mỗi màu cỡ có Kế hoạch, Trong ngày (số của `date`), Lũy kế (mọi ngày),
    * +/- = Lũy kế − Kế hoạch. Đổi ngày chỉ đổi Trong ngày. Màu cỡ đã bị bỏ khỏi kế hoạch mà còn số cắt hiện cuối, Kế hoạch 0, chỉ đọc.
    */
-  async get(user: AuthUser, id: number, date?: string) {
+  async get(user: AuthUser, id: number, date?: string, reconcile = true) {
     const today = todayVN();
     const on = date ?? today;
     if (on > today) throw invalid('Ngày nhập liệu không được sau hôm nay.');
-    await this.sync(user);
+    await this.sync(user, reconcile);
     const scope = scopeOf(user);
     const row = await this.repo.getById(scope, id);
     const [cells, entries, canEdit, canDelete, derivedBlind] = await Promise.all([
@@ -288,8 +328,8 @@ export class CuttingProgressService implements OnModuleInit {
 
   /**
    * Lưu số cắt của một ngày (quyết định 13.3): chỉ các ô gửi lên; số > 0 ghi đè số của ngày đó, 0 hoặc null xóa. Ngày không được sau
-   * hôm nay. Màu cỡ phải có trong kế hoạch. Kế hoạch đã mất nguồn thì chỉ đọc. Kế hoạch nguồn phải còn tồn tại (vừa bị xóa ở Kế hoạch
-   * xuất hàng mà chưa chép lại thì 409, quyết định 13.4).
+   * hôm nay. Màu cỡ phải có trong kế hoạch; Lũy kế của màu cỡ không vượt Kế hoạch (quyết định 13.7). Kế hoạch đã mất nguồn thì chỉ đọc.
+   * Kế hoạch nguồn phải còn tồn tại (vừa bị xóa ở Kế hoạch xuất hàng mà chưa chép lại thì 409, quyết định 13.4).
    */
   async save(user: AuthUser, id: number, dto: CuttingSaveDto) {
     const scope = scopeOf(user);
@@ -298,7 +338,14 @@ export class CuttingProgressService implements OnModuleInit {
     const keys = dto.items.map((i) => cellKey(i.colorName, i.sizeName));
     if (new Set(keys).size !== keys.length) throw invalid('Một màu cỡ chỉ được gửi một lần.');
     await this.repo.assertWritable(scope);
-    const current = await this.repo.getById(scope, id, 'update');
+    // Kiểm phạm vi trước khi chép: kế hoạch ngoài phạm vi vẫn 404
+    await this.repo.getById(scope, id, 'update');
+    // Chép lại trước khi kiểm Kế hoạch: người dùng vừa tăng kế hoạch xuất hàng khi popup còn mở thì lưu được ngay (quyết định 13.7)
+    await this.sync(user, false);
+    // Bản chép chưa có số cắt bị dọn vì kế hoạch nguồn vừa bị xóa: 409 như khi nguồn mất (quyết định 13.4)
+    const current = await this.repo.getById(scope, id, 'update').catch((e: unknown) => {
+      throw e instanceof AppException && e.code === 'NOT_FOUND' ? conflict('Kế hoạch xuất hàng vừa bị xóa nên không lưu được số cắt. Tải lại màn hình.') : e;
+    });
     if (current.SourceDeletedAt !== null || current.ShipmentPlanId === null) throw conflict('Kế hoạch xuất hàng đã bị xóa: số cắt chỉ xem được, không sửa.');
     if (!(await this.feed.exists({ id: current.ShipmentPlanId, branchCode: current.BranchCode, createdAt: current.SourceCreatedAt }))) {
       throw conflict('Kế hoạch xuất hàng vừa bị xóa nên không lưu được số cắt. Tải lại màn hình.');
@@ -311,9 +358,25 @@ export class CuttingProgressService implements OnModuleInit {
       const planned = new Map((await this.cells.listByParent(scope, id, 'update', trx)).map((c) => [cellKey(c.ColorName, c.SizeName), c]));
       const missing = dto.items.filter((i) => !planned.has(cellKey(i.colorName, i.sizeName))).map((i) => `${i.colorName}/${i.sizeName}`);
       if (missing.length) throw invalid(`Màu cỡ không có trong kế hoạch: ${someOf(missing, 'màu cỡ')}.`, { cells: missing });
-      const ofDay = new Map(
-        (await this.daily.listByParent(scope, id, 'update', trx)).filter((e) => day(e.EntryDate) === dto.date).map((e) => [cellKey(e.ColorName, e.SizeName), e]),
-      );
+      const entries = await this.daily.listByParent(scope, id, 'update', trx);
+      const ofDay = new Map(entries.filter((e) => day(e.EntryDate) === dto.date).map((e) => [cellKey(e.ColorName, e.SizeName), e]));
+      // Lũy kế không vượt Kế hoạch của màu cỡ (quyết định 13.7): đọc trong transaction đã khóa kế hoạch nên hai người lưu hai ngày khác
+      // nhau cũng không cùng vượt. Chỉ chặn ô tăng số: kế hoạch giảm sau khi cắt thì vẫn giảm được số đã nhập.
+      const otherDays = new Map<string, number>();
+      for (const e of entries) {
+        const k = cellKey(e.ColorName, e.SizeName);
+        if (day(e.EntryDate) !== dto.date) otherDays.set(k, (otherDays.get(k) ?? 0) + e.Qty);
+      }
+      const over: string[] = [];
+      for (const i of dto.items) {
+        const k = cellKey(i.colorName, i.sizeName);
+        const cell = planned.get(k)!;
+        const next = i.dayQty ?? 0;
+        if (next > (ofDay.get(k)?.Qty ?? 0) && (otherDays.get(k) ?? 0) + next > cell.PlanQty) over.push(`${cell.ColorName}/${cell.SizeName}`);
+      }
+      if (over.length) {
+        throw invalid(`Lũy kế vượt Kế hoạch ở ${someOf(over, 'màu cỡ')}. Muốn cắt thêm, điều chỉnh Kế hoạch xuất hàng trước.`, { cells: over });
+      }
       const drop: number[] = [];
       const add: Record<string, unknown>[] = [];
       const before: { colorName: string; sizeName: string; dayQty: number | null }[] = [];
@@ -340,6 +403,8 @@ export class CuttingProgressService implements OnModuleInit {
       }
       return { before, after };
     });
+    // LK cắt bên Kế hoạch xuất hàng ghi trước nhật ký: nhật ký lỗi cũng không bỏ sót (review Q7 L24)
+    if (after.length) await this.pushAfterWrite(scope, id);
     // Nhật ký ở MES_Core (database khác): ghi sau khi commit
     if (after.length) {
       await this.audit.log({
@@ -354,7 +419,7 @@ export class CuttingProgressService implements OnModuleInit {
         ip: user.ip,
       });
     }
-    return this.get(user, id, dto.date);
+    return this.get(user, id, dto.date, false);
   }
 
   /**
@@ -385,6 +450,7 @@ export class CuttingProgressService implements OnModuleInit {
       };
     });
     if (!res) return { removedDays: 0, removedRows: 0, planRemoved: false };
+    if (!res.planRemoved) await this.pushAfterWrite(scope, id);
     await this.audit.log({
       userId: user.userId,
       username: user.username,
