@@ -49,10 +49,41 @@ export interface CuttingPlanDailyTable extends Audit {
   BranchCode: string;
 }
 
+/** Lệnh cấp BTP: một lệnh mỗi ĐVCS, Ngày cấp, Mã hàng (quyết định 13.8) */
+export interface CuttingSupplyTable extends Audit {
+  Id: Id;
+  SupplyNo: string;
+  SupplyYear: number;
+  SupplySeq: number;
+  SupplyDate: DateCol;
+  StyleCode: string;
+  Note: string | null;
+  StatusCode: string;
+  CreatorName: string;
+  ConfirmedAt: Date | null;
+  ConfirmedBy: number | null;
+  ConfirmerName: string | null;
+  BranchCode: string;
+}
+
+/** Số cấp trong Ngày cấp của lệnh theo chuyền, màu, cỡ (Qty > 0) */
+export interface CuttingSupplyLineTable extends Audit {
+  Id: Id;
+  CuttingSupplyId: number;
+  LineCode: string;
+  ColorName: string;
+  SizeName: string;
+  Qty: number;
+  SortOrder: number;
+  BranchCode: string;
+}
+
 export interface CuttingDatabase {
   CuttingPlan: CuttingPlanTable;
   CuttingPlanColorSize: CuttingPlanColorSizeTable;
   CuttingPlanDaily: CuttingPlanDailyTable;
+  CuttingSupply: CuttingSupplyTable;
+  CuttingSupplyLine: CuttingSupplyLineTable;
 }
 
 export type CuttingDb = Kysely<CuttingDatabase>;

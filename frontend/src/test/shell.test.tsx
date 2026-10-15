@@ -13,7 +13,7 @@ const leaf = (code: string, name: string, path: string): MenuNode => ({ code, na
 const MENU: MenuNode[] = [
   { code: 'menu.order', name: 'Đơn hàng', icon: null, path: null, isMobile: false, children: [leaf('menu.order.shipment', 'Kế hoạch xuất hàng', '/order/shipment')] },
   // Màn chưa có nội dung nghiệp vụ: hiện trang giữ chỗ
-  { code: 'menu.cutting', name: 'Cắt', icon: null, path: null, isMobile: false, children: [leaf('menu.cutting.supply', 'Xác nhận cấp BTP', '/cutting/supply')] },
+  { code: 'menu.cutting', name: 'Cắt', icon: null, path: null, isMobile: false, children: [leaf('menu.cutting.embroidery', 'Quản lý in thêu', '/cutting/embroidery')] },
 ];
 
 function ready(perms: string[], isAggregate = false) {
@@ -88,9 +88,9 @@ describe('Giao diện chỉ ẩn/hiện theo quyền từ server', () => {
   });
 
   it('đường dẫn có trong menu mở được; thuộc module nhưng không có trong menu là 403; lạ là 404', () => {
-    ready(['cutting.supply:view']);
-    const { unmount } = renderAt('/cutting/supply', <Routes><Route path="*" element={<FallbackRoute />} /></Routes>);
-    expect(screen.getByRole('heading', { name: 'Xác nhận cấp BTP' })).toBeInTheDocument();
+    ready(['cutting.embroidery:view']);
+    const { unmount } = renderAt('/cutting/embroidery', <Routes><Route path="*" element={<FallbackRoute />} /></Routes>);
+    expect(screen.getByRole('heading', { name: 'Quản lý in thêu' })).toBeInTheDocument();
     unmount();
 
     const r2 = renderAt('/report/revenue', <Routes><Route path="*" element={<FallbackRoute />} /></Routes>);
@@ -109,9 +109,9 @@ describe('Giao diện chỉ ẩn/hiện theo quyền từ server', () => {
   });
 
   it('trang giữ chỗ hiện đúng quyền, và khóa thao tác ghi ở chế độ tổng hợp', () => {
-    // Màn còn là trang giữ chỗ (Đồng bộ tiến độ cắt đã có màn thật từ phase 5.14)
-    ready(['cutting.supply:view', 'cutting.supply:update'], true);
-    renderAt('/cutting/supply', <Routes><Route path="*" element={<FallbackRoute />} /></Routes>);
+    // Màn còn là trang giữ chỗ (Đồng bộ tiến độ cắt, Xác nhận cấp BTP đã có màn thật từ phase 5.14, 5.15)
+    ready(['cutting.embroidery:view', 'cutting.embroidery:update'], true);
+    renderAt('/cutting/embroidery', <Routes><Route path="*" element={<FallbackRoute />} /></Routes>);
     expect(screen.getByText('Xem')).toBeInTheDocument();
     expect(screen.getByText(/mọi thao tác ghi đều bị khóa/)).toBeInTheDocument();
   });

@@ -24,7 +24,7 @@ import { DEFAULT_WORK_CALENDAR, lineDates, nextWorkingDay, readWorkCalendars, ty
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { prng } from './seed-data';
-import { plansWithCuts } from './cutting-data';
+import { plansWithCuts, plansWithSupply } from './cutting-data';
 import { hasSewingDb } from './sewing-data';
 
 export const PLANNER_NAME = 'Lập tự động (mô phỏng)';
@@ -612,7 +612,8 @@ async function main() {
         `- Chuyền: bộ phận tích "Xưởng sản xuất" đang dùng, có đơn vị cơ sở, trong ${env.db.hrName} (Nhân sự › Sơ đồ tổ chức).`,
         '- Giữ nguyên: kế hoạch người dùng lập; kế hoạch mô phỏng người dùng đã sửa ở Kế hoạch xuất hàng, Xếp chuyền, Phân bổ màu cỡ',
         '  hoặc đã nhập ở Kế hoạch chuẩn bị SX. Thêm --all để xóa cả các kế hoạch đó (kèm ngày chuẩn bị SX đã nhập).',
-        '- Luôn giữ (kể cả --all) kế hoạch đã có số cắt ở Đồng bộ tiến độ cắt: muốn xóa thì Xóa số cắt ở màn đó trước.',
+        '- Luôn giữ (kể cả --all) kế hoạch đã có số cắt ở Đồng bộ tiến độ cắt (muốn xóa thì Xóa số cắt ở màn đó trước), và kế hoạch',
+        '  có mã hàng đã cấp BTP ở Xác nhận cấp BTP.',
         '- Đơn hàng của kế hoạch bị xóa trở về trạng thái lúc nạp (Mới, hoặc Hoàn thành nếu đã đóng lệnh ở BRAVO).',
         '- Chạy trong một transaction (vài chục giây): backend đang chạy thì các màn đơn hàng chờ tới khi xong.',
         'Chạy lại với: npm run sim:board -- --yes [--all]',
@@ -626,7 +627,8 @@ async function main() {
     const { branches, linesOf, plannerId } = await readLines(core);
     const calendars = await readWorkCalendars(core);
     const prep = all ? new Map<number, Date | null>() : await prepLines();
-    const cuts = await plansWithCuts();
+    // Giữ cả kế hoạch có mã hàng đã cấp BTP (phần giao không giảm dưới số đã cấp, quyết định 13.8)
+    const cuts = new Map([...(await plansWithCuts()), ...(await plansWithSupply(order))]);
     const today = localToday();
     const stats: Record<string, Record<string, number>> = {};
     let stuck = 0;

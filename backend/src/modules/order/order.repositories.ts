@@ -315,6 +315,68 @@ export class ShipmentPlanFeedRepository {
   }
 }
 
+/** Tổng SL giao của một chuyền, mã hàng, màu, cỡ (cộng mọi kế hoạch của ĐVCS) */
+export interface LineStyleAllocationRow {
+  BranchCode: string;
+  LineCode: string;
+  StyleCode: string;
+  ProductName: string;
+  ColorName: string;
+  SizeName: string;
+  Qty: number;
+  SortOrder: number;
+}
+
+/**
+ * Phân bổ màu cỡ gom theo chuyền, mã hàng, màu, cỡ cho module Cắt (Xác nhận cấp BTP, quyết định 13.8). Việc của hệ thống như
+ * ShipmentPlanFeedRepository: chỉ lọc ĐVCS do LineColorSizeFeed truyền từ phiên (null: mọi ĐVCS), không theo phạm vi người xem.
+ * `db`: transaction của module Đơn hàng khi kiểm phần giao không xuống dưới số đã cấp (LineSupplyGuards).
+ */
+@Injectable()
+export class LineColorSizeFeedRepository {
+  constructor(@Inject(ORDER_DB) private readonly db: OrderDb) {}
+
+  async totals(branchCode: string | null, filter: { lineCodes?: string[]; styleCode?: string }, db: Kysely<any> = this.db): Promise<LineStyleAllocationRow[]> {
+    if (filter.lineCodes && !filter.lineCodes.length) return [];
+    let qb = db
+      .selectFrom('ShipmentPlanLineColorSize as a')
+      .innerJoin('ShipmentPlanLine as l', 'l.Id', 'a.ShipmentPlanLineId')
+      .innerJoin('ShipmentPlan as p', 'p.Id', 'l.ShipmentPlanId')
+      .select([
+        'l.BranchCode',
+        'l.LineCode',
+        'p.StyleCode',
+        sql<string>`MIN(p.ProductName)`.as('ProductName'),
+        'a.ColorName',
+        'a.SizeName',
+        sql<number>`SUM(CAST(a.AssignedQty AS BIGINT))`.as('Qty'),
+        sql<number>`MIN(a.SortOrder)`.as('SortOrder'),
+      ])
+      // Dòng giao 0 là đề xuất theo tỷ lệ của cách làm trước phase 5.13, không phải phần giao
+      .where('a.AssignedQty', '>', 0)
+      .groupBy(['l.BranchCode', 'l.LineCode', 'p.StyleCode', 'a.ColorName', 'a.SizeName']);
+    if (branchCode !== null) qb = qb.where('l.BranchCode', '=', branchCode);
+    if (filter.lineCodes) qb = qb.where('l.LineCode', 'in', filter.lineCodes);
+    if (filter.styleCode !== undefined) qb = qb.where('p.StyleCode', '=', filter.styleCode);
+    const rows = await qb.orderBy('l.LineCode').orderBy('p.StyleCode').orderBy(sql`MIN(a.SortOrder)`).orderBy('a.ColorName').orderBy('a.SizeName').execute();
+    return rows.map((r: any) => ({ ...r, Qty: Number(r.Qty) })) as LineStyleAllocationRow[];
+  }
+
+  /** Mã hàng đã phân màu cỡ (SL giao > 0) cho một chuyền, kèm tên sản phẩm */
+  async styles(branchCode: string | null, lineCode: string): Promise<{ BranchCode: string; StyleCode: string; ProductName: string }[]> {
+    let qb = this.db
+      .selectFrom('ShipmentPlanLineColorSize as a')
+      .innerJoin('ShipmentPlanLine as l', 'l.Id', 'a.ShipmentPlanLineId')
+      .innerJoin('ShipmentPlan as p', 'p.Id', 'l.ShipmentPlanId')
+      .select(['l.BranchCode', 'p.StyleCode', sql<string>`MIN(p.ProductName)`.as('ProductName')])
+      .where('a.AssignedQty', '>', 0)
+      .where('l.LineCode', '=', lineCode)
+      .groupBy(['l.BranchCode', 'p.StyleCode']);
+    if (branchCode !== null) qb = qb.where('l.BranchCode', '=', branchCode);
+    return (await qb.orderBy('p.StyleCode').execute()) as { BranchCode: string; StyleCode: string; ProductName: string }[];
+  }
+}
+
 @Injectable()
 export class PlanColorSizeRepository extends ChildRepository<PlanColorSizeRow> {
   protected readonly table = 'ShipmentPlanColorSize';

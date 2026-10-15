@@ -173,7 +173,20 @@ export function OrderFilters({ value, onChange, customers, seasons, statuses, li
 }
 
 export function filterParams(f: OrderFilter) {
-  return { shipFrom: f.shipFrom, shipTo: f.shipTo, customer: f.customer.trim(), style: f.style.trim(), season: f.season, status: f.status, line: f.line, q: f.q.trim() };
+  return {
+    shipFrom: f.shipFrom,
+    shipTo: f.shipTo,
+    customer: f.customer.trim(),
+    style: f.style.trim(),
+    season: f.season,
+    status: f.status,
+    line: f.line,
+    q: f.q.trim(),
+    createdFrom: f.createdFrom,
+    createdTo: f.createdTo,
+    supplyNo: f.supplyNo.trim(),
+    creator: f.creator.trim(),
+  };
 }
 
 

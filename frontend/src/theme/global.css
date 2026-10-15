@@ -2219,6 +2219,74 @@ a:hover > .home-tile .home-tile-name {
   }
 }
 
+/*
+ * Xác nhận cấp BTP (phase 5.15) theo ảnh mẫu: lưới lệnh cấp ở trên; khung dưới có hàng nút, rồi chi tiết lệnh đang chọn hoặc form
+ * Thêm mới, Sửa. Khung dưới cao hơn vì lưới nhập là phần làm việc chính.
+ */
+.split-rows.supply-split {
+  grid-template-rows: minmax(190px, 2fr) minmax(400px, 3fr);
+}
+/* Hàng của lưới lệnh quyết định chiều cao (thấp hơn 220px của lưới kéo dài thường dùng): lưới tự cuộn bên trong, không tràn xuống khung dưới */
+.supply-split .grid-wrap[data-fill] {
+  min-height: 0;
+}
+/* Đang Thêm mới, Sửa: lưới lệnh thu nhỏ để form nhập có chỗ trên màn laptop */
+.split-rows.supply-split[data-editing] {
+  grid-template-rows: minmax(150px, 1fr) minmax(430px, 4fr);
+}
+.supply-pane {
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 8px;
+  background: var(--app-section);
+}
+.supply-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+.supply-head .supply-note {
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+.supply-picker {
+  padding: 8px 10px;
+  border: 1px dashed var(--app-line);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+.supply-head .mantine-InputWrapper-label,
+.supply-picker .mantine-InputWrapper-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-ink-soft);
+}
+.supply-sheet {
+  flex: 1;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+}
+.supply-empty {
+  flex: 1;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-ink-soft);
+  font-size: 14px;
+}
+@media (max-width: 767px) {
+  .supply-sheet {
+    min-height: 50vh;
+  }
+  .supply-split .grid-wrap[data-fill] {
+    min-height: 40vh;
+  }
+}
+
 /* ===== Bảng dàn chuyền (Gantt): điểm nhấn của module Đơn hàng ===== */
 .board {
   border: 1px solid var(--app-line);

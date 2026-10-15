@@ -13,6 +13,7 @@ import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { ORDER_DB } from './order.db';
 import { BoardQuery, OrderListQuery, OrderValuesQuery, ScheduleDto } from './order.dto';
+import { LineSupplyGuards } from './line-supply-guard';
 import { LinePlanAllocationRepository, LinePlanLineRepository, LinePlanRepository, type LinePlanListRow, type PlanLineRow } from './order.repositories';
 import type { OrderDb } from './order.types';
 import { assignedVisible, businessFilter, conflict, day, invalid, MAX_PRODUCTION_DAYS, num, readableQuery, someOf, sortOf } from './order.util';
@@ -129,6 +130,7 @@ export class LinePlanService {
     private readonly exporter: ExportService,
     private readonly fields: FieldPolicyService,
     private readonly catalogs: CatalogLookupService,
+    private readonly supplyGuards: LineSupplyGuards,
   ) {}
 
   private async sort(user: AuthUser, sort: string | undefined) {
@@ -262,6 +264,9 @@ export class LinePlanService {
         const details = shrunk.map((r) => (showAssigned ? `${lineName(r.values.LineCode as string)}: đã giao ${assigned.get(r.id!)}, số lượng mới ${r.values.Qty}` : lineName(r.values.LineCode as string)));
         throw conflict(`Chuyền đã được giao màu cỡ nhiều hơn số lượng mới (${someOf(details, 'chuyền')}). Giảm phần giao ở màn Phân bổ màu cỡ trước.`, details);
       }
+      // Phần giao theo mã hàng của các chuyền có dòng bị xóa hay chuyển chuyền (cộng mọi kế hoạch) trước khi ghi: không xuống dưới số
+      // BTP đã cấp (phase 5.15)
+      const supplyBefore = await this.supplyGuards.snapshot(trx, plan.BranchCode, plan.StyleCode, existing.map((e) => e.LineCode));
       for (const r of removed) await this.allocations.removeWhere(scope, { parentId: r.Id }, trx);
       await this.lines.removeWhere(scope, { parentId: id, ids: removed.map((r) => r.Id) }, trx);
 
@@ -283,6 +288,7 @@ export class LinePlanService {
           await ensureVisible(await this.lines.insertOne(scope, id, { ...r.values, StatusCode: 'PLANNED' }, trx));
         }
       }
+      await this.supplyGuards.assertCovered(trx, plan.BranchCode, plan.StyleCode, supplyBefore, { lineName, showQty: showAssigned });
       if (plan.StatusCode === 'PLANNED' || plan.StatusCode === 'SCHEDULED') {
         const status = rows.length + others.count ? 'SCHEDULED' : 'PLANNED';
         if (status !== plan.StatusCode) await this.plans.update(scope, id, { StatusCode: status }, trx);

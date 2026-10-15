@@ -145,7 +145,7 @@ async function main() {
     console.log(`Đã xóa ${await clearSewingPrep()} dòng Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);
     // Id kế hoạch xuất hàng cũng được đánh số lại: số cắt cũ không còn đúng kế hoạch nào (quyết định 13.4)
     const cuts = await clearCutting();
-    console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt trong ${env.db.cuttingName}.`);
+    console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt, ${cuts.supplies} lệnh cấp BTP trong ${env.db.cuttingName}.`);
     await order.transaction().execute((trx) => clearOrderData(trx));
     console.log(`Đã xóa dữ liệu đơn hàng trong ${env.db.orderName}.`);
     console.log(`Đã xóa ${await clearHr()} hồ sơ nhân viên và sơ đồ tổ chức trong ${env.db.hrName} (seed nạp lại bản mẫu).`);

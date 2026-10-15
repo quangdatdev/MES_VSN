@@ -180,6 +180,39 @@
       "status": "MES_Cutting/0001 (Phase 5.14); bản chép cập nhật mỗi lần mở màn. Kế hoạch bị xóa mà đã có số cắt thì giữ dòng, ShipmentPlanId = NULL, SourceDeletedAt có giá trị (quyết định 13.2)"
     },
     {
+      "from": "MES_Cutting.CuttingSupply.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0002 (Phase 5.15)"
+    },
+    {
+      "from": "MES_Cutting.CuttingSupply.CreatedBy",
+      "to": "MES_Core.SysUser.Id",
+      "nullable": true,
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0002 (Phase 5.15): người lập lệnh cấp (tên chụp ở CreatorName)"
+    },
+    {
+      "from": "MES_Cutting.CuttingSupply.ConfirmedBy",
+      "to": "MES_Core.SysUser.Id",
+      "nullable": true,
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0002 (Phase 5.15): người bấm Xác nhận cấp (tên chụp ở ConfirmerName); NULL khi Chưa cấp"
+    },
+    {
+      "from": "MES_Cutting.CuttingSupplyLine.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0002 (Phase 5.15)"
+    },
+    {
+      "from": "MES_Cutting.CuttingSupplyLine.LineCode",
+      "to": "MES_Hr.Department.Code",
+      "sameBranch": true,
+      "ownerModule": "cutting",
+      "status": "MES_Cutting/0002 (Phase 5.15): chuyền may nhận BTP, như ShipmentPlanLine.LineCode"
+    },
+    {
       "from": "MES_Hr.Department.BranchCode",
       "to": "MES_Core.SysBranch.Code",
       "where": "IsAggregate = '0'",

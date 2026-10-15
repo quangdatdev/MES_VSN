@@ -394,6 +394,11 @@ export interface OrderFilter {
   line: string;
   /** Tìm nhanh (số chứng từ, PO/Buy date...) */
   q: string;
+  /** Ngày tạo phiếu từ, đến; Số lệnh cấp; Người lập (màn Xác nhận cấp BTP, phase 5.15). Màn khác để trống: không gửi lên máy chủ */
+  createdFrom: string;
+  createdTo: string;
+  supplyNo: string;
+  creator: string;
 }
 
-export const emptyFilter: OrderFilter = { shipFrom: '', shipTo: '', customer: '', style: '', season: '', status: '', line: '', q: '' };
+export const emptyFilter: OrderFilter = { shipFrom: '', shipTo: '', customer: '', style: '', season: '', status: '', line: '', q: '', createdFrom: '', createdTo: '', supplyNo: '', creator: '' };

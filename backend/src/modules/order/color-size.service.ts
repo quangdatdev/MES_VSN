@@ -9,6 +9,7 @@ import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColu
 import { ExportService } from '../../platform/export/export.service';
 import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
+import { LineSupplyGuards } from './line-supply-guard';
 import { ORDER_DB } from './order.db';
 import { AllocationDto, OrderListQuery, OrderValuesQuery } from './order.dto';
 import {
@@ -88,6 +89,7 @@ export class ColorSizeService {
     private readonly exporter: ExportService,
     private readonly fields: FieldPolicyService,
     private readonly catalogs: CatalogLookupService,
+    private readonly supplyGuards: LineSupplyGuards,
   ) {}
 
   /**
@@ -256,6 +258,9 @@ export class ColorSizeService {
       // Dòng không đổi giữ nguyên; dòng đổi, dòng bỏ (cả dòng 0 của cách làm cũ) xóa rồi thêm lại theo lô: lưu cả bảng vài câu,
       // không một câu mỗi ô. Tên màu, cỡ ghi theo kế hoạch; PlanQty là bản chụp SL KHXH lúc lưu
       const current = await this.rows.listByParents(scope, [...lineById.keys()], 'update', trx);
+      // Phần giao của các chuyền này theo mã hàng (cộng mọi kế hoạch) trước khi ghi: không giảm xuống dưới số BTP đã cấp (phase 5.15)
+      const plan = await this.lines.planRow(scope, planId, 'view', trx);
+      const supplyBefore = await this.supplyGuards.snapshot(trx, plan.BranchCode, plan.StyleCode, mine.map((l) => l.LineCode));
       const keep = new Set<string>();
       const had = new Set<string>();
       const drop: number[] = [];
@@ -288,6 +293,7 @@ export class ColorSizeService {
       }
       await this.rows.removeMany(scope, drop, trx);
       await this.rows.insertMany(scope, insert, trx);
+      await this.supplyGuards.assertCovered(trx, plan.BranchCode, plan.StyleCode, supplyBefore, { lineName: (c) => name(c) ?? 'Chuyền', showQty: !blind });
       const show = (lineId: number, colorName: string, sizeName: string, assignedQty: number) => ({ lineId, lineCode: lineById.get(lineId)!.LineCode, colorName, sizeName, assignedQty });
       return {
         before: current.filter((c) => c.AssignedQty > 0).map((c) => show(c.ShipmentPlanLineId, c.ColorName, c.SizeName, c.AssignedQty)),

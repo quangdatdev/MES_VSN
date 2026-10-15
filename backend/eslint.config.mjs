@@ -40,7 +40,8 @@ export default tseslint.config(
       ],
     },
   },
-  // Module Cắt (quyết định 13): chỉ dùng API công khai của Đơn hàng (OrderModule, ShipmentPlanFeed, ShipmentPlanDeleteGuards)
+  // Module Cắt (quyết định 13): chỉ dùng API công khai của Đơn hàng (OrderModule, ShipmentPlanFeed, ShipmentPlanDeleteGuards, LineColorSizeFeed,
+  // LineSupplyGuards)
   {
     files: ['src/modules/cutting/**/*.ts'],
     rules: {
@@ -55,11 +56,15 @@ export default tseslint.config(
                 '!../order/order.module',
                 '!../order/shipment-plan-feed.service',
                 '!../order/shipment-plan-delete-guard',
+                '!../order/line-color-size-feed.service',
+                '!../order/line-supply-guard',
                 '!**/modules/order/order.module',
                 '!**/modules/order/shipment-plan-feed.service',
                 '!**/modules/order/shipment-plan-delete-guard',
+                '!**/modules/order/line-color-size-feed.service',
+                '!**/modules/order/line-supply-guard',
               ],
-              message: 'Module Cắt chỉ dùng API công khai của module Đơn hàng (OrderModule, shipment-plan-feed.service, shipment-plan-delete-guard).',
+              message: 'Module Cắt chỉ dùng API công khai của module Đơn hàng (OrderModule, shipment-plan-feed.service, shipment-plan-delete-guard, line-color-size-feed.service, line-supply-guard).',
             },
             { group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Cắt không phụ thuộc module May.' },
             NO_HR,
@@ -77,7 +82,7 @@ export default tseslint.config(
         {
           patterns: [
             { group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Đơn hàng không phụ thuộc module May (ADR 0009).' },
-            { group: ['../cutting/*', '**/modules/cutting/*'], message: 'Module Đơn hàng không phụ thuộc module Cắt: module Cắt đăng ký vào ShipmentPlanDeleteGuards (quyết định 13.4).' },
+            { group: ['../cutting/*', '**/modules/cutting/*'], message: 'Module Đơn hàng không phụ thuộc module Cắt: module Cắt đăng ký vào ShipmentPlanDeleteGuards, LineSupplyGuards (quyết định 13.4, 13.8).' },
             NO_HR,
             NO_SYNC,
           ],

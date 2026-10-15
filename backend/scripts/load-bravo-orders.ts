@@ -97,7 +97,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
       if (prep) console.log(`Đã xóa ${prep} dòng Kế hoạch chuẩn bị SX cũ trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);
       // Id kế hoạch xuất hàng được đánh số lại: số cắt cũ không còn đúng kế hoạch nào (quyết định 13.4)
       const cuts = await clearCutting();
-      if (cuts.plans) console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt cũ trong ${env.db.cuttingName}.`);
+      if (cuts.plans || cuts.supplies) console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt, ${cuts.supplies} lệnh cấp BTP cũ trong ${env.db.cuttingName}.`);
       await clearOrderData(trx);
 
       const orderRows = await insertAll(

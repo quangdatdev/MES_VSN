@@ -109,7 +109,9 @@ export const resources: ResourceDef[] = [
   // Đồng bộ tiến độ cắt (phase 5.14, quyết định 13.5): bản chép kế hoạch xuất hàng ở MES_Cutting, một dòng mỗi kế hoạch. Không có
   // Thêm (dòng tự có); Xóa là Xóa số cắt của kế hoạch, mẫu chỉ Toàn quyền có. Kế hoạch nhập số cắt (máy đã cài: MES_Core/0012)
   { code: 'cutting.progress', name: 'Đồng bộ tiến độ cắt', path: '/cutting/progress', table: 'CuttingPlan', matrix: ['V', 'VE', 'VUE', 'V', '', ''] },
-  { code: 'cutting.supply', name: 'Xác nhận cấp BTP', path: '/cutting/supply', matrix: ['V', 'VE', 'V', '', '', ''] },
+  // Xác nhận cấp BTP (phase 5.15, quyết định 13.10): lệnh cấp ở MES_Cutting. Sửa gồm cả Xác nhận cấp, Hủy duyệt. Kế hoạch lập và
+  // xác nhận (máy đã cài: MES_Core/0013); Trưởng chuyền chưa xem
+  { code: 'cutting.supply', name: 'Xác nhận cấp BTP', path: '/cutting/supply', table: 'CuttingSupply', matrix: ['V', 'VE', 'VCUDE', '', '', ''] },
   { code: 'cutting.embroidery', name: 'Quản lý in thêu', path: '/cutting/embroidery', matrix: ['V', 'VE', 'V', '', '', ''] },
 
   { code: 'sewing.plan', name: 'Kế hoạch may', path: '/sewing/plan', matrix: ['V', 'VE', 'VCUE', 'V', '', ''] },
@@ -166,6 +168,7 @@ export const scopeBindings: Record<string, Record<string, string>> = {
   'order.colorsize': { FACTORY: 'BranchCode', LINE: 'LineCode', OWNER: 'CreatedBy' },
   'order.prep': { FACTORY: 'BranchCode', LINE: 'LineCode' },
   'cutting.progress': { FACTORY: 'BranchCode' },
+  'cutting.supply': { FACTORY: 'BranchCode' },
 };
 
 /** Cột đăng ký (Resource Registry mức cột). Mã trùng trường JSON của API. S = nhạy cảm (mặc định Ẩn). */
@@ -293,6 +296,23 @@ export const resourceFields: Record<string, [code: string, name: string, sensiti
     ['cutQty', 'Lũy kế cắt'],
     ['diffQty', '+/-'],
     ['lastCutDate', 'Ngày cắt gần nhất'],
+    ['statusCode', 'Trạng thái'],
+  ],
+  // Mã trùng khóa JSON của API Xác nhận cấp BTP (lưới lệnh cấp và lưới chi tiết). Còn lại = SL kế hoạch − SL đã cấp − SL cấp trong
+  // ngày (quyết định 13.8)
+  'cutting.supply': [
+    ['supplyNo', 'Số lệnh cấp'],
+    ['supplyDate', 'Ngày cấp'],
+    ['styleCode', 'Mã hàng'],
+    ['creatorName', 'Người lập'],
+    ['confirmerName', 'Người cấp'],
+    ['note', 'Ghi chú'],
+    ['lineCode', 'Chuyền sản xuất'],
+    ['planQty', 'Số lượng kế hoạch'],
+    ['syncQty', 'Số lượng đồng bộ'],
+    ['suppliedQty', 'Số lượng đã cấp'],
+    ['dayQty', 'Số lượng cấp trong ngày'],
+    ['remainQty', 'Số lượng còn lại'],
     ['statusCode', 'Trạng thái'],
   ],
   // Mã trùng khóa JSON của API Thông tin nhân sự (modules/hr/employee-fields.ts). Chỉ đăng ký thông tin cá nhân: mã, tên, phòng

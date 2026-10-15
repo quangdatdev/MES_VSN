@@ -15,6 +15,7 @@ const loaders: Record<string, () => PageModule> = {
   '/order/prep': () => import('../features/sewing/PrepPlanPage'),
   // Quản trị nhà cắt: module Cắt (phase 5.14)
   '/cutting/progress': () => import('../features/cutting/CuttingProgressPage'),
+  '/cutting/supply': () => import('../features/cutting/CuttingSupplyPage'),
   // Quản trị nhân sự (ADR 0012)
   '/hr/org-chart': () => import('../features/hr/OrgChartPage'),
   '/hr/employees': () => import('../features/hr/EmployeesPage'),
