@@ -322,7 +322,7 @@ export interface Board {
 export type AllocationStatus = 'PLANNED' | 'PARTIAL' | 'FULL';
 
 /**
- * Một dòng của màn Phân bổ màu cỡ: một kế hoạch đã xếp chuyền (`id` là Id kế hoạch). Chuyền, NSBQ là mảng theo thứ tự dàn chuyền,
+ * Một dòng của màn Phân bổ màu cỡ: một kế hoạch đã xếp chuyền (`id` là Id kế hoạch). Chuyền là mảng theo thứ tự dàn chuyền, NSBQ là trung bình các chuyền đó,
  * chỉ gồm chuyền trong phạm vi xem; SL kế hoạch, SL giao, trạng thái là của cả kế hoạch. Cột bị Che là "***", bị Ẩn thì không có.
  */
 export interface Allocation {
@@ -336,7 +336,7 @@ export interface Allocation {
   /** Tên chuyền cùng thứ tự với `lineCode`; không có khi mã chuyền bị Ẩn hoặc Che (tên suy ra được mã) */
   lineName?: string[];
   startDate?: Masked<string>;
-  avgOutput?: Masked<number[]>;
+  avgOutput?: Masked<number>;
   endDate?: Masked<string>;
   shipDate?: Masked<string>;
   qty?: Masked<number>;

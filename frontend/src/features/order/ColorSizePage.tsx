@@ -42,8 +42,8 @@ const COLUMNS: Column<Allocation>[] = [
     render: (r) => <span title={Array.isArray(r.lineCode) ? r.lineCode.join(', ') : undefined}>{lineText(r) || '–'}</span>,
   },
   { key: 'startDate', title: 'Ngày bắt đầu chuyền', filterKey: 'startDate', format: 'date', sortKey: 'startDate' },
-  // NSBQ liệt kê theo từng chuyền, cùng thứ tự cột Chuyền may (phase 5.13 Q3): không lọc, không sắp xếp
-  { key: 'avgOutput', title: 'NSBQ chuyền', align: 'right', render: (r) => (Array.isArray(r.avgOutput) ? r.avgOutput.map((v) => fmtNum(v)).join(', ') : '–') },
+  // Kế hoạch xếp nhiều chuyền: trung bình cộng NSBQ các chuyền (máy chủ tính, người dùng yêu cầu 16/10)
+  { key: 'avgOutput', title: 'NSBQ chuyền', filterKey: 'avgOutput', format: 'number', sortKey: 'avgOutput' },
   { key: 'endDate', title: 'Ngày kết thúc chuyền', filterKey: 'endDate', format: 'date', sortKey: 'endDate' },
   { key: 'shipDate', title: 'Ngày xuất hàng', filterKey: 'shipDate', format: 'date', sortKey: 'shipDate' },
   { key: 'qty', title: 'Số lượng kế hoạch', filterKey: 'qty', format: 'number', sortKey: 'qty' },

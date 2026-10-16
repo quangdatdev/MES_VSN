@@ -192,13 +192,13 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       expect(all.total).toBeGreaterThan(mine.total);
       // Mỗi kế hoạch một dòng (id là Id kế hoạch)
       expect(new Set(all.items.map((i: any) => i.id)).size).toBe(all.items.length);
-      // Kế hoạch xếp hai chuyền: một dòng, chuyền nối theo thứ tự dàn chuyền, NSBQ theo từng chuyền; SL kế hoạch, tổng giao, trạng
+      // Kế hoạch xếp hai chuyền: một dòng, chuyền nối theo thứ tự dàn chuyền, NSBQ trung bình; SL kế hoạch, tổng giao, trạng
       // thái là của cả kế hoạch
       const fixturePlan = (await api().get(`/api/v1/order/color-size?pageSize=200&style=${FIXTURE_STYLE}`).set(auth(planner)).expect(200)).body.items;
       expect(fixturePlan).toHaveLength(1);
-      expect(fixturePlan[0]).toMatchObject({ lineCode: ['A01-L03', 'A01-L05'], avgOutput: [300, 300], qty: 600, assignedQty: 600, statusCode: 'FULL', startDate: '2026-11-02', endDate: '2026-11-02' });
+      expect(fixturePlan[0]).toMatchObject({ lineCode: ['A01-L03', 'A01-L05'], avgOutput: 300, qty: 600, assignedQty: 600, statusCode: 'FULL', startDate: '2026-11-02', endDate: '2026-11-02' });
       expect(fixturePlan[0].lineName).toHaveLength(2);
-      expect(mine.items.find((i: any) => i.id === fixturePlan[0].id)).toMatchObject({ lineCode: ['A01-L03'], avgOutput: [300], qty: 600, assignedQty: 600 });
+      expect(mine.items.find((i: any) => i.id === fixturePlan[0].id)).toMatchObject({ lineCode: ['A01-L03'], avgOutput: 300, qty: 600, assignedQty: 600 });
       // Lọc theo chuyền: kế hoạch có chuyền đó, cột chuyền vẫn đủ các chuyền; giá trị lọc là từng chuyền
       const cf = (v: object) => encodeURIComponent(JSON.stringify(v));
       const byLine = (await api().get(`/api/v1/order/color-size?style=${FIXTURE_STYLE}&line=A01-L05`).set(auth(planner)).expect(200)).body;
@@ -320,6 +320,34 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
+    it('Phân bổ màu cỡ: kế hoạch xếp nhiều chuyền hiện NSBQ trung bình cộng các chuyền (làm tròn), lọc và sắp xếp được theo số đó; Trưởng chuyền chỉ tính chuyền mình', async () => {
+      const planner = await tokenFor('kehoach.a', 'A01');
+      const tc = await tokenFor('truongchuyen.a', 'A01');
+      const list = (q: string, t = planner) => api().get(`/api/v1/order/color-size?pageSize=200&style=${FIXTURE_STYLE}${q}`).set(auth(t)).expect(200);
+      const row = (await list('')).body.items[0];
+      const detail = (await api().get(`/api/v1/order/color-size/${row.id}`).set(auth(planner)).expect(200)).body;
+      const [l3, l5] = detail.lines.map((l: any) => l.id as number);
+      const order = app.get<OrderDb>(ORDER_DB);
+      const before = await order.selectFrom('ShipmentPlanLine').select(['Id', 'AvgOutput']).where('Id', 'in', [l3, l5]).execute();
+      const cf = (v: object) => `&cf=${encodeURIComponent(JSON.stringify(v))}`;
+      try {
+        await order.updateTable('ShipmentPlanLine').set({ AvgOutput: 300 }).where('Id', '=', l3).execute();
+        await order.updateTable('ShipmentPlanLine').set({ AvgOutput: 1001 }).where('Id', '=', l5).execute();
+        // (300 + 1001) / 2 = 650,5 → 651: trung bình theo chuyền, không theo SL đã xếp
+        expect((await list('')).body.items[0]).toMatchObject({ id: row.id, lineCode: ['A01-L03', 'A01-L05'], avgOutput: 651 });
+        expect((await list('', tc)).body.items.find((i: any) => i.id === row.id)).toMatchObject({ lineCode: ['A01-L03'], avgOutput: 300 });
+        expect((await list(cf({ avgOutput: { in: [651] } }))).body.total).toBe(1);
+        expect((await list(cf({ avgOutput: { in: [300] } }))).body.total).toBe(0);
+        expect((await api().get(`/api/v1/order/color-size/values?field=avgOutput&style=${FIXTURE_STYLE}`).set(auth(planner)).expect(200)).body.values).toEqual([651]);
+        const asc = (await api().get('/api/v1/order/color-size?pageSize=200&sort=avgOutput:asc').set(auth(planner)).expect(200)).body.items.map((i: any) => i.avgOutput);
+        expect(asc).toEqual([...asc].sort((a, b) => a - b));
+        const desc = (await api().get('/api/v1/order/color-size?pageSize=200&sort=avgOutput:desc').set(auth(planner)).expect(200)).body.items.map((i: any) => i.avgOutput);
+        expect(desc[0]).toBe(Math.max(...desc));
+      } finally {
+        for (const l of before) await order.updateTable('ShipmentPlanLine').set({ AvgOutput: l.AvgOutput }).where('Id', '=', l.Id).execute();
+      }
+    });
+
     it('Phân bổ màu cỡ (phase 5.13): chính sách cột theo người (Chuyền may Che, Số lượng giao Ẩn, Che, Chỉ đọc, Số lượng kế hoạch Ẩn); kế hoạch ĐVCS khác theo Id => 404', async () => {
       const id = await tempUser('test.alloccol', ['PLANNER'], ['A01', 'A02']);
       const setPolicy = (fieldCode: string, accessLevel: string) =>
@@ -351,6 +379,25 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         expect(csv).not.toContain('A01-L03');
         expect(csv.split(/\r?\n/).find((l) => l.includes(FIXTURE_STYLE))).toContain('***');
         expect((await api().get('/api/v1/order/color-size/values?field=lineCode').set(auth(t)).expect(403)).body.error.code).toBe('FIELD_NOT_READABLE');
+
+        // NSBQ bị Che: "***" ở danh sách và file xuất; lọc theo cột bị bỏ, sắp xếp về mặc định, không hỏi giá trị; bị Ẩn thì không có cột
+        await clearPolicies();
+        await setPolicy('avgOutput', 'MASKED');
+        const list = (q: string) => api().get(`/api/v1/order/color-size?pageSize=200${q}`).set(auth(t)).expect(200);
+        expect((await list(`&style=${FIXTURE_STYLE}`)).body.items[0].avgOutput).toBe('***');
+        const cfOut = encodeURIComponent(JSON.stringify({ avgOutput: { in: [-1] } }));
+        expect((await list(`&style=${FIXTURE_STYLE}&cf=${cfOut}`)).body.total).toBe(1);
+        const ids = async (q: string) => (await list(q)).body.items.map((i: any) => i.id);
+        expect(await ids('&sort=avgOutput:asc')).toEqual(await ids(''));
+        expect((await api().get('/api/v1/order/color-size/values?field=avgOutput').set(auth(t)).expect(403)).body.error.code).toBe('FIELD_NOT_READABLE');
+        const csvOut = (await api().get(`/api/v1/order/color-size/export?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).text;
+        // Chỉ NSBQ đang bị Che nên dấu che trên dòng là của cột này
+        expect(csvOut.split(/\r?\n/)[0]).toContain('NSBQ');
+        expect(csvOut.split(/\r?\n/).find((l) => l.includes(FIXTURE_STYLE))).toContain('***');
+        await clearPolicies();
+        await setPolicy('avgOutput', 'HIDDEN');
+        expect('avgOutput' in (await list(`&style=${FIXTURE_STYLE}`)).body.items[0]).toBe(false);
+        expect((await api().get(`/api/v1/order/color-size/export?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).text.split(/\r?\n/)[0]).not.toContain('NSBQ');
 
         // Số lượng giao bị Ẩn: không có tổng giao, phần của chuyền khác, phần giao; lưu có số lượng giao => 403
         await clearPolicies();

@@ -216,7 +216,7 @@ const listRow = {
   lineCode: ['A01-L03', 'A01-L05'],
   lineName: ['Chuyền 03', 'Chuyền 05'],
   startDate: '2026-12-05',
-  avgOutput: [300, 1250],
+  avgOutput: 775,
   endDate: '2026-12-20',
   shipDate: '2027-01-20',
   qty: 300,
@@ -280,10 +280,10 @@ function renderPage() {
 async function openPopup() {
   renderPage();
   const cellOfStyle = await screen.findByText('MA-THU-41');
-  // Một dòng mỗi kế hoạch: chuyền nối theo thứ tự dàn chuyền, NSBQ theo từng chuyền, trạng thái của cả kế hoạch
+  // Một dòng mỗi kế hoạch: chuyền nối theo thứ tự dàn chuyền, NSBQ trung bình (máy chủ tính), trạng thái của cả kế hoạch
   const gridRow = cellOfStyle.closest('tr')!;
   expect(within(gridRow).getByText('Chuyền 03, Chuyền 05')).toHaveAttribute('title', 'A01-L03, A01-L05');
-  expect(within(gridRow).getByText('300, 1.250')).toBeInTheDocument();
+  expect(within(gridRow).getByText('775')).toBeInTheDocument();
   expect(within(gridRow).getByText('Chưa phân màu cỡ')).toBeInTheDocument();
   fireEvent.doubleClick(cellOfStyle);
   return screen.findByRole('dialog', { name: /MA-THU-41 \(KH-A01-000041\)/ });

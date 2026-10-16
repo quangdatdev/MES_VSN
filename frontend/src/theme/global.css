@@ -2166,11 +2166,38 @@ a:hover > .home-tile .home-tile-name {
 .split-rows > * {
   min-width: 0;
 }
+/*
+ * Hai khung chồng nhau (Cập nhật tỷ lệ cắt: Danh sách PO trên, Chi tiết màu cỡ có hàng nút dưới). Lưới trong khung co dưới 220px
+ * và tự cuộn bên trong; hàng không thấp hơn tiêu đề + lưới thấp nhất (+ hàng nút ở khung dưới) để khung trên không tràn đè tiêu
+ * đề khung dưới trên màn laptop (vùng làm việc ~440px ở 1536×740). Màn thấp hơn nữa thì vùng chính cuộn.
+ */
 .split-stack {
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(170px, 1fr) minmax(210px, 1fr);
   gap: 10px;
+}
+/*
+ * Chỉ khi hai cột đứng cạnh nhau (từ 1024px): hẹp hơn thì hai khung xếp theo nội dung (media max-width 1023px). Lưới nhập giữ sàn
+ * 160px (tiêu đề, hai dòng, dòng Thêm) để thông báo lỗi nhập không ép mất lưới: khung dưới cùng tràn thì vùng chính cuộn.
+ */
+@media (min-width: 1024px) {
+  .split-stack .grid-wrap[data-fill] {
+    min-height: 0;
+  }
+  .split-stack .sheet-wrap {
+    min-height: 160px;
+  }
+  /* Danh sách lỗi nhập không bị khung ép mất chữ: cao tối đa ~4 dòng, nhiều hơn thì cuộn trong khung lỗi */
+  .split-stack .sheet-issues {
+    flex-shrink: 0;
+    max-height: 96px;
+    overflow-y: auto;
+  }
+  /* Đang sửa màu cỡ: lưới nhập ở khung dưới là phần làm việc chính nên được nhiều chỗ hơn Danh sách PO */
+  .split-stack:has(.sheet-wrap) {
+    grid-template-rows: minmax(150px, 2fr) minmax(250px, 3fr);
+  }
 }
 /*
  * Lưới chính ở trên, lưới chi tiết của dòng đang chọn ở dưới (Kế hoạch xuất hàng › PO của kế hoạch). Hàng không thấp hơn
@@ -2200,11 +2227,18 @@ a:hover > .home-tile .home-tile-name {
 }
 
 @media (max-width: 1023px) {
+  /* Một cột: khung chia cao theo nội dung, vùng chính cuộn; giữ cao bằng màn thì các khung bị ép và tràn đè nhau */
   .split-pane {
+    flex: none;
     grid-template-columns: minmax(0, 1fr);
   }
+  /* Cao tối đa để lưới tự cuộn bên trong (tiêu đề cột dính): không phải cuộn trang qua cả trăm mã hàng mới tới Danh sách PO */
   .split-pane .grid-wrap[data-fill] {
     min-height: 320px;
+    max-height: 70vh;
+  }
+  .split-stack {
+    grid-template-rows: auto auto;
   }
 }
 @media (max-width: 767px) {

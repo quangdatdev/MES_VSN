@@ -34,7 +34,7 @@ const STATUS_LABEL: Record<AllocationStatus, string> = { PLANNED: 'Chưa phân m
 
 /**
  * Một dòng của danh sách: một kế hoạch có dòng dàn chuyền trong phạm vi xem (phase 5.13). Khóa trùng mã cột đăng ký của
- * order.colorsize để interceptor áp chính sách cột; chuyền, NSBQ là mảng theo thứ tự dàn chuyền.
+ * order.colorsize để interceptor áp chính sách cột; chuyền là mảng theo thứ tự dàn chuyền, NSBQ là trung bình các chuyền đó.
  */
 export function presentAllocationPlan(r: AllocationPlanRow, name: (code: string) => string | null) {
   const codes = r.LineCodes.split(',');
@@ -50,7 +50,7 @@ export function presentAllocationPlan(r: AllocationPlanRow, name: (code: string)
     // Tên chuyền suy ra được mã: mã bị Ẩn, Che thì không trả tên (review 5.1 lượt 2 N12)
     lineName: names.includes(null) ? undefined : (names as string[]),
     startDate: day(r.StartDate),
-    avgOutput: r.AvgOutputs.split(',').map(Number),
+    avgOutput: r.AvgOutput,
     endDate: day(r.EndDate),
     shipDate: day(r.ShipDate),
     qty: r.PlanQty,
@@ -67,7 +67,7 @@ const EXPORT_COLUMNS = [
   { key: 'branchName', label: 'Chi nhánh', field: 'branchCode' },
   { key: 'lineText', label: 'Chuyền may', field: 'lineCode' },
   { key: 'startDate', label: 'Ngày bắt đầu chuyền' },
-  { key: 'avgOutputText', label: 'NSBQ chuyền', field: 'avgOutput' },
+  { key: 'avgOutput', label: 'NSBQ chuyền' },
   { key: 'endDate', label: 'Ngày kết thúc chuyền' },
   { key: 'shipDate', label: 'Ngày xuất hàng' },
   { key: 'qty', label: 'Số lượng kế hoạch' },
@@ -311,7 +311,7 @@ export class ColorSizeService {
     const name = await this.lineNames(user);
     const items = rows.map((r) => {
       const o = presentAllocationPlan(r, name);
-      return { ...o, lineText: (o.lineName ?? o.lineCode).join(', '), avgOutputText: o.avgOutput.join(', '), statusText: STATUS_LABEL[o.statusCode] };
+      return { ...o, lineText: (o.lineName ?? o.lineCode).join(', '), statusText: STATUS_LABEL[o.statusCode] };
     });
     return this.exporter.csv(user, RESOURCE, EXPORT_COLUMNS, await this.catalogs.withBranchNames(items), `phan-bo-mau-co-${user.branchCode}.csv`);
   }

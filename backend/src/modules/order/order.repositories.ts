@@ -630,8 +630,8 @@ export interface AllocationPlanRow {
   PlanQty: number;
   /** Mã chuyền của các dòng dàn chuyền trong phạm vi, nối bằng dấu phẩy theo thứ tự dàn chuyền */
   LineCodes: string;
-  /** NSBQ của các dòng đó, cùng thứ tự */
-  AvgOutputs: string;
+  /** NSBQ trung bình cộng của các dòng đó, làm tròn sản phẩm */
+  AvgOutput: number;
   StartDate: Date;
   EndDate: Date;
   /** Lúc lưu dòng dàn chuyền đầu tiên (trong phạm vi): lúc kế hoạch hiện ở màn này */
@@ -645,8 +645,7 @@ const allocationStatus = sql<AllocationStatus>`CASE WHEN r.AssignedQty <= 0 THEN
 
 /**
  * Cột lọc được theo giá trị trên bảng gom (bí danh r). Chuyền may có mặt để nằm trong danh sách trắng: lọc theo từng chuyền
- * bằng `hasLines` (chuỗi đã nối không so bằng được), giá trị của popup lọc bằng `planLineValues`. NSBQ là chuỗi liệt kê theo
- * chuyền (phase 5.13 Q3) nên không lọc, không sắp xếp.
+ * bằng `hasLines` (chuỗi đã nối không so bằng được), giá trị của popup lọc bằng `planLineValues`.
  */
 export const ALLOCATION_FILTER: FilterSpec = {
   customerName: { expr: 'r.CustomerName', kind: 'text' },
@@ -655,6 +654,7 @@ export const ALLOCATION_FILTER: FilterSpec = {
   branchCode: { expr: 'r.BranchCode', kind: 'text' },
   lineCode: { expr: 'r.LineCodes', kind: 'text' },
   startDate: { expr: 'r.StartDate', kind: 'date' },
+  avgOutput: { expr: 'r.AvgOutput', kind: 'number' },
   endDate: { expr: 'r.EndDate', kind: 'date' },
   shipDate: { expr: 'r.ShipDate', kind: 'date' },
   qty: { expr: 'r.PlanQty', kind: 'number' },
@@ -669,6 +669,7 @@ const ALLOCATION_SORT: Record<string, string | RawBuilder<unknown>> = {
   styleCode: 'r.StyleCode',
   lineCode: 'r.LineCodes',
   startDate: 'r.StartDate',
+  avgOutput: 'r.AvgOutput',
   endDate: 'r.EndDate',
   shipDate: 'r.ShipDate',
   qty: 'r.PlanQty',
@@ -714,7 +715,7 @@ export class LineAllocationRepository extends BaseRepository<PlanLineRow> {
 
   /**
    * Bảng gom một dòng mỗi kế hoạch có dòng dàn chuyền trong phạm vi của hành động (bí danh r). Phạm vi lọc trên dòng dàn chuyền
-   * trước khi gom (như SalesOrderPoRepository.styles): chuyền, NSBQ (nối theo thứ tự dàn chuyền), ngày vào chuyền sớm nhất, kết
+   * trước khi gom (như SalesOrderPoRepository.styles): chuyền (nối theo thứ tự dàn chuyền), NSBQ trung bình, ngày vào chuyền sớm nhất, kết
    * thúc muộn nhất chỉ tính các dòng đó. Cột của kế hoạch đọc theo khóa như cột kế hoạch cha của dòng dàn chuyền; dòng dàn chuyền
    * mang ĐVCS của kế hoạch (khóa ngoại ghép) nên kế hoạch cũng trong ĐVCS. Tổng giao tính mọi chuyền của kế hoạch, chỉ trả tổng
    * (như LinePlanLineRepository.totalExcept): kế hoạch phân đủ hay chưa không tùy phạm vi người xem. Trả any như allocationOrder.
@@ -725,7 +726,8 @@ export class LineAllocationRepository extends BaseRepository<PlanLineRow> {
       .select([
         'l.ShipmentPlanId',
         sql<string>`STRING_AGG(l.LineCode, ',') WITHIN GROUP (ORDER BY l.SortOrder, l.Id)`.as('LineCodes'),
-        sql<string>`STRING_AGG(CAST(l.AvgOutput AS VARCHAR(12)), ',') WITHIN GROUP (ORDER BY l.SortOrder, l.Id)`.as('AvgOutputs'),
+        // Trung bình cộng theo chuyền, không theo SL (người dùng yêu cầu 16/10); làm tròn vì NSBQ nhập là số sản phẩm nguyên
+        sql<number>`CAST(ROUND(AVG(CAST(l.AvgOutput AS DECIMAL(19, 2))), 0) AS INT)`.as('AvgOutput'),
         sql<Date>`MIN(l.StartDate)`.as('StartDate'),
         sql<Date>`MAX(l.EndDate)`.as('EndDate'),
         sql<Date>`MIN(l.CreatedAt)`.as('CreatedAt'),
@@ -744,7 +746,7 @@ export class LineAllocationRepository extends BaseRepository<PlanLineRow> {
         'p.ShipDate',
         'p.PlanQty',
         'g.LineCodes',
-        'g.AvgOutputs',
+        'g.AvgOutput',
         'g.StartDate',
         'g.EndDate',
         'g.CreatedAt',

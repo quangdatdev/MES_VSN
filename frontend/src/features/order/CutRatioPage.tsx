@@ -82,7 +82,7 @@ function useColorSizeSheet(rows: EditRow[]) {
 function ColorSizeIssues({ check }: { check: ColorSizeCheck }) {
   if (check.issues.length === 0) return null;
   return (
-    <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} py={6}>
+    <Alert className="sheet-issues" color="red" variant="light" icon={<IconAlertCircle size={16} />} py={6}>
       Sửa các ô tô đỏ trước khi lưu (dòng trống hoàn toàn được bỏ qua):
       <IssueList items={check.issues} />
       {check.badSize && (
