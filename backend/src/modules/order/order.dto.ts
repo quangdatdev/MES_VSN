@@ -206,9 +206,11 @@ export class CandidateQuery {
 
 export class DraftQuery {
   @Type(() => Number) @IsInt() salesOrderId!: number;
-  /** Id PO, ngăn bằng dấu phẩy */
-  @Matches(/^\d+(,\d+){0,99}$/, { message: 'Chọn ít nhất một PO.' }) poIds!: string;
+  /** Id PO, ngăn bằng dấu phẩy; bắt buộc khi lập mới, bỏ qua khi sửa (máy chủ đọc PO của kế hoạch) */
+  @IsOptional() @Matches(/^\d+(,\d+){0,99}$/, { message: 'Chọn ít nhất một PO.' }) poIds?: string;
   @IsOptional() @Type(() => Number) @IsInt() excludePlanId?: number;
+  /** Khi sửa: PO thêm vào kế hoạch (phase 5.17), ngăn bằng dấu phẩy */
+  @IsOptional() @Matches(/^\d+(,\d+){0,99}$/, { message: 'Danh sách PO thêm không hợp lệ.' }) addPoIds?: string;
 }
 
 export class PlanLineQtyDto {
@@ -229,6 +231,10 @@ export class ShipmentPlanUpdateDto {
   @Optional() @trim() @IsString() @MinLength(1) @MaxLength(40) poBuyDate?: string;
   @Optional() @IsISO8601({ strict: true }) @DateOnly() shipDate?: string;
   @Optional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(MAX_COLOR_SIZE_ROWS) @ValidateNested({ each: true }) @Type(() => PlanLineQtyDto) lines?: PlanLineQtyDto[];
+  /** PO thêm vào kế hoạch (phase 5.17): PO của cùng đơn hàng, chưa nằm trong kế hoạch nào; gửi kèm `lines` */
+  @Optional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsInt({ each: true }) addPoIds?: number[];
+  /** PO của kế hoạch lúc màn dựng lưới màu cỡ: khác PO đang lưu thì 409, không lưu lưới cũ đè màu cỡ của PO mới (review 5.17 M1) */
+  @Optional() @IsArray() @ArrayMaxSize(100) @IsInt({ each: true }) basePoIds?: number[];
 }
 
 // ---------- Xếp chuyền ----------

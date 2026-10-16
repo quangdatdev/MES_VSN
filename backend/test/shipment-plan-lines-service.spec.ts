@@ -32,7 +32,8 @@ describe('Màu cỡ của kế hoạch (service)', () => {
     expect(full.poIds).toEqual([1]);
     expect(full.lines).toEqual([line]);
     // SL đã tạo KHXH là của kế hoạch khác: bỏ chính kế hoạch đang xem
-    expect(plans.plannedBySalesOrder).toHaveBeenCalledWith([9], 5, undefined);
+    // SL đã tạo KHXH chỉ tính kế hoạch dùng chung PO của kế hoạch này (quyết định 15.3)
+    expect(plans.plannedBySalesOrder).toHaveBeenCalledWith([9], { excludePlanId: 5, sharingPoIds: [1] }, undefined);
 
     const noPo = await service.get(userWith(['order.shipment:view']), 5);
     expect(keys(noPo.lines[0])).toEqual(['absent', 10, 'absent']);

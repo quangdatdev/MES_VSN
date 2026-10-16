@@ -8,12 +8,15 @@ import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColu
 import { ExportService } from '../../platform/export/export.service';
 import { UserDirectoryService } from '../../platform/org/user-directory.service';
 import { FieldPolicyService, MASK, type AccessLevel } from '../../platform/permission/field-policy.service';
+import { AppException } from '../../common/app.exception';
 import { ORDER_DB } from './order.db';
 import { CandidateQuery, OrderListQuery, OrderValuesQuery, ShipmentPlanCreateDto, ShipmentPlanUpdateDto, type PlanLineQtyDto } from './order.dto';
 import {
+  orderWithoutPlanIn,
   PlanColorSizeRepository,
   PlanPoRepository,
   PoColorSizeRepository,
+  poFreeExpr,
   SalesOrderPoRepository,
   SalesOrderRepository,
   ShipmentPlanRepository,
@@ -25,6 +28,8 @@ import { ShipmentPlanDeleteGuards } from './shipment-plan-delete-guard';
 import { assignedVisible, businessFilter, byColorSize, colorSizeKey, conflict, csKey, day, derived, invalid, isReferenceError, readableQuery, someOf, sortOf, withDerived } from './order.util';
 
 const RESOURCE = 'order.shipment';
+/** Số PO tối đa của một kế hoạch, cả PO thêm khi sửa (như giới hạn của lệnh tạo) */
+const MAX_PLAN_POS = 100;
 const SORT: Record<string, string> = {
   planNo: 'PlanNo',
   customerName: 'CustomerName',
@@ -98,6 +103,11 @@ const EXPORT_COLUMNS = [
 ];
 
 type Level = AccessLevel | undefined;
+
+const sameIds = (a: number[], b: number[]) => {
+  const x = new Set(a);
+  return x.size === new Set(b).size && b.every((v) => x.has(v));
+};
 
 /**
  * Thứ tự PO: ngày xuất rồi số PO, chỉ theo cột người dùng xem được nguyên giá trị ở order.po. Xếp theo cột bị Ẩn/Che cũng lộ
@@ -207,10 +217,11 @@ export class ShipmentService {
   private async detail(scope: Scope, id: number) {
     const plan = await this.plans.getById(scope, id);
     const [colorSizes, links] = await Promise.all([this.planColorSizes.listByParent(scope, id), this.planPos.listByParent(scope, id)]);
-    const planned = await this.plannedMap(plan.SalesOrderId, id);
+    const poIds = links.map((l) => l.SalesOrderPoId);
+    const planned = await this.plannedMap(plan.SalesOrderId, { excludePlanId: id, sharingPoIds: poIds });
     return {
       ...presentPlan(plan),
-      poIds: links.map((l) => l.SalesOrderPoId),
+      poIds,
       lines: colorSizes.map((c): PlanLine => {
         const other = planned.get(csKey(c.ColorName, c.SizeName)) ?? 0;
         return { colorName: c.ColorName, sizeName: c.SizeName, originalQty: c.OriginalQty, plannedQty: other, remainingQty: Math.max(0, c.OriginalQty - other), planQty: c.PlanQty };
@@ -230,8 +241,9 @@ export class ShipmentService {
     return { ...plan, lines: plan.lines.map((l) => presentPlanLine(l, poQty, own.levels.get('planQty'))) };
   }
 
-  private async plannedMap(salesOrderId: number, excludePlanId?: number, db?: OrderDb) {
-    const rows = await this.plans.plannedBySalesOrder([salesOrderId], excludePlanId, db);
+  /** SL KHXH của các kế hoạch khác theo màu cỡ; `sharingPoIds`: chỉ kế hoạch dùng chung PO (quyết định 15.3) */
+  private async plannedMap(salesOrderId: number, opts: { excludePlanId?: number; sharingPoIds?: number[] }, db?: OrderDb) {
+    const rows = await this.plans.plannedBySalesOrder([salesOrderId], opts, db);
     return new Map(rows.map((r) => [csKey(r.ColorName, r.SizeName), Number(r.PlanQty)]));
   }
 
@@ -239,6 +251,7 @@ export class ShipmentService {
    * Popup "Chọn mã hàng": đơn hàng kèm số lượng đã lập kế hoạch và còn lại. Chỉ đơn hàng có nhà máy SX thuộc ĐVCS của phiên
    * theo danh mục Nhà máy SX (ADR 0013 mục 11), đơn hàng có Chi nhánh FOB nào cũng được; đơn chưa chọn nhà máy SX không hiện. Dữ liệu đọc từ Thông tin đơn hàng nên đi qua
    * chính sách cột của tài nguyên đó (review 5.1 #4); SL còn lại suy ra được SL đơn hàng nên theo cùng mức.
+   * Đơn đã có kế hoạch ở ĐVCS phiên không hiện: thêm số lượng bằng cách thêm PO vào kế hoạch đó (quyết định 15.1).
    */
   async candidates(user: AuthUser, query: CandidateQuery) {
     const scope = scopeOf(user);
@@ -250,7 +263,10 @@ export class ShipmentService {
       pageSize: 200,
       sort: 'ShipDate:asc',
       assignedFactories: true,
-      where: (qb) => filter(qb).where('StatusCode', 'not in', ['DONE', 'CANCELLED']),
+      where: (qb) => {
+        const open = filter(qb).where('StatusCode', 'not in', ['DONE', 'CANCELLED']);
+        return scope.isAggregate ? open : open.where(orderWithoutPlanIn(scope.branchCode));
+      },
     });
     const planned = await this.plans.plannedBySalesOrder(page.items.map((o) => o.Id));
     const shaped = await this.fields.shape(
@@ -280,12 +296,48 @@ export class ShipmentService {
     return this.orders.getById(scope, salesOrderId, 'view', db, { assignedFactories: true });
   }
 
-  /** PO của đơn hàng cho popup chọn mã hàng: đi qua chính sách cột của Cập nhật tỷ lệ cắt (order.po). */
+  /** PO của đơn hàng cho popup chọn mã hàng (Thêm mới). */
   async candidatePos(user: AuthUser, salesOrderId: number) {
     const scope = scopeOf(user);
     await this.assignedOrder(scope, salesOrderId);
+    return this.freePos(user, scope, salesOrderId);
+  }
+
+  /**
+   * PO còn thêm được vào kế hoạch đang sửa (nút "Chọn mã hàng" của popup Sửa, phase 5.17): PO của đúng đơn hàng của kế hoạch, chưa
+   * nằm trong kế hoạch nào. Kế hoạch phải sửa được, đơn phải còn lập kế hoạch được ở ĐVCS phiên (`openOrder`).
+   */
+  async planCandidatePos(user: AuthUser, planId: number) {
+    const scope = scopeOf(user);
+    await this.plans.assertWritable(scope);
+    const plan = await this.plans.getById(scope, planId, 'update');
+    await this.openOrder(scope, plan.SalesOrderId);
+    return this.freePos(user, scope, plan.SalesOrderId);
+  }
+
+  /**
+   * Thêm PO là lập thêm số lượng nên theo cùng điều kiện với lập mới (review 5.17 M2): đơn còn Nhà máy SX thuộc ĐVCS phiên, chưa
+   * Hoàn thành/Đã hủy; không thì ĐVCS không còn may đơn vẫn giành được PO mới. Sửa SL của PO đã có thì không đòi (đơn đổi nhà máy
+   * sau khi lập không khóa kế hoạch đã lập). 422 thay cho 404: kế hoạch vẫn xem, sửa được.
+   */
+  private async openOrder(scope: Scope, salesOrderId: number, db?: OrderDb) {
+    let order: Awaited<ReturnType<ShipmentService['assignedOrder']>>;
+    try {
+      order = await this.assignedOrder(scope, salesOrderId, db);
+    } catch (e) {
+      if (e instanceof AppException && e.code === 'NOT_FOUND') throw invalid('Đơn hàng không còn Nhà máy SX thuộc đơn vị này nên không thêm PO được.');
+      throw e;
+    }
+    if (order.StatusCode === 'DONE' || order.StatusCode === 'CANCELLED') throw invalid('Đơn hàng đã hoàn thành hoặc đã hủy, không thêm PO được.');
+  }
+
+  /**
+   * PO chưa nằm trong kế hoạch xuất hàng nào của một đơn hàng (mỗi PO một kế hoạch, quyết định 15.2): đi qua phạm vi và chính sách
+   * cột của Cập nhật tỷ lệ cắt (order.po).
+   */
+  private async freePos(user: AuthUser, scope: Scope, salesOrderId: number) {
     const { levels } = await this.fields.levels(scope.access, 'order.po');
-    const page = await this.pos.list(scope, { page: 1, pageSize: 200, sort: poSort(levels), where: (qb) => qb.where('SalesOrderId', '=', salesOrderId) });
+    const page = await this.pos.list(scope, { page: 1, pageSize: 200, sort: poSort(levels), where: (qb) => qb.where('SalesOrderId', '=', salesOrderId).where(poFreeExpr) });
     return this.fields.shape(
       user,
       'order.po',
@@ -304,7 +356,8 @@ export class ShipmentService {
 
   /**
    * Lưới "PO của kế hoạch" dưới danh sách kế hoạch (task 5.9.14): PO đã chọn khi lập kế hoạch và số lượng đã xác nhận, chưa
-   * xác nhận. Xác nhận làm ở Cập nhật tỷ lệ cắt, theo cả PO, nên số là của cả PO (một PO có thể nằm trong nhiều kế hoạch).
+   * xác nhận. Xác nhận làm ở Cập nhật tỷ lệ cắt, theo cả PO, nên số là của cả PO (dữ liệu lập trước phase 5.17 có PO nằm trong nhiều
+   * kế hoạch).
    * Dữ liệu PO đi qua phạm vi và chính sách cột của order.po (ADR 0006; controller khai báo @FieldResource('order.po')).
    * `hiddenCount`: PO của kế hoạch nằm ngoài phạm vi người dùng được xem ở order.po.
    */
@@ -323,10 +376,12 @@ export class ShipmentService {
    */
   async draft(user: AuthUser, salesOrderId: number, poIds: number[], excludePlanId?: number, db?: OrderDb): Promise<DraftLine[]> {
     const scope = scopeOf(user);
+    // Kế hoạch không có PO (chỉ có ở dữ liệu nạp tay): không có màu cỡ nào, tránh câu `IN ()`
+    if (poIds.length === 0) return [];
     const page = await this.pos.list(scope, { page: 1, pageSize: 200, where: (qb) => qb.where('SalesOrderId', '=', salesOrderId).where('Id', 'in', poIds) }, 'view', db);
     if (page.items.length !== new Set(poIds).size) throw invalid('Có PO không thuộc mã hàng đã chọn hoặc bạn không được xem.');
     const original = byColorSize(await this.poColorSizes.listByParents(scope, poIds, 'view', db), (r) => r.Qty);
-    const planned = await this.plannedMap(salesOrderId, excludePlanId, db);
+    const planned = await this.plannedMap(salesOrderId, { excludePlanId, sharingPoIds: poIds }, db);
     return [...original.values()].map((o) => {
       const done = planned.get(csKey(o.colorName, o.sizeName)) ?? 0;
       return { colorName: o.colorName, sizeName: o.sizeName, originalQty: o.qty, plannedQty: done, remainingQty: Math.max(0, o.qty - done) };
@@ -334,14 +389,41 @@ export class ShipmentService {
   }
 
   /**
-   * Lưới màu cỡ cho popup (GET draft): lập mới thì đơn hàng phải có nhà máy SX thuộc ĐVCS của phiên; sửa kế hoạch
-   * (`excludePlanId`) thì kế hoạch phải xem được và đúng đơn hàng đó (đơn đổi nhà máy SX không khóa việc sửa kế hoạch đã lập).
+   * Lưới màu cỡ cho popup (GET draft): lập mới thì đơn hàng phải có nhà máy SX thuộc ĐVCS của phiên, PO là `poIds`; sửa kế hoạch
+   * (`excludePlanId`) thì kế hoạch phải xem được và đúng đơn hàng đó (đơn đổi nhà máy SX không khóa việc sửa kế hoạch đã lập), PO là
+   * PO của kế hoạch (máy chủ đọc, `poIds` client gửi bị bỏ) cộng `addPoIds` (thêm PO, phase 5.17).
    */
-  async draftFor(user: AuthUser, salesOrderId: number, poIds: number[], excludePlanId?: number) {
+  async draftFor(user: AuthUser, q: { salesOrderId: number; poIds?: number[]; excludePlanId?: number; addPoIds?: number[] }) {
     const scope = scopeOf(user);
-    if (excludePlanId === undefined) await this.assignedOrder(scope, salesOrderId);
-    else if ((await this.plans.getById(scope, excludePlanId)).SalesOrderId !== salesOrderId) throw invalid('Kế hoạch không thuộc mã hàng này.');
-    return this.draft(user, salesOrderId, poIds, excludePlanId);
+    if (q.excludePlanId === undefined) {
+      if (!q.poIds?.length) throw invalid('Chọn ít nhất một PO.');
+      await this.assignedOrder(scope, q.salesOrderId);
+      return this.draft(user, q.salesOrderId, q.poIds);
+    }
+    if ((await this.plans.getById(scope, q.excludePlanId)).SalesOrderId !== q.salesOrderId) throw invalid('Kế hoạch không thuộc mã hàng này.');
+    const current = (await this.planPos.listByParent(scope, q.excludePlanId)).map((l) => l.SalesOrderPoId);
+    if (q.addPoIds?.length) await this.openOrder(scope, q.salesOrderId);
+    return this.draft(user, q.salesOrderId, await this.withAdded(scope, q.salesOrderId, current, q.addPoIds ?? []), q.excludePlanId);
+  }
+
+  /**
+   * PO của kế hoạch cộng PO thêm vào: PO thêm chưa được nằm trong kế hoạch nào, kể cả kế hoạch này (mỗi PO một kế hoạch, quyết
+   * định 15.2). Không nêu số PO trong câu báo: cột số PO có thể bị Ẩn với người này. PO không thuộc đơn, không xem được: 422 (kiểm
+   * trước, như draft).
+   */
+  private async withAdded(scope: Scope, salesOrderId: number, current: number[], add: number[], db?: OrderDb): Promise<number[]> {
+    const added = [...new Set(add)];
+    if (added.length === 0) return current;
+    const own = await this.pos.list(scope, { page: 1, pageSize: 200, where: (qb) => qb.where('SalesOrderId', '=', salesOrderId).where('Id', 'in', added) }, 'view', db);
+    if (own.items.length !== added.length) throw invalid('Có PO không thuộc mã hàng đã chọn hoặc bạn không được xem.');
+    const used = await this.pos.inAnyPlan(scope, added, db);
+    if (used.length) {
+      const what = used.length === 1 ? 'Có một PO' : `Có ${used.length} PO`;
+      throw conflict(`${what} đã nằm trong kế hoạch xuất hàng (mỗi PO chỉ thuộc một kế hoạch). Bỏ PO đó rồi chọn lại.`, { poIds: used.map((p) => p.Id) });
+    }
+    const all = [...new Set([...current, ...added])];
+    if (all.length > MAX_PLAN_POS) throw invalid(`Một kế hoạch có tối đa ${MAX_PLAN_POS} PO.`);
+    return all;
   }
 
   private checkLines(draft: DraftLine[], lines: PlanLineQtyDto[]) {
@@ -377,6 +459,15 @@ export class ShipmentService {
       // có thể vừa đổi
       await this.orders.lock(scope, order.Id, 'view', trx);
       await this.assignedOrder(scope, order.Id, trx);
+      // Mỗi ĐVCS một kế hoạch mỗi đơn (quyết định 15.1); kiểm sau khóa đơn: hai người cùng lập thì người sau thấy kế hoạch người trước
+      const existing = await this.plans.planOfOrder(scope, order.Id, trx);
+      if (existing) {
+        // Số kế hoạch chỉ nêu khi người lập xem được kế hoạch đó và cột Số kế hoạch không bị Ẩn/Che (review 5.17 L1)
+        const planNoLevel = (await this.fields.levels(scope.access, RESOURCE)).levels.get('planNo');
+        const shown = planNoLevel !== 'HIDDEN' && planNoLevel !== 'MASKED' && (await this.plans.allows(scope, 'view', existing));
+        throw conflict(`Đơn hàng này đã có ${shown ? `kế hoạch ${existing.PlanNo}` : 'kế hoạch xuất hàng'} ở đơn vị này. Mở kế hoạch đó, bấm "Chọn mã hàng" để thêm PO.`);
+      }
+      await this.withAdded(scope, order.Id, [], poIds, trx);
       const lines = this.checkLines(await this.draft(user, order.Id, poIds, undefined, trx), dto.lines);
       const row = await this.plans.createNumbered(
         scope,
@@ -408,10 +499,14 @@ export class ShipmentService {
     return out;
   }
 
-  /** "Sửa": đổi PO/Buy date, ngày xuất, số lượng theo màu cỡ (trong giới hạn còn lại). */
+  /**
+   * "Sửa": đổi PO/Buy date, ngày xuất, số lượng theo màu cỡ (trong giới hạn còn lại); thêm PO của cùng đơn hàng (`addPoIds`, phase 5.17,
+   * gửi kèm `lines` vì số lượng gốc đổi), không bỏ PO.
+   */
   async update(user: AuthUser, id: number, dto: ShipmentPlanUpdateDto) {
     const scope = scopeOf(user);
     await this.plans.assertWritable(scope);
+    if (dto.addPoIds && !dto.lines) throw invalid('Thêm PO thì gửi kèm số lượng theo màu cỡ.');
     const before = await this.detail(scope, id);
     const showAssigned = dto.lines ? await assignedVisible(this.fields, user) : false;
     const set: Record<string, unknown> = {};
@@ -422,9 +517,18 @@ export class ShipmentService {
       // SL đã xếp chuyền và ghi SL mới không chen được với lần lưu dàn chuyền đang chạy (review 5.1 lượt 2 N2).
       // Khóa đơn hàng chỉ để xếp hàng với người lập kế hoạch khác cho cùng đơn: không cần quyền xem đơn hàng (review lượt 3 P6)
       let lines: ReturnType<ShipmentService['checkLines']> | null = null;
+      let poIds = before.poIds;
+      let addedPos: number[] = [];
       if (dto.lines) {
         await this.orders.lockBranchRow(scope, before.salesOrderId, trx);
-        lines = this.checkLines(await this.draft(user, before.salesOrderId, before.poIds, id, trx), dto.lines);
+        // PO của kế hoạch đọc lại sau khóa đơn: người khác vừa thêm PO vào kế hoạch này (cũng khóa đơn) thì tính theo PO mới nhất
+        const savedPos = (await this.planPos.listByParent(scope, id, 'update', trx)).map((l) => l.SalesOrderPoId);
+        // Lưới trên màn dựng theo tập PO cũ (người khác vừa thêm PO): lưu là xóa màu cỡ của PO mới (review 5.17 M1)
+        if (dto.basePoIds && !sameIds(dto.basePoIds, savedPos)) throw conflict('Kế hoạch vừa được thêm PO ở nơi khác. Đóng popup, mở lại kế hoạch rồi sửa tiếp.');
+        if (dto.addPoIds?.length) await this.openOrder(scope, before.salesOrderId, trx);
+        poIds = await this.withAdded(scope, before.salesOrderId, savedPos, dto.addPoIds ?? [], trx);
+        addedPos = poIds.filter((p) => !savedPos.includes(p));
+        lines = this.checkLines(await this.draft(user, before.salesOrderId, poIds, id, trx), dto.lines);
         set.PlanQty = lines.reduce((s, l) => s + l.PlanQty, 0);
       }
       await this.plans.lock(scope, id, 'update', trx);
@@ -451,11 +555,13 @@ export class ShipmentService {
         }
         await this.planColorSizes.removeWhere(scope, { parentId: id }, trx);
         await this.planColorSizes.insert(scope, id, lines, trx);
+        if (addedPos.length) await this.planPos.insert(scope, id, addedPos.map((p) => ({ SalesOrderPoId: p })), trx);
       }
-      return Object.keys(set).length ? this.plans.update(scope, id, set, trx) : current;
+      return { row: Object.keys(set).length ? await this.plans.update(scope, id, set, trx) : current, poIds, addedPos };
     });
-    const out = presentPlan(plan);
-    await this.log(user, id, 'UPDATE', before, { ...out, lines: dto.lines });
+    const out = presentPlan(plan.row);
+    const pos = plan.addedPos.length ? { poIds: plan.poIds, addedPoIds: plan.addedPos } : {};
+    await this.log(user, id, 'UPDATE', before, { ...out, ...pos, lines: dto.lines });
     return out;
   }
 

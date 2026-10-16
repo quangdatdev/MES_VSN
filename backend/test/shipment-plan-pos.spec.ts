@@ -23,7 +23,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
   let resources: { id: number; code: string }[];
   let permissions: { id: number; code: string }[];
   let factoryId = 0;
-  const fx = { orderId: 0, planId: 0, draftPo: 0, confirmedPo: 0, systemPo: 0 };
+  const fx = { orderId: 0, planId: 0, draftPo: 0, confirmedPo: 0, systemPo: 0, freePo: 0, freeConfirmedPo: 0 };
   const api = () => request(app.getHttpServer());
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
   const roleId = (code: string) => roles.find((r) => r.code === code)!.id;
@@ -103,6 +103,9 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
     fx.confirmedPo = await po('TEST-SPP-2', 200, '2027-05-31', true, kh, kh);
     fx.systemPo = await po('TEST-SPP-3', 500, '2027-06-30', true, null);
     fx.planId = await plan('TEST-SPP-PLAN', [fx.draftPo, fx.confirmedPo, fx.systemPo], kh);
+    // Hai PO chưa vào kế hoạch nào: popup chọn PO (Thêm mới, "Chọn mã hàng" khi Sửa) chỉ có hai PO này (quyết định 15.2)
+    fx.freePo = await po('TEST-SPP-7', 100, '2027-06-30', false, null);
+    fx.freeConfirmedPo = await po('TEST-SPP-8', 100, '2027-05-31', true, kh, kh);
     planner = await tokenFor('kehoach.a', 'A01');
   });
 
@@ -169,13 +172,34 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
     }
   });
 
+  it('popup chọn PO chỉ có PO chưa nằm trong kế hoạch nào, cả khi Thêm mới và "Chọn mã hàng" khi Sửa (quyết định 15.2)', async () => {
+    const created = (await api().get(`/api/v1/order/shipment-plans/candidates/${fx.orderId}/pos`).set(auth(planner)).expect(200)).body as any[];
+    expect(created.map((p) => p.poNumber)).toEqual(['TEST-SPP-8', 'TEST-SPP-7']);
+    const edit = (await api().get(`/api/v1/order/shipment-plans/${fx.planId}/candidate-pos`).set(auth(planner)).expect(200)).body as any[];
+    expect(edit.map((p) => p.id)).toEqual([fx.freeConfirmedPo, fx.freePo]);
+    expect(edit[0]).toMatchObject({ statusCode: 'CONFIRMED', qty: 100, shipDate: '2027-05-31' });
+    // Kế hoạch ĐVCS khác: 404; không có quyền xem PO: 403. Lấy token trước (xem bài kế hoạch theo ĐVCS)
+    const a02 = await tokenFor('admin', 'A02');
+    await api().get(`/api/v1/order/shipment-plans/${fx.planId}/candidate-pos`).set(auth(a02)).expect(404);
+    const kh = await userId('kehoach.a');
+    await api().post(`/api/v1/admin/users/${kh}/overrides`).set(auth(admin)).send({ permissionId: permId('order.po:view'), effect: 'DENY', reason: 'Thử chặn xem PO (test)' }).expect(200);
+    const ov = (await api().get(`/api/v1/admin/users/${kh}/access`).set(auth(admin))).body.overrides.find((o: any) => o.permissionCode === 'order.po:view');
+    try {
+      await api().get(`/api/v1/order/shipment-plans/${fx.planId}/candidate-pos`).set(auth(planner)).expect(403);
+    } finally {
+      await api().delete(`/api/v1/admin/users/${kh}/overrides/${ov.id}`).set(auth(admin)).expect(204);
+    }
+  });
+
   it('Ngày xuất bị Ẩn thì không xếp theo ngày xuất (lộ thứ tự ngày): xếp theo PO#, cả popup Chọn mã hàng', async () => {
     await setRolePolicy('PLANNER', 'order.po', 'shipDate', 'HIDDEN');
     try {
       expect((await posOf(planner)).items.map((r) => r.poNumber)).toEqual(['TEST-SPP-1', 'TEST-SPP-2', 'TEST-SPP-3']);
       const candidates = (await api().get(`/api/v1/order/shipment-plans/candidates/${fx.orderId}/pos`).set(auth(planner)).expect(200)).body as any[];
-      expect(candidates.map((p) => p.poNumber)).toEqual(['TEST-SPP-1', 'TEST-SPP-2', 'TEST-SPP-3']);
+      expect(candidates.map((p) => p.poNumber)).toEqual(['TEST-SPP-7', 'TEST-SPP-8']);
       expect(candidates[0]).not.toHaveProperty('shipDate');
+      const edit = (await api().get(`/api/v1/order/shipment-plans/${fx.planId}/candidate-pos`).set(auth(planner)).expect(200)).body as any[];
+      expect(edit.map((p) => p.poNumber)).toEqual(['TEST-SPP-7', 'TEST-SPP-8']);
     } finally {
       await setRolePolicy('PLANNER', 'order.po', 'shipDate', null);
     }
@@ -192,7 +216,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
         ['CONFIRMED', '2027-06-30'],
       ]);
       const candidates = (await api().get(`/api/v1/order/shipment-plans/candidates/${fx.orderId}/pos`).set(auth(planner)).expect(200)).body as any[];
-      expect(candidates.find((p) => p.id === fx.confirmedPo)).toMatchObject({ statusCode: 'CONFIRMED', shipDate: '2027-05-31' });
+      expect(candidates.find((p) => p.id === fx.freeConfirmedPo)).toMatchObject({ statusCode: 'CONFIRMED', shipDate: '2027-05-31' });
       // Lưới kế hoạch vẫn theo chính sách của Kế hoạch xuất hàng
       const plans = (await api().get(`/api/v1/order/shipment-plans?style=${STYLE}`).set(auth(planner)).expect(200)).body.items as any[];
       expect(plans[0]).not.toHaveProperty('statusCode');

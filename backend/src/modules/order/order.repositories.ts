@@ -125,6 +125,14 @@ export class ShipmentPlanPriceRepository {
 export const poOrderBranchExpr = sql<string>`(SELECT o.BranchCode FROM dbo.SalesOrder o WHERE o.Id = SalesOrderPo.SalesOrderId)`;
 /** 1 khi PO nằm trong kế hoạch xuất hàng nào đó (mọi ĐVCS): không xóa được */
 export const poInPlanExpr = sql<number>`CASE WHEN EXISTS (SELECT 1 FROM dbo.ShipmentPlanPo spp WHERE spp.SalesOrderPoId = SalesOrderPo.Id) THEN 1 ELSE 0 END`;
+/**
+ * PO chưa nằm trong kế hoạch xuất hàng nào (mọi ĐVCS): mỗi PO chỉ thuộc một kế hoạch (phase 5.17, quyết định 15.2), PO đã lập kế
+ * hoạch không hiện lại ở popup chọn PO
+ */
+export const poFreeExpr = sql<SqlBool>`NOT EXISTS (SELECT 1 FROM dbo.ShipmentPlanPo spp WHERE spp.SalesOrderPoId = SalesOrderPo.Id)`;
+/** Đơn hàng chưa có kế hoạch xuất hàng ở ĐVCS `branchCode` (mỗi ĐVCS một kế hoạch mỗi đơn, phase 5.17, quyết định 15.1) */
+export const orderWithoutPlanIn = (branchCode: string) =>
+  sql<SqlBool>`NOT EXISTS (SELECT 1 FROM dbo.ShipmentPlan sp WHERE sp.SalesOrderId = SalesOrder.Id AND sp.BranchCode = ${branchCode})`;
 
 /**
  * PO của đơn hàng: dùng chung như đơn hàng (ADR 0013); PO nhập tay đóng dấu ĐVCS của phiên. ĐVCS đưa PO vào kế hoạch xuất
@@ -195,6 +203,16 @@ export class SalesOrderPoRepository extends BaseRepository<SalesOrderPoRow> {
       .executeTakeFirst();
     return !!row;
   }
+
+  /**
+   * Các PO trong `ids` (người dùng xem được) đã nằm trong kế hoạch xuất hàng nào đó, mọi ĐVCS: lập, thêm PO vào kế hoạch kiểm lại
+   * dưới khóa đơn hàng (phase 5.17)
+   */
+  async inAnyPlan(scope: Scope, ids: number[], db: Kysely<any> = this.db): Promise<{ Id: number }[]> {
+    if (ids.length === 0) return [];
+    const qb = await this.scoped(db.selectFrom('SalesOrderPo').select('Id').where('Id', 'in', ids), scope);
+    return (await qb.where(sql<boolean>`NOT (${poFreeExpr})`).orderBy('Id').execute()) as { Id: number }[];
+  }
 }
 
 @Injectable()
@@ -226,17 +244,34 @@ export class ShipmentPlanRepository extends BaseRepository<ShipmentPlanRow> {
    * Tính trên mọi kế hoạch của đơn hàng ở mọi ĐVCS, không theo phạm vi người xem: đơn hàng dùng chung toàn công ty, kế hoạch
    * lập ở ĐVCS nào cũng trừ vào cùng số lượng gốc (ADR 0013), và người chỉ thấy kế hoạch mình tạo cũng không được lập vượt
    * (review 5.1 #7). Chỉ trả tổng số, không trả dòng kế hoạch nào.
+   * `sharingPoIds`: chỉ tính kế hoạch có dùng chung ít nhất một PO trong danh sách (lưới màu cỡ của popup, quyết định 15.3): PO
+   * khác nhau thì số lượng gốc khác nhau, không trừ lẫn nhau.
    */
-  async plannedBySalesOrder(salesOrderIds: number[], excludePlanId?: number, db: Kysely<any> = this.db) {
-    if (salesOrderIds.length === 0) return [];
+  async plannedBySalesOrder(salesOrderIds: number[], opts: { excludePlanId?: number; sharingPoIds?: number[] } = {}, db: Kysely<any> = this.db) {
+    if (salesOrderIds.length === 0 || opts.sharingPoIds?.length === 0) return [];
     let qb: any = db
       .selectFrom('ShipmentPlanColorSize as cs')
       .innerJoin('ShipmentPlan as p', 'p.Id', 'cs.ShipmentPlanId')
       .select(['p.SalesOrderId', 'cs.ColorName', 'cs.SizeName', sql<number>`SUM(cs.PlanQty)`.as('PlanQty')])
       .where('p.SalesOrderId', 'in', salesOrderIds)
       .groupBy(['p.SalesOrderId', 'cs.ColorName', 'cs.SizeName']);
-    if (excludePlanId) qb = qb.where('p.Id', '<>', excludePlanId);
+    if (opts.excludePlanId) qb = qb.where('p.Id', '<>', opts.excludePlanId);
+    if (opts.sharingPoIds) {
+      const ids = opts.sharingPoIds;
+      qb = qb.where(({ exists, selectFrom }: any) =>
+        exists(selectFrom('ShipmentPlanPo as spp').select('spp.Id').whereRef('spp.ShipmentPlanId', '=', 'p.Id').where('spp.SalesOrderPoId', 'in', ids)),
+      );
+    }
     return (await qb.execute()) as { SalesOrderId: number; ColorName: string; SizeName: string; PlanQty: number }[];
+  }
+
+  /**
+   * Kế hoạch của đơn hàng ở ĐVCS phiên (mỗi ĐVCS một kế hoạch mỗi đơn, quyết định 15.1), không theo phạm vi người lập: người chỉ
+   * thấy kế hoạch mình tạo cũng không lập trùng được. Dữ liệu cũ có thể có nhiều kế hoạch: trả kế hoạch lập sớm nhất.
+   */
+  async planOfOrder(scope: Scope, salesOrderId: number, db: Kysely<any> = this.db): Promise<ShipmentPlanRow | undefined> {
+    const qb = await this.branchOnly(db.selectFrom('ShipmentPlan').selectAll().where('SalesOrderId', '=', salesOrderId), scope);
+    return (await qb.orderBy('Id').executeTakeFirst()) as ShipmentPlanRow | undefined;
   }
 
   /** Tổng số lượng đã xếp chuyền của một kế hoạch trong phạm vi sửa. */

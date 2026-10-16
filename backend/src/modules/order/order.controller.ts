@@ -162,10 +162,17 @@ export class ShipmentController {
   candidatePos(@CurrentUser() u: AuthUser, @id() soId: number) { return this.service.candidatePos(u, soId); }
 
   @Get('draft') @RequirePermission('order.shipment:view')
-  draft(@CurrentUser() u: AuthUser, @Query() q: DraftQuery) { return this.service.draftFor(u, q.salesOrderId, q.poIds.split(',').map(Number), q.excludePlanId); }
+  draft(@CurrentUser() u: AuthUser, @Query() q: DraftQuery) {
+    const ids = (v?: string) => (v ? v.split(',').map(Number) : undefined);
+    return this.service.draftFor(u, { salesOrderId: q.salesOrderId, poIds: ids(q.poIds), excludePlanId: q.excludePlanId, addPoIds: ids(q.addPoIds) });
+  }
 
   @Get(':id') @RequirePermission('order.shipment:view')
   get(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.get(u, pid); }
+
+  // Nút "Chọn mã hàng" của popup Sửa (phase 5.17): PO chưa lập kế hoạch của đơn, để thêm vào kế hoạch; chính sách cột của PO như trên
+  @Get(':id/candidate-pos') @RequirePermission('order.shipment:update', 'order.po:view') @FieldResource('order.po')
+  planCandidatePos(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.planCandidatePos(u, pid); }
 
   // Lưới "PO của kế hoạch" (task 5.9.14): cần cả quyền xem PO ở Cập nhật tỷ lệ cắt; chính sách cột của PO như candidates/:id/pos
   @Get(':id/pos') @RequirePermission('order.shipment:view', 'order.po:view') @FieldResource('order.po')

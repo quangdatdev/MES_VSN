@@ -403,13 +403,20 @@ const PLAN_SHEET: SheetColumn<PlanSheetRow>[] = [
   sheetNumber<PlanSheetRow>('planQty', 'SL KHXH', { required: true, minWidth: 120, error: (r) => (r.planQty ?? 0) > r.remainingQty }),
 ];
 
-/** Popup B2: thêm hoặc sửa kế hoạch. SL KHXH theo màu cỡ không vượt SL còn lại. */
+/**
+ * Popup B2: thêm hoặc sửa kế hoạch. SL KHXH theo màu cỡ không vượt SL còn lại. Khi sửa, "Chọn mã hàng" thêm PO chưa lập kế hoạch của
+ * cùng mã hàng (phase 5.17): Số lượng gốc cộng dồn, SL KHXH giữ số đang nhập, màu cỡ mới để trống.
+ */
 function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClose: () => void; onDone: () => void }) {
   const branch = useSession((s) => s.branch);
   const branchName = useBranchName();
   const mobile = useMobile();
+  const canViewPo = useCan('order.po:view');
   const [picker, setPicker] = useState(false);
   const [picked, setPicked] = useState<Picked | null>(null);
+  // Sửa: PO thêm vào kế hoạch, chưa lưu
+  const [added, setAdded] = useState<number[]>([]);
+  const [poPicker, setPoPicker] = useState(false);
   const [qty, setQty] = useState<Record<string, number | ''>>({});
   const form = useForm({ initialValues: { poBuyDate: '', shipDate: '' } });
   const policy = useFieldPolicy(RESOURCE);
@@ -441,10 +448,17 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
 
   const salesOrderId = plan?.salesOrderId ?? picked?.candidate.salesOrderId;
   const poIds = plan?.poIds ?? picked?.poIds ?? [];
+  // Sửa: máy chủ tự lấy PO của kế hoạch, client chỉ gửi PO thêm
   const draft = useQuery({
-    queryKey: ['order', 'shipment-draft', salesOrderId, poIds.join(','), planId],
-    queryFn: () => api<PlanLine[]>(`/order/shipment-plans/draft${qs({ salesOrderId, poIds: poIds.join(','), excludePlanId: planId ?? undefined })}`),
-    enabled: !!salesOrderId && poIds.length > 0,
+    // Khóa có tập PO của kế hoạch: người khác vừa thêm PO thì không dùng lưới cũ trong bộ nhớ đệm (review 5.17 M1)
+    queryKey: ['order', 'shipment-draft', salesOrderId, planId, poIds.join(','), added.join(',')],
+    queryFn: () =>
+      api<PlanLine[]>(
+        `/order/shipment-plans/draft${qs(planId ? { salesOrderId, excludePlanId: planId, addPoIds: added.join(',') || undefined } : { salesOrderId, poIds: poIds.join(',') })}`,
+      ),
+    enabled: !!salesOrderId && (planId ? !!plan : poIds.length > 0),
+    // Thêm PO khi sửa: giữ lưới đang có tới khi lưới mới về (Lưu khóa trong lúc đó); lập mới đổi mã hàng thì không giữ lưới mã cũ
+    placeholderData: planId ? keepPreviousData : undefined,
   });
   const lines = draft.data ?? NO_DRAFT_LINES;
   const qtyOf = (l: PlanLine) => Number(qty[lineKey(l)]) || 0;
@@ -453,7 +467,7 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
   const savedQty = new Map((plan?.lines ?? []).map((l) => [lineKey(l), typeof l.planQty === 'number' ? l.planQty : 0]));
   const qtyChanged = lines.some((l) => qtyOf(l) !== (savedQty.get(lineKey(l)) ?? 0));
   const hasQty = Object.values(qty).some((v) => v !== '');
-  const dirty = planId ? filled && (form.isDirty() || qtyChanged) : !!picked || form.isDirty() || hasQty;
+  const dirty = planId ? filled && (form.isDirty() || qtyChanged || added.length > 0) : !!picked || form.isDirty() || hasQty;
   useLeaveGuard(dirty);
   const close = () => confirmDiscard(dirty, onClose);
 
@@ -464,7 +478,11 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
       const body = {
         poBuyDate: canPoBuy ? form.values.poBuyDate.trim() : undefined,
         shipDate: canShip ? form.values.shipDate || undefined : undefined,
-        lines: canQty && (!planId || qtyChanged) ? lines.map((l) => ({ colorName: l.colorName, sizeName: l.sizeName, planQty: qtyOf(l) })) : undefined,
+        lines: canQty && (!planId || qtyChanged || added.length > 0) ? lines.map((l) => ({ colorName: l.colorName, sizeName: l.sizeName, planQty: qtyOf(l) })) : undefined,
+        // Thêm PO đổi Số lượng gốc nên luôn gửi kèm lưới màu cỡ (máy chủ đòi)
+        addPoIds: planId && added.length > 0 ? added : undefined,
+        // Tập PO lưới đang dựng theo: máy chủ báo 409 nếu kế hoạch vừa được thêm PO ở nơi khác (lưu là mất màu cỡ của PO đó)
+        basePoIds: planId && canQty && (qtyChanged || added.length > 0) ? plan?.poIds : undefined,
       };
       return planId ? api<ShipmentPlan>(`/order/shipment-plans/${planId}`, { method: 'PUT', body }) : api<ShipmentPlan>('/order/shipment-plans', { method: 'POST', body: { ...body, salesOrderId, poIds } });
     },
@@ -487,8 +505,10 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
         ? 'Chọn mã hàng trước'
         : canPoBuy && !form.values.poBuyDate.trim()
           ? 'Nhập PO/Buy date'
-          : canQty && draft.isLoading
+          : canQty && (draft.isLoading || (draft.isPlaceholderData && draft.isFetching))
             ? 'Đang tải màu cỡ…'
+            : canQty && draft.error
+              ? 'Chưa tải được màu cỡ'
             : canQty && over.length > 0
               ? 'Có màu cỡ có SL KHXH lớn hơn SL còn lại'
               : canQty && total <= 0
@@ -496,6 +516,13 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
                 : planId && !dirty
                   ? 'Chưa có thay đổi nào'
                   : null;
+  const addPoBlocked = !canQty
+    ? 'Bạn không được sửa số lượng kế hoạch'
+    : !canViewPo
+      ? 'Bạn không được xem PO ở Cập nhật tỷ lệ cắt'
+      : !filled
+        ? 'Đang tải kế hoạch…'
+        : null;
   /** Ô theo chính sách cột: Ẩn thì không có, Che thì hiện "***", Chỉ đọc thì khóa. */
   const lock = (field: string) => (policy.editable(field) ? {} : { readOnly: true, className: 'field-readonly', description: 'Bạn chỉ được xem trường này' });
 
@@ -534,7 +561,7 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
       opened
       onClose={close}
       // Đang mở popup Chọn mã hàng: Esc chỉ đóng popup trên cùng (Mantine nghe Esc trên cả cửa sổ, hai popup cùng nhận)
-      closeOnEscape={!canQty && !picker}
+      closeOnEscape={!canQty && !picker && !poPicker}
       size="min(1100px, 96vw)"
       fullScreen={mobile}
       title={planId ? (plan ? `Sửa kế hoạch ${plan.planNo}` : existing.error ? 'Sửa kế hoạch xuất hàng' : 'Đang tải kế hoạch…') : 'Thêm kế hoạch xuất hàng'}
@@ -575,6 +602,16 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
                 {picked ? 'Chọn lại mã hàng' : 'Chọn mã hàng'}
               </Button>
             )}
+            {planId && (
+              <ActionButton
+                variant="default"
+                leftSection={<IconListSearch size={15} />}
+                onClick={() => setPoPicker(true)}
+                blockedReason={addPoBlocked}
+              >
+                Chọn mã hàng
+              </ActionButton>
+            )}
             {canQty && (
               <ActionButton
                 variant="subtle"
@@ -587,7 +624,24 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
             )}
           </Group>
           {picked && <Text size="sm" c="dimmed">{picked.poIds.length} PO đã chọn</Text>}
+          {plan && (
+            <Group gap={6}>
+              <Text size="sm" c="dimmed">
+                {plan.poIds.length} PO của kế hoạch{added.length > 0 && ` + ${added.length} PO thêm`}
+              </Text>
+              {added.length > 0 && (
+                <Button size="compact-sm" variant="subtle" color="gray" onClick={() => setAdded([])}>
+                  Bỏ PO vừa thêm
+                </Button>
+              )}
+            </Group>
+          )}
         </Group>
+        {added.length > 0 && (
+          <Alert color="blue" variant="light" py={6}>
+            Số lượng gốc đã cộng thêm màu cỡ của {added.length} PO. SL KHXH giữ như cũ: nhập thêm cho màu cỡ cần lập rồi bấm Lưu thay đổi.
+          </Alert>
+        )}
         {over.length > 0 && (
           <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} py={6}>
             {over.length} màu cỡ có SL KHXH lớn hơn SL còn lại. Giảm số lượng trước khi lưu.
@@ -626,6 +680,17 @@ function PlanDialog({ planId, onClose, onDone }: { planId: number | null; onClos
           </ActionButton>
         </Group>
       </Stack>
+      {poPicker && plan && (
+        <PlanPoPicker
+          plan={plan}
+          selected={added}
+          onClose={() => setPoPicker(false)}
+          onConfirm={(ids) => {
+            setAdded(ids);
+            setPoPicker(false);
+          }}
+        />
+      )}
       {picker && (
         <StylePicker
           onClose={() => setPicker(false)}
@@ -713,7 +778,9 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
             {branchName(branch?.code)} chưa có nhà máy SX nào nên chưa có mã hàng để lập kế hoạch. Nhờ quản trị viên gắn nhà máy cho đơn vị này ở Quản trị › Danh mục hệ thống › Nhà máy SX.
           </Alert>
         ) : (
-          <Text size="xs" c="dimmed">Chỉ hiện đơn hàng có Nhà máy SX thuộc {branchName(branch?.code)}: {factories.map((f) => f.name).join(', ')}. Kế hoạch lập ra thuộc đơn vị này.</Text>
+          <Text size="xs" c="dimmed">
+            Chỉ hiện đơn hàng có Nhà máy SX thuộc {branchName(branch?.code)}: {factories.map((f) => f.name).join(', ')}. Kế hoạch lập ra thuộc đơn vị này. Đơn đã có kế hoạch ở đơn vị này không hiện: mở kế hoạch đó, bấm "Chọn mã hàng" để thêm PO.
+          </Text>
         )}
         <div style={{ height: 'min(34vh, 300px)', display: 'flex', flexDirection: 'column' }}>
           <DataGrid
@@ -739,7 +806,9 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
         {(candidates.data?.length ?? 0) >= 200 && <Text size="xs" c="dimmed">Đang hiện 200 mã hàng có ngày xuất sớm nhất. Lọc theo ngày, khách hàng hoặc mã hàng để thấy mã khác.</Text>}
         <Grid gap={12}>
           <Grid.Col span={{ base: 12, sm: 8 }}>
-            <div className="pane-title">PO chi tiết {chosen && <Text span size="xs" c="dimmed" fw={400}>của {chosen.styleCode}</Text>}</div>
+            <div className="pane-title">
+              PO chi tiết {chosen && <Text span size="xs" c="dimmed" fw={400}>của {chosen.styleCode}, chưa lập kế hoạch</Text>}
+            </div>
             <div style={{ height: 200, display: 'flex', flexDirection: 'column' }}>
               <DataGrid
                 label="PO chi tiết"
@@ -754,7 +823,7 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
                 checked={poIds}
                 onCheck={setPoIds}
                 onRowClick={togglePo}
-                empty={chosen ? 'Mã hàng này chưa có PO.' : 'Chọn một mã hàng ở bảng trên.'}
+                empty={chosen ? 'Mã hàng này không còn PO chưa lập kế hoạch.' : 'Chọn một mã hàng ở bảng trên.'}
               />
             </div>
           </Grid.Col>
@@ -771,6 +840,64 @@ function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (
             </Stack>
           </Grid.Col>
         </Grid>
+      </Stack>
+    </Modal>
+  );
+}
+
+/**
+ * Nút "Chọn mã hàng" của popup Sửa (phase 5.17): PO chưa nằm trong kế hoạch nào của đúng mã hàng của kế hoạch. PO đã thêm (chưa lưu)
+ * giữ dấu tích khi mở lại; bỏ hết dấu tích rồi Xác nhận là bỏ các PO vừa thêm.
+ */
+function PlanPoPicker({ plan, selected, onClose, onConfirm }: { plan: ShipmentPlanDetail; selected: number[]; onClose: () => void; onConfirm: (ids: number[]) => void }) {
+  const mobile = useMobile();
+  const [ids, setIds] = useState<(string | number)[]>(selected);
+  const pos = useQuery({
+    queryKey: ['order', 'plan-candidate-pos', plan.id],
+    queryFn: () => api<CandidatePo[]>(`/order/shipment-plans/${plan.id}/candidate-pos`),
+    refetchOnMount: 'always',
+  });
+  // PO đã thêm (chưa lưu) mà vừa vào kế hoạch khác thì không còn trong danh sách: bỏ dấu tích, Xác nhận là bỏ nó (review 5.17 L2)
+  const valid = useMemo(() => (pos.data ? ids.filter((x) => pos.data.some((p) => p.id === x)) : ids), [pos.data, ids]);
+  const changed = valid.length !== selected.length || valid.some((x) => !selected.includes(Number(x)));
+  const dirty = changed && valid.length > 0;
+  const close = () => confirmDiscard(dirty, onClose);
+  const pickedQty = useMemo(() => sumOf((pos.data ?? []).filter((p) => valid.includes(p.id)).map((p) => p.qty)), [pos.data, valid]);
+  const toggle = (p: CandidatePo) => setIds((cur) => (cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id]));
+  const blocked = pos.isLoading ? 'Đang tải danh sách PO…' : !changed ? (valid.length === 0 ? 'Chọn ít nhất một PO' : 'Chưa đổi PO nào') : null;
+
+  return (
+    <Modal opened onClose={close} size="min(860px, 96vw)" fullScreen={mobile} title={`Thêm PO vào kế hoạch ${plan.planNo}`}>
+      <Stack gap="sm">
+        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="xs">
+          <TextInput label="Khách hàng" value={plan.customerName} readOnly className="field-readonly" />
+          <TextInput label="Mã hàng" value={plan.styleCode} readOnly className="field-readonly" />
+          <TextInput label="Số lượng các PO đang chọn" value={pickedQty === null ? 'Bạn không được xem số lượng PO' : fmtNum(pickedQty)} readOnly className="field-readonly" />
+        </SimpleGrid>
+        <Text size="xs" c="dimmed">Chỉ có PO của mã hàng này chưa nằm trong kế hoạch xuất hàng nào. PO đã chọn ở kế hoạch không hiện lại.</Text>
+        <div style={{ height: 'min(46vh, 340px)', display: 'flex', flexDirection: 'column' }}>
+          <DataGrid
+            label="PO chưa lập kế hoạch"
+            fill
+            dense
+            columns={CANDIDATE_PO_COLS}
+            rows={pos.data ?? []}
+            rowKey={(p) => p.id}
+            loading={pos.isLoading}
+            error={loadError(pos.error, 'Không tải được danh sách PO.')}
+            onRetry={() => void pos.refetch()}
+            checked={valid}
+            onCheck={setIds}
+            onRowClick={toggle}
+            empty="Mọi PO của mã hàng này đã nằm trong kế hoạch xuất hàng."
+          />
+        </div>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={close}>Hủy</Button>
+          <ActionButton blockedReason={blocked} onClick={() => onConfirm(valid.map(Number))}>
+            Xác nhận
+          </ActionButton>
+        </Group>
       </Stack>
     </Modal>
   );
