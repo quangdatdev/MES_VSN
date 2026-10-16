@@ -16,11 +16,14 @@ export interface CalendarDay {
   name: string | null;
 }
 
+/** Cấu hình số của lịch: số ngày cộng thêm cho ra chuyền, nhập kho và ngưỡng làm tròn Số ngày SX */
 export interface CalendarOffsets {
   outStartOffsetDays: number;
   outEndOffsetDays: number;
   warehouseStartOffsetDays: number;
   warehouseEndOffsetDays: number;
+  /** Số ngày SX = Số lượng / Năng suất TB: phần lẻ từ số này trở lên thì làm tròn lên một ngày, dưới thì bỏ (0,01–1; 15/10/2026) */
+  productionRoundUpFrom: number;
 }
 
 export interface WorkCalendar extends CalendarOffsets {
@@ -37,6 +40,8 @@ export const DEFAULT_WORK_CALENDAR: WorkCalendar = {
   outEndOffsetDays: 3,
   warehouseStartOffsetDays: 2,
   warehouseEndOffsetDays: 5,
+  // Người dùng yêu cầu 15/10/2026: 7,3 → 7 ngày, 7,5 → 8 ngày
+  productionRoundUpFrom: 0.5,
   days: new Map(),
 };
 
@@ -67,17 +72,6 @@ function offAt(cal: WorkCalendar, n: number): boolean {
 
 export const isOffDay = (cal: WorkCalendar, iso: string) => offAt(cal, dayNumber(iso));
 
-/** Ngày làm việc thứ k sau ngày số `from` (k = 0: chính `from`); null khi quá MAX_SEARCH_DAYS */
-function afterWorkingDays(cal: WorkCalendar, from: number, k: number): number | null {
-  let n = from;
-  for (let left = k; left > 0; ) {
-    n++;
-    if (n - from > MAX_SEARCH_DAYS) return null;
-    if (!offAt(cal, n)) left--;
-  }
-  return n;
-}
-
 /** Ngày làm việc đầu tiên từ `iso` trở đi (chính nó nếu là ngày làm việc) */
 export function nextWorkingDay(cal: WorkCalendar, iso: string): string | null {
   const s = dayNumber(iso);
@@ -86,9 +80,9 @@ export function nextWorkingDay(cal: WorkCalendar, iso: string): string | null {
 }
 
 export interface LineDates {
-  /** Số ngày nghỉ từ Bắt đầu vào chuyền tới Kết thúc vào chuyền (tính cả hai đầu) */
+  /** Số ngày nghỉ sau Bắt đầu vào chuyền, tới Kết thúc vào chuyền (không tính ngày bắt đầu) */
   offDays: number;
-  /** Kết thúc vào chuyền = Bắt đầu + Số ngày SX + Số ngày nghỉ − 1 */
+  /** Kết thúc vào chuyền = Bắt đầu + Số ngày SX + Số ngày nghỉ */
   endDate: string;
   outStartDate: string;
   outEndDate: string;
@@ -97,42 +91,64 @@ export interface LineDates {
 }
 
 /**
- * Ngày của một dòng dàn chuyền. Đếm ngày làm việc từ Bắt đầu vào chuyền (tính cả ngày đầu) cho đủ Số ngày SX; mọi ngày nghỉ gặp
- * trên đường đếm là Số ngày nghỉ, kể cả ngày nghỉ chỉ lọt vào khoảng khi ngày kết thúc bị đẩy lùi. Bắt đầu rơi vào ngày nghỉ thì
- * đếm từ ngày làm việc kế tiếp, ngày đó tính vào Số ngày nghỉ. Ngày ra chuyền, nhập kho cộng theo ngày làm việc (người dùng chốt
- * 13/10/2026); Bắt đầu ra chuyền tính từ ngày làm việc đầu tiên của dòng. null: lịch không đủ ngày làm việc trong MAX_SEARCH_DAYS.
+ * Ngày của một dòng dàn chuyền, theo công thức người dùng chốt 15/10/2026 (cách tính 13/10 cộng lố so với thực tế xưởng):
+ * Kết thúc vào chuyền = Bắt đầu + Số ngày SX + Số ngày nghỉ, tức ngày làm việc thứ Số ngày SX kể từ sau ngày bắt đầu; Số ngày nghỉ
+ * là mọi ngày nghỉ gặp trên đường đếm, kể cả ngày nghỉ chỉ lọt vào khi ngày kết thúc bị đẩy lùi. Ngày ra chuyền, nhập kho cộng
+ * ngày lịch, không bỏ qua ngày nghỉ (bắt đầu 15/10 cộng 3 là 18/10 dù là Chủ nhật). null: lịch không đủ ngày làm việc trong
+ * MAX_SEARCH_DAYS.
  */
 export function lineDates(cal: WorkCalendar, start: string, productionDays: number): LineDates | null {
   const s = dayNumber(start);
-  if (!Number.isFinite(s)) return null;
+  if (!Number.isFinite(s) || Number.isNaN(productionDays)) return null;
   const target = Math.max(1, Math.trunc(productionDays));
   let n = s;
-  let worked = 0;
   let offDays = 0;
-  let first = -1;
-  for (;;) {
-    if (n - s >= MAX_SEARCH_DAYS) return null;
-    if (offAt(cal, n)) offDays++;
-    else {
-      if (first < 0) first = n;
-      if (++worked === target) break;
-    }
+  for (let worked = 0; worked < target; ) {
     n++;
+    if (n - s > MAX_SEARCH_DAYS) return null;
+    if (offAt(cal, n)) offDays++;
+    else worked++;
   }
-  const outStart = afterWorkingDays(cal, first, cal.outStartOffsetDays);
-  const outEnd = afterWorkingDays(cal, n, cal.outEndOffsetDays);
-  if (outStart === null || outEnd === null) return null;
-  const warehouseStart = afterWorkingDays(cal, outStart, cal.warehouseStartOffsetDays);
-  const warehouseEnd = afterWorkingDays(cal, outEnd, cal.warehouseEndOffsetDays);
-  if (warehouseStart === null || warehouseEnd === null) return null;
+  const outStart = s + cal.outStartOffsetDays;
+  const outEnd = n + cal.outEndOffsetDays;
   return {
     offDays,
     endDate: isoOf(n),
     outStartDate: isoOf(outStart),
     outEndDate: isoOf(outEnd),
-    warehouseStartDate: isoOf(warehouseStart),
-    warehouseEndDate: isoOf(warehouseEnd),
+    warehouseStartDate: isoOf(outStart + cal.warehouseStartOffsetDays),
+    warehouseEndDate: isoOf(outEnd + cal.warehouseEndOffsetDays),
   };
+}
+
+export const DATE_KEYS = ['endDate', 'outStartDate', 'outEndDate', 'warehouseStartDate', 'warehouseEndDate'] as const;
+export type DateKey = (typeof DATE_KEYS)[number];
+export type LineDateValues = Pick<LineDates, DateKey>;
+
+/** Số ngày nghỉ sau `from` tới hết `to` (Kết thúc vào chuyền nhập tay: số ngày nghỉ đếm lại theo ngày đã nhập) */
+export function offDaysBetween(cal: WorkCalendar, from: string, to: string): number {
+  let count = 0;
+  for (let n = dayNumber(from) + 1, end = dayNumber(to); n <= end; n++) if (offAt(cal, n)) count++;
+  return count;
+}
+
+/**
+ * Thứ tự các ngày của một dòng (nhập tay được từ 15/10/2026): lỗi đầu tiên kèm cột, hoặc null. Ngày theo công thức luôn qua.
+ * Giới hạn xa nhất giữ vòng đếm số ngày nghỉ ngắn.
+ */
+export function datesOrderError(start: string, d: LineDateValues): { key: DateKey; message: string } | null {
+  const limit = isoOf(dayNumber(start) + 2 * MAX_SEARCH_DAYS);
+  const far = DATE_KEYS.find((k) => d[k] > limit);
+  if (far) return { key: far, message: 'Ngày cách ngày bắt đầu vào chuyền quá 6 năm.' };
+  const rules: [DateKey, boolean, string][] = [
+    ['endDate', d.endDate < start, 'Kết thúc vào chuyền trước ngày bắt đầu vào chuyền.'],
+    ['outStartDate', d.outStartDate < start, 'Bắt đầu ra chuyền trước ngày bắt đầu vào chuyền.'],
+    ['outEndDate', d.outEndDate < d.outStartDate, 'Kết thúc ra chuyền trước ngày bắt đầu ra chuyền.'],
+    ['warehouseStartDate', d.warehouseStartDate < d.outStartDate, 'Bắt đầu nhập kho trước ngày bắt đầu ra chuyền.'],
+    ['warehouseEndDate', d.warehouseEndDate < d.warehouseStartDate, 'Kết thúc nhập kho trước ngày bắt đầu nhập kho.'],
+  ];
+  const hit = rules.find(([, wrong]) => wrong);
+  return hit ? { key: hit[0], message: hit[2] } : null;
 }
 
 /** Ngày nghỉ trong khoảng [from, to] (bảng dàn chuyền tô); `name` chỉ có ở ngày đặc biệt */
@@ -145,14 +161,26 @@ export function nonWorkingDays(cal: WorkCalendar, from: string, to: string): { d
 }
 
 /** Số ngày cộng thêm hợp lệ: ngày bắt đầu ra chuyền, nhập kho không sau ngày kết thúc tương ứng (như CHECK của MES_Core/0011) */
-export const offsetsInOrder = (o: CalendarOffsets) =>
+export const offsetsInOrder = (o: Omit<CalendarOffsets, 'productionRoundUpFrom'>) =>
   o.outStartOffsetDays <= o.outEndOffsetDays && o.outStartOffsetDays + o.warehouseStartOffsetDays <= o.outEndOffsetDays + o.warehouseEndOffsetDays;
+
+/**
+ * Số ngày SX của một dòng: Số lượng / Năng suất TB, phần lẻ từ ngưỡng của lịch trở lên thì thêm một ngày; ít nhất 1 ngày. Tính bằng
+ * số nguyên (phần dư so với ngưỡng theo phần trăm) để 7,5 không thành 7,4999 do số thực.
+ */
+export function productionDaysOf(cal: Pick<CalendarOffsets, 'productionRoundUpFrom'>, qty: number, avgOutput: number): number {
+  const whole = Math.floor(qty / avgOutput);
+  const rest = qty - whole * avgOutput;
+  const roundUp = rest > 0 && rest * 100 >= Math.round(cal.productionRoundUpFrom * 100) * avgOutput;
+  return Math.max(1, whole + (roundUp ? 1 : 0));
+}
 
 export const offsetsOf = (o: CalendarOffsets): CalendarOffsets => ({
   outStartOffsetDays: o.outStartOffsetDays,
   outEndOffsetDays: o.outEndOffsetDays,
   warehouseStartOffsetDays: o.warehouseStartOffsetDays,
   warehouseEndOffsetDays: o.warehouseEndOffsetDays,
+  productionRoundUpFrom: o.productionRoundUpFrom,
 });
 
 /**
@@ -170,7 +198,7 @@ export function presentCalendar(cal: WorkCalendar, from?: string) {
 /** Mọi lịch đã cấu hình theo mã ĐVCS (ĐVCS không có trong kết quả dùng DEFAULT_WORK_CALENDAR) */
 export async function readWorkCalendars(db: Kysely<CoreDatabase>): Promise<Map<string, WorkCalendar>> {
   const [calendars, days] = await Promise.all([
-    db.selectFrom('SysWorkCalendar').select(['Id', 'BranchCode', 'WeeklyOffMask', 'OutStartOffsetDays', 'OutEndOffsetDays', 'WarehouseStartOffsetDays', 'WarehouseEndOffsetDays']).execute(),
+    db.selectFrom('SysWorkCalendar').select(['Id', 'BranchCode', 'WeeklyOffMask', 'OutStartOffsetDays', 'OutEndOffsetDays', 'WarehouseStartOffsetDays', 'WarehouseEndOffsetDays', 'ProductionRoundUpFrom']).execute(),
     db.selectFrom('SysWorkCalendarDay').select(['WorkCalendarId', 'CalendarDate', 'DayType', 'Name']).orderBy('CalendarDate').execute(),
   ]);
   const daysOf = new Map<number, Map<string, CalendarDay>>();
@@ -189,6 +217,7 @@ export async function readWorkCalendars(db: Kysely<CoreDatabase>): Promise<Map<s
         outEndOffsetDays: c.OutEndOffsetDays,
         warehouseStartOffsetDays: c.WarehouseStartOffsetDays,
         warehouseEndOffsetDays: c.WarehouseEndOffsetDays,
+        productionRoundUpFrom: Number(c.ProductionRoundUpFrom),
         days: daysOf.get(c.Id) ?? new Map(),
       },
     ]),

@@ -12,6 +12,7 @@ import type { OrderDb } from '../src/modules/order/order.types';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import { createDb } from '../src/platform/database/db';
 import { CatalogLookupService } from '../src/platform/catalog/catalog-lookup.service';
+import { productionDaysOf } from '../src/platform/catalog/work-calendar';
 import { CatalogService } from '../src/platform/catalog/catalog.service';
 import { SyncService } from '../src/platform/sync/sync.service';
 import type { SyncDatabase } from '../src/platform/sync/sync.types';
@@ -361,7 +362,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     await api().post(days).set(auth(planner)).send({ branchCodes: ['A01'], from: '2031-01-22', to: '2031-01-22', dayType: 'OFF' }).expect(403);
     await api().delete('/api/v1/admin/catalogs/work-calendars/A01/days?from=2031-01-01&to=2031-01-31').set(auth(planner)).expect(403);
     const before = (await api().get('/api/v1/admin/catalogs/work-calendars').set(auth(admin)).expect(200)).body;
-    expect(before.defaults).toEqual(config);
+    expect(before.defaults).toEqual({ ...config, productionRoundUpFrom: 0.5 });
     expect(before.items.map((i: any) => i.branchCode)).toEqual(expect.arrayContaining(['A01', 'A02', 'A03']));
     expect(before.items.map((i: any) => i.branchCode)).not.toContain('A00');
     const configured = new Set<string>(before.items.filter((i: any) => i.configured).map((i: any) => i.branchCode));
@@ -418,6 +419,17 @@ describe('Phase 5.4: danh mục hệ thống', () => {
       await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send(a03).expect(200);
       expect(await auditCount()).toBe(n);
 
+      // Ngưỡng làm tròn Số ngày SX (MES_Core/0014): 0,01–1, tối đa 2 chữ số lẻ; không gửi thì giữ số đang có
+      for (const bad of [0, 1.5, 0.555]) await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ ...a03, productionRoundUpFrom: bad }).expect(422);
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ ...a03, productionRoundUpFrom: 0.7 }).expect(200);
+      await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ ...a03, outEndOffsetDays: 3 }).expect(200);
+      const rounded = (await api().get('/api/v1/admin/catalogs/work-calendars').set(auth(admin)).expect(200)).body.items.find((i: any) => i.branchCode === 'A03');
+      expect(rounded).toMatchObject({ productionRoundUpFrom: 0.7, outEndOffsetDays: 3 });
+      // Lịch mà Xếp chuyền dùng (CatalogLookupService, làm mới sau khi lưu) đọc đúng ngưỡng: 7,69 bỏ, 7,7 lên
+      const a03Calendar = await app.get(CatalogLookupService).workCalendar('A03');
+      expect(a03Calendar.productionRoundUpFrom).toBe(0.7);
+      expect([productionDaysOf(a03Calendar, 769, 100), productionDaysOf(a03Calendar, 77, 10)]).toEqual([7, 8]);
+
       // Bảng dàn chuyền ở đơn vị tổng hợp: mỗi ĐVCS ngày nghỉ theo lịch riêng (2031-03-02 là Chủ nhật)
       await api().post(days).set(auth(admin)).send({ branchCodes: ['A02'], from: '2031-03-05', to: '2031-03-05', dayType: 'OFF', name: 'Nghỉ riêng T54' }).expect(201);
       const aggregate = await tokenFor('admin', 'A00');
@@ -434,8 +446,12 @@ describe('Phase 5.4: danh mục hệ thống', () => {
       // Trả lịch như trước bài thử: ngày năm 2031, cấu hình A03, lịch do bài thử tạo mới
       await sql`DELETE FROM dbo.SysWorkCalendarDay WHERE CalendarDate BETWEEN '2031-01-01' AND '2031-12-31'`.execute(core);
       if (configured.has('A03')) {
-        const { weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays } = a03Before;
-        await api().put('/api/v1/admin/catalogs/work-calendars/A03').set(auth(admin)).send({ weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays }).expect(200);
+        const { weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays, productionRoundUpFrom } = a03Before;
+        await api()
+          .put('/api/v1/admin/catalogs/work-calendars/A03')
+          .set(auth(admin))
+          .send({ weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays, productionRoundUpFrom })
+          .expect(200);
       }
       for (const code of ['A01', 'A02', 'A03'].filter((c) => !configured.has(c))) {
         const cal = core.selectFrom('SysWorkCalendar').select('Id').where('BranchCode', '=', code);

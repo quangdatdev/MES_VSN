@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { sql } from 'kysely';
+import { sql, type Selectable } from 'kysely';
 import { AppException, Errors } from '../../common/app.exception';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { AuditService } from '../../platform/audit/audit.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
-import { addCalendarDays, lineDates, nonWorkingDays, presentCalendar } from '../../platform/catalog/work-calendar';
+import { addCalendarDays, DATE_KEYS, datesOrderError, lineDates, nonWorkingDays, offDaysBetween, presentCalendar, productionDaysOf, type DateKey, type LineDates, type LineDateValues } from '../../platform/catalog/work-calendar';
 import { inTransaction } from '../../platform/data/transaction';
 import { scopeOf } from '../../platform/data/base.repository';
 import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type FilterSpec } from '../../platform/data/column-filter';
@@ -12,10 +12,10 @@ import { ExportService } from '../../platform/export/export.service';
 import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { ORDER_DB } from './order.db';
-import { BoardQuery, OrderListQuery, OrderValuesQuery, ScheduleDto } from './order.dto';
+import { BoardQuery, OrderListQuery, OrderValuesQuery, ScheduleDto, type ScheduleLineDto } from './order.dto';
 import { LineSupplyGuards } from './line-supply-guard';
 import { LinePlanAllocationRepository, LinePlanLineRepository, LinePlanRepository, type LinePlanListRow, type PlanLineRow } from './order.repositories';
-import type { OrderDb } from './order.types';
+import type { OrderDb, ShipmentPlanLineTable } from './order.types';
 import { assignedVisible, businessFilter, conflict, day, invalid, MAX_PRODUCTION_DAYS, num, readableQuery, someOf, sortOf } from './order.util';
 
 const RESOURCE = 'order.lineplan';
@@ -118,6 +118,24 @@ const EXPORT_COLUMNS = [
   { key: 'statusCode', label: 'Trạng thái' },
 ];
 
+const DATE_COLUMNS: Record<DateKey, 'EndDate' | 'OutStartDate' | 'OutEndDate' | 'WarehouseStartDate' | 'WarehouseEndDate'> = {
+  endDate: 'EndDate',
+  outStartDate: 'OutStartDate',
+  outEndDate: 'OutEndDate',
+  warehouseStartDate: 'WarehouseStartDate',
+  warehouseEndDate: 'WarehouseEndDate',
+};
+
+/**
+ * Năm ngày lưu của một dòng (sửa tay được từ 15/10/2026): ngày client gửi; thiếu thì giữ ngày đã lưu khi số lượng, năng suất, ngày
+ * bắt đầu không đổi, còn lại theo công thức. Người không sửa được cột Ngày kết thúc SX (không gửi endDate) hay giao diện cũ chưa
+ * tải lại (không gửi ngày nào) lưu kế hoạch thì không đè ngày người khác đã chỉnh tay (review 5.12.2 H1).
+ */
+function pickDates(l: ScheduleLineDto, formula: LineDates, old: Selectable<ShipmentPlanLineTable> | undefined): LineDateValues {
+  const same = !!old && old.Qty === l.qty && old.AvgOutput === l.avgOutput && day(old.StartDate) === l.startDate;
+  return Object.fromEntries(DATE_KEYS.map((k) => [k, l[k] ?? (same ? day(old![DATE_COLUMNS[k]]) : null) ?? formula[k]])) as LineDateValues;
+}
+
 @Injectable()
 export class LinePlanService {
   constructor(
@@ -176,9 +194,11 @@ export class LinePlanService {
 
   /**
    * Lưu bảng nhập liệu dàn chuyền của một kế hoạch: thêm, sửa, xóa dòng trong một transaction.
-   * Người dùng chỉ nhập chuyền, số lượng, năng suất, ngày vào chuyền. Số ngày SX = làm tròn lên (số lượng / năng suất); số ngày
-   * nghỉ, kết thúc vào chuyền, ngày ra chuyền, nhập kho tính theo lịch làm việc của ĐVCS (phase 5.12, work-calendar.ts), không
-   * nhận từ client. Phân màu cỡ cho từng chuyền làm ở màn Phân bổ màu cỡ (phase 5.13): ở đây không đề xuất, chỉ giữ số lượng
+   * Người dùng nhập chuyền, số lượng, năng suất, ngày vào chuyền. Số ngày SX = số lượng / năng suất, làm tròn theo ngưỡng của lịch
+   * ĐVCS (productionDaysOf). Kết thúc vào
+   * chuyền, ngày ra chuyền, nhập kho: ngày client gửi (người dùng điều chỉnh tay, 15/10/2026), thiếu thì tính theo lịch làm việc
+   * của ĐVCS (work-calendar.ts); giao diện tính lại khi số lượng, năng suất, ngày vào chuyền đổi. Số ngày nghỉ đếm theo lịch tới
+   * Kết thúc vào chuyền, không nhận từ client. Chính sách cột của Ngày kết thúc SX (endDate) do FieldPolicyInterceptor kiểm. Phân màu cỡ cho từng chuyền làm ở màn Phân bổ màu cỡ (phase 5.13): ở đây không đề xuất, chỉ giữ số lượng
    * của chuyền không dưới phần đã giao; dòng bị xóa thì phần giao của nó bị xóa theo.
    */
   async saveLines(user: AuthUser, id: number, dto: ScheduleDto) {
@@ -187,26 +207,23 @@ export class LinePlanService {
     // Lịch theo ĐVCS của chính kế hoạch (không theo ĐVCS phiên): đúng cả khi tài nguyên đổi cách lọc ĐVCS. ĐVCS của kế hoạch
     // không sửa được, đọc trước transaction không lệch với lần khóa bên dưới
     const calendar = await this.catalogs.workCalendar((await this.plans.getById(scope, id, 'update')).BranchCode);
-    const rows: { id?: number; values: Record<string, unknown> & { Qty: number } }[] = [];
+    const rows: { id?: number; line: ScheduleLineDto; formula: LineDates; values: Record<string, unknown> & { Qty: number } }[] = [];
     for (const [i, l] of dto.lines.entries()) {
-      const productionDays = Math.ceil(l.qty / l.avgOutput);
+      const productionDays = productionDaysOf(calendar, l.qty, l.avgOutput);
       if (productionDays > MAX_PRODUCTION_DAYS) throw invalid(`Dòng ${i + 1}: số ngày sản xuất quá ${MAX_PRODUCTION_DAYS} ngày. Kiểm tra số lượng và năng suất.`);
-      const dates = lineDates(calendar, l.startDate, productionDays);
-      if (!dates) throw invalid(`Dòng ${i + 1}: lịch làm việc của đơn vị cơ sở không đủ ngày làm việc để tính ngày kết thúc. Kiểm tra Lịch làm việc ở Danh mục hệ thống.`);
+      const formula = lineDates(calendar, l.startDate, productionDays);
+      if (!formula) throw invalid(`Dòng ${i + 1}: lịch làm việc của đơn vị cơ sở không đủ ngày làm việc để tính ngày kết thúc. Kiểm tra Lịch làm việc ở Danh mục hệ thống.`);
+      // Năm ngày, số ngày nghỉ chọn trong transaction: cần dòng đã lưu đọc dưới khóa (xem pickDates)
       rows.push({
         id: l.id,
+        line: l,
+        formula,
         values: {
           LineCode: l.lineCode,
           Qty: l.qty,
           AvgOutput: l.avgOutput,
           StartDate: l.startDate,
           ProductionDays: productionDays,
-          OffDays: dates.offDays,
-          EndDate: dates.endDate,
-          OutStartDate: dates.outStartDate,
-          OutEndDate: dates.outEndDate,
-          WarehouseStartDate: dates.warehouseStartDate,
-          WarehouseEndDate: dates.warehouseEndDate,
           SortOrder: i,
         },
       });
@@ -231,6 +248,19 @@ export class LinePlanService {
       const existingIds = new Set(existing.map((e) => e.Id));
       const unknown = rows.filter((r) => r.id !== undefined && !existingIds.has(r.id));
       if (unknown.length) throw invalid('Có dòng dàn chuyền không thuộc kế hoạch này.');
+      for (const [i, r] of rows.entries()) {
+        const dates = pickDates(r.line, r.formula, r.id === undefined ? undefined : existing.find((e) => e.Id === r.id));
+        const wrong = datesOrderError(r.line.startDate, dates);
+        if (wrong) throw invalid(`Dòng ${i + 1}: ${wrong.message}`);
+        Object.assign(r.values, {
+          OffDays: dates.endDate === r.formula.endDate ? r.formula.offDays : offDaysBetween(calendar, r.line.startDate, dates.endDate),
+          EndDate: dates.endDate,
+          OutStartDate: dates.outStartDate,
+          OutEndDate: dates.outEndDate,
+          WarehouseStartDate: dates.warehouseStartDate,
+          WarehouseEndDate: dates.warehouseEndDate,
+        });
+      }
       // Chuyền phải đang dùng khi xếp việc mới vào: dòng mới, hoặc dòng chuyển sang chuyền khác. Dòng cũ giữ nguyên chuyền
       // thì không kiểm, để chuyền ngừng dùng sau khi đã xếp (thường là đã may xong) không khóa việc lưu cả kế hoạch.
       // So với dòng đọc dưới khóa kế hoạch: hai lần lưu cùng lúc không lách được bước kiểm này.

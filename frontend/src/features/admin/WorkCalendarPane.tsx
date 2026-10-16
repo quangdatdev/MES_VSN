@@ -9,7 +9,7 @@ import { confirmAction, confirmDiscard } from '../../lib/confirm';
 import { addDays, fmtDate, fmtNum, today } from '../../lib/format';
 import { guardedLeave, useLeaveGuard } from '../../lib/leaveGuard';
 import { toastError, toastOk } from '../../lib/notify';
-import { isoWeekday, offsetsInOrder, WEEKDAYS } from '../../lib/workCalendar';
+import { isoWeekday, offsetsInOrder, productionDaysOf, WEEKDAYS } from '../../lib/workCalendar';
 import { useCan } from '../../shell/permissions';
 import { useSession } from '../../store/session';
 import { EmptyRow, escapeToClose, IconAction, LoadError, SkeletonRows } from './common';
@@ -29,6 +29,13 @@ const OFFSETS: { key: keyof Omit<WorkCalendarConfig, 'weeklyOffDays'>; label: st
   { key: 'warehouseEndOffsetDays', label: 'Kết thúc nhập kho', after: 'từ kết thúc ra chuyền' },
 ];
 const DAY_TYPE = { OFF: 'Nghỉ', WORK: 'Làm bù' } as const;
+const decimal = (v: number) => v.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+/** Ví dụ theo ngưỡng đang nhập: Số lượng / Năng suất ra 7,3; 7,5; 7,8 thì được mấy ngày */
+/** Ô ngưỡng giữ chuỗi trong lúc gõ dở ("0,", "0,70"): chỉ đổi ra số khi kiểm, xem ví dụ và gửi đi */
+type ConfigForm = Omit<WorkCalendarConfig, 'productionRoundUpFrom'> & { productionRoundUpFrom: number | string };
+const asNumber = (v: number | string) => (typeof v === 'number' ? v : v.trim() === '' ? NaN : Number(v));
+const roundingExample = (from: number) =>
+  [73, 75, 78].map((q) => `${decimal(q / 10)} → ${productionDaysOf({ productionRoundUpFrom: from }, q, 10)} ngày`).join('; ');
 const span = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
 const range = (from: string, to: string) => (from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`);
 
@@ -109,17 +116,19 @@ function BranchCalendar({ item, branches, year }: { item: WorkCalendarItem; bran
   const periods = useMemo(() => periodsOf(days.data ?? []), [days.data]);
   const [dialog, setDialog] = useState<{ from: string; to: string } | null>(null);
 
-  const form = useForm<WorkCalendarConfig>({
+  const form = useForm<ConfigForm>({
     initialValues: {
       weeklyOffDays: item.weeklyOffDays,
       outStartOffsetDays: item.outStartOffsetDays,
       outEndOffsetDays: item.outEndOffsetDays,
       warehouseStartOffsetDays: item.warehouseStartOffsetDays,
       warehouseEndOffsetDays: item.warehouseEndOffsetDays,
+      productionRoundUpFrom: item.productionRoundUpFrom,
     },
     validate: {
       weeklyOffDays: (v) => (v.length >= 7 ? 'Phải còn ít nhất một ngày làm việc trong tuần.' : null),
       outEndOffsetDays: (_v, all) => (offsetsInOrder(all) ? null : 'Ngày kết thúc phải từ ngày bắt đầu trở đi: số ngày của "Kết thúc" phải từ số ngày của "Bắt đầu" trở lên.'),
+      productionRoundUpFrom: (v) => (asNumber(v) >= 0.01 && asNumber(v) <= 1 ? null : 'Nhập từ 0,01 đến 1.'),
     },
   });
   useLeaveGuard(form.isDirty());
@@ -154,7 +163,7 @@ function BranchCalendar({ item, branches, year }: { item: WorkCalendarItem; bran
 
   return (
     <Stack gap="md">
-      <form className="wcal-config" onSubmit={form.onSubmit((v) => saveConfig.mutate(v))}>
+      <form className="wcal-config" onSubmit={form.onSubmit((v) => saveConfig.mutate({ ...v, productionRoundUpFrom: asNumber(v.productionRoundUpFrom) }))}>
         <Text fw={600} size="sm" mb={4} id={`${weeklyId}-label`}>Ngày nghỉ hằng tuần</Text>
         <Chip.Group multiple value={form.values.weeklyOffDays.map(String)} onChange={(v) => form.setFieldValue('weeklyOffDays', v.map(Number).sort())}>
           <Group gap={6} role="group" aria-labelledby={`${weeklyId}-label`} aria-describedby={form.errors.weeklyOffDays ? `${weeklyId}-error` : undefined}>
@@ -166,7 +175,7 @@ function BranchCalendar({ item, branches, year }: { item: WorkCalendarItem; bran
           </Group>
         </Chip.Group>
         {form.errors.weeklyOffDays && <Text size="xs" c="red" mt={4} id={`${weeklyId}-error`}>{form.errors.weeklyOffDays}</Text>}
-        <Text fw={600} size="sm" mt="md" mb={4}>Số ngày làm việc cộng thêm</Text>
+        <Text fw={600} size="sm" mt="md" mb={4}>Số ngày cộng thêm (ngày lịch, kể cả ngày nghỉ)</Text>
         <SimpleGrid cols={{ base: 2, md: 4 }} spacing="sm">
           {OFFSETS.map((o) => (
             <NumberInput
@@ -184,6 +193,23 @@ function BranchCalendar({ item, branches, year }: { item: WorkCalendarItem; bran
               onChange={(v) => form.setFieldValue(o.key, typeof v === 'number' ? v : 0)}
             />
           ))}
+        </SimpleGrid>
+        <Text fw={600} size="sm" mt="md" mb={4}>Làm tròn Số ngày SX</Text>
+        <SimpleGrid cols={{ base: 2, md: 4 }} spacing="sm">
+          <NumberInput
+            label="Làm tròn lên khi phần lẻ từ"
+            description={roundingExample(Math.min(1, Math.max(0.01, asNumber(form.values.productionRoundUpFrom) || 0.01)))}
+            min={0.01}
+            max={1}
+            step={0.05}
+            decimalScale={2}
+            decimalSeparator=","
+            // Kẹp khi rời ô: kẹp từng phím chặn các bước gõ dở như "0," (review 5.12.3 H1)
+            clampBehavior="blur"
+            readOnly={!canEdit}
+            className={canEdit ? undefined : 'field-readonly'}
+            {...form.getInputProps('productionRoundUpFrom')}
+          />
         </SimpleGrid>
         {canEdit && (
           <Group justify="flex-end" mt="sm" gap="xs">

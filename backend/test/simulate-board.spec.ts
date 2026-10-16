@@ -1,4 +1,4 @@
-import { DEFAULT_WORK_CALENDAR, isOffDay, lineDates, type CalendarDay, type WorkCalendar } from '../src/platform/catalog/work-calendar';
+import { DEFAULT_WORK_CALENDAR, isOffDay, lineDates, productionDaysOf, type CalendarDay, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { assignedOf, cellKey, planBoard, type SimOrder, type SimPlan } from '../scripts/simulate-board';
 import { lineShares } from '../src/modules/order/order.util';
 
@@ -42,7 +42,7 @@ describe('Dàn chuyền mô phỏng: xếp lịch', () => {
   it('số ngày, ngày kết thúc, ra chuyền, nhập kho tính như màn Xếp chuyền; năng suất tối đa 700; không vào chuyền ngày Chủ nhật', () => {
     for (const b of bars) {
       expect(b.qty).toBeGreaterThan(0);
-      expect(b.days).toBe(Math.ceil(b.qty / b.avg));
+      expect(b.days).toBe(productionDaysOf(DEFAULT_WORK_CALENDAR, b.qty, b.avg));
       expect(b.days).toBeLessThanOrEqual(14);
       expect(b.avg).toBeLessThanOrEqual(700);
       const dates = lineDates(DEFAULT_WORK_CALENDAR, b.start, b.days)!;

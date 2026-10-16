@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 
 /** Như @IsOptional nhưng không cho null: cột NOT NULL thì null phải trả 422, không lọt xuống DB thành lỗi 500. */
 const Optional = () => ValidateIf((_o, v) => v !== undefined);
@@ -102,6 +102,8 @@ export class WorkCalendarUpdateDto {
   @Type(() => Number) @IsInt() @Min(0) @Max(60) outEndOffsetDays!: number;
   @Type(() => Number) @IsInt() @Min(0) @Max(60) warehouseStartOffsetDays!: number;
   @Type(() => Number) @IsInt() @Min(0) @Max(60) warehouseEndOffsetDays!: number;
+  // Tùy chọn: giao diện cũ chưa tải lại không gửi thì giữ ngưỡng đang có (MES_Core/0014)
+  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Ngưỡng làm tròn là số từ 0,01 đến 1, tối đa 2 chữ số lẻ.' }) @Min(0.01, { message: 'Ngưỡng làm tròn là số từ 0,01 đến 1, tối đa 2 chữ số lẻ.' }) @Max(1, { message: 'Ngưỡng làm tròn là số từ 0,01 đến 1, tối đa 2 chữ số lẻ.' }) productionRoundUpFrom?: number;
 }
 
 export class WorkCalendarDaysDto {

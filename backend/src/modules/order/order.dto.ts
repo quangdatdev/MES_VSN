@@ -234,8 +234,13 @@ export class ScheduleLineDto {
   @Type(() => Number) @IsInt() @Min(1) @Max(10_000_000) qty!: number;
   @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) avgOutput!: number;
   @IsISO8601({ strict: true }) @DateOnly() startDate!: string;
-  // Số ngày nghỉ, ngày kết thúc, ra chuyền, nhập kho do máy chủ tính theo lịch ĐVCS (phase 5.12). Giao diện cũ chưa tải lại còn gửi
-  // offDays, outStartDate…: ValidationPipe (whitelist) bỏ các trường này, không trả 422
+  // Năm ngày dưới đây người dùng điều chỉnh tay được (15/10/2026); thiếu thì máy chủ tính theo lịch ĐVCS. Số ngày SX, số ngày
+  // nghỉ luôn do máy chủ tính: offDays client gửi bị ValidationPipe (whitelist) bỏ
+  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() endDate?: string;
+  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() outStartDate?: string;
+  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() outEndDate?: string;
+  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() warehouseStartDate?: string;
+  @IsOptional() @IsISO8601({ strict: true }) @DateOnly() warehouseEndDate?: string;
 }
 
 export class ScheduleDto {

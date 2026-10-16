@@ -308,6 +308,8 @@ export interface WorkCalendarConfig {
   outEndOffsetDays: number;
   warehouseStartOffsetDays: number;
   warehouseEndOffsetDays: number;
+  /** Ngưỡng làm tròn Số ngày SX (0,01–1; MES_Core/0014) */
+  productionRoundUpFrom: number;
 }
 
 export interface WorkCalendarItem extends WorkCalendarConfig {

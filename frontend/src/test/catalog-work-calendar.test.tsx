@@ -18,7 +18,7 @@ vi.mock('../lib/api', async (importOriginal) => {
 });
 
 const YEAR = Number(today().slice(0, 4));
-const config = { weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5 };
+const config = { weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5, productionRoundUpFrom: 0.5 };
 const overview = {
   mes: [{ code: 'WORK_CALENDAR', kind: 'calendar', name: 'Lịch làm việc', description: 'Ngày nghỉ của từng đơn vị cơ sở.', total: 2, active: 1 }],
   external: [],
@@ -129,6 +129,34 @@ describe('Danh mục Lịch làm việc', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Lưu cấu hình' }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]).toEqual({ path: '/admin/catalogs/work-calendars/A01', method: 'PUT', body: { ...config, weeklyOffDays: [6, 7] } });
+  });
+
+  it('ngưỡng làm tròn Số ngày SX: ví dụ theo ngưỡng đang nhập, lưu cùng cấu hình', async () => {
+    signIn(['admin.catalog:view', 'admin.catalog:update']);
+    const { calls } = mockApi();
+    renderPane();
+    const roundUp = await screen.findByRole('textbox', { name: 'Làm tròn lên khi phần lẻ từ' });
+    expect(screen.getByText('7,3 → 7 ngày; 7,5 → 8 ngày; 7,8 → 8 ngày')).toBeInTheDocument();
+    fireEvent.change(roundUp, { target: { value: '0,8' } });
+    expect(await screen.findByText('7,3 → 7 ngày; 7,5 → 7 ngày; 7,8 → 8 ngày')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu cấu hình' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toEqual({ path: '/admin/catalogs/work-calendars/A01', method: 'PUT', body: { ...config, productionRoundUpFrom: 0.8 } });
+  });
+
+  it('ngưỡng làm tròn gõ từng ký tự từ ô trống: giữ được các bước gõ dở "0," "0,7" "0,70", lưu ra số (review 5.12.3 H1)', async () => {
+    signIn(['admin.catalog:view', 'admin.catalog:update']);
+    const { calls } = mockApi();
+    renderPane();
+    const roundUp = await screen.findByRole('textbox', { name: 'Làm tròn lên khi phần lẻ từ' });
+    for (const step of ['', '0', '0,', '0,3']) fireEvent.change(roundUp, { target: { value: step } });
+    expect(roundUp).toHaveValue('0,3');
+    expect(await screen.findByText('7,3 → 8 ngày; 7,5 → 8 ngày; 7,8 → 8 ngày')).toBeInTheDocument();
+    for (const step of ['0,', '0,7', '0,70']) fireEvent.change(roundUp, { target: { value: step } });
+    expect(roundUp).toHaveValue('0,70');
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu cấu hình' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({ method: 'PUT', body: { productionRoundUpFrom: 0.7 } });
   });
 
   it('bấm một ngày trên lịch năm: popup đặt ngày điền sẵn ngày đó, gửi ĐVCS đang xem', async () => {

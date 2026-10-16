@@ -20,7 +20,7 @@ import { createDb } from '../src/platform/database/db';
 import type { LineStatus, OrderDatabase, PlanStatus, SalesOrderStatus } from '../src/modules/order/order.types';
 import type { SewingDatabase } from '../src/modules/sewing/sewing.types';
 import { apportion, lineShares } from '../src/modules/order/order.util';
-import { DEFAULT_WORK_CALENDAR, lineDates, nextWorkingDay, readWorkCalendars, type LineDates, type WorkCalendar } from '../src/platform/catalog/work-calendar';
+import { DEFAULT_WORK_CALENDAR, lineDates, nextWorkingDay, productionDaysOf, readWorkCalendars, type LineDates, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { prng } from './seed-data';
@@ -247,10 +247,10 @@ export function planBoard({
       } else if (start > windowStart && rnd() < 0.18) start = addDays(start, int(2, 6));
       const after = job.batch === 1 ? firstStart.get(job.order.id) : undefined;
       if (after && start < after) start = after;
-      // Số ngày SX tính như màn Xếp chuyền: làm tròn lên (SL / năng suất)
+      // Số ngày SX tính như màn Xếp chuyền: SL / năng suất, làm tròn theo ngưỡng của lịch ĐVCS
       const target = Math.min(MAX_DAYS, Math.max(2, Math.ceil(qty / int(250, MAX_AVG))));
       const avg = Math.ceil(qty / target);
-      const days = Math.ceil(qty / avg);
+      const days = productionDaysOf(calendar, qty, avg);
       let end = '';
       let dates: LineDates;
       for (;;) {

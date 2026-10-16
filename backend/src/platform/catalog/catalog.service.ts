@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
-import { sql, type Kysely, type Updateable } from 'kysely';
+import { sql, type Kysely, type Updateable, type Selectable } from 'kysely';
 import { AppException, Errors } from '../../common/app.exception';
 import { sqlErrorNumbers } from '../../common/db-errors';
 import { AuditService } from '../audit/audit.service';
@@ -481,12 +481,24 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     };
   }
 
-  private offsetsOfRow(r: Pick<SysWorkCalendarTable, 'OutStartOffsetDays' | 'OutEndOffsetDays' | 'WarehouseStartOffsetDays' | 'WarehouseEndOffsetDays'>): CalendarOffsets {
-    return { outStartOffsetDays: r.OutStartOffsetDays, outEndOffsetDays: r.OutEndOffsetDays, warehouseStartOffsetDays: r.WarehouseStartOffsetDays, warehouseEndOffsetDays: r.WarehouseEndOffsetDays };
+  private offsetsOfRow(r: Pick<Selectable<SysWorkCalendarTable>, 'OutStartOffsetDays' | 'OutEndOffsetDays' | 'WarehouseStartOffsetDays' | 'WarehouseEndOffsetDays' | 'ProductionRoundUpFrom'>): CalendarOffsets {
+    return {
+      outStartOffsetDays: r.OutStartOffsetDays,
+      outEndOffsetDays: r.OutEndOffsetDays,
+      warehouseStartOffsetDays: r.WarehouseStartOffsetDays,
+      warehouseEndOffsetDays: r.WarehouseEndOffsetDays,
+      productionRoundUpFrom: Number(r.ProductionRoundUpFrom),
+    };
   }
 
   private offsetColumns(o: CalendarOffsets) {
-    return { OutStartOffsetDays: o.outStartOffsetDays, OutEndOffsetDays: o.outEndOffsetDays, WarehouseStartOffsetDays: o.warehouseStartOffsetDays, WarehouseEndOffsetDays: o.warehouseEndOffsetDays };
+    return {
+      OutStartOffsetDays: o.outStartOffsetDays,
+      OutEndOffsetDays: o.outEndOffsetDays,
+      WarehouseStartOffsetDays: o.warehouseStartOffsetDays,
+      WarehouseEndOffsetDays: o.warehouseEndOffsetDays,
+      ProductionRoundUpFrom: o.productionRoundUpFrom,
+    };
   }
 
   /** ĐVCS của lịch: phải có, không phải đơn vị tổng hợp; ghi thì phải đang dùng */
@@ -536,13 +548,18 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     if (!offsetsInOrder(dto)) {
       throw invalid('Số ngày cộng thêm làm ngày bắt đầu sau ngày kết thúc: Kết thúc ra chuyền phải cộng từ bằng Bắt đầu ra chuyền trở lên, và tổng của Kết thúc ra chuyền với Kết thúc nhập kho phải từ bằng tổng của hai ngày bắt đầu trở lên.');
     }
-    const values = { WeeklyOffMask: mask, ...this.offsetColumns(dto) };
     await unique(
       () =>
         this.db.transaction().execute(async (trx) => {
           const before = await trx.selectFrom('SysWorkCalendar').selectAll().where('BranchCode', '=', code).executeTakeFirst();
+          // Ngưỡng làm tròn không gửi (giao diện cũ): giữ số đang có, chưa có lịch thì mặc định
+          const config: CalendarOffsets = {
+            ...dto,
+            productionRoundUpFrom: dto.productionRoundUpFrom ?? (before ? Number(before.ProductionRoundUpFrom) : DEFAULT_WORK_CALENDAR.productionRoundUpFrom),
+          };
+          const values = { WeeklyOffMask: mask, ...this.offsetColumns(config) };
           // Gửi lại đúng cấu hình đang có (bấm Lưu hai lần): không ghi, không thêm nhật ký
-          if (before && (Object.keys(values) as (keyof typeof values)[]).every((k) => before[k] === values[k])) return;
+          if (before && (Object.keys(values) as (keyof typeof values)[]).every((k) => Number(before[k]) === values[k])) return;
           let id: number;
           if (before) {
             id = before.Id;
@@ -551,7 +568,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
             id = (await trx.insertInto('SysWorkCalendar').values({ BranchCode: code, ...values, CreatedBy: actor.userId }).output('inserted.Id').executeTakeFirstOrThrow()).Id;
           }
           const old = before ? { weeklyOffDays: weekdaysOf(before.WeeklyOffMask), ...this.offsetsOfRow(before) } : undefined;
-          await this.audit.logStrict(this.entry(actor, 'SysWorkCalendar', id, 'WORK_CALENDAR_UPDATE', old, { branchCode: code, weeklyOffDays: weekdaysOf(mask), ...offsetsOf(dto) }), trx);
+          await this.audit.logStrict(this.entry(actor, 'SysWorkCalendar', id, 'WORK_CALENDAR_UPDATE', old, { branchCode: code, weeklyOffDays: weekdaysOf(mask), ...offsetsOf(config) }), trx);
         }),
       'Lịch của đơn vị cơ sở này vừa được người khác tạo. Tải lại rồi thử lại.',
     );

@@ -33,7 +33,7 @@ const plan = {
   revenue: 2500,
   syncedAt: '2026-10-10',
   startDate: '2026-12-05',
-  endDate: '2026-12-09',
+  endDate: '2026-12-10',
   shipDate: '2027-01-20',
   statusCode: 'SCHEDULED',
   lineCount: 1,
@@ -41,8 +41,8 @@ const plan = {
 } as unknown as LinePlan;
 
 /**
- * Dòng lưu trước khi quản trị đặt thứ Hai 07/12 là ngày nghỉ: máy chủ đã tính kết thúc 09/12 (một Chủ nhật). Theo lịch hiện tại
- * là 10/12, nghỉ 2 ngày: giao diện báo dòng cần tính lại.
+ * Dòng lưu trước khi quản trị đặt thứ Hai 07/12 là ngày nghỉ: máy chủ đã tính kết thúc 10/12 (nghỉ một Chủ nhật). Theo lịch hiện tại
+ * là 11/12, nghỉ 2 ngày: giao diện giữ ngày đã lưu (có thể là ngày điều chỉnh tay), báo dòng khác công thức, cho tính lại.
  */
 const line = {
   id: 11,
@@ -53,21 +53,22 @@ const line = {
   startDate: '2026-12-05',
   productionDays: 4,
   offDays: 1,
-  endDate: '2026-12-09',
-  outStartDate: '2026-12-09',
-  outEndDate: '2026-12-12',
-  warehouseStartDate: '2026-12-11',
+  endDate: '2026-12-10',
+  outStartDate: '2026-12-08',
+  outEndDate: '2026-12-13',
+  warehouseStartDate: '2026-12-10',
   warehouseEndDate: '2026-12-18',
   statusCode: 'PLANNED',
   editable: true,
 };
-const calendar = { weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5, days: [{ date: '2026-12-07', dayType: 'OFF' as const, name: 'Nghỉ thử' }] };
+// Ngưỡng làm tròn 0,01: 1000/300 = 4 ngày như dòng đã lưu
+const calendar = { weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5, productionRoundUpFrom: 0.01, days: [{ date: '2026-12-07', dayType: 'OFF' as const, name: 'Nghỉ thử' }] };
 const detail = { ...plan, lines: [line], calendar } as unknown as LinePlanDetail;
 const board: Board = {
   from: '2026-11-30',
   to: '2026-12-20',
   lines: [{ code: 'A01-L12', name: 'Chuyền 12', branchCode: 'A01', isActive: true }],
-  bars: [{ id: 11, planId: 7, planNo: plan.planNo, lineCode: 'A01-L12', startDate: '2026-12-05', endDate: '2026-12-09', qty: 1000, avgOutput: 300, customerName: 'KHÁCH THỬ', styleCode: 'MA-THU-1', poBuyDate: 'PO-THU', shipDate: '2027-01-20', statusCode: 'PLANNED' }],
+  bars: [{ id: 11, planId: 7, planNo: plan.planNo, lineCode: 'A01-L12', startDate: '2026-12-05', endDate: '2026-12-10', qty: 1000, avgOutput: 300, customerName: 'KHÁCH THỬ', styleCode: 'MA-THU-1', poBuyDate: 'PO-THU', shipDate: '2027-01-20', statusCode: 'PLANNED' }],
   nonWorkingDays: { A01: [{ date: '2026-12-06', name: null }, { date: '2026-12-07', name: 'Nghỉ thử' }, { date: '2026-12-13', name: null }, { date: '2026-12-20', name: null }] },
 };
 
@@ -90,7 +91,7 @@ function serve() {
   return { writes };
 }
 
-function signIn(permissions: string[]) {
+function signIn(permissions: string[], fieldPolicies: Record<string, Record<string, 'READONLY'>> = {}) {
   useSession.getState().reset('anonymous');
   useSession.getState().set({
     status: 'ready',
@@ -98,7 +99,7 @@ function signIn(permissions: string[]) {
     branch: { code: 'A01', name: 'Nhà máy 1', isAggregate: false },
     roles: [],
     permissions: new Set(permissions),
-    fieldPolicies: {},
+    fieldPolicies,
   });
 }
 
@@ -123,24 +124,60 @@ describe('Chi tiết dàn chuyền: ngày tự tính theo lịch làm việc', (
     vi.mocked(api).mockReset();
   });
 
-  it('ngày đã lưu khác lịch hiện tại: báo, cho Lưu; chỉ gửi chuyền, số lượng, năng suất, ngày bắt đầu; thanh xem trước theo lịch mới', async () => {
+  it('ngày đã lưu khác công thức: giữ ngày đã lưu, báo; Tính lại theo công thức rồi Lưu gửi năm ngày mới; thanh xem trước theo ngày của dòng', async () => {
     signIn(['order.lineplan:view', 'order.lineplan:update']);
     const { writes } = serve();
     const dialog = await openDetail();
-    expect(await within(dialog).findByText(/1 dòng có ngày đã lưu khác cách tính theo lịch làm việc hiện tại/)).toBeInTheDocument();
-    // Thanh của kế hoạch đang mở vẽ theo ngày giao diện tính: 1000/300 = 4 ngày từ thứ Bảy 05/12, nghỉ Chủ nhật và thứ Hai 07/12
+    expect(await within(dialog).findByText(/1 dòng có ngày khác công thức theo lịch làm việc hiện tại/)).toBeInTheDocument();
+    // Thanh của kế hoạch đang mở vẽ theo ngày đang có của dòng (đã lưu 10/12)
     expect(await within(dialog).findByRole('button', { name: /05\/12\/2026 đến 10\/12\/2026/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Lưu thay đổi' })).toHaveAttribute('data-disabled');
+    // Tính lại: 1000/300 = 4 ngày sau thứ Bảy 05/12, nghỉ Chủ nhật và thứ Hai 07/12 => kết thúc 11/12
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tính lại theo công thức' }));
+    await waitFor(() => expect(within(dialog).queryByText(/dòng có ngày khác công thức/)).toBeNull());
     // Ngày nghỉ của lịch ĐVCS tô trên tiêu đề bảng, kèm tên ngày lễ
     expect(within(dialog).getByTitle('07/12/2026, Nghỉ thử')).toHaveAttribute('data-off');
     expect(within(dialog).getByTitle('08/12/2026')).not.toHaveAttribute('data-off');
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cách tính ngày' }));
-    expect(await screen.findByText('Bắt đầu ra chuyền = bắt đầu vào chuyền + 3; kết thúc ra chuyền = kết thúc vào chuyền + 3 ngày làm việc.')).toBeInTheDocument();
+    expect(await screen.findByText('Bắt đầu ra chuyền = bắt đầu vào chuyền + 3; kết thúc ra chuyền = kết thúc vào chuyền + 3 ngày.')).toBeInTheDocument();
     expect(screen.getByText(/Số ngày nghỉ: Chủ nhật và ngày lễ, Tết trong lịch/)).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Lưu thay đổi' }));
     await waitFor(() => expect(writes).toHaveLength(1));
-    expect(writes[0]).toEqual({ path: '/order/line-plans/7/lines', method: 'PUT', body: { lines: [{ id: 11, lineCode: 'A01-L12', qty: 1000, avgOutput: 300, startDate: '2026-12-05' }] } });
+    expect(writes[0]).toEqual({
+      path: '/order/line-plans/7/lines',
+      method: 'PUT',
+      body: {
+        lines: [
+          {
+            id: 11,
+            lineCode: 'A01-L12',
+            qty: 1000,
+            avgOutput: 300,
+            startDate: '2026-12-05',
+            endDate: '2026-12-11',
+            outStartDate: '2026-12-08',
+            outEndDate: '2026-12-14',
+            warehouseStartDate: '2026-12-10',
+            warehouseEndDate: '2026-12-19',
+          },
+        ],
+      },
+    });
+  });
+
+  it('Ngày kết thúc SX chỉ đọc theo chính sách cột: không gửi Kết thúc vào chuyền, các ngày khác vẫn gửi', async () => {
+    signIn(['order.lineplan:view', 'order.lineplan:update'], { 'order.lineplan': { endDate: 'READONLY' } });
+    const { writes } = serve();
+    const dialog = await openDetail();
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Tính lại theo công thức' }));
+    await waitFor(() => expect(within(dialog).queryByText(/dòng có ngày khác công thức/)).toBeNull());
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const sent = (writes[0].body as { lines: Record<string, unknown>[] }).lines[0];
+    expect(sent).not.toHaveProperty('endDate');
+    expect(sent).toMatchObject({ outStartDate: '2026-12-08', warehouseEndDate: '2026-12-19' });
   });
 
   it('chỉ được xem: lưới hiện số máy chủ đã lưu với tên cột mới, không báo tính lại', async () => {
@@ -152,9 +189,10 @@ describe('Chi tiết dàn chuyền: ngày tự tính theo lịch làm việc', (
       expect(within(grid).getByRole('columnheader', { name: new RegExp(title) })).toBeInTheDocument();
     }
     const row = within(grid).getByText('Chuyền 12').closest('tr')!;
-    // Kết thúc vào chuyền và Bắt đầu ra chuyền cùng 09/12
-    expect(within(row).getAllByText('09/12/2026')).toHaveLength(2);
-    expect(within(row).getByText('12/12/2026')).toBeInTheDocument();
+    // Kết thúc vào chuyền và Bắt đầu nhập kho cùng 10/12; Kết thúc ra chuyền 13/12 là Chủ nhật (cộng ngày lịch)
+    expect(within(row).getAllByText('10/12/2026')).toHaveLength(2);
+    expect(within(row).getByText('08/12/2026')).toBeInTheDocument();
+    expect(within(row).getByText('13/12/2026')).toBeInTheDocument();
     expect(within(row).getByText('18/12/2026')).toBeInTheDocument();
     expect(within(dialog).queryByText(/khác cách tính theo lịch/)).toBeNull();
   });

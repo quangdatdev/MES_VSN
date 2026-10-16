@@ -1201,30 +1201,33 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       const adminA01 = await tokenFor('admin', 'A01');
       const holiday = { branchCodes: ['A01'], from: '2026-12-07', to: '2026-12-07', dayType: 'OFF', name: 'Nghỉ thử P5' };
       try {
-        // 2026-12-05 là thứ Bảy: 1000/300 => 4 ngày SX: T7, (CN nghỉ), T2, T3, T4 => kết thúc 2026-12-09. Ra chuyền, nhập kho cộng
-        // theo ngày làm việc (lịch mặc định của ĐVCS mẫu: nghỉ Chủ nhật, 3/3/2/5). Số ngày nghỉ, ngày client gửi bị bỏ qua
+        // 2026-12-05 là thứ Bảy: 1000/300 = 3,33 => 3 ngày SX (phần lẻ dưới ngưỡng 0,5 của lịch mặc định) sau ngày bắt đầu: (CN nghỉ),
+        // T2, T3, T4 => kết thúc 2026-12-09. Ra chuyền,
+        // nhập kho cộng ngày lịch (lịch mặc định của ĐVCS mẫu: nghỉ Chủ nhật, 3/3/2/5). Số ngày nghỉ client gửi bị bỏ qua
         const saved = (await api()
           .put(`/api/v1/order/line-plans/${plan.id}/lines`)
           .set(auth(t))
-          .send({ lines: [{ lineCode: 'A01-L12', qty: 1000, avgOutput: 300, startDate: '2026-12-05', offDays: 9, outStartDate: '2030-01-01', warehouseEndDate: '2026-12-01' }] })
+          .send({ lines: [{ lineCode: 'A01-L12', qty: 1000, avgOutput: 300, startDate: '2026-12-05', offDays: 9 }] })
           .expect(200)).body;
         expect(saved.lines[0]).toMatchObject({
           lineCode: 'A01-L12',
-          productionDays: 4,
+          productionDays: 3,
           offDays: 1,
           endDate: '2026-12-09',
-          outStartDate: '2026-12-09',
+          outStartDate: '2026-12-08',
           outEndDate: '2026-12-12',
-          warehouseStartDate: '2026-12-11',
-          warehouseEndDate: '2026-12-18',
+          warehouseStartDate: '2026-12-10',
+          warehouseEndDate: '2026-12-17',
         });
-        expect(saved.calendar).toMatchObject({ weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5 });
+        expect(saved.calendar).toMatchObject({ weeklyOffDays: [7], outStartOffsetDays: 3, outEndOffsetDays: 3, warehouseStartOffsetDays: 2, warehouseEndOffsetDays: 5, productionRoundUpFrom: 0.5 });
         // Quản trị đặt thứ Hai 07/12 là ngày nghỉ của A01: lần lưu sau tính theo lịch mới, chi tiết và bảng dàn chuyền thấy ngày đó
         await api().post('/api/v1/admin/catalogs/work-calendars/days').set(auth(adminA01)).send(holiday).expect(201);
         const detail = (await api().get(`/api/v1/order/line-plans/${plan.id}`).set(auth(t)).expect(200)).body;
         expect(detail.calendar.days).toContainEqual({ date: '2026-12-07', dayType: 'OFF', name: 'Nghỉ thử P5' });
         const resaved = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ id: saved.lines[0].id, lineCode: 'A01-L12', qty: 1000, avgOutput: 300, startDate: '2026-12-05' }] }).expect(200)).body;
-        expect(resaved.lines[0]).toMatchObject({ offDays: 2, endDate: '2026-12-10', outStartDate: '2026-12-10' });
+        // Không gửi ngày, ô nhập không đổi: giữ ngày đã lưu (5.12.2), số ngày nghỉ đếm lại theo lịch mới. Giao diện tính lại bằng nút
+        // "Tính lại theo công thức" rồi gửi ngày mới
+        expect(resaved.lines[0]).toMatchObject({ offDays: 2, endDate: '2026-12-09', outStartDate: '2026-12-08' });
         const holidayBoard = (await api().get('/api/v1/order/line-plans/board?from=2026-12-01&to=2026-12-13').set(auth(t)).expect(200)).body;
         expect(holidayBoard.nonWorkingDays.A01).toEqual([
           { date: '2026-12-06', name: null },
@@ -1232,7 +1235,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
           { date: '2026-12-13', name: null },
         ]);
         await api().delete('/api/v1/admin/catalogs/work-calendars/A01/days?from=2026-12-07&to=2026-12-07').set(auth(adminA01)).expect(200);
-        expect(saved.lines[0]).toMatchObject({ lineCode: 'A01-L12', productionDays: 4, endDate: '2026-12-09' });
+        expect(saved.lines[0]).toMatchObject({ lineCode: 'A01-L12', productionDays: 3, endDate: '2026-12-09' });
         expect(saved.statusCode).toBe('SCHEDULED');
         // Lưu dàn chuyền không đề xuất phân màu cỡ (phase 5.13): kế hoạch hiện một dòng ở Phân bổ màu cỡ, chưa phân
         const alloc = (await api().get(`/api/v1/order/color-size/${plan.id}`).set(auth(t)).expect(200)).body;
@@ -1240,9 +1243,31 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         expect(alloc.colorSizes.map((c: any) => c.qty)).toEqual([200, 200, 200, 200, 200, 200]);
         const board = (await api().get('/api/v1/order/line-plans/board?from=2026-12-01&to=2026-12-31').set(auth(t)).expect(200)).body;
         expect(board.bars.some((b: any) => b.planId === plan.id && b.lineCode === 'A01-L12')).toBe(true);
-        // 7 ngày làm từ thứ Hai = thứ Hai tuần sau (bỏ Chủ nhật)
+        // 7 ngày làm sau thứ Hai = thứ Ba tuần sau (bỏ Chủ nhật)
         const week = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ id: saved.lines[0].id, lineCode: 'A01-L12', qty: 700, avgOutput: 100, startDate: '2026-12-07' }] }).expect(200)).body;
-        expect(week.lines[0]).toMatchObject({ endDate: '2026-12-14', offDays: 1 });
+        expect(week.lines[0]).toMatchObject({ endDate: '2026-12-15', offDays: 1 });
+        // Điều chỉnh tay (15/10/2026): ngày gửi lên được lưu, ngày thiếu theo công thức (10/12, 18/12, 12/12), số ngày nghỉ đếm tới
+        // Kết thúc vào chuyền đã nhập (Chủ nhật 13/12, 20/12)
+        const lineOf = (extra: Record<string, string>) => ({ lines: [{ id: saved.lines[0].id, lineCode: 'A01-L12', qty: 700, avgOutput: 100, startDate: '2026-12-07', ...extra }] });
+        const manual = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send(lineOf({ endDate: '2026-12-20', outStartDate: '2026-12-09', warehouseEndDate: '2026-12-31' })).expect(200)).body;
+        expect(manual.lines[0]).toMatchObject({ productionDays: 7, offDays: 2, endDate: '2026-12-20', outStartDate: '2026-12-09', outEndDate: '2026-12-18', warehouseStartDate: '2026-12-12', warehouseEndDate: '2026-12-31' });
+        const before = await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send(lineOf({ endDate: '2026-12-06' })).expect(422);
+        expect(before.body.error.message).toBe('Dòng 1: Kết thúc vào chuyền trước ngày bắt đầu vào chuyền.');
+        await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send(lineOf({ outStartDate: '2026-12-14', warehouseStartDate: '2026-12-13' })).expect(422);
+        // Kết thúc vào chuyền là cột "Ngày kết thúc SX" của chính sách cột: Chỉ đọc thì không gửi được (403), các ngày khác vẫn sửa
+        try {
+          await setRolePolicy('PLANNER', 'order.lineplan', 'endDate', 'READONLY');
+          const ro = await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send(lineOf({ endDate: '2026-12-20' })).expect(403);
+          expect(ro.body.error).toMatchObject({ code: 'FIELD_READONLY', details: { fields: ['endDate'] } });
+          // Không gửi endDate, ô nhập không đổi: giữ Kết thúc vào chuyền đã chỉnh tay (20/12), không đè về công thức (review 5.12.2 H1)
+          const kept = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send(lineOf({ outStartDate: '2026-12-11' })).expect(200)).body;
+          expect(kept.lines[0]).toMatchObject({ endDate: '2026-12-20', offDays: 2, outStartDate: '2026-12-11', warehouseEndDate: '2026-12-31' });
+          // Đổi năng suất: ngày không gửi tính lại theo công thức (700/50 = 14 ngày sau thứ Hai 07/12, nghỉ Chủ nhật 13, 20/12)
+          const recalc = (await api().put(`/api/v1/order/line-plans/${plan.id}/lines`).set(auth(t)).send({ lines: [{ id: saved.lines[0].id, lineCode: 'A01-L12', qty: 700, avgOutput: 50, startDate: '2026-12-07' }] }).expect(200)).body;
+          expect(recalc.lines[0]).toMatchObject({ endDate: '2026-12-23', offDays: 2, outStartDate: '2026-12-10', outEndDate: '2026-12-26', warehouseStartDate: '2026-12-12', warehouseEndDate: '2026-12-31' });
+        } finally {
+          await setRolePolicy('PLANNER', 'order.lineplan', 'endDate', null);
+        }
         // Giao 100 mỗi màu cỡ (600) cho chuyền 12: Xếp chuyền không giảm chuyền xuống dưới 600, Kế hoạch xuất hàng không giảm màu cỡ
         // xuống dưới 100 hay bỏ màu cỡ đã giao (409); bỏ chuyền thì phần giao của nó bị xóa theo (finally)
         const l12 = alloc.lines[0].id;

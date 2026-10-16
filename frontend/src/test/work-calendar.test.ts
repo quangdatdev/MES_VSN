@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isOffDay, isoWeekday, lineDates, offsetsInOrder, toCalendar, type WorkCalendarJson } from '../lib/workCalendar';
+import { isOffDay, isoWeekday, lineDates, offsetsInOrder, productionDaysOf, toCalendar, type WorkCalendarJson } from '../lib/workCalendar';
 
 // Bộ ca chung với backend (backend/test/work-calendar.spec.ts): bản tính ở giao diện phải ra đúng như máy chủ
-const fixture: { calendars: Record<string, WorkCalendarJson>; cases: { name: string; calendar: string; start: string; productionDays: number; expect: unknown }[] } = JSON.parse(
+const fixture: {
+  calendars: Record<string, WorkCalendarJson>;
+  rounding: { name: string; roundUpFrom: number; qty: number; avgOutput: number; expect: number }[];
+  cases: { name: string; calendar: string; start: string; productionDays: number; expect: unknown }[] } = JSON.parse(
   // jsdom thay URL toàn cục, readFileSync không nhận: đổi sang đường dẫn file
   readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../backend/test/fixtures/work-calendar-cases.json'), 'utf8'),
 );
@@ -13,6 +16,10 @@ const fixture: { calendars: Record<string, WorkCalendarJson>; cases: { name: str
 describe('Lịch làm việc ở giao diện: cùng kết quả với máy chủ', () => {
   it.each(fixture.cases.map((c) => [c.name, c] as const))('%s', (_name, c) => {
     expect(lineDates(toCalendar(fixture.calendars[c.calendar]), c.start, c.productionDays)).toEqual(c.expect);
+  });
+
+  it.each(fixture.rounding.map((c) => [c.name, c] as const))('Số ngày SX làm tròn theo ngưỡng của lịch: %s', (_name, c) => {
+    expect(productionDaysOf({ productionRoundUpFrom: c.roundUpFrom }, c.qty, c.avgOutput)).toBe(c.expect);
   });
 
   it('ngày đang gõ dở, sai dạng: không tính', () => {

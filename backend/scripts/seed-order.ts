@@ -3,7 +3,7 @@
 import { sql, type Kysely } from 'kysely';
 import type { OrderDatabase } from '../src/modules/order/order.types';
 import { apportion, lineShares } from '../src/modules/order/order.util';
-import { lineDates, nextWorkingDay, type WorkCalendar } from '../src/platform/catalog/work-calendar';
+import { lineDates, nextWorkingDay, productionDaysOf, type WorkCalendar } from '../src/platform/catalog/work-calendar';
 import { COLORS, CUSTOMERS, DESTINATIONS, LINE_COUNT, ORDER_COUNT, PRODUCTS, SCHEDULE_START, SIZES, STAFF, lineCode, prng } from './seed-data';
 
 /** Ngày demo: tiến độ (đang sản xuất, lũy kế) tính theo mốc này để dữ liệu không đổi theo ngày chạy. */
@@ -178,7 +178,7 @@ export async function seedOrders(db: Kysely<OrderDatabase>, branch: string, crea
         if (q <= 0) continue;
         const avg = 50 * int(5, 12);
         const start = nextWorkingDay(calendar, addDays(cursor.get(code)!, int(0, 1)));
-        const days = Math.ceil(q / avg);
+        const days = productionDaysOf(calendar, q, avg);
         // Trước phase 5.12 lần rút này là "ngày nghỉ khác" nhập tay: giữ lần rút để các số ngẫu nhiên sau không đổi (dữ liệu mẫu như cũ)
         rnd();
         const dates = start && lineDates(calendar, start, days);

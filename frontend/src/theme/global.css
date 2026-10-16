@@ -1919,16 +1919,21 @@ a:hover > .home-tile .home-tile-name {
   background: var(--field-required-bg);
 }
 .sheet-wrap .dsg-cell.sheet-error {
-  background: #fdecea;
+  background-color: #fdecea;
   color: var(--error);
   font-weight: 700;
 }
 :root[data-mantine-color-scheme='dark'] .sheet-wrap .dsg-cell.sheet-error {
-  background: rgba(177, 39, 4, 0.22);
+  background-color: rgba(177, 39, 4, 0.22);
   color: #ff8a65;
 }
 .sheet-wrap .dsg-cell-disabled {
   color: var(--app-ink-soft);
+}
+/* Ô khác giá trị tính theo công thức (ngày dàn chuyền điều chỉnh tay): tam giác ở góc trên phải như dấu ghi chú của Excel,
+   giữ nguyên nền ô (vàng bắt buộc, đỏ sai) */
+.sheet-wrap .dsg-cell.sheet-adjusted {
+  background-image: linear-gradient(225deg, var(--brand) 0 7px, transparent 7px);
 }
 /* Ô gộp (popup Phân màu cỡ): các dòng liền nhau cùng màu cỡ trông như một ô merge của Excel, chữ ở giữa khối.
    Lưới nhập vẽ từng dòng riêng: viền dưới của ô là bóng 1px 1px của thư viện nên ô còn dòng dưới chỉ giữ bóng bên phải; chữ

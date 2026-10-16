@@ -298,7 +298,7 @@ export async function runSeed({
         const d = DEFAULT_WORK_CALENDAR;
         const cal = await db
           .insertInto('SysWorkCalendar')
-          .values({ BranchCode: b.code, WeeklyOffMask: d.weeklyOffMask, OutStartOffsetDays: d.outStartOffsetDays, OutEndOffsetDays: d.outEndOffsetDays, WarehouseStartOffsetDays: d.warehouseStartOffsetDays, WarehouseEndOffsetDays: d.warehouseEndOffsetDays })
+          .values({ BranchCode: b.code, WeeklyOffMask: d.weeklyOffMask, OutStartOffsetDays: d.outStartOffsetDays, OutEndOffsetDays: d.outEndOffsetDays, WarehouseStartOffsetDays: d.warehouseStartOffsetDays, WarehouseEndOffsetDays: d.warehouseEndOffsetDays, ProductionRoundUpFrom: d.productionRoundUpFrom })
           .output('inserted.Id')
           .executeTakeFirstOrThrow();
         const days = workCalendarSample

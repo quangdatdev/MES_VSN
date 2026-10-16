@@ -313,6 +313,8 @@ export interface SysWorkCalendarTable extends Audit {
   OutEndOffsetDays: number;
   WarehouseStartOffsetDays: number;
   WarehouseEndOffsetDays: number;
+  /** DECIMAL(3,2), MES_Core/0014: ngưỡng làm tròn Số ngày SX */
+  ProductionRoundUpFrom: Generated<number>;
 }
 
 /** Ngày đặc biệt của lịch: OFF nghỉ (lễ, Tết), WORK làm bù. Cột DATE đọc ra Date lúc 00:00 UTC */
