@@ -81,8 +81,10 @@ export default function SalesOrderPage() {
   const items = list.query.data?.items ?? [];
   // Đổi lọc hay trang mà dòng đã chọn không còn trong lưới thì coi như chưa chọn
   const selected = items.find((r) => r.id === selectedId) ?? null;
-  // Đơn của ĐVCS khác: xem được, không sửa, xóa được
+  // Đơn của ĐVCS khác: xem được, không sửa, xóa được; trừ Giá CM khi ĐVCS này có kế hoạch xuất hàng của đơn (quyết định 14.3)
   const writeBlocked = selected ? originLock(selected.branchCode) : PICK_ROW;
+  const priceOnly = (o: SalesOrder | null) => !!o && !!originLock(o.branchCode) && !!o.cmPriceEditable && policy.editable('cmPrice');
+  const editBlocked = priceOnly(selected) ? null : writeBlocked;
   // Cột số lượng bị Che hoặc Ẩn thì không có tổng (null)
   const sumQty = sumOf(items.map((r) => r.qty));
 
@@ -125,7 +127,7 @@ export default function SalesOrderPage() {
             </ActionButton>
           )}
           {canUpdate && (
-            <ActionButton variant="default" leftSection={<IconPencil size={15} />} blockedReason={writeBlocked} onClick={() => selected && setDialog({ order: selected })}>
+            <ActionButton variant="default" leftSection={<IconPencil size={15} />} blockedReason={editBlocked} onClick={() => selected && setDialog({ order: selected })}>
               Sửa
             </ActionButton>
           )}
@@ -156,7 +158,7 @@ export default function SalesOrderPage() {
         onRowClick={(r) => setSelectedId(r.id)}
         onRowDoubleClick={(r) => {
           setSelectedId(r.id);
-          if (canUpdate && !originLock(r.branchCode)) setDialog({ order: r });
+          if (canUpdate && (!originLock(r.branchCode) || priceOnly(r))) setDialog({ order: r });
         }}
         empty={
           <EmptyState
@@ -176,9 +178,21 @@ export default function SalesOrderPage() {
           />
         }
       />
-      {dialog && <SalesOrderDialog order={dialog.order} policy={policy} onClose={() => setDialog(null)} onDone={refreshAfterClose} />}
+      {dialog && <SalesOrderDialog order={dialog.order} policy={priceOnly(dialog.order) ? onlyField(policy, 'cmPrice') : policy} priceOnly={priceOnly(dialog.order)} onClose={() => setDialog(null)} onDone={refreshAfterClose} />}
     </WorkPage>
   );
+}
+
+/**
+ * Chính sách cột của popup Sửa riêng Giá CM: mọi trường khác chỉ xem (cột Ẩn, Che giữ nguyên), chỉ `field` theo chính sách thật. Máy chủ
+ * vẫn chỉ nhận Giá CM ở đường này.
+ */
+function onlyField(policy: FieldPolicy, field: string): FieldPolicy {
+  const level = (f: string) => {
+    const l = policy.level(f);
+    return f === field || l === 'HIDDEN' || l === 'MASKED' ? l : 'READONLY';
+  };
+  return { ...policy, level, editable: (f) => level(f) === 'EDITABLE' };
 }
 
 interface Lock {
@@ -254,7 +268,7 @@ function useOrderForm(order: SalesOrder | null, policy: FieldPolicy) {
   });
 }
 
-function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrder | null; policy: FieldPolicy; onClose: () => void; onDone: () => void }) {
+function SalesOrderDialog({ order, policy, priceOnly = false, onClose, onDone }: { order: SalesOrder | null; policy: FieldPolicy; priceOnly?: boolean; onClose: () => void; onDone: () => void }) {
   const branch = useSession((s) => s.branch);
   const branchName = useBranchName();
   const mobile = useMobile();
@@ -273,6 +287,9 @@ function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrde
       for (const k of Object.keys(body)) {
         if (!policy.editable(k) || (order && form.values[k as keyof typeof form.values] === form.getInitialValues()[k as keyof typeof form.values])) delete body[k];
       }
+      // Đơn của ĐVCS khác: đường riêng chỉ nhận Giá CM (quyết định 14.3)
+      // Gửi đúng giá đang hiện trong ô (không gửi được thì giá không đổi, không phải xóa giá), review 5.16 L1
+      if (order && priceOnly) return api<SalesOrder>(`/order/sales-orders/${order.id}/cm-price`, { method: 'PUT', body: { cmPrice: v.cmPrice === '' ? null : v.cmPrice } });
       return order ? api<SalesOrder>(`/order/sales-orders/${order.id}`, { method: 'PUT', body }) : api<SalesOrder>('/order/sales-orders', { method: 'POST', body });
     },
     onSuccess: (r) => {
@@ -289,7 +306,13 @@ function SalesOrderDialog({ order, policy, onClose, onDone }: { order: SalesOrde
     <Modal opened onClose={close} size="lg" fullScreen={mobile} title={order ? `Sửa đơn hàng ${order.orderNo}` : 'Thêm đơn hàng'}>
       <form onSubmit={form.onSubmit((v) => m.mutate(v))}>
         <Stack gap="sm">
-          <Text size="xs" c="dimmed">Ô vàng bắt buộc nhập. Ô xám chỉ xem.</Text>
+          {priceOnly ? (
+            <Alert color="blue" variant="light" py={6}>
+              Đơn của {branchName(order?.branchCode)}: đơn vị cơ sở đang làm việc có kế hoạch xuất hàng của đơn nên chỉ sửa được Giá CM. Giá mới áp cho kế hoạch xuất hàng, Xếp chuyền, Kế hoạch may của mọi đơn vị cơ sở.
+            </Alert>
+          ) : (
+            <Text size="xs" c="dimmed">Ô vàng bắt buộc nhập. Ô xám chỉ xem.</Text>
+          )}
           {blocked.length > 0 && (
             <Alert color="orange" variant="light" py={6}>
               Bạn không được nhập {blocked.map((f) => REQUIRED[f]).join(', ')} nên chưa thêm được đơn hàng. Nhờ quản trị viên mở ở Chính sách cột nếu cần.

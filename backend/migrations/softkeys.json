@@ -154,6 +154,60 @@
       "status": "MES_Sewing/0001 (Phase 5.5); đích đổi từ MES_Core.SysOrgUnit (OrgType = 'LINE') sang bộ phận ở phase 5.10, như ShipmentPlanLine.LineCode"
     },
     {
+      "from": "MES_Sewing.SewingDayPlan.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16)"
+    },
+    {
+      "from": "MES_Sewing.SewingDayPlan.LineCode",
+      "to": "MES_Hr.Department.Code",
+      "sameBranch": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16): chuyền của Kế hoạch may, NVARCHAR(20) (Q1) trỏ tới mã bộ phận VARCHAR(20), như ShipmentPlanLine.LineCode"
+    },
+    {
+      "from": "MES_Sewing.SewingDayPlan.LockedBy",
+      "to": "MES_Core.SysUser.Id",
+      "nullable": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16): người chốt (tên chụp ở LockerName); NULL khi chưa chốt"
+    },
+    {
+      "from": "MES_Sewing.SewingDayPlan.CreatedBy",
+      "to": "MES_Core.SysUser.Id",
+      "nullable": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16)"
+    },
+    {
+      "from": "MES_Sewing.SewingDayPlanItem.CreatedBy",
+      "to": "MES_Core.SysUser.Id",
+      "nullable": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16); chỉ mục ở MES_Sewing/0004"
+    },
+    {
+      "from": "MES_Sewing.SewingDayPlanItem.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16)"
+    },
+    {
+      "from": "MES_Sewing.SewingDayPlanItem.ShipmentPlanLineId",
+      "to": "MES_Order.ShipmentPlanLine.Id",
+      "sameBranch": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16): dòng dàn chuyền (nhận diện kèm SourceCreatedAt). Xếp chuyền không bỏ dòng đã có số giao (quyết định 14.2); dòng mồ côi chỉ còn khi nạp lại dữ liệu đơn hàng"
+    },
+    {
+      "from": "MES_Sewing.SewingDayPlanItem.ShipmentPlanId",
+      "to": "MES_Order.ShipmentPlan.Id",
+      "sameBranch": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0003 (Phase 5.16)"
+    },
+    {
       "from": "MES_Cutting.CuttingPlan.BranchCode",
       "to": "MES_Core.SysBranch.Code",
       "ownerModule": "cutting",

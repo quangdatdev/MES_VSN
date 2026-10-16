@@ -18,6 +18,7 @@ import {
   PoAllocationQuery,
   PoAllocationValuesQuery,
   PoCreateDto,
+  SalesOrderCmPriceDto,
   SalesOrderCreateDto,
   SalesOrderUpdateDto,
   ScheduleDto,
@@ -60,6 +61,10 @@ export class SalesOrderController {
 
   @Put(':id') @RequirePermission('order.allocation:update')
   update(@CurrentUser() u: AuthUser, @id() oid: number, @Body() dto: SalesOrderUpdateDto) { return this.service.update(u, oid, dto); }
+
+  // Sửa riêng Giá CM (quyết định 14.3): cả ĐVCS có kế hoạch xuất hàng của đơn; chính sách cột của cmPrice do FieldPolicyInterceptor kiểm
+  @Put(':id/cm-price') @RequirePermission('order.allocation:update')
+  updateCmPrice(@CurrentUser() u: AuthUser, @id() oid: number, @Body() dto: SalesOrderCmPriceDto) { return this.service.updateCmPrice(u, oid, dto); }
 
   @Delete(':id') @HttpCode(204) @RequirePermission('order.allocation:delete')
   async remove(@CurrentUser() u: AuthUser, @id() oid: number) { await this.service.remove(u, oid); }

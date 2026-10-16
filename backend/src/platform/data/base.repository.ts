@@ -332,6 +332,26 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
     if (!ok) throw Errors.scopeDenied();
   }
 
+  /**
+   * Một dòng có các giá trị `row` (chưa cần có trong bảng) có nằm trong phạm vi của hành động không: ĐVCS (tài nguyên BRANCH, trừ đơn vị
+   * tổng hợp khi xem) và phạm vi L3 theo cột của phép gán, cùng luật với khi ghi. Cho màn hiện dữ liệu nguồn của module khác trước khi
+   * có dòng ở bảng của mình (Kế hoạch may hiện dòng dàn chuyền chưa lập: phạm vi chuyền vẫn áp), thay vì module tự viết điều kiện.
+   */
+  async allows(scope: Scope, action: DataAction, row: Record<string, unknown>): Promise<boolean> {
+    const info = await this.info();
+    // Luật ghi theo ĐVCS nguồn, ĐVCS đang dùng dòng, ĐVCS của nhà máy cần dòng có thật trong bảng: không suy được từ giá trị (review 5.16 M2)
+    if (WRITE_ACTIONS.has(action) && (this.originBranch || this.factoryBranchWrite)) throw new Error(`allows() không dùng cho việc ghi của ${this.resource} (bảng có ĐVCS nguồn hoặc ghi theo nhà máy)`);
+    if (WRITE_ACTIONS.has(action) && info.scope === 'BRANCH' && scope.isAggregate) return false;
+    if (info.scope === 'BRANCH' && !scope.isAggregate && String(valueOf(row, 'BranchCode') ?? '') !== scope.branchCode) return false;
+    return this.grantsFor(scope, action).some((g) =>
+      rowSatisfies(
+        row,
+        g.conditions.filter((c) => info.bindings.has(c.dim)).map((c) => ({ c, column: info.bindings.get(c.dim)! })),
+        scope,
+      ),
+    );
+  }
+
   async assertWritable(scope: Scope) {
     const info = await this.info();
     if ((info.scope === 'BRANCH' || this.originBranch || this.factoryBranchWrite) && scope.isAggregate) throw Errors.aggregateReadOnly();

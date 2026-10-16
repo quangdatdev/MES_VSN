@@ -81,3 +81,79 @@ export interface PrepDoneSaved {
   rows: number;
   cells: number;
 }
+
+// ---------- Kế hoạch may (sewing.plan, phase 5.16) ----------
+
+/**
+ * Một dòng dàn chuyền trong ngày của màn Kế hoạch may. Cột bị Che trả "***", bị Ẩn thì không có; số suy ra (Còn lại, Doanh số,
+ * otherBefore, otherAfter) là null khi cột gốc không xem được.
+ */
+export interface SewingPlanItem {
+  lineId: number;
+  lineCreatedAt: string;
+  planId: number;
+  branchCode: string;
+  lineCode?: Masked<string>;
+  /** Tên chuyền; không có khi Tổ SX bị Ẩn, Che */
+  lineName?: string;
+  styleCode?: Masked<string>;
+  productName: string;
+  poBuyDate?: Masked<string>;
+  cmPrice?: Masked<number | null>;
+  startDate?: Masked<string | null>;
+  endDate?: Masked<string | null>;
+  planQty?: Masked<number>;
+  deliveredQty?: Masked<number>;
+  remainQty?: Masked<number | null>;
+  linemapQty?: Masked<number | null>;
+  dayQty?: Masked<number | null>;
+  planRevenue?: Masked<number | null>;
+  startTime?: Masked<string>;
+  endTime?: Masked<string>;
+  /** Tổng Kế hoạch ngày xưởng giao các ngày trước, sau ngày đang xem (để tính khi gõ) */
+  otherBefore: number | null;
+  otherAfter: number | null;
+  saved: boolean;
+  /** Chuyền chưa có bản ghi trong ngày: lần đầu lập cần quyền Thêm */
+  firstOfDay?: boolean;
+  locked: boolean;
+  /** Dòng dàn chuyền không còn ở Xếp chuyền: hiện theo bản chụp, chỉ xem */
+  sourceGone: boolean;
+  canEdit: boolean;
+}
+
+/** Một chuyền đang hiện trong ngày: trạng thái chốt, phiên bản (người khác vừa ghi thì 409) */
+export interface SewingPlanLine {
+  branchCode: string;
+  lineCode: string;
+  lineName?: string;
+  locked: boolean;
+  lockedAt: string | null;
+  lockerName: string | null;
+  version: string;
+  canEdit: boolean;
+}
+
+export interface SewingPlanDay {
+  date: string;
+  today: string;
+  /** Ngày sửa được: không ở A00, có quyền Sửa, không trước hôm nay */
+  editableDay: boolean;
+  lines: SewingPlanLine[];
+  items: SewingPlanItem[];
+}
+
+/** Dòng dàn chuyền để Thêm dòng (chuyền → mã hàng → PO/Buy date) */
+export interface SewingPlanOption {
+  lineId: number;
+  lineCreatedAt: string;
+  branchCode: string;
+  lineCode?: Masked<string>;
+  lineName?: string;
+  styleCode?: Masked<string>;
+  productName: string;
+  poBuyDate?: Masked<string>;
+  startDate?: Masked<string>;
+  endDate?: Masked<string>;
+  planQty?: Masked<number>;
+}

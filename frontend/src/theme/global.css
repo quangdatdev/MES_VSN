@@ -2292,6 +2292,62 @@ a:hover > .home-tile .home-tile-name {
   }
 }
 
+/*
+ * Kế hoạch may (phase 5.16) theo ảnh mẫu: khung "Danh sách mã hàng" (ô lọc, lưới kéo kín, nút Cập nhật) nằm trên nền section như
+ * khung dưới của Xác nhận cấp BTP. Dải trạng thái chốt cạnh ô Ngày là chỗ duy nhất có màu đậm.
+ */
+.plan-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 8px;
+  background: var(--app-section);
+}
+.plan-pane .mantine-InputWrapper-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-ink-soft);
+}
+.plan-sheet {
+  flex: 1;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+/* Tiêu đề cột xuống hai dòng như ảnh mẫu (14 cột trên màn laptop): chữ không bị cắt, cột hẹp lại */
+.plan-sheet .dsg-cell-header-container {
+  white-space: normal;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.plan-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--app-line);
+  background: var(--app-surface);
+}
+.plan-status[data-state='locked'] {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--app-line));
+  background: color-mix(in srgb, var(--success) 8%, var(--app-surface));
+}
+.plan-status[data-state='partial'] {
+  border-color: color-mix(in srgb, var(--mantine-color-yellow-6) 45%, var(--app-line));
+}
+@media (max-width: 767px) {
+  .plan-sheet {
+    min-height: 60vh;
+  }
+}
+
 /* ===== Bảng dàn chuyền (Gantt): điểm nhấn của module Đơn hàng ===== */
 .board {
   border: 1px solid var(--app-line);

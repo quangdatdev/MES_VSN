@@ -149,6 +149,11 @@ export class SalesOrderUpdateDto {
   @IsOptional() @trim() @IsString() @Matches(FACTORY_CODE, { message: 'Mã nhà máy sản xuất không hợp lệ.' }) productionFactoryCode?: string | null;
 }
 
+/** Sửa riêng Giá CM của đơn (quyết định 14.3): ĐVCS có kế hoạch xuất hàng của đơn cũng sửa được. null: bỏ giá. Phải gửi khóa cmPrice */
+export class SalesOrderCmPriceDto {
+  @ValidateIf((o) => o.cmPrice !== null) @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Max(100_000_000) cmPrice!: number | null;
+}
+
 // ---------- Màu cỡ (dùng chung) ----------
 
 export class ColorSizeQtyDto {

@@ -114,6 +114,33 @@ const dateCell = createTextColumn<string | null>({
 });
 
 /**
+ * Giờ trong ngày "HH:mm" từ chữ gõ, dán: "7:30", "07.30", "7h30", "7h", "730", "1710". Không đọc được thì trả nguyên chữ (đã bỏ
+ * khoảng trắng) để ô tô đỏ và màn chặn lưu, thay vì lặng lẽ xóa ô; rỗng là null.
+ */
+export function parseTime(text: string): string | null {
+  const s = text.trim().toLowerCase();
+  if (!s) return null;
+  const m = /^(\d{1,2})(?:[:.h](\d{1,2})?)?$/.exec(s) ?? /^(\d{1,2})(\d{2})$/.exec(s);
+  if (!m) return s;
+  const h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  if (h > 23 || min > 59) return s;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+// Giờ ghi khi Enter, Tab hoặc rời ô như ô ngày: "7" gõ dở không thành 07:00 giữa chừng
+const timeCell = createTextColumn<string | null>({
+  placeholder: 'hh:mm',
+  continuousUpdates: false,
+  deletedValue: null,
+  parseUserInput: parseTime,
+  parsePastedValue: parseTime,
+  formatBlurredInput: (v) => v ?? '',
+  formatInputOnFocus: (v) => v ?? '',
+  formatForCopy: (v) => v ?? '',
+});
+
+/**
  * Thêm tiêu đề, cỡ cột, tô ô bắt buộc/sai và khóa ô theo dòng. Khi dán quá cuối lưới, thư viện hỏi "ô có bị khóa không"
  * với dòng chưa tồn tại (rowData undefined): dòng mới tạo khi dán thì không khóa.
  */
@@ -152,6 +179,10 @@ export const sheetNumber = <T extends object>(key: Key<T, number | null>, title:
 /** Cột chữ (màu, cỡ…) */
 export const sheetText = <T extends object>(key: Key<T, string>, title: string, o: CellOpts<T> = {}) =>
   decorate<T>(byKey<T>(key, textCell), title, { minWidth: 120, ...o });
+
+/** Cột giờ trong ngày (lưu "HH:mm"; chữ không đọc được giữ nguyên để màn tô đỏ) */
+export const sheetTime = <T extends object>(key: Key<T, string | null>, title: string, o: CellOpts<T> = {}) =>
+  decorate<T>(byKey<T>(key, timeCell), title, { minWidth: 80, ...o });
 
 /** Cột ngày (lưu YYYY-MM-DD, hiện và gõ dd/mm/yyyy) */
 export const sheetDate = <T extends object>(key: Key<T, string | null>, title: string, o: CellOpts<T> = {}) =>

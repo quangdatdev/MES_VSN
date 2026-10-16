@@ -83,4 +83,6 @@ export interface LineInfo {
   /** Bộ phận cha của chuyền, để ô chọn gom nhóm; null: chuyền nằm ở gốc cây phòng ban */
   workshopCode?: string | null;
   workshopName?: string | null;
+  /** Bộ phận cha từ gốc cây phòng ban tới bộ phận cha trực tiếp (ô Đơn vị phòng ban của Kế hoạch may) */
+  ancestors?: { code: string; name: string }[];
 }

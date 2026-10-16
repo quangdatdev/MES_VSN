@@ -55,10 +55,49 @@ export interface SewingPrepStepTable extends Audit {
   BranchCode: string;
 }
 
+/** Kế hoạch may (phase 5.16, quyết định 14.1): một chuyền trong một ngày, giữ trạng thái chốt. */
+export interface SewingDayPlanTable extends Audit {
+  Id: Id;
+  PlanDate: DateCol;
+  LineCode: string;
+  IsLocked: ColumnType<boolean, boolean | undefined, boolean>;
+  LockedAt: Date | null;
+  LockedBy: number | null;
+  LockerName: string | null;
+  BranchCode: string;
+}
+
+/**
+ * Một dòng dàn chuyền trong ngày của chuyền: số nhập (linemap, ngày xưởng giao, giờ) và bản chụp từ Xếp chuyền lúc Cập nhật, Chốt.
+ * Cột TIME đọc ra là Date (1970-01-01 theo UTC), ghi bằng chuỗi "HH:mm".
+ */
+export interface SewingDayPlanItemTable extends Audit {
+  Id: Id;
+  SewingDayPlanId: number;
+  ShipmentPlanLineId: number;
+  SourceCreatedAt: ColumnType<Date, Date, Date>;
+  ShipmentPlanId: number;
+  StyleCode: string;
+  ProductName: string;
+  PoBuyDate: string;
+  CmPrice: number | null;
+  StartDate: DateCol;
+  EndDate: DateCol;
+  PlanQty: number;
+  LinemapQty: number | null;
+  DayQty: number | null;
+  StartTime: ColumnType<Date, string | undefined, string>;
+  EndTime: ColumnType<Date, string | undefined, string>;
+  SortOrder: ColumnType<number, number | undefined, number>;
+  BranchCode: string;
+}
+
 export interface SewingDatabase {
   PrepStep: PrepStepTable;
   SewingPrep: SewingPrepTable;
   SewingPrepStep: SewingPrepStepTable;
+  SewingDayPlan: SewingDayPlanTable;
+  SewingDayPlanItem: SewingDayPlanItemTable;
 }
 
 export type SewingDb = Kysely<SewingDatabase>;

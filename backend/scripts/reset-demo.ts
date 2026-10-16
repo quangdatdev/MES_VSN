@@ -21,7 +21,7 @@ import { clearHr, hrDbState } from './hr-data';
 import { clearOrderData, loadBravoOrders } from './load-bravo-orders';
 import { assertDemoMachine } from './local-db';
 import { clearCutting } from './cutting-data';
-import { clearSewingPrep } from './sewing-data';
+import { clearSewingDayPlan, clearSewingPrep } from './sewing-data';
 import { runSeed } from './seed';
 import { bravoBranchCode } from '../src/platform/admin/branch-import';
 import { readBravoBranches } from './bravo-branches';
@@ -143,6 +143,7 @@ async function main() {
     // Id dòng dàn chuyền sẽ được đánh số lại: bản chép Kế hoạch chuẩn bị SX cũ không còn đúng dòng nào (ADR 0009). Xóa trước dữ
     // liệu đơn hàng (lượt mở màn xen giữa chỉ chép lại dòng cũ, dấu phiên bản đổi sau khi nạp)
     console.log(`Đã xóa ${await clearSewingPrep()} dòng Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);
+    console.log(`Đã xóa ${await clearSewingDayPlan()} kế hoạch theo ngày (chuyền × ngày) của Kế hoạch may trong ${env.db.sewingName}.`);
     // Id kế hoạch xuất hàng cũng được đánh số lại: số cắt cũ không còn đúng kế hoạch nào (quyết định 13.4)
     const cuts = await clearCutting();
     console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt, ${cuts.supplies} lệnh cấp BTP trong ${env.db.cuttingName}.`);

@@ -29,6 +29,8 @@ export interface SalesOrder {
   productionFactoryCode?: Masked<string | null>;
   /** Nhà máy SX lấy theo OSM: không chọn tay được */
   factoryFromOsm?: boolean;
+  /** Đơn của ĐVCS khác mà ĐVCS đang làm việc có kế hoạch xuất hàng của đơn: sửa riêng được Giá CM (quyết định 14.3) */
+  cmPriceEditable?: boolean;
 }
 
 /**

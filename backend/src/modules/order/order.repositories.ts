@@ -72,6 +72,53 @@ export class SalesOrderRepository extends BaseRepository<SalesOrderRow> {
   }
 }
 
+/**
+ * Giá CM của đơn (quyết định 14.3): cùng bảng, cùng tài nguyên với SalesOrderRepository nhưng ĐVCS có kế hoạch xuất hàng của đơn
+ * (`usedBy` = ShipmentPlan.SalesOrderId) cũng ghi được, như ĐVCS nguồn. Chỉ dùng cho đường sửa riêng Giá CM: không mở `usedBy` ở
+ * SalesOrderRepository, vì như vậy ĐVCS khác sửa được cả Nhà máy SX, xóa được đơn (ADR 0013 mục 4).
+ */
+@Injectable()
+export class SalesOrderPriceRepository extends BaseRepository<SalesOrderRow> {
+  protected readonly table = 'SalesOrder';
+  protected readonly resource = 'order.allocation';
+  protected readonly originBranch = true;
+  protected readonly usedBy = { table: 'ShipmentPlan', column: 'SalesOrderId' };
+
+  constructor(@Inject(ORDER_DB) db: OrderDb, registry: ResourceRegistry) {
+    super(db, registry);
+  }
+
+  /** Ghi Giá CM; dòng ngoài phạm vi ghi (ĐVCS khác chưa có kế hoạch của đơn, A00) trả 404, 403 như update() */
+  setCmPrice(scope: Scope, id: number, cmPrice: number | null, db: Kysely<any>): Promise<SalesOrderRow> {
+    return this.update(scope, id, { CmPrice: cmPrice }, db);
+  }
+
+  /** Các đơn (trong `ids`) phiên sửa được Giá CM, để màn hình mở ô Giá CM cho đơn của ĐVCS khác. A00 không sửa được gì. */
+  async writableIds(scope: Scope, ids: number[]): Promise<Set<number>> {
+    if (ids.length === 0 || scope.isAggregate) return new Set();
+    const rows = await (await this.scopedIds(scope, 'update')).where('Id', 'in', ids).execute();
+    return new Set(rows.map((r: { Id: number }) => r.Id));
+  }
+}
+
+/**
+ * Giá CM chụp ở kế hoạch xuất hàng theo giá của đơn (quyết định 14.3, phase 5.16 Q15): việc của hệ thống khi đơn đổi Giá CM, ghi kế
+ * hoạch của mọi ĐVCS (một đơn một giá dùng chung, Q16), không theo phạm vi người sửa. Không đổi ModifiedAt như ghi LK cắt (13.6):
+ * không phải người dùng sửa kế hoạch. Gọi trong transaction đã ghi đơn (thứ tự khóa đơn hàng → kế hoạch).
+ */
+@Injectable()
+export class ShipmentPlanPriceRepository {
+  async follow(salesOrderId: number, cmPrice: number | null, db: Kysely<any>): Promise<number> {
+    const res = await db
+      .updateTable('ShipmentPlan')
+      .set({ CmPrice: cmPrice })
+      .where('SalesOrderId', '=', salesOrderId)
+      .where((eb) => (cmPrice === null ? eb('CmPrice', 'is not', null) : eb.or([eb('CmPrice', 'is', null), eb('CmPrice', '<>', cmPrice)])))
+      .executeTakeFirst();
+    return Number(res.numUpdatedRows);
+  }
+}
+
 // ---------- Cập nhật tỷ lệ cắt (order.po) ----------
 
 /** Chi nhánh FOB (ĐVCS nguồn) của đơn hàng chứa PO: PO nhập tay mang ĐVCS của người nhập, có thể khác ĐVCS của đơn */
@@ -483,6 +530,55 @@ export class LinePlanLineRepository extends ChildRepository<PlanLineRow> {
       .select(['l.Id', 'l.ShipmentPlanId', 'l.LineCode', 'l.Qty', 'l.StartDate', 'l.BranchCode', 'l.CreatedAt', 'p.PlanNo', 'p.CustomerName', 'p.StyleCode', 'p.ProductName']);
     if (branchCode !== null) qb = qb.where('l.BranchCode', '=', branchCode);
     return qb.execute();
+  }
+
+  /**
+   * Dòng dàn chuyền cho Kế hoạch may (phase 5.16), cùng cách lọc như feed(): của các chuyền `lineCodes` có ngày vào chuyền ≤ `activeOn`
+   * và chưa ra chuyền trước ngày đó (Kết thúc ra chuyền trống ở dòng rất cũ thì lấy rộng theo Kết thúc vào chuyền, ScheduleFeed lọc
+   * lại theo lịch), hoặc dòng trong `ids`. Mã chuyền so trong SQL bằng tham số (cột VARCHAR, tham số NVARCHAR vẫn tìm theo chỉ mục).
+   */
+  async dayPlanFeed(branchCode: string | null, filter: { lineCodes?: string[]; activeOn?: string; ids?: number[] }) {
+    const { lineCodes, activeOn, ids } = filter;
+    if ((lineCodes && !lineCodes.length && !ids?.length) || (!lineCodes && !ids?.length)) return [];
+    let qb = this.db
+      .selectFrom('ShipmentPlanLine as l')
+      .innerJoin('ShipmentPlan as p', 'p.Id', 'l.ShipmentPlanId')
+      .select([
+        'l.Id',
+        'l.ShipmentPlanId',
+        'l.LineCode',
+        'l.Qty',
+        'l.StartDate',
+        'l.EndDate',
+        'l.OutEndDate',
+        'l.StatusCode',
+        'l.SortOrder',
+        'l.BranchCode',
+        'l.CreatedAt',
+        'p.PlanNo',
+        'p.StyleCode',
+        'p.ProductName',
+        'p.PoBuyDate',
+        'p.CmPrice',
+      ]);
+    if (branchCode !== null) qb = qb.where('l.BranchCode', '=', branchCode);
+    qb = qb.where((eb) => {
+      const parts = [];
+      if (lineCodes?.length) {
+        let byLine = eb('l.LineCode', 'in', lineCodes);
+        if (activeOn) {
+          byLine = eb.and([
+            byLine,
+            eb('l.StartDate', '<=', activeOn),
+            eb.or([eb('l.OutEndDate', '>=', activeOn), eb.and([eb('l.OutEndDate', 'is', null), eb('l.EndDate', '>=', sql<Date>`DATEADD(day, -60, CAST(${activeOn} AS DATE))`)])]),
+          ]);
+        }
+        parts.push(byLine);
+      }
+      if (ids?.length) parts.push(eb('l.Id', 'in', ids));
+      return eb.or(parts);
+    });
+    return qb.orderBy('l.LineCode').orderBy('l.StartDate').orderBy('l.Id').execute();
   }
 
   /**

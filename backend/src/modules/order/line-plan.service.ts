@@ -13,6 +13,7 @@ import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { ORDER_DB } from './order.db';
 import { BoardQuery, OrderListQuery, OrderValuesQuery, ScheduleDto, type ScheduleLineDto } from './order.dto';
+import { LineDayPlanGuards } from './line-day-plan-guard';
 import { LineSupplyGuards } from './line-supply-guard';
 import { LinePlanAllocationRepository, LinePlanLineRepository, LinePlanRepository, type LinePlanListRow, type PlanLineRow } from './order.repositories';
 import type { OrderDb, ShipmentPlanLineTable } from './order.types';
@@ -149,6 +150,7 @@ export class LinePlanService {
     private readonly fields: FieldPolicyService,
     private readonly catalogs: CatalogLookupService,
     private readonly supplyGuards: LineSupplyGuards,
+    private readonly dayPlanGuards: LineDayPlanGuards,
   ) {}
 
   private async sort(user: AuthUser, sort: string | undefined) {
@@ -232,6 +234,8 @@ export class LinePlanService {
     // Thông báo vượt số lượng không nêu con số khi người sửa không được xem SL kế hoạch, SL đã xếp (review lượt 3 P7)
     const blindQty = (await this.fields.unreadable(user, RESOURCE, ['planQty', 'scheduledQty'])).size > 0;
     const showAssigned = await assignedVisible(this.fields, user);
+    // Số đã giao ở Kế hoạch may chỉ nêu khi người lưu xem được số đó ở màn Kế hoạch may
+    const showDelivered = !blindQty && !!scope.access.grants.get('sewing.plan:view')?.length && (await this.fields.unreadable(user, 'sewing.plan', ['deliveredQty'])).size === 0;
     const lineName = await this.org.lineNamer();
     await inTransaction(this.db, async (trx) => {
       // Khóa kế hoạch: hai lần lưu cùng lúc phải lần lượt, không cùng vượt SL kế hoạch hay nhân đôi dòng (review 5.1 #8).
@@ -285,6 +289,11 @@ export class LinePlanService {
       if (lockedRemoved) throw conflict(`Dòng chuyền ${lockedRemoved.LineCode} đang may hoặc đã xong, không xóa được.`);
       const moved = rows.find((r) => r.id !== undefined && started(existing.find((e) => e.Id === r.id)!.StatusCode) && existing.find((e) => e.Id === r.id)!.LineCode !== r.values.LineCode);
       if (moved) throw conflict('Dòng đang may hoặc đã xong không chuyển sang chuyền khác được.');
+      // Kế hoạch may (quyết định 14.2): thay đổi của các dòng đã lưu, kiểm sau khi ghi (dưới)
+      const dayPlanChanges = existing.map((e) => {
+        const r = rows.find((x) => x.id === e.Id);
+        return { id: e.Id, createdAt: e.CreatedAt, lineCode: e.LineCode, qty: e.Qty, next: r ? { lineCode: r.values.LineCode as string, qty: r.values.Qty } : undefined };
+      });
       // Chuyền đã được giao màu cỡ (Phân bổ màu cỡ) không giảm số lượng xuống dưới phần đã giao (phase 5.13 Q2); chỉ xét dòng đang
       // giảm số lượng. Đọc dưới khóa kế hoạch: lần lưu phân màu cỡ cũng khóa kế hoạch trước, hai bên không chen nhau
       const assigned = new Map<number, number>();
@@ -319,6 +328,10 @@ export class LinePlanService {
         }
       }
       await this.supplyGuards.assertCovered(trx, plan.BranchCode, plan.StyleCode, supplyBefore, { lineName, showQty: showAssigned });
+      // Kế hoạch may: không bỏ, không đổi chuyền dòng đã có số, không giảm Số lượng dưới số đã giao. Kiểm sau khi ghi, trước commit (review
+      // 5.16 H1): dòng dàn chuyền đang giữ khóa ghi nên lần Cập nhật Kế hoạch may chạy chồng phải chờ và đọc Số lượng mới. Câu tra chỉ chờ
+      // khóa 3 giây (usageQuick): hai bên chờ nhau qua hai database thì Xếp chuyền trả 409 "thử lại", nhả khóa
+      await this.dayPlanGuards.assertKept(plan.BranchCode, dayPlanChanges, { lineName, showQty: showDelivered });
       if (plan.StatusCode === 'PLANNED' || plan.StatusCode === 'SCHEDULED') {
         const status = rows.length + others.count ? 'SCHEDULED' : 'PLANNED';
         if (status !== plan.StatusCode) await this.plans.update(scope, id, { StatusCode: status }, trx);

@@ -30,8 +30,17 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['../order/*', '**/modules/order/*', '!../order/schedule-feed.service', '!../order/order.module', '!**/modules/order/schedule-feed.service', '!**/modules/order/order.module'],
-              message: 'Module May chỉ dùng API công khai của module Đơn hàng (OrderModule và schedule-feed.service).',
+              group: [
+                '../order/*',
+                '**/modules/order/*',
+                '!../order/schedule-feed.service',
+                '!../order/order.module',
+                '!../order/line-day-plan-guard',
+                '!**/modules/order/schedule-feed.service',
+                '!**/modules/order/order.module',
+                '!**/modules/order/line-day-plan-guard',
+              ],
+              message: 'Module May chỉ dùng API công khai của module Đơn hàng (OrderModule, schedule-feed.service, line-day-plan-guard).',
             },
             NO_HR,
             NO_SYNC,

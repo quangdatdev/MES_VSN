@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { CurrentUser, FieldResource, RequirePermission } from '../../platform/auth/decorators';
 import { PrepStepService } from './prep-step.service';
 import { PrepService } from './prep.service';
+import { SewingPlanLockDto, SewingPlanOptionsQuery, SewingPlanQuery, SewingPlanSaveDto } from './sewing-plan.dto';
+import { SewingPlanService } from './sewing-plan.service';
 import { PrepDoneBatchDto, PrepListQuery, PrepStepBatchDto, PrepStepCreateDto, PrepUpdateDto, PrepValuesQuery } from './sewing.dto';
 
 const id = () => Param('id', ParseIntPipe);
@@ -38,6 +40,32 @@ export class PrepController {
 
   @Put(':id') @RequirePermission('order.prep:update')
   update(@CurrentUser() u: AuthUser, @id() pid: number, @Body() dto: PrepUpdateDto) { return this.service.update(u, pid, dto); }
+}
+
+/**
+ * Kế hoạch may (tài nguyên sewing.plan, phase 5.16): kế hoạch theo ngày cho từng dòng dàn chuyền. Cập nhật, Chốt, Hủy chốt dùng quyền
+ * Sửa; lần đầu lập kế hoạch cho chuyền trong ngày cần thêm quyền Thêm (service kiểm).
+ */
+@Controller('sewing/plan')
+@FieldResource('sewing.plan')
+export class SewingPlanController {
+  constructor(private readonly service: SewingPlanService) {}
+
+  @Get() @RequirePermission('sewing.plan:view')
+  get(@CurrentUser() u: AuthUser, @Query() q: SewingPlanQuery) { return this.service.get(u, q); }
+
+  // Dòng dàn chuyền của các chuyền thuộc đơn vị, cho Thêm dòng (chuyền → mã hàng → PO/Buy date)
+  @Get('options') @RequirePermission('sewing.plan:view')
+  options(@CurrentUser() u: AuthUser, @Query() q: SewingPlanOptionsQuery) { return this.service.options(u, q); }
+
+  @Put() @RequirePermission('sewing.plan:update')
+  save(@CurrentUser() u: AuthUser, @Body() dto: SewingPlanSaveDto) { return this.service.save(u, dto); }
+
+  @Post('lock') @HttpCode(200) @RequirePermission('sewing.plan:update')
+  lock(@CurrentUser() u: AuthUser, @Body() dto: SewingPlanLockDto) { return this.service.lock(u, dto); }
+
+  @Post('unlock') @HttpCode(200) @RequirePermission('sewing.plan:update')
+  unlock(@CurrentUser() u: AuthUser, @Body() dto: SewingPlanLockDto) { return this.service.unlock(u, dto); }
 }
 
 /** Danh mục "Cấu hình chuẩn bị SX" ở Quản trị › Danh mục hệ thống: cùng quyền với các danh mục khác (admin.catalog). */

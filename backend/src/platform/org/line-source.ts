@@ -10,6 +10,7 @@ import type { LineInfo } from './org.service';
  *   còn là chuyền (dữ liệu gắn mã đó thành chuyền mồ côi, OrgService.lineNamer);
  * - `branchCode` là ĐVCS của bộ phận (bắt buộc khi được tích), không bao giờ là đơn vị tổng hợp;
  * - `workshopCode`/`workshopName` là bộ phận cha (để ô chọn gom nhóm), `null` khi bộ phận nằm ở gốc;
+ * - `ancestors`: các bộ phận cha từ gốc cây tới bộ phận cha trực tiếp (rỗng khi nằm ở gốc);
  * - thứ tự: ĐVCS, nhóm, thứ tự hiển thị, mã.
  */
 export interface LineSource {

@@ -1,14 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { AuditService } from '../../platform/audit/audit.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
 import { splitFactories } from '../../platform/catalog/factory-list';
-import { scopeOf } from '../../platform/data/base.repository';
+import { scopeOf, type Scope } from '../../platform/data/base.repository';
 import { allOf, assertFilterField, columnFilterWhere, columnValues, readableColumnFilters, type FilterSpec } from '../../platform/data/column-filter';
+import { inTransaction } from '../../platform/data/transaction';
 import { ExportService } from '../../platform/export/export.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
-import { OrderListQuery, OrderValuesQuery, SalesOrderCreateDto, SalesOrderUpdateDto } from './order.dto';
-import { SalesOrderRepository, type SalesOrderRow } from './order.repositories';
+import { ORDER_DB } from './order.db';
+import { OrderListQuery, OrderValuesQuery, SalesOrderCmPriceDto, SalesOrderCreateDto, SalesOrderUpdateDto } from './order.dto';
+import { SalesOrderPriceRepository, SalesOrderRepository, ShipmentPlanPriceRepository, type SalesOrderRow } from './order.repositories';
+import type { OrderDb } from './order.types';
 import { businessFilter, conflict, day, invalid, isReferenceError, num, readableQuery, sortOf } from './order.util';
 
 const RESOURCE = 'order.allocation';
@@ -98,7 +101,10 @@ const EXPORT_COLUMNS = [
 @Injectable()
 export class SalesOrderService {
   constructor(
+    @Inject(ORDER_DB) private readonly db: OrderDb,
     private readonly repo: SalesOrderRepository,
+    private readonly prices: SalesOrderPriceRepository,
+    private readonly planPrices: ShipmentPlanPriceRepository,
     private readonly audit: AuditService,
     private readonly exporter: ExportService,
     private readonly fields: FieldPolicyService,
@@ -140,7 +146,17 @@ export class SalesOrderService {
       sort: await this.sort(user, q.sort),
       where: await this.where(user, q),
     });
-    return { ...page, items: page.items.map(presentSalesOrder) };
+    const priceIds = await this.cmPriceEditable(scopeOf(user), page.items);
+    return { ...page, items: page.items.map((r) => ({ ...presentSalesOrder(r), cmPriceEditable: priceIds.has(r.Id) })) };
+  }
+
+  /**
+   * Đơn của ĐVCS khác mà phiên sửa được Giá CM (ĐVCS có kế hoạch xuất hàng của đơn, quyết định 14.3): màn hình mở riêng ô Giá CM. Đơn
+   * của ĐVCS phiên sửa như cũ nên không cần tra. Máy chủ vẫn kiểm khi ghi.
+   */
+  private async cmPriceEditable(scope: Scope, rows: SalesOrderRow[]): Promise<Set<number>> {
+    if (scope.isAggregate) return new Set();
+    return this.prices.writableIds(scope, rows.filter((r) => r.BranchCode !== scope.branchCode).map((r) => r.Id));
   }
 
   /** Giá trị của một cột cho popup lọc theo cột, trong phạm vi người dùng và theo các bộ lọc khác đang áp. */
@@ -189,7 +205,8 @@ export class SalesOrderService {
   }
 
   async get(user: AuthUser, id: number) {
-    return presentSalesOrder(await this.repo.getById(scopeOf(user), id));
+    const row = await this.repo.getById(scopeOf(user), id);
+    return { ...presentSalesOrder(row), cmPriceEditable: (await this.cmPriceEditable(scopeOf(user), [row])).has(row.Id) };
   }
 
   async create(user: AuthUser, dto: SalesOrderCreateDto) {
@@ -240,10 +257,37 @@ export class SalesOrderService {
         if ((dto.productionFactoryCode || null) !== before.ProductionFactoryCode) throw conflict('Nhà máy SX của đơn này lấy theo OSM, không sửa tay được. Sửa ở OSM rồi đồng bộ lại.');
       } else set.ProductionFactoryCode = await this.factoryCode(dto.productionFactoryCode, before?.ProductionFactoryCode);
     }
-    const row = await this.repo.update(scope, id, set);
+    // Giá CM đổi thì Giá CM chụp ở kế hoạch xuất hàng của đơn đổi theo, cùng transaction (quyết định 14.3)
+    const row = await inTransaction(this.db, async (trx) => {
+      const saved = await this.repo.update(scope, id, set, trx);
+      if (dto.cmPrice !== undefined) await this.planPrices.follow(id, num(saved.CmPrice), trx);
+      return saved;
+    });
     const out = presentSalesOrder(row);
-    await this.log(user, id, 'UPDATE', before && presentSalesOrder(before), out);
+    // Giá bị bỏ khỏi nhật ký: ghi tên trường giá đã gửi để biết lần sửa có đổi giá (review 5.16 L6)
+    const priced = (['unitPrice', 'cmPrice'] as const).filter((k) => dto[k] !== undefined && (!before || num(before[k === 'cmPrice' ? 'CmPrice' : 'UnitPrice']) !== num(row[k === 'cmPrice' ? 'CmPrice' : 'UnitPrice'])));
+    await this.log(user, id, 'UPDATE', before && presentSalesOrder(before), priced.length ? { ...out, changedFields: priced } : out);
     return out;
+  }
+
+  /**
+   * Sửa riêng Giá CM (quyết định 14.3, phase 5.16 Q14–Q16): ĐVCS nguồn, hoặc ĐVCS có kế hoạch xuất hàng của đơn (`usedBy` của
+   * SalesOrderPriceRepository); ngoài phạm vi thì 404 như không có. Một đơn một Giá CM: kế hoạch của mọi ĐVCS nhận giá mới, cùng
+   * transaction. Chính sách cột của cmPrice (Chỉ đọc, Ẩn) do FieldPolicyInterceptor chặn trước khi tới đây.
+   */
+  async updateCmPrice(user: AuthUser, id: number, dto: SalesOrderCmPriceDto) {
+    const scope = scopeOf(user);
+    await this.prices.assertWritable(scope);
+    const { before, after } = await inTransaction(this.db, async (trx) => {
+      const before = await this.prices.getById(scope, id, 'update', trx);
+      const after = await this.prices.setCmPrice(scope, id, dto.cmPrice, trx);
+      await this.planPrices.follow(id, num(after.CmPrice), trx);
+      return { before, after };
+    });
+    const out = presentSalesOrder(after);
+    // Giá bị bỏ khỏi nhật ký (cột nhạy cảm): ghi tên trường đã đổi để biết lần sửa này đổi gì (review 5.16 L6)
+    await this.log(user, id, 'UPDATE', presentSalesOrder(before), { ...out, changedFields: num(before.CmPrice) === num(after.CmPrice) ? [] : ['cmPrice'] });
+    return { ...out, cmPriceEditable: after.BranchCode !== scope.branchCode };
   }
 
   async remove(user: AuthUser, id: number) {

@@ -21,7 +21,7 @@ import { factoryListFor } from '../src/platform/catalog/factory-list';
 import { readBravoOrderSource, readOsmFactories } from '../src/platform/sync/bravo-order-source';
 import { syncBranchesFromBravo } from './bravo-branches';
 import { clearCutting } from './cutting-data';
-import { clearSewingPrep } from './sewing-data';
+import { clearSewingDayPlan, clearSewingPrep } from './sewing-data';
 import { assertDemoMachine } from './local-db';
 import { docNoSql, insertAll, localToday, readLines } from './script-db';
 import { simulateBranch } from './simulate-board';
@@ -95,6 +95,8 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
       // làm sau: lượt mở màn xen giữa thì chép lại dòng cũ, sau khi nạp dấu phiên bản đổi và lượt sau thay hết
       const prep = await clearSewingPrep();
       if (prep) console.log(`Đã xóa ${prep} dòng Kế hoạch chuẩn bị SX cũ trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);
+      const dayPlans = await clearSewingDayPlan();
+      if (dayPlans) console.log(`Đã xóa ${dayPlans} kế hoạch theo ngày (chuyền × ngày) của Kế hoạch may cũ trong ${env.db.sewingName}.`);
       // Id kế hoạch xuất hàng được đánh số lại: số cắt cũ không còn đúng kế hoạch nào (quyết định 13.4)
       const cuts = await clearCutting();
       if (cuts.plans || cuts.supplies) console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt, ${cuts.supplies} lệnh cấp BTP cũ trong ${env.db.cuttingName}.`);

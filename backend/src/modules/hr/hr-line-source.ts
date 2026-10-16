@@ -25,7 +25,7 @@ export class HrLineSource implements LineSource, OnModuleInit {
     const rows = await this.db
       .selectFrom('Department as d')
       .leftJoin('Department as p', 'p.Id', 'd.ParentId')
-      .select(['d.Code', 'd.Name', 'd.BranchCode', 'd.IsActive', 'p.Code as ParentCode', 'p.Name as ParentName'])
+      .select(['d.Code', 'd.Name', 'd.BranchCode', 'd.IsActive', 'd.Path', 'p.Code as ParentCode', 'p.Name as ParentName'])
       // Hằng số trong câu lệnh (không phải tham số): SQL Server mới dùng được chỉ mục có lọc IX_Department_ProductionWorkshop
       .where(sql<SqlBool>`d.IsProductionWorkshop = 1`)
       .where('d.BranchCode', 'is not', null)
@@ -36,6 +36,13 @@ export class HrLineSource implements LineSource, OnModuleInit {
       .orderBy('d.SortOrder')
       .orderBy('d.Code')
       .execute();
+    // Tên các bộ phận cha theo Path ('/VSN/X01/L01/'): cây sơ đồ tổ chức cho ô Đơn vị phòng ban (phase 5.16). Chỉ tên, mã của bộ phận có
+    // chuyền bên dưới, như tên bộ phận cha đã trả trước đây
+    const codes = [...new Set(rows.flatMap((r) => r.Path.split('/').filter(Boolean).slice(0, -1)))];
+    const names = new Map<string, string>();
+    for (let i = 0; i < codes.length; i += 1000) {
+      for (const d of await this.db.selectFrom('Department').select(['Code', 'Name']).where('Code', 'in', codes.slice(i, i + 1000)).execute()) names.set(d.Code, d.Name);
+    }
     return rows.map((r) => ({
       code: r.Code,
       name: r.Name,
@@ -43,6 +50,7 @@ export class HrLineSource implements LineSource, OnModuleInit {
       isActive: !!r.IsActive,
       workshopCode: r.ParentCode,
       workshopName: r.ParentName,
+      ancestors: r.Path.split('/').filter(Boolean).slice(0, -1).map((code) => ({ code, name: names.get(code) ?? code })),
     }));
   }
 }

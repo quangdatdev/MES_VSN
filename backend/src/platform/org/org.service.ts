@@ -11,6 +11,11 @@ export interface LineInfo {
   /** Bộ phận cha của chuyền (phase 5.10; trước là xưởng của ADR 0010), null khi chuyền nằm ở gốc: để ô chọn chuyền gom nhóm */
   workshopCode: string | null;
   workshopName: string | null;
+  /**
+   * Các bộ phận cha từ gốc cây phòng ban tới bộ phận cha trực tiếp (phase 5.16: ô Đơn vị phòng ban của Kế hoạch may chọn một nhánh của
+   * cây sơ đồ tổ chức). Không có: nguồn chỉ biết bộ phận cha trực tiếp.
+   */
+  ancestors?: { code: string; name: string }[];
 }
 
 /**

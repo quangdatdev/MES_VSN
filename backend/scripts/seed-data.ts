@@ -114,7 +114,9 @@ export const resources: ResourceDef[] = [
   { code: 'cutting.supply', name: 'Xác nhận cấp BTP', path: '/cutting/supply', table: 'CuttingSupply', matrix: ['V', 'VE', 'VCUDE', '', '', ''] },
   { code: 'cutting.embroidery', name: 'Quản lý in thêu', path: '/cutting/embroidery', matrix: ['V', 'VE', 'V', '', '', ''] },
 
-  { code: 'sewing.plan', name: 'Kế hoạch may', path: '/sewing/plan', matrix: ['V', 'VE', 'VCUE', 'V', '', ''] },
+  // Kế hoạch may (phase 5.16, quyết định 14.1): kế hoạch theo ngày cho từng dòng dàn chuyền ở MES_Sewing. Sửa gồm Cập nhật, Chốt, Hủy
+  // chốt; không dùng Thêm, Xóa (dòng lấy từ Xếp chuyền). Kế hoạch đã có Sửa nên máy đã cài không cần migration cấp quyền
+  { code: 'sewing.plan', name: 'Kế hoạch may', path: '/sewing/plan', table: 'SewingDayPlan', matrix: ['V', 'VE', 'VCUE', 'V', '', ''] },
   { code: 'sewing.cluster', name: 'Phân cụm trưởng', path: '/sewing/cluster', mobile: true, matrix: ['V', 'VE', 'V', 'VCU', '', ''] },
   { code: 'sewing.output', name: 'Bấm năng suất cụm', path: '/sewing/output', mobile: true, matrix: ['V', 'VE', 'V', 'VCU', 'V', ''] },
   { code: 'sewing.balance', name: 'Biểu đồ cân bằng chuyền', path: '/sewing/balance', matrix: ['V', 'VE', 'V', 'V', '', ''] },
@@ -169,6 +171,7 @@ export const scopeBindings: Record<string, Record<string, string>> = {
   'order.prep': { FACTORY: 'BranchCode', LINE: 'LineCode' },
   'cutting.progress': { FACTORY: 'BranchCode' },
   'cutting.supply': { FACTORY: 'BranchCode' },
+  'sewing.plan': { FACTORY: 'BranchCode', LINE: 'LineCode' },
 };
 
 /** Cột đăng ký (Resource Registry mức cột). Mã trùng trường JSON của API. S = nhạy cảm (mặc định Ẩn). */
@@ -315,6 +318,24 @@ export const resourceFields: Record<string, [code: string, name: string, sensiti
     ['remainQty', 'Số lượng còn lại'],
     ['statusCode', 'Trạng thái'],
   ],
+  // Mã trùng khóa JSON của API Kế hoạch may. Còn lại = Tổng kế hoạch − Đã giao; Doanh số kế hoạch = Kế hoạch theo linemap × Giá CM
+  // (quyết định 14.1). Giá CM lấy từ Thông tin đơn hàng (14.3), nhạy cảm như ở Xếp chuyền
+  'sewing.plan': [
+    ['lineCode', 'Tổ SX'],
+    ['styleCode', 'Mã hàng'],
+    ['poBuyDate', 'PO/Buy date'],
+    ['cmPrice', 'Giá CM', 'S'],
+    ['startDate', 'Ngày vào chuyền'],
+    ['endDate', 'Ngày kết thúc'],
+    ['planQty', 'Tổng kế hoạch'],
+    ['deliveredQty', 'Đã giao'],
+    ['remainQty', 'Còn lại'],
+    ['linemapQty', 'Kế hoạch theo linemap'],
+    ['dayQty', 'Kế hoạch ngày xưởng giao'],
+    ['planRevenue', 'Doanh số kế hoạch', 'S'],
+    ['startTime', 'Từ giờ'],
+    ['endTime', 'Đến giờ'],
+  ],
   // Mã trùng khóa JSON của API Thông tin nhân sự (modules/hr/employee-fields.ts). Chỉ đăng ký thông tin cá nhân: mã, tên, phòng
   // ban, chức danh, tình trạng là khung của màn (ẩn đi thì không lưu được hồ sơ), và phòng ban, chức danh còn đi kèm cột tên.
   // 5 cột giấy tờ, liên lạc nhạy cảm (ADR 0012 mục 8)
@@ -366,6 +387,11 @@ export const roleFieldPolicies: { role: string; resource: string; field: string;
     { role, resource: 'order.allocation', field: 'cmPrice', level: 'READONLY' as Level },
     { role, resource: 'order.lineplan', field: 'cmPrice', level: 'READONLY' as Level },
     { role, resource: 'order.lineplan', field: 'revenue', level: 'READONLY' as Level },
+  ]),
+  // Kế hoạch may (phase 5.16): Giám đốc, Kế hoạch xem Giá CM, Doanh số kế hoạch; Giá CM nhập ở Thông tin đơn hàng, ở đây chỉ xem
+  ...['DIRECTOR', 'PLANNER'].flatMap((role) => [
+    { role, resource: 'sewing.plan', field: 'cmPrice', level: 'READONLY' as Level },
+    { role, resource: 'sewing.plan', field: 'planRevenue', level: 'READONLY' as Level },
   ]),
   { role: 'PLANNER', resource: 'order.allocation', field: 'unitPrice', level: 'READONLY' },
   { role: 'PLANNER', resource: 'order.allocation', field: 'amount', level: 'READONLY' },
