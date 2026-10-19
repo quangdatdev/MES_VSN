@@ -37,8 +37,6 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 .claude/settings.local.json
-docs/*
 
 # File khóa Word/Excel tạo ra khi đang mở tài liệu trong docs/
 ~$*
-docs/

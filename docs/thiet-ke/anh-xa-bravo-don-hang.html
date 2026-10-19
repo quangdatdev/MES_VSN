@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ánh xạ BRAVO – Đơn hàng</title>
+<style>
+:root{
+  --bg:#f6f7f9;--surface:#fff;--ink:#16202c;--muted:#5b6776;--line:#dfe3e8;
+  --brand:#0b5fa5;--brand-soft:#e4f0fa;--ok:#1a7f4b;--ok-soft:#e2f4ea;
+  --warn:#9a6200;--warn-soft:#fdf1d9;--bad:#b3261e;--bad-soft:#fbe5e3;
+  --mes:#4b5563;--mes-soft:#eceef1;--code-bg:#eef1f5;--shadow:0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f141a;--surface:#171e26;--ink:#e6ebf1;--muted:#98a4b3;--line:#2a3441;
+    --brand:#6db3ee;--brand-soft:#16293a;--ok:#5cc58b;--ok-soft:#14291f;
+    --warn:#e3b050;--warn-soft:#2e2412;--bad:#ef8a83;--bad-soft:#341a18;
+    --mes:#b7c0cc;--mes-soft:#232c37;--code-bg:#1f2833;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f141a;--surface:#171e26;--ink:#e6ebf1;--muted:#98a4b3;--line:#2a3441;
+  --brand:#6db3ee;--brand-soft:#16293a;--ok:#5cc58b;--ok-soft:#14291f;
+  --warn:#e3b050;--warn-soft:#2e2412;--bad:#ef8a83;--bad-soft:#341a18;
+  --mes:#b7c0cc;--mes-soft:#232c37;--code-bg:#1f2833;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.5px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+header.hero{background:var(--surface);border-bottom:1px solid var(--line);padding:32px 0 24px}
+header.hero h1{margin:0 0 6px;font-size:1.8rem;line-height:1.25}
+header.hero p{margin:0;color:var(--muted);max-width:820px}
+.meta{margin-top:12px;font-size:.85rem;color:var(--muted)}
+nav.toc{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+nav.toc .wrap{display:flex;gap:4px;overflow-x:auto;padding-top:6px;padding-bottom:6px}
+nav.toc a{white-space:nowrap;color:var(--muted);text-decoration:none;padding:6px 10px;border-radius:6px;font-size:.88rem}
+nav.toc a:hover,nav.toc a:focus-visible{background:var(--brand-soft);color:var(--brand)}
+a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+section{padding:30px 0 6px}
+h2{font-size:1.4rem;margin:0 0 4px}
+h3{font-size:1.05rem;margin:24px 0 8px}
+.lead{color:var(--muted);margin:0 0 16px;max-width:860px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:var(--shadow);margin:12px 0}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card h4{margin:0 0 6px;font-size:.98rem}
+.card p{margin:0 0 6px}.card ul{margin:4px 0 0;padding-left:20px}
+.card.k-ok{border-top:3px solid var(--ok)}.card.k-warn{border-top:3px solid var(--warn)}
+.card.k-bad{border-top:3px solid var(--bad)}.card.k-mes{border-top:3px solid var(--mes)}
+.tw{overflow-x:auto;margin:10px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:8px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{background:var(--code-bg);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+td.nw{white-space:nowrap}
+code,.mono{font-family:ui-monospace,Consolas,monospace;font-size:.85em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+pre{background:var(--code-bg);padding:12px 14px;border-radius:8px;overflow-x:auto;font:13px/1.6 ui-monospace,Consolas,monospace;margin:10px 0}
+.tag{display:inline-block;font-size:.75rem;font-weight:600;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.t-ok{background:var(--ok-soft);color:var(--ok)}.t-warn{background:var(--warn-soft);color:var(--warn)}
+.t-bad{background:var(--bad-soft);color:var(--bad)}.t-info{background:var(--brand-soft);color:var(--brand)}
+.t-mes{background:var(--mes-soft);color:var(--mes)}
+.callout{border-left:4px solid var(--brand);background:var(--brand-soft);padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+.callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+.callout.bad{border-color:var(--bad);background:var(--bad-soft)}
+.callout p{margin:0 0 6px}.callout p:last-child{margin:0}
+.callout ol,.callout ul{margin:6px 0 0;padding-left:22px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.88rem;color:var(--muted);margin:8px 0 0}
+.small{font-size:.85rem;color:var(--muted)}
+footer{padding:28px 0 40px;color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>Ánh xạ dữ liệu BRAVO sang module Đơn hàng</h1>
+    <p>Đối chiếu các view trong database trung gian <code>BRAVO_TRE</code> với 8 bảng của <code>MES_Order</code> (5 màn Đơn hàng): cột nào lấy được ngay, cột nào đang chờ cấp quyền, cột nào chưa có nguồn, và phần nào MES tự lập.</p>
+    <div class="meta">
+      Khảo sát bằng truy vấn chỉ đọc ngày 10/10/2026, tài khoản <code>mes_user</code>. Dữ liệu trong <code>BRAVO_TRE</code> mới nhất đến 19/03/2026.<br>
+      Đầu vào: 47 view của <code>BRAVO_TRE</code>, file <code>docs/nguon/Kết nối Bravo VietSun (2).xlsx</code>, thiết kế <code>docs/thiet-ke/db-order.md</code>.<br>
+      File này chỉ chứa số dòng, tỷ lệ và mã tra cứu chung; không có tên khách hàng, số PO hay dữ liệu chi tiết.
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Mục lục">
+  <div class="wrap">
+    <a href="#tom-tat">Tóm tắt</a>
+    <a href="#can-xu-ly">Cần xử lý trước</a>
+    <a href="#quan-he">Quan hệ dữ liệu</a>
+    <a href="#don-hang">Thông tin đơn hàng</a>
+    <a href="#ty-le-cat">Cập nhật tỷ lệ cắt</a>
+    <a href="#ke-hoach">Kế hoạch, xếp chuyền</a>
+    <a href="#danh-muc">Danh mục</a>
+    <a href="#ngoai-module">Ngoài module</a>
+    <a href="#dong-bo">Lưu ý đồng bộ</a>
+    <a href="#cau-hoi">Cần chốt</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<section id="tom-tat">
+  <h2>Tóm tắt</h2>
+  <p class="lead">Màn Thông tin đơn hàng gần như lấy đủ từ một view. Các màn còn lại phụ thuộc vào 4 view đang lỗi quyền, hoặc là dữ liệu do MES tự lập.</p>
+  <div class="grid g4">
+    <div class="card k-ok">
+      <h4>Lấy được ngay</h4>
+      <p>Số đơn, style, mùa, tên sản phẩm, nhân viên, số lượng, đơn vị tính và nhà máy lấy từ <code>vDM_SanPhamDonHang</code> (7.523 dòng; một đơn bán SO gần như luôn ứng với một sản phẩm).</p>
+    </div>
+    <div class="card k-warn">
+      <h4>Chờ cấp quyền</h4>
+      <p>Tên khách hàng, ngày xuất (ETD), danh sách PO theo sản phẩm, số lượng màu × size theo PO và nơi giao hàng. Các cột này nằm trong 4 view đang báo lỗi quyền.</p>
+    </div>
+    <div class="card k-bad">
+      <h4>Chưa có nguồn</h4>
+      <p>Đơn giá, thành tiền, giá CM, mã packing list, số tờ khai hải quan. Không view nào trong <code>BRAVO_TRE</code> có các cột này.</p>
+    </div>
+    <div class="card k-mes">
+      <h4>MES tự lập</h4>
+      <p>Kế hoạch xuất hàng, dàn chuyền và phân bổ màu cỡ. BRAVO không có danh mục chuyền may (127 bộ phận, không bộ phận nào là chuyền hoặc tổ may).</p>
+    </div>
+  </div>
+  <div class="legend" aria-label="Chú thích trạng thái">
+    <span><span class="tag t-ok">Có</span> đọc được và đã kiểm độ khớp</span>
+    <span><span class="tag t-warn">Chờ quyền</span> có trong view nhưng view đang lỗi quyền</span>
+    <span><span class="tag t-bad">Chưa có nguồn</span> cần view mới hoặc nhập tay</span>
+    <span><span class="tag t-info">Cần chốt</span> có nguồn, cần BA chọn cách hiểu</span>
+    <span><span class="tag t-mes">MES</span> MES tự sinh hoặc tự quản</span>
+  </div>
+</section>
+
+<section id="can-xu-ly">
+  <h2>Cần xử lý trước khi đồng bộ</h2>
+  <p class="lead">Ba việc đầu cần DBA. Hai việc sau là cập nhật tài liệu nguồn.</p>
+
+  <div class="callout bad">
+    <p><strong>1. Bốn view không đọc được:</strong> <code>vThongTinPO</code>, <code>vThongTinPO_MauCo</code>, <code>vDM_KHACHHANG</code>, <code>vDM_DiaDiemGiaoHang</code>.</p>
+    <p>SQL Server báo: <code>The EXECUTE permission was denied on the object 'ufn_Agg_Concat', database 'B8R2_VIETSUN', schema 'dbo'</code>. Bốn view này gọi một hàm nằm trong database BRAVO, mà <code>mes_user</code> không có quyền chạy hàm đó. Đây lại là các view chứa tên khách, ETD, PO và màu cỡ.</p>
+  </div>
+
+  <div class="callout bad">
+    <p><strong>2. <code>mes_user</code> đang đọc thẳng được database BRAVO <code>B8R2_VIETSUN</code>.</strong></p>
+    <p>Tài khoản này có quyền <code>SELECT</code> trên toàn bộ <code>B8R2_VIETSUN</code>; đã thử đọc danh mục bảng của BRAVO trực tiếp và thành công. Như vậy nguyên tắc "chỉ kéo qua database trung gian" chưa được bảo đảm ở mức database. Nguyên nhân thường gặp: view của <code>BRAVO_TRE</code> đọc chéo sang <code>B8R2_VIETSUN</code>, và vì cross-database ownership chaining đang tắt ở cả hai database, SQL Server kiểm quyền của người gọi trên từng bảng BRAVO, nên phải cấp quyền đọc BRAVO cho <code>mes_user</code>.</p>
+    <p>Hai hướng để DBA chọn:</p>
+    <ul>
+      <li><strong>A (khuyên dùng):</strong> <code>BRAVO_TRE</code> chứa bảng chép. Một job SQL Agent chạy bằng tài khoản riêng chép dữ liệu từ BRAVO theo lịch. <code>mes_user</code> chỉ có quyền đọc <code>BRAVO_TRE</code> và không có user trong <code>B8R2_VIETSUN</code>. MES tách hẳn khỏi BRAVO, truy vấn của MES không làm chậm BRAVO.</li>
+      <li><strong>B:</strong> giữ view, bật cross-database ownership chaining cho hai database (cùng chủ sở hữu <code>sa</code>) rồi thu hồi quyền đọc của <code>mes_user</code> trên <code>B8R2_VIETSUN</code>. Nhanh hơn, nhưng chaining là thiết lập mà DBA thường hạn chế, và MES vẫn đọc BRAVO theo thời gian thực qua view.</li>
+    </ul>
+    <p>Cả hai hướng đều xử lý luôn lỗi quyền ở mục 1.</p>
+  </div>
+
+  <div class="callout warn">
+    <p><strong>3. <code>vBaoCao_OSM_XuatHang</code> không chạy được:</strong> view đọc linked server <code>DB_OSM_TRE</code>, server này chưa khai báo trên máy. View chứa ngày xuất thực tế (ETD-Actual, ETD-Revised) từ OSM, có ích cho Kế hoạch xuất hàng về sau.</p>
+  </div>
+
+  <div class="callout warn">
+    <p><strong>4. File Excel lệch so với view thật.</strong></p>
+    <ul>
+      <li>23 view chưa được mô tả, trong đó có 4 view quan trọng nhất với đơn hàng: <code>vThongTinPO</code>, <code>vThongTinPO_MauCo</code>, <code>vBangCanDoiSanXuat_MauCo_Tong</code>, <code>vDonDatHang</code>.</li>
+      <li>4 view có trong Excel nhưng không còn trong database: <code>vDM_KhachHang_BrandName</code>, <code>vDM_HopDong_KhachHang</code>, <code>vDM_PhuongThucThanhToan</code>, <code>vDM_CHUCVU</code>.</li>
+      <li><code>vDM_KHACHHANG</code> thật chỉ có 12 cột (Excel mô tả 43). Không có tên đầy đủ của khách hàng, chỉ có tên tắt <code>TenTat</code> và <code>TenTat_OSM</code>.</li>
+      <li><code>vDM_BOPHAN</code>, <code>vDM_CHINHANH</code>, <code>vDM_PhuongThucGiaoHang</code>, <code>vDM_ChungLoaiVatTu</code>, <code>vDM_KieuChungLoaiVatTu</code> đã đổi tên hoặc bớt cột so với Excel.</li>
+    </ul>
+    <p>Các bảng ánh xạ dưới đây dùng tên cột <em>thật</em> trong view.</p>
+  </div>
+
+  <div class="callout">
+    <p><strong>5. Định nghĩa view bị ẩn với <code>mes_user</code>.</strong> MES chỉ thấy danh sách cột, nên coi danh sách cột của từng view là hợp đồng dữ liệu: bên BRAVO đổi, bớt hay đổi nghĩa cột nào thì cần báo trước cho MES.</p>
+  </div>
+</section>
+
+<section id="quan-he">
+  <h2>Quan hệ dữ liệu</h2>
+  <p class="lead">Trung tâm là <code>vDM_SanPhamDonHang</code>: mỗi dòng là một sản phẩm của một đơn bán (SO). <code>vDonDatHang</code> tuy có tên "đơn đặt hàng" nhưng toàn bộ là đơn <strong>mua</strong> nguyên phụ liệu (mã chứng từ đuôi <code>PO</code>), không phải đơn của khách.</p>
+<pre>vDM_SanPhamDonHang          1 dòng = 1 sản phẩm của 1 đơn bán; khóa ProductId (duy nhất)
+ ├─ BizDocId (…SO) ───────► vDM_POKH.BizDocId          các PO của khách cho đơn này
+ │                                                     (khớp 100% với cột CustomerPOIdList)
+ ├─ ProductId ────────────► vThongTinPO                PO theo sản phẩm: ETD, nơi giao, SL     [chờ quyền]
+ │                            └─► vThongTinPO_MauCo    SL theo màu × size của từng PO          [chờ quyền]
+ ├─ ProductId ────────────► vBangCanDoiSanXuat_MauCo_Tong
+ │                                                     SL gốc / mẫu / dung sai / cuối theo màu × size
+ ├─ CustomerId ───────────► vDM_KHACHHANG              tên tắt khách hàng                      [chờ quyền]
+ ├─ SalesSeasonId ────────► vDM_MuaKinhDoanh           mùa (SS26, AW26…)
+ ├─ EmployeeId ───────────► vDM_NHANVIEN               nhân viên lập đơn
+ ├─ TeamId ───────────────► vDM_TEAM                   nhóm sales (kèm danh sách khách phụ trách)
+ └─ ProductId_GC ─────────► vDM_SanPhamDonHang         đơn gốc ở nhà máy giao gia công</pre>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>View</th><th class="num">Số dòng</th><th>Khóa</th><th>Vai trò với module Đơn hàng</th></tr></thead>
+      <tbody>
+        <tr><td><code>vDM_SanPhamDonHang</code></td><td class="num">7.523</td><td><code>ProductId</code></td><td>Nguồn chính của Thông tin đơn hàng</td></tr>
+        <tr><td><code>vDM_POKH</code></td><td class="num">83.684</td><td><code>CustomerPOId</code></td><td>Danh sách PO của khách; 75.763 dòng gắn với đơn bán, 30.737 dòng khớp sản phẩm có trong view trên</td></tr>
+        <tr><td><code>vThongTinPO</code></td><td class="num">—</td><td><code>ProductId</code> + <code>CustomerPONo</code></td><td>PO theo sản phẩm (ETD, nơi giao, phương thức vận chuyển, SL) <span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>vThongTinPO_MauCo</code></td><td class="num">—</td><td>PO + <code>ColorId</code> + <code>SizeCode</code></td><td>Màu × size theo PO <span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>vBangCanDoiSanXuat</code> / <code>_MauCo_Tong</code></td><td class="num">3.542 / 23.154</td><td><code>ProduceId</code></td><td>Bảng cân đối sản xuất: SL theo màu × size đã cộng mẫu và dung sai (998 sản phẩm)</td></tr>
+        <tr><td><code>vDonDatHang</code> / <code>_ChiTiet</code></td><td class="num">21.900 / 114.462</td><td><code>BizDocId</code> (…PO)</td><td>Đơn mua nguyên phụ liệu, không dùng cho module Đơn hàng</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Phân bố theo nhà máy</h3>
+  <p class="small">Mã chi nhánh của BRAVO dùng cùng quy ước với MES (<code>A01</code>…). MES demo hiện chỉ có <code>A01</code>–<code>A03</code> với tên giả; khi đồng bộ cần thêm <code>A04</code>, <code>A05</code> và đổi tên theo BRAVO (mã giữ nguyên).</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Mã</th><th>Tên tắt trong BRAVO</th><th class="num">Sản phẩm đơn hàng</th><th class="num">PO của khách</th><th class="num">Bảng cân đối SX</th></tr></thead>
+      <tbody>
+        <tr><td><code>A01</code></td><td>VSN</td><td class="num">2.986</td><td class="num">39.170</td><td class="num">2.805</td></tr>
+        <tr><td><code>A02</code></td><td>VDC</td><td class="num">2.111</td><td class="num">26.096</td><td class="num">—</td></tr>
+        <tr><td><code>A03</code></td><td>VAC</td><td class="num">504</td><td class="num">5.582</td><td class="num">40</td></tr>
+        <tr><td><code>A04</code></td><td>VSN-NT</td><td class="num">1.526</td><td class="num">11.177</td><td class="num">697</td></tr>
+        <tr><td><code>A05</code></td><td>VSN-PY</td><td class="num">392</td><td class="num">1.659</td><td class="num">—</td></tr>
+        <tr><td>trống</td><td></td><td class="num">4</td><td class="num">—</td><td class="num">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <p><strong>Gia công giữa các nhà máy.</strong> 3.056 sản phẩm (40,6%) là hàng nhận gia công từ nhà máy khác (cột <code>ProductId_GC</code> trỏ về sản phẩm gốc; 2.455 dòng tìm thấy sản phẩm gốc). Luồng lớn nhất là <code>A01</code> giao <code>A02</code> (gia công nội địa). Cùng một đơn của khách vì vậy có hai dòng ở hai nhà máy. MES giữ mỗi dòng theo nhà máy của nó; riêng khi cộng tổng ở <code>A00</code> (toàn công ty) cần tránh đếm hai lần.</p>
+  </div>
+</section>
+
+<section id="don-hang">
+  <h2>Thông tin đơn hàng</h2>
+  <p class="lead">Bảng <code>SalesOrder</code>, tài nguyên <code>order.allocation</code>. Nguồn: <code>vDM_SanPhamDonHang</code>, mỗi dòng nguồn ứng với một dòng MES.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Cột MES</th><th>Trên màn</th><th>Nguồn trong BRAVO_TRE</th><th>Cách lấy, độ đầy đủ</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <tr><td><em>(cột mới)</em> khóa nguồn</td><td>—</td><td><code>ProductId</code></td><td>Duy nhất (7.523/7.523). Cần thêm cột vào <code>SalesOrder</code> để đồng bộ lại đúng dòng</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>BranchCode</code></td><td>Nhà máy</td><td><code>BranchCode</code></td><td><code>A01</code>–<code>A05</code>; 4 dòng trống thì bỏ qua và ghi log</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>OrderNo</code></td><td>Số đơn hàng</td><td><code>Name</code> (phần trước <code>" | "</code>)</td><td><code>Name</code> có dạng "số SO | tên sản phẩm, style"; khớp 7.516/7.523. Nên đề nghị view trả thẳng cột số SO thay vì tách chuỗi</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>CustomerName</code></td><td>Khách hàng</td><td><code>CustomerId</code> → <code>vDM_KHACHHANG.TenTat</code> (hoặc <code>TenTat_OSM</code>)</td><td>37 khách khác nhau. View khách hàng đang lỗi quyền</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>StyleCode</code></td><td>Mã hàng</td><td><code>StyleName</code></td><td>99,9%. Theo Excel: "Style Name hoặc Style Number tùy khách"</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>Season</code></td><td>Mùa</td><td><code>SalesSeasonId</code> → <code>vDM_MuaKinhDoanh.Name</code></td><td>99,9% có, khớp 100%. Ví dụ SS26, AW26, HW25</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>OrderType</code></td><td>Loại</td><td><code>ProductionTypeCode</code> hoặc <code>SalesOrderQuantityTypeCode</code>, tên lấy ở <code>vDM_LOOKUP</code></td><td>Loại hình sản xuất: SXXK 4.337, GCND 2.463, GCND-1P 659, SXND 57, GCXK 3. Loại sản lượng: Bulk 5.447, các loại mẫu (S-…) khoảng 2.070. Demo đang dùng FOB/CMT</td><td><span class="tag t-info">Cần chốt</span></td></tr>
+        <tr><td><code>ProductName</code></td><td>Tên sản phẩm</td><td><code>Description_DetailSO</code></td><td>99,9%. Là tên in trên hóa đơn điện tử</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>StaffName</code></td><td>Nhân viên</td><td><code>EmployeeId</code> → <code>vDM_NHANVIEN.Name</code></td><td>97,8% có, khớp 100%</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>Qty</code></td><td>Số lượng</td><td><code>TotalQuantity_SO</code></td><td>54 sản phẩm có số lượng 0</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>UnitName</code></td><td>ĐVT</td><td><code>Unit</code></td><td>Cai 7.286, PCS 187, BO 27, CHIEC 17, SET 3. Nên chuẩn hóa tên hiển thị</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td><code>ShipDate</code></td><td>Ngày xuất hàng</td><td><code>vThongTinPO.EstimatedTimeDelivery</code></td><td>Lấy ETD sớm nhất trong các PO của sản phẩm</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>UnitPrice</code>, <code>Amount</code></td><td>Đơn giá, Thành tiền</td><td>—</td><td>Không view nào có giá bán</td><td><span class="tag t-bad">Chưa có nguồn</span></td></tr>
+        <tr><td><code>CmPrice</code></td><td>Giá CM</td><td>—</td><td>Không view nào có giá gia công</td><td><span class="tag t-bad">Chưa có nguồn</span></td></tr>
+        <tr><td><code>SyncedAt</code></td><td>Ngày đồng bộ</td><td>—</td><td>Thời điểm MES chép dòng</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>StatusCode</code></td><td>Trạng thái</td><td>(gợi ý) <code>EndDatePrice</code></td><td>MES tự quản. <code>EndDatePrice</code> có giá trị ở 5.429 dòng, nghĩa là kế toán đã đóng lệnh; có thể dùng để đánh dấu đơn đã xong</td><td><span class="tag t-mes">MES</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Cột BRAVO có ích mà MES chưa có</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Cột nguồn</th><th>Ý nghĩa</th><th>Độ đầy đủ</th><th>Gợi ý dùng</th></tr></thead>
+      <tbody>
+        <tr><td><code>Brand</code></td><td>Nhãn hàng</td><td class="nw">94,8%</td><td>Cột lọc trên Thông tin đơn hàng</td></tr>
+        <tr><td><code>TeamId</code> → <code>vDM_TEAM</code></td><td>Nhóm sales, kèm danh sách khách phụ trách</td><td class="nw">66,4%</td><td>Chiều phạm vi "theo khách hàng" cho phân quyền lớp 3, giống cách BRAVO đang phân quyền</td></tr>
+        <tr><td><code>ProductId_GC</code></td><td>Sản phẩm gốc khi là hàng nhận gia công</td><td class="nw">40,6%</td><td>Nối đơn giữa nhà máy giao và nhà máy nhận</td></tr>
+        <tr><td><code>Gender_OSMCode</code>, <code>Items_OSMCode</code>, <code>ItemClassCode</code></td><td>Giới tính, chủng loại, phân loại sản phẩm</td><td class="nw">99%+</td><td>Lọc và báo cáo</td></tr>
+        <tr><td><code>EndDatePrice</code></td><td>Ngày kết thúc tính giá thành (đóng lệnh)</td><td class="nw">72,2%</td><td>Trạng thái, hoặc chỉ đồng bộ đơn còn mở</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="ty-le-cat">
+  <h2>Cập nhật tỷ lệ cắt</h2>
+  <p class="lead">Bảng <code>SalesOrderPo</code> và <code>SalesOrderPoColorSize</code>, tài nguyên <code>order.po</code>. Nguồn chính là <code>vThongTinPO</code> và <code>vThongTinPO_MauCo</code>, cả hai đang lỗi quyền.</p>
+  <h3>SalesOrderPo – danh sách PO</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Cột MES</th><th>Trên màn</th><th>Nguồn trong BRAVO_TRE</th><th>Cách lấy, độ đầy đủ</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <tr><td><em>(cột mới)</em> khóa nguồn</td><td>—</td><td><code>vThongTinPO.ProductId</code> + <code>CustomerPONo</code> (kèm <code>CustomerPOId</code>)</td><td>Cần thêm cột để đồng bộ lại đúng PO</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>SalesOrderId</code></td><td>—</td><td><code>ProductId</code></td><td>Tìm dòng <code>SalesOrder</code> có cùng khóa nguồn</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>PoCode</code></td><td>Mã PO (MES)</td><td>—</td><td>MES sinh dạng <code>PO-A01-000123</code></td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>PoNumber</code></td><td>Số PO</td><td><code>vThongTinPO.CustomerPONo</code></td><td>Trong lúc chờ quyền có thể lấy tạm từ <code>vDM_POKH</code> theo số SO (30.737 PO khớp), nhưng view đó không có ETD và số lượng</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>CustomerName</code>, <code>StyleCode</code></td><td>Khách hàng, Mã hàng</td><td>—</td><td>Bản chụp từ <code>SalesOrder</code> lúc chép (ADR 0006)</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>Qty</code></td><td>SL PO</td><td><code>vThongTinPO.Quantity9</code></td><td>Đối chiếu với tổng <code>vThongTinPO_MauCo.Quantity</code></td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>Destination</code></td><td>Nơi giao</td><td><code>DestinationId</code> → <code>vDM_DiaDiemGiaoHang.Name</code>; quốc gia <code>RowId_Nationality</code> → <code>vDM_QuocGia.Name</code></td><td>Danh mục quốc gia đọc được (257 dòng); danh mục điểm giao đang lỗi quyền</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>ShipDate</code></td><td>Ngày xuất</td><td><code>EstimatedTimeDelivery</code></td><td>ETD hiện tại; <code>EstimatedTimeDelivery_Original</code> là ETD gốc, nên lưu cả hai để thấy PO bị lùi ngày</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>PackingListCode</code></td><td>Mã packing list</td><td>—</td><td>Không có trong BRAVO_TRE</td><td><span class="tag t-bad">Chưa có nguồn</span></td></tr>
+        <tr><td><code>CustomsDeclarationNo</code></td><td>Số tờ khai</td><td>—</td><td>Không có trong BRAVO_TRE</td><td><span class="tag t-bad">Chưa có nguồn</span></td></tr>
+        <tr><td><code>StatusCode</code>, <code>ConfirmedAt</code>, <code>ConfirmedBy</code></td><td>Trạng thái xác nhận</td><td>—</td><td>Thao tác của người dùng MES</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><em>(gợi ý thêm)</em></td><td>Loại PO, ngày PO, vận chuyển</td><td><code>CustomerPOType</code>, <code>CustomerPONoDate</code>, <code>ShipViaCode</code>, <code>EstSyncMaterialDate</code></td><td>Ngày PO ở <code>vDM_POKH.DocDate</code> chỉ có 32,6%, nên lấy từ <code>vThongTinPO</code></td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>SalesOrderPoColorSize – màu × size của PO</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Cột MES</th><th>Nguồn trong BRAVO_TRE</th><th>Cách lấy</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <tr><td><code>ColorName</code></td><td><code>vThongTinPO_MauCo.ColorId</code> → <code>vDM_MauSac.Name</code></td><td>Có 2 tên màu trùng nhau trong danh mục, nên hiển thị kèm mã màu (<code>Code</code>, 4–5 chữ số)</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>SizeName</code></td><td><code>SizeCode</code></td><td>Khớp 100% với <code>vDM_Size.Code</code> (đã kiểm trên bảng cân đối)</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><em>(cột mới)</em> loại size</td><td><code>SizeType</code></td><td>REG, SHORT, LONG, TALL, PET, PLUS. Xem cảnh báo bên dưới</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>Qty</code></td><td><code>Quantity</code></td><td></td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>SortOrder</code></td><td><code>Color_Stt</code>, <code>Size_Stt</code></td><td>Giữ đúng thứ tự cột size như BRAVO</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout bad">
+    <p><strong>Bảng màu cỡ của MES cần thêm cột loại size.</strong> Hiện bảng ràng buộc duy nhất theo (màu, size). Trong bảng cân đối có 48 trường hợp cùng sản phẩm, cùng màu, cùng mã size nhưng khác loại size (ví dụ size 32 REG và 32 SHORT), và 121 sản phẩm dùng nhiều loại size. Chép nguyên sang MES sẽ vỡ ràng buộc hoặc cộng nhầm hai size. Cần một migration thêm <code>SizeType</code> vào các bảng màu cỡ.</p>
+  </div>
+  <div class="callout">
+    <p><strong>Nguồn thay thế cần BA xem: <code>vBangCanDoiSanXuat_MauCo_Tong</code></strong> (đọc được, 998 sản phẩm). View cho số lượng theo màu × size gồm SL gốc (<code>OriginalQty</code>), SL mẫu (<code>SampleQty</code>), dung sai (<code>ToleranceQty</code>) và SL cuối (<code>FinalQty</code>). SL cuối chỉ bằng SL đơn ở 28/998 sản phẩm; 541 sản phẩm cao hơn, 429 thấp hơn. Đây là số cần sản xuất sau cân đối, không phải số theo PO. BA cần chốt: tỷ lệ cắt dựa trên SL theo PO hay SL sau cân đối.</p>
+  </div>
+</section>
+
+<section id="ke-hoach">
+  <h2>Kế hoạch xuất hàng, Xếp chuyền, Phân bổ màu cỡ</h2>
+  <p class="lead">Ba màn này là dữ liệu MES tự lập. Chỉ vài cột cần nguồn từ BRAVO hoặc từ module MES khác.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Bảng MES</th><th>Cột cần nguồn ngoài</th><th>Nguồn</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="5"><code>ShipmentPlan</code><br><span class="small">Kế hoạch xuất hàng, Xếp chuyền</span></td><td><code>CustomerName</code>, <code>StyleCode</code>, <code>ProductName</code>, <code>OrderType</code></td><td>Bản chụp từ <code>SalesOrder</code> đã đồng bộ</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>PoBuyDate</code></td><td>Ghép <code>vThongTinPO.CustomerPONo</code> và <code>CustomerPONoDate</code></td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td><code>CmPrice</code>, <code>Revenue</code></td><td>Không có giá CM trong BRAVO_TRE</td><td><span class="tag t-bad">Chưa có nguồn</span></td></tr>
+        <tr><td><code>CutQty</code>, <code>SewnQty</code>, <code>EndlineQty</code>, <code>FinishedQty</code></td><td>Các module Cắt, May, QMS, Hoàn thiện của MES (chưa làm)</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>PlanQty</code>, <code>ShipDate</code>, <code>PlannerName</code>, <code>StatusCode</code></td><td>Người lập kế hoạch nhập</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>ShipmentPlanPo</code></td><td>PO đã chọn</td><td>Chọn từ <code>SalesOrderPo</code> đã đồng bộ</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>ShipmentPlanColorSize</code></td><td><code>OriginalQty</code></td><td>Tổng màu × size của các PO đã chọn lúc lập kế hoạch</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>ShipmentPlanLine</code><br><span class="small">Xếp chuyền, Phân bổ màu cỡ</span></td><td><code>LineCode</code></td><td>Danh mục chuyền của MES. BRAVO không có chuyền may; sau này lấy từ Nhân sự hoặc GSD</td><td><span class="tag t-mes">MES</span></td></tr>
+        <tr><td><code>ShipmentPlanLineColorSize</code></td><td>—</td><td>Đề xuất theo tỷ lệ màu cỡ của kế hoạch</td><td><span class="tag t-mes">MES</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="danh-muc">
+  <h2>Danh mục cần chép</h2>
+  <p class="lead">Danh mục dùng để hiển thị tên thay cho Id. Có thể chép thành bảng danh mục trong MES, hoặc lưu tên kèm Id nguồn ngay trên dòng nghiệp vụ; điều này sẽ chốt khi thiết kế 5.2.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Danh mục</th><th>View</th><th class="num">Số dòng</th><th>Dùng cho</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <tr><td>Nhà máy</td><td><code>vDM_CHINHANH</code></td><td class="num">5</td><td>Đối chiếu với <code>SysBranch</code> (cùng mã)</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td>Khách hàng</td><td><code>vDM_KHACHHANG</code></td><td class="num">—</td><td>Tên khách trên mọi màn (<code>TenTat</code>, <code>TenTat_OSM</code>, mã <code>MaKhachHang_Bravo</code>)</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+        <tr><td>Mùa</td><td><code>vDM_MuaKinhDoanh</code></td><td class="num">77</td><td>Cột Mùa</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td>Màu</td><td><code>vDM_MauSac</code></td><td class="num">8.248</td><td>Tên màu trong lưới màu cỡ</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td>Size</td><td><code>vDM_Size</code></td><td class="num">437</td><td>Tên size</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td>Nhân viên</td><td><code>vDM_NHANVIEN</code></td><td class="num">761</td><td>Cột Nhân viên</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td>Nhóm sales</td><td><code>vDM_TEAM</code></td><td class="num">41</td><td>Phạm vi theo khách hàng (23 nhóm Sales)</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td>Mã tra cứu</td><td><code>vDM_LOOKUP</code></td><td class="num">274</td><td>Tên của loại hình sản xuất, loại sản lượng, hình thức SX, giới tính, chủng loại, điều kiện giao hàng</td><td><span class="tag t-ok">Có</span></td></tr>
+        <tr><td>Điểm giao, quốc gia</td><td><code>vDM_DiaDiemGiaoHang</code>, <code>vDM_QuocGia</code></td><td class="num">— / 257</td><td>Cột Nơi giao của PO</td><td><span class="tag t-warn">Chờ quyền</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="ngoai-module">
+  <h2>View không thuộc module Đơn hàng</h2>
+  <p class="lead">Ghi lại để dùng cho các module sau; đợt này không đồng bộ.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Nhóm</th><th>View</th><th>Module dự kiến</th></tr></thead>
+      <tbody>
+        <tr><td>Đơn mua nguyên phụ liệu</td><td><code>vDonDatHang</code> (21.900), <code>vDonDatHang_ChiTiet</code> (114.462)</td><td>Kho, nguyên phụ liệu</td></tr>
+        <tr><td>Nhập, xuất, điều chuyển kho</td><td><code>vPhieuNhapMua</code>, <code>vPhieuNhapKhau</code>, <code>vPhieuNhapKho</code>, <code>vPhieuDieuChuyenKho</code>, <code>vYeuCauCapPhat</code> (kèm <code>_ChiTiet</code>)</td><td>Kho, Cắt (cấp phát)</td></tr>
+        <tr><td>Cân đối vật tư</td><td><code>vBangCanDoiVatTu</code>, <code>_ChiTiet</code>, <code>_MauCo_Tong</code>; <code>vBangCanDoiSanXuat_ChiTiet</code></td><td>Kho, Cắt</td></tr>
+        <tr><td>Danh mục vật tư, kho</td><td><code>vDM_VATTU</code> (104.912), <code>vDM_Kho</code>, <code>vDM_DonViTinh</code>, <code>vDM_QuyDoiDonViTinh</code>, <code>vDM_GiaoDich</code>, <code>vDM_ChungLoaiVatTu</code>, <code>vDM_NhaCungCap_ItemCode</code></td><td>Kho</td></tr>
+        <tr><td>Hợp đồng gia công</td><td><code>vPhuKienGiaCong</code> (1.385)</td><td>Đơn hàng giai đoạn sau, Báo cáo</td></tr>
+        <tr><td>Xuất hàng thực tế (OSM)</td><td><code>vBaoCao_OSM_XuatHang</code> (đang lỗi linked server)</td><td>Kế hoạch xuất hàng, Báo cáo</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="dong-bo">
+  <h2>Lưu ý khi thiết kế đồng bộ</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h4>Đồng bộ tăng dần</h4>
+      <ul>
+        <li>Mọi view nghiệp vụ có <code>ModifiedAt</code>, nên có thể chỉ kéo dòng thay đổi kể từ lần trước.</li>
+        <li><code>vDM_Size</code> có <code>CreatedAt</code> và <code>ModifiedAt</code> đều là 01/01/1900, không dùng làm mốc được; chép toàn bộ (437 dòng).</li>
+        <li>View không cho biết dòng nào đã bị xóa bên BRAVO, nên cần đối soát khóa định kỳ để đánh dấu dòng không còn.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Chất lượng dữ liệu</h4>
+      <ul>
+        <li>4 sản phẩm không có nhà máy; 54 sản phẩm có số lượng 0.</li>
+        <li><code>ModifiedBy = -1</code> xuất hiện ở nhiều view (tài khoản hệ thống của BRAVO).</li>
+        <li><code>vDM_POKH.DocDate</code> chỉ có ở 32,6% dòng, có PO ghi năm 2001 và 2032.</li>
+        <li>Khoảng 2.070 sản phẩm là đơn mẫu (S-…), 5.429 sản phẩm đã đóng lệnh. Cần chốt có đưa các đơn này vào MES không.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="cau-hoi">
+  <h2>Cần anh/chị và BA chốt</h2>
+  <div class="tw">
+    <table>
+      <thead><tr><th>#</th><th>Câu hỏi</th><th>Ảnh hưởng</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Tách MES khỏi BRAVO theo hướng A (bảng chép) hay B (ownership chaining)? Ai cấp quyền để 4 view chạy được?</td><td>Chặn toàn bộ dữ liệu PO, khách hàng, ETD</td></tr>
+        <tr><td>2</td><td>Cột "Loại" trên Thông tin đơn hàng là loại hình sản xuất (SXXK, GCND…) hay loại sản lượng (Bulk, mẫu)?</td><td><code>SalesOrder.OrderType</code></td></tr>
+        <tr><td>3</td><td>Có đồng bộ đơn mẫu (S-…) và đơn đã đóng lệnh không?</td><td>Lượng dữ liệu, bộ lọc mặc định</td></tr>
+        <tr><td>4</td><td>Đơn giá, giá CM lấy từ đâu: thêm view trong BRAVO_TRE hay nhập tay ở MES?</td><td>Cột nhạy cảm Đơn giá, Thành tiền, Giá CM, Doanh số</td></tr>
+        <tr><td>5</td><td>Mã packing list, số tờ khai hải quan lấy từ hệ thống nào?</td><td>Hai cột của Cập nhật tỷ lệ cắt</td></tr>
+        <tr><td>6</td><td>Tỷ lệ cắt dựa trên SL theo PO (<code>vThongTinPO_MauCo</code>) hay SL sau cân đối (<code>vBangCanDoiSanXuat_MauCo_Tong</code>)?</td><td>Nguồn của lưới màu cỡ</td></tr>
+        <tr><td>7</td><td>Tên khách hiển thị là <code>TenTat</code> hay <code>TenTat_OSM</code>?</td><td>Cột Khách hàng ở mọi màn</td></tr>
+        <tr><td>8</td><td>Cập nhật file Excel cho 23 view chưa mô tả, nhất là <code>vThongTinPO</code> và <code>vThongTinPO_MauCo</code>.</td><td>Ý nghĩa chính xác của từng cột</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">Tài liệu khảo sát cho Phase 5.2 (đồng bộ). Khi chốt thiết kế đồng bộ cần viết ADR mới: CLAUDE.md đang ghi cách đồng bộ là Linked Server và Stored Procedure, còn hướng hiện tại là đọc qua database trung gian.</div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mẫu mô tả yêu cầu</title>
+<style>
+:root{
+  --bg:#f6f7f9;--surface:#fff;--ink:#16202c;--muted:#5b6776;--line:#dfe3e8;
+  --brand:#0b5fa5;--brand-soft:#e4f0fa;--head:#eef1f5;--bad:#b3261e;--ok:#1a7f4b;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f141a;--surface:#171e26;--ink:#e6ebf1;--muted:#98a4b3;--line:#2a3441;
+    --brand:#6db3ee;--brand-soft:#16293a;--head:#1f2833;--bad:#ef8a83;--ok:#5cc58b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f141a;--surface:#171e26;--ink:#e6ebf1;--muted:#98a4b3;--line:#2a3441;
+  --brand:#6db3ee;--brand-soft:#16293a;--head:#1f2833;--bad:#ef8a83;--ok:#5cc58b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.5px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:28px 16px 40px}
+.top h1{margin:0 0 6px;font-size:1.6rem;line-height:1.25}
+.top p{margin:0 0 8px;color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:14px 0 18px}
+.btn{font:inherit;font-weight:600;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;background:var(--brand);color:var(--surface)}
+.btn:hover{filter:brightness(1.08)}
+.btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.status{font-size:.88rem;color:var(--ok)}
+.status.err{color:var(--bad)}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px 26px}
+.sheet h1{font-size:1.35rem;margin:0 0 12px}
+.sheet h2{font-size:1.1rem;margin:26px 0 8px;padding-top:14px;border-top:1px dashed var(--line)}
+.sheet h3{font-size:1rem;margin:16px 0 6px}
+.sheet p{margin:6px 0}
+.sheet ul,.sheet ol{margin:6px 0;padding-left:22px}
+.tw{overflow-x:auto;margin:8px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:7px 10px;text-align:left;vertical-align:top;border:1px solid var(--line)}
+th{background:var(--head);font-weight:600}
+.hint{color:var(--muted);font-style:italic}
+@media (max-width:560px){.sheet{padding:16px 14px}}
+@media print{.actions{display:none}body{background:#fff;color:#000}.sheet{border:0;padding:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="top">
+  <h1>Mẫu mô tả yêu cầu – MES Vietsun</h1>
+  <p>Viết trong Word theo đúng cấu trúc dưới đây, giữ nguyên số mục và tên mục. Bảng dùng bảng Word, không dán ảnh chụp bảng. Mục không áp dụng thì ghi "Không có".</p>
+  <p>Chữ <span class="hint">nghiêng màu xám</span> là hướng dẫn hoặc ví dụ: thay bằng nội dung thật rồi xóa đi.</p>
+</div>
+
+<div class="actions">
+  <button type="button" class="btn" id="tai-mau">Tải mẫu Word</button>
+  <span class="status" id="trang-thai" role="status" aria-live="polite"></span>
+</div>
+
+<div class="sheet" id="mau-noi-dung">
+  <h1>YC-___ – Tên tính năng</h1>
+  <div class="tw"><table>
+    <tr><th>Mục</th><th>Giá trị</th></tr>
+    <tr><td>Mã yêu cầu</td><td>YC-___ <span class="hint">(tên file: YC-012 - Tên ngắn - v1.2.docx)</span></td></tr>
+    <tr><td>Phiên bản</td><td>0.1 (ngày/tháng/năm) <span class="hint">· 0.x khi Nháp; 1.0 lần đầu chốt; 1.1, 1.2… mỗi lần sửa sau đó</span></td></tr>
+    <tr><td>Trạng thái</td><td>Nháp / Chốt để làm</td></tr>
+    <tr><td>Người viết</td><td>&nbsp;</td></tr>
+    <tr><td>Khối, menu</td><td class="hint">Ví dụ: Quản trị đơn hàng › Kế hoạch xuất hàng</td></tr>
+    <tr><td>Liên quan</td><td class="hint">Yêu cầu khác (YC-…), màn hình đang có bị ảnh hưởng</td></tr>
+  </table></div>
+
+  <h2>1. Bối cảnh và mục tiêu</h2>
+  <p class="hint">Ai dùng; hiện đang làm thế nào (Excel, giấy, phần mềm khác); vướng ở đâu. Làm xong thì đo được điều gì, ví dụ: lập kế hoạch một đơn dưới 5 phút.</p>
+
+  <h2>2. Phạm vi</h2>
+  <ul>
+    <li><b>Làm:</b> …</li>
+    <li><b>Không làm lần này:</b> …</li>
+  </ul>
+
+  <h2>3. Thuật ngữ mới</h2>
+  <div class="tw"><table>
+    <tr><th>Thuật ngữ</th><th>Nghĩa</th><th>Ví dụ</th></tr>
+    <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  </table></div>
+
+  <h2>4. Ai được làm gì</h2>
+  <div class="tw"><table>
+    <tr><th>Vai trò</th><th>Xem</th><th>Thêm</th><th>Sửa</th><th>Xóa</th><th>Xuất file</th><th>Ghi chú</th></tr>
+    <tr><td class="hint">Ví dụ: Kế hoạch</td><td class="hint">Có</td><td class="hint">Có</td><td class="hint">Có</td><td class="hint">Không</td><td class="hint">Có</td><td class="hint">Chỉ dữ liệu của ĐVCS đang đăng nhập</td></tr>
+    <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  </table></div>
+  <ol>
+    <li>Dữ liệu này riêng của từng ĐVCS hay dùng chung toàn công ty?</li>
+    <li>Trong cùng một ĐVCS có giới hạn thêm không (chỉ chuyền mình phụ trách, chỉ bản ghi mình tạo…)?</li>
+    <li>Có cột nhạy cảm (đơn giá, lương…) không? Vai trò nào không được thấy, vai trò nào chỉ thấy dạng che (***)?</li>
+    <li>Thao tác nào cần ghi lại ai làm, lúc nào?</li>
+  </ol>
+
+  <h2>5. Dữ liệu</h2>
+  <div class="tw"><table>
+    <tr><th>Mã</th><th>Tên trên màn</th><th>Ý nghĩa</th><th>Kiểu, độ dài</th><th>Bắt buộc</th><th>Nguồn</th><th>Sửa được khi</th><th>Ví dụ (giả)</th></tr>
+    <tr><td class="hint">D-01</td><td class="hint">Số lượng KH</td><td class="hint">Số lượng dự kiến sản xuất của dòng</td><td class="hint">Số nguyên ≥ 0</td><td class="hint">Có</td><td class="hint">Nhập tay</td><td class="hint">Trước khi chốt kế hoạch</td><td class="hint">1.200</td></tr>
+    <tr><td class="hint">D-02</td><td class="hint">Ngày giao</td><td>&nbsp;</td><td class="hint">Ngày</td><td>&nbsp;</td><td class="hint">BRAVO: view …, cột … / OSM: … / Tính theo QT-…</td><td class="hint">Không sửa</td><td class="hint">20/11/2026</td></tr>
+  </table></div>
+  <ul>
+    <li><b>Không được trùng:</b> <span class="hint">ví dụ: một PO và một màu chỉ có một dòng.</span></li>
+    <li><b>Khi dữ liệu ở nguồn (BRAVO, OSM) bị xóa hoặc đổi:</b> …</li>
+    <li><b>Dữ liệu đang có (Excel cũ) có cần chuyển vào không:</b> …</li>
+  </ul>
+  <p class="hint">Nguồn chưa rõ thì ghi "Chưa rõ" và đưa vào mục 10. Chỉ dùng dữ liệu giả: không tên khách hàng, số PO, tên nhân viên thật.</p>
+
+  <h2>6. Màn hình</h2>
+  <h3>6.1 Tên màn</h3>
+  <ul>
+    <li><b>Menu:</b> …</li>
+    <li><b>Ảnh minh họa:</b> <span class="hint">chèn ảnh ở đây. Cột, nút, quy tắc trong ảnh phải được viết thành chữ ở các dòng dưới.</span></li>
+    <li><b>Lưới:</b> <span class="hint">các cột theo thứ tự (dùng mã D-…), sắp xếp mặc định, ô lọc, ô tìm.</span></li>
+    <li><b>Form nhập:</b> <span class="hint">ô nào, kiểm gì, câu báo lỗi hiện cho người dùng.</span></li>
+    <li><b>Dùng trên điện thoại:</b> <span class="hint">Có / Không; nếu có thì làm việc gì.</span></li>
+  </ul>
+  <div class="tw"><table>
+    <tr><th>Nút</th><th>Hiện khi</th><th>Khóa khi (câu báo cho người dùng)</th><th>Làm gì</th></tr>
+    <tr><td class="hint">Xóa</td><td class="hint">Có quyền Xóa</td><td class="hint">Kế hoạch đã chốt: "Kế hoạch đã chốt. Hủy chốt trước khi xóa."</td><td class="hint">Hỏi xác nhận rồi xóa dòng</td></tr>
+    <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  </table></div>
+  <p class="hint">Mỗi màn một mục 6.1, 6.2…</p>
+
+  <h2>7. Quy tắc nghiệp vụ</h2>
+  <h3>QT-01 Tên quy tắc</h3>
+  <ul>
+    <li><b>Áp dụng khi:</b> …</li>
+    <li><b>Cách tính, điều kiện:</b> …</li>
+    <li><b>Ví dụ bằng số:</b> <span class="hint">1.200 ÷ 350 = 3,43 → làm tròn lên 4 ngày.</span></li>
+    <li><b>Trường hợp đặc biệt:</b> <span class="hint">số 0, để trống, thiếu dữ liệu, ngày nghỉ, làm tròn…</span></li>
+  </ul>
+
+  <h2>8. Trạng thái</h2>
+  <div class="tw"><table>
+    <tr><th>Từ</th><th>Sang</th><th>Khi nào</th><th>Ai được chuyển</th><th>Quay lại được không</th></tr>
+    <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  </table></div>
+
+  <h2>9. Tiêu chí nghiệm thu</h2>
+  <div class="tw"><table>
+    <tr><th>Mã</th><th>Cho (dữ liệu ban đầu)</th><th>Khi (người dùng làm gì)</th><th>Thì (kết quả đúng)</th><th>Theo</th></tr>
+    <tr><td class="hint">TC-01</td><td class="hint">Đơn 1.200 cái, năng suất 350 cái/ngày, bắt đầu Thứ Sáu 16/10/2026</td><td class="hint">Lập kế hoạch</td><td class="hint">Số ngày SX = 4; ngày kết thúc Thứ Ba 20/10/2026 (bỏ Chủ nhật)</td><td class="hint">QT-01</td></tr>
+    <tr><td class="hint">TC-02</td><td class="hint">Đăng nhập vai trò Trưởng chuyền</td><td class="hint">Mở màn Kế hoạch</td><td class="hint">Không có nút Xóa; chỉ thấy dòng của chuyền mình</td><td class="hint">Mục 4</td></tr>
+  </table></div>
+
+  <h2>10. Câu hỏi chưa chốt</h2>
+  <div class="tw"><table>
+    <tr><th>#</th><th>Câu hỏi</th><th>Chặn phần nào</th><th>Trả lời (ngày)</th></tr>
+    <tr><td class="hint">1</td><td class="hint">Số ngày SX có trừ ngày lễ không?</td><td class="hint">QT-01, TC-01</td><td>&nbsp;</td></tr>
+  </table></div>
+
+  <h2>11. Lịch sử phiên bản</h2>
+  <div class="tw"><table>
+    <tr><th>Phiên bản</th><th>Ngày</th><th>Người sửa</th><th>Đổi gì (theo mã)</th></tr>
+    <tr><td>0.1</td><td>&nbsp;</td><td>&nbsp;</td><td>Bản đầu</td></tr>
+  </table></div>
+  <p class="hint">Ví dụ: "Sửa QT-03, thêm TC-07, bỏ D-05". Mã đã cấp không đánh lại; mục bỏ thì giữ dòng và ghi "(bỏ ở v1.3)".</p>
+</div>
+
+</div>
+
+<script>
+(function () {
+  // Word bỏ qua CSS theo class khi mở file HTML, nên mẫu tải về phải mang style viết thẳng vào từng thẻ.
+  var STYLE = {
+    table: 'border-collapse:collapse;width:100%;margin:4pt 0 8pt',
+    th: 'border:1px solid #8c959f;padding:4pt 6pt;background:#e8edf3;font-weight:bold;text-align:left;vertical-align:top',
+    td: 'border:1px solid #8c959f;padding:4pt 6pt;vertical-align:top'
+  };
+  var HINT = 'color:#6b7280;font-style:italic';
+  var trangThai = document.getElementById('trang-thai');
+
+  function mauSach() {
+    var node = document.getElementById('mau-noi-dung').cloneNode(true);
+    node.querySelectorAll('*').forEach(function (el) {
+      var s = STYLE[el.tagName.toLowerCase()] || '';
+      if (el.classList.contains('hint')) s += (s ? ';' : '') + HINT;
+      el.removeAttribute('class');
+      if (s) el.setAttribute('style', s); else el.removeAttribute('style');
+    });
+    return node.innerHTML;
+  }
+
+  document.getElementById('tai-mau').addEventListener('click', function () {
+    var doc = '﻿<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
+      + '<head><meta charset="utf-8"><title>Mẫu mô tả yêu cầu</title>'
+      + '<!-' + '-[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-' + '->'
+      + '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.4}h1{font-size:18pt}h2{font-size:14pt;margin-top:16pt}h3{font-size:12pt}</style>'
+      + '</head><body>' + mauSach() + '</body></html>';
+    try {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([doc], { type: 'application/msword' }));
+      a.download = 'Mẫu mô tả yêu cầu MES - v0.1.doc';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+      trangThai.textContent = 'Đã tải. Mở bằng Word, chọn File › Save As › Word Document (.docx).';
+      trangThai.classList.remove('err');
+    } catch (e) {
+      trangThai.textContent = 'Không tải được. Bôi đen phần mẫu bên dưới, Ctrl+C rồi dán vào Word.';
+      trangThai.classList.add('err');
+    }
+  });
+})();
+</script>
+</body>
+</html>

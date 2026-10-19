@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bản đồ MES Vietsun</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Bố cục: một cột tài liệu rộng tối đa 1240px; sơ đồ bơi (swimlane) vẽ lại từ quy-trinh-tong-quan.png là trung tâm, bảng chi tiết bám dưới.
+   Màu theo theme của app: cam Vietsun (#F39830) làm điểm nhấn, xanh liên kết #007185, trạng thái tách riêng. */
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-2: #f1efea;
+  --line: #e3e0d9;
+  --line-strong: #c8c4bb;
+  --ink: #1c2027;
+  --muted: #5b6270;
+  --faint: #868c97;
+  --accent: #f39830;
+  --accent-ink: #a35a07;
+  --accent-soft: #fdeedb;
+  --done: #067d62;
+  --done-bg: #e1f3eb;
+  --part: #965600;
+  --part-bg: #fcefd5;
+  --todo: #6b7280;
+  --todo-bg: #ffffff;
+  --ext: #3d5a93;
+  --ext-bg: #e6ebf6;
+  --warn: #b12704;
+  --warn-bg: #fdece7;
+  --link: #007185;
+  --font: "Source Sans 3", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --surface: #1c1f25; --surface-2: #252930; --line: #323741; --line-strong: #474d59;
+    --ink: #e9e7e3; --muted: #a7adb7; --faint: #7f8591;
+    --accent: #f5a447; --accent-ink: #f6b66a; --accent-soft: #3a2914;
+    --done: #4fc9a3; --done-bg: #12322a; --part: #f0b45e; --part-bg: #382813;
+    --todo: #9aa1ad; --todo-bg: #1c1f25; --ext: #a2b8ea; --ext-bg: #1f2a42;
+    --warn: #ff8f70; --warn-bg: #3b1d16; --link: #5cc6d8;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --surface: #1c1f25; --surface-2: #252930; --line: #323741; --line-strong: #474d59;
+  --ink: #e9e7e3; --muted: #a7adb7; --faint: #7f8591;
+  --accent: #f5a447; --accent-ink: #f6b66a; --accent-soft: #3a2914;
+  --done: #4fc9a3; --done-bg: #12322a; --part: #f0b45e; --part-bg: #382813;
+  --todo: #9aa1ad; --todo-bg: #1c1f25; --ext: #a2b8ea; --ext-bg: #1f2a42;
+  --warn: #ff8f70; --warn-bg: #3b1d16; --link: #5cc6d8;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15.5px/1.55 var(--font); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 40px); padding-block: 36px 80px; }
+a { color: var(--link); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, tr:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: .84em; background: var(--surface-2); padding: .08em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+h1, h2, h3, h4 { text-wrap: balance; line-height: 1.22; }
+p { margin: 0 0 10px; }
+
+/* Đầu trang */
+.eyebrow { display: flex; align-items: center; gap: 9px; font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); }
+.eyebrow::before { content: ""; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+h1 { font-size: clamp(32px, 4.4vw, 44px); font-weight: 700; letter-spacing: -.012em; margin: 14px 0 10px; }
+.lede { font-size: 18px; color: var(--muted); max-width: 66ch; margin: 0; }
+.meta { margin-top: 14px; font: 12.5px/1.7 var(--mono); color: var(--faint); max-width: 110ch; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 22px; }
+nav.toc a { font-size: 14px; text-decoration: none; color: var(--ink); border: 1px solid var(--line); background: var(--surface); padding: 5px 12px; border-radius: 999px; }
+nav.toc a:hover { border-color: var(--line-strong); }
+
+section { margin-top: 56px; scroll-margin-top: 16px; }
+h2 { font-size: 26px; margin: 0 0 6px; }
+.intro { color: var(--muted); max-width: 76ch; margin: 0 0 20px; }
+
+/* Kết luận */
+.takeaways { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; max-width: 88ch; }
+.takeaways li { position: relative; padding-left: 22px; }
+.takeaways li::before { content: ""; position: absolute; left: 3px; top: .62em; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.takeaways b { font-weight: 700; }
+
+.tally { margin-top: 28px; }
+.tally-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+.tally-head b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
+.bar span { display: block; height: 100%; }
+.bar .co { background: var(--done); }
+.bar .mp { background: var(--part); }
+.bar .chua { background: repeating-linear-gradient(135deg, var(--todo) 0 3px, transparent 3px 7px); }
+.bar .ngoai { background: var(--ext); }
+.bar span + span { border-left: 2px solid var(--surface); }
+.tally-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 13.5px; color: var(--muted); }
+.tally-legend b { color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 3px; }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px 28px; margin: 26px 0 0; padding-top: 18px; border-top: 1px solid var(--line); }
+.facts div { min-width: 0; }
+.facts dt { font-size: 12.5px; color: var(--muted); letter-spacing: .02em; }
+.facts dd { margin: 3px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.facts dd small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
+
+/* Thanh lọc và chú giải */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; font: 600 13.5px/1 var(--font); padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip:hover { border-color: var(--line-strong); }
+.chip[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.chip .n { font: 500 12px/1 var(--mono); color: var(--muted); }
+.sw { width: 13px; height: 13px; border-radius: 3px; border: 1.5px solid; flex: none; }
+.sw.co { background: var(--done-bg); border-color: var(--done); }
+.sw.mp { background: var(--part-bg); border-color: var(--part); }
+.sw.chua { background: var(--todo-bg); border-color: var(--todo); border-style: dashed; }
+.sw.ngoai { background: var(--ext-bg); border-color: var(--ext); }
+.lines-key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-left: auto; font-size: 13px; color: var(--muted); align-items: center; }
+.lines-key span { display: inline-flex; align-items: center; gap: 6px; }
+.lines-key svg { width: 30px; height: 8px; }
+
+/* Sơ đồ */
+.map-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); -webkit-overflow-scrolling: touch; }
+.map-scroll svg { display: block; width: 100%; min-width: 1120px; height: auto; }
+.hint { display: none; font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+@media (max-width: 1160px) { .hint { display: block; } }
+
+.pool { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1; }
+.band { fill: var(--surface-2); }
+.band-line { stroke: var(--line-strong); stroke-width: 1; }
+.band-t { font: 700 12px var(--font); fill: var(--ink); letter-spacing: .08em; }
+.band-t.ext { fill: var(--ext); }
+.strip-t { font: 700 11px var(--font); fill: var(--muted); letter-spacing: .1em; }
+.colhead { fill: var(--surface-2); }
+.colhead-t { font: 700 11.5px var(--font); fill: var(--muted); letter-spacing: .07em; }
+.divider { stroke: var(--line); stroke-width: 1; }
+.edge { fill: none; stroke-linejoin: round; }
+.edge.flow { stroke: var(--muted); stroke-width: 1.4; marker-end: url(#ah-flow); }
+.edge.data { stroke: var(--accent-ink); stroke-width: 1.5; stroke-dasharray: 5 4; marker-end: url(#ah-data); }
+.edge.on { stroke: var(--ink); stroke-width: 2.4; marker-end: url(#ah-on); }
+.halo { fill: none; stroke: var(--surface); stroke-width: 7; }
+.mk-flow { fill: var(--muted); }
+.mk-data { fill: var(--accent-ink); }
+.mk-on { fill: var(--ink); }
+.elabel { font: 600 11px var(--font); fill: var(--accent-ink); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.node { cursor: pointer; outline: none; }
+.node .shape { stroke-width: 1.5; }
+.node.st-co .shape { fill: var(--done-bg); stroke: var(--done); }
+.node.st-mp .shape { fill: var(--part-bg); stroke: var(--part); }
+.node.st-chua .shape { fill: var(--todo-bg); stroke: var(--todo); stroke-dasharray: 5 3; }
+.node.st-ngoai .shape { fill: var(--ext-bg); stroke: var(--ext); }
+.node .shape.fold { fill: none; }
+.node:hover .shape { stroke-width: 2.4; }
+.node.sel .shape { stroke: var(--accent); stroke-width: 3.2; stroke-dasharray: none; }
+.node:focus-visible .shape { stroke: var(--link); stroke-width: 3.2; stroke-dasharray: none; }
+.node.faded { opacity: .22; }
+.nl { font: 600 12.5px var(--font); fill: var(--ink); }
+.nl.sub { font-weight: 400; font-size: 11.5px; fill: var(--muted); }
+.term { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.2; }
+.term-t { font: 700 10.5px var(--font); fill: var(--muted); }
+
+/* Khung chi tiết */
+.detail { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 22px clamp(16px, 2.4vw, 28px) 24px; scroll-margin-top: 16px; }
+.d-eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.detail h3 { font-size: 24px; margin: 8px 0 10px; }
+.d-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.d-mes { font-size: 14.5px; color: var(--muted); margin-bottom: 6px; }
+.d-mes b { color: var(--ink); }
+.d-sum { font-size: 16.5px; max-width: 80ch; margin: 8px 0 18px; }
+.d-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 18px 32px; }
+.d-grid > div { min-width: 0; }
+.d-grid h4, .card h4 { font: 700 12px/1.3 var(--font); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.d-grid ul, .card ul, .steps ul, .cols ul { margin: 0; padding-left: 18px; }
+.d-grid li, .card li, .steps li, .cols li { margin: 5px 0; }
+.d-grid .ask li::marker { color: var(--accent-ink); }
+.d-note { margin: 18px 0 0; padding: 11px 14px; background: var(--accent-soft); border-radius: 8px; font-size: 14.5px; max-width: 95ch; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; font: 600 12.5px/1 var(--font); padding: 5px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.co { background: var(--done-bg); color: var(--done); }
+.pill.mp { background: var(--part-bg); color: var(--part); }
+.pill.chua { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--todo); }
+.pill.ngoai { background: var(--ext-bg); color: var(--ext); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.plain { background: var(--surface-2); color: var(--ink); }
+.bchip { display: inline-block; font: 500 12px/1.2 var(--font); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line-strong); color: var(--ink); background: var(--surface); margin: 1px 3px 1px 0; white-space: nowrap; }
+.dash { color: var(--faint); }
+
+/* Bảng */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+th { text-align: left; font: 700 11.5px/1.3 var(--font); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 11px 14px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; background: var(--surface); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+td .sub { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+td.lane { font-weight: 700; white-space: nowrap; color: var(--ink); }
+tr.lane-start td { border-top: 1px solid var(--line-strong); }
+tbody tr:first-child td { border-top: 0; }
+#readyTable tbody tr { cursor: pointer; }
+#readyTable tbody tr:hover td { background: var(--surface-2); }
+.after-table { font-size: 14px; color: var(--muted); margin-top: 12px; max-width: 100ch; }
+
+/* Lộ trình */
+.steps { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+.step { display: grid; grid-template-columns: minmax(230px, 310px) 1fr; gap: 10px 36px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.step > div { min-width: 0; }
+.step-num { font: 500 13px/1 var(--mono); color: var(--accent-ink); letter-spacing: .06em; }
+.step h3 { font-size: 20px; margin: 8px 0 8px; }
+.step .gate { font-size: 14px; color: var(--muted); margin: 0; }
+@media (max-width: 760px) { .step { grid-template-columns: 1fr; } }
+.cutline { margin-top: 18px; font-size: 14.5px; color: var(--muted); max-width: 95ch; }
+
+/* Thẻ yêu cầu BA */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; }
+.card { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 18px 20px 20px; min-width: 0; }
+.card h3 { font-size: 18px; margin: 0 0 4px; }
+.card .card-sub { font-size: 13.5px; color: var(--muted); margin: 0 0 12px; }
+.card h4 { margin-top: 14px; }
+.card.wide { grid-column: 1 / -1; }
+.template { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 4px 28px; margin: 0; padding-left: 20px; }
+.template li { margin: 4px 0; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 24px 36px; margin-top: 26px; }
+.cols > div { min-width: 0; }
+.cols h3 { font-size: 17px; margin: 0 0 8px; }
+
+.sources { columns: 2 320px; column-gap: 36px; padding-left: 18px; margin: 0; }
+.sources li { margin: 4px 0; break-inside: avoid; }
+footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">MES Vietsun · rà soát ngày 14/10/2026</div>
+  <h1>Bản đồ MES Vietsun</h1>
+  <p class="lede">Sơ đồ quy trình tổng quan đặt cạnh những gì code và tài liệu đang có. Dùng để chọn hướng làm tiếp, gom câu hỏi cho BA và chuẩn bị giao task cho đội dev.</p>
+  <p class="meta">Đối chiếu: docs/nguon/quy-trinh-tong-quan.png · docs/update_docs (trạng thái chụp 13/10) · code nhánh main (f57b28d, cộng thay đổi chưa commit của phase 5.13) · tài liệu BA trong docs/nguon</p>
+  <nav class="toc" aria-label="Mục lục">
+    <a href="#ket-luan">Kết luận</a>
+    <a href="#so-do">Sơ đồ trạng thái</a>
+    <a href="#doi-chieu">Bảng đối chiếu</a>
+    <a href="#moi-noi">Mối nối dữ liệu</a>
+    <a href="#huong-di">Hướng phát triển</a>
+    <a href="#yeu-cau-ba">Yêu cầu gửi BA</a>
+    <a href="#ton-dong">Tồn đọng</a>
+    <a href="#nguon">Nguồn</a>
+  </nav>
+</header>
+
+<section id="ket-luan" aria-labelledby="h-ket-luan">
+  <h2 id="h-ket-luan">Kết luận</h2>
+  <ul class="takeaways">
+    <li><b>Nửa đầu quy trình đã chạy được.</b> Nhân sự (2 màn) và Đơn hàng (5 bước trên sơ đồ, thêm màn Thông tin đơn hàng) đã có màn, API, phân quyền 5 lớp và đồng bộ BRAVO, OSM. Phần lớn đang ở Ready for review, còn việc phải làm trên máy chủ.</li>
+    <li><b>Nửa sau mới có khung.</b> Cắt, May, QMS, Hoàn thiện, Báo cáo có 17 đường dẫn, tất cả là trang giữ chỗ: có menu và quyền mẫu, chưa có bảng, API hay màn nào.</li>
+    <li><b>BA mới mô tả module Đơn hàng.</b> File docx có 5 màn, chủ yếu bằng ảnh wireframe, ít quy tắc bằng chữ. Chưa có tài liệu cho Cắt, May, QMS, Hoàn thiện, Báo cáo, nên chưa tách được task nghiệp vụ cho các khối này.</li>
+    <li><b>Có việc giao được ngay mà không phải chờ BA.</b> Nửa sau cần những phần nền chưa có: cách ghi nhận sản lượng chung (thay 4 cột lũy kế đang là số giả), realtime, dùng trên điện thoại qua HTTPS, kho báo cáo xuyên module, kết nối GSD, lịch tự đồng bộ.</li>
+    <li><b>Vài chỗ tài liệu lệch thực tế.</b> <code>02-trang-thai.md</code> ghi 5.10 chưa gộp <code>main</code>, nhưng git đã gộp. Phase 5.13 đang làm mà chưa có trong trạng thái. Danh mục bước chuẩn bị SX theo file cũ 16 bước, còn file 2026 có 18 bước. Sơ đồ coi Nhân sự là hệ thống có sẵn, còn MES đang tự quản theo ADR 0012.</li>
+  </ul>
+
+  <div class="tally" id="tally"></div>
+
+  <dl class="facts">
+    <div><dt>Màn thật trong MES</dt><dd>17 đường dẫn<small>Đơn hàng 7 · Nhân sự 2 · Quản trị 8</small></dd></div>
+    <div><dt>Trang giữ chỗ</dt><dd>17 đường dẫn<small>Cắt 3 · May 4 · QMS 3 · Hoàn thiện 3 · Báo cáo 4</small></dd></div>
+    <div><dt>Tài liệu BA</dt><dd>1 file docx<small>Đơn hàng: 5 màn, 9 ảnh wireframe</small></dd></div>
+    <div><dt>Test gần nhất (14/10)</dt><dd>Backend 353 qua · frontend 222 qua<small>Backend chạy trên bộ database test MES_*_T512</small></dd></div>
+    <div><dt>Câu hỏi đang mở</dt><dd>30 chờ người dùng · 6 nhóm chờ BA<small>Chi tiết ở 02-trang-thai.md</small></dd></div>
+  </dl>
+</section>
+
+<section id="so-do" aria-labelledby="h-so-do">
+  <h2 id="h-so-do">Sơ đồ quy trình theo trạng thái</h2>
+  <p class="intro">Vẽ lại đúng sơ đồ tổng quan, mỗi ô tô theo tình trạng trong MES. Bấm một ô để xem màn tương ứng, dữ liệu vào ra, phần còn thiếu và câu hỏi cần trả lời. Bấm nút trạng thái để làm mờ các ô còn lại.</p>
+
+  <div class="toolbar" role="group" aria-label="Lọc theo trạng thái">
+    <button class="chip" type="button" data-filter="all" aria-pressed="true">Tất cả <span class="n" data-count="all"></span></button>
+    <button class="chip" type="button" data-filter="co" aria-pressed="false"><span class="sw co"></span>Đã có màn <span class="n" data-count="co"></span></button>
+    <button class="chip" type="button" data-filter="mp" aria-pressed="false"><span class="sw mp"></span>Có một phần <span class="n" data-count="mp"></span></button>
+    <button class="chip" type="button" data-filter="chua" aria-pressed="false"><span class="sw chua"></span>Chưa có màn <span class="n" data-count="chua"></span></button>
+    <button class="chip" type="button" data-filter="ngoai" aria-pressed="false"><span class="sw ngoai"></span>Hệ thống ngoài (GSD) <span class="n" data-count="ngoai"></span></button>
+    <div class="lines-key" aria-hidden="true">
+      <span><svg viewBox="0 0 30 8"><line x1="0" y1="4" x2="30" y2="4" class="edge flow" style="marker-end:none"/></svg>Luồng trong khối</span>
+      <span><svg viewBox="0 0 30 8"><line x1="0" y1="4" x2="30" y2="4" class="edge data" style="marker-end:none"/></svg>Dữ liệu giữa các khối</span>
+    </div>
+  </div>
+
+  <div class="map-scroll">
+    <svg id="map" viewBox="0 0 1300 910" role="img" aria-label="Sơ đồ quy trình tổng quan MES Vietsun, tô màu theo trạng thái"></svg>
+  </div>
+  <p class="hint">Màn hẹp: kéo ngang để xem hết sơ đồ.</p>
+
+  <div class="detail" id="detail" aria-live="polite"></div>
+</section>
+
+<section id="doi-chieu" aria-labelledby="h-doi-chieu">
+  <h2 id="h-doi-chieu">Bảng đối chiếu từng bước</h2>
+  <p class="intro">29 bước trên sơ đồ, màn tương ứng trong MES và thứ đang chặn việc lên task. Bấm một dòng để mở chi tiết trên sơ đồ.</p>
+  <div class="toolbar" role="group" aria-label="Lọc bảng theo trạng thái" id="tableFilter">
+    <button class="chip" type="button" data-tfilter="all" aria-pressed="true">Tất cả</button>
+    <button class="chip" type="button" data-tfilter="co" aria-pressed="false"><span class="sw co"></span>Đã có màn</button>
+    <button class="chip" type="button" data-tfilter="mp" aria-pressed="false"><span class="sw mp"></span>Có một phần</button>
+    <button class="chip" type="button" data-tfilter="chua" aria-pressed="false"><span class="sw chua"></span>Chưa có màn</button>
+    <button class="chip" type="button" data-tfilter="ngoai" aria-pressed="false"><span class="sw ngoai"></span>Hệ thống ngoài</button>
+  </div>
+  <div class="tbl-wrap">
+    <table id="readyTable">
+      <thead><tr><th>Khối</th><th>Bước trên sơ đồ</th><th>Trong MES</th><th>Trạng thái</th><th>Đang chặn bởi</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="after-table">Màn có trong MES nhưng không có trên sơ đồ: Thông tin đơn hàng (<code>/order/info</code>, nguồn BRAVO), Cấu hình chuẩn bị SX, Lịch làm việc theo ĐVCS, Ca làm việc (danh mục có, chưa màn nào dùng), Đồng bộ dữ liệu và các màn Quản trị (Người dùng, Vai trò, Phân quyền, Chính sách cột, Đơn vị cơ sở, Danh mục hệ thống, Nhật ký).</p>
+</section>
+
+<section id="moi-noi" aria-labelledby="h-moi-noi">
+  <h2 id="h-moi-noi">Mối nối dữ liệu</h2>
+  <p class="intro">Các mũi tên giữa các khối trên sơ đồ, cộng nguồn từ hệ thống ngoài. Đây là chỗ cần chốt thiết kế trước khi làm màn, vì một khối ghi sai thì khối sau tính sai.</p>
+  <div class="tbl-wrap">
+    <table id="linkTable">
+      <thead><tr><th>Từ</th><th>Tới</th><th>Dữ liệu</th><th>Hiện trạng</th><th>Ghi chú</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="huong-di" aria-labelledby="h-huong-di">
+  <h2 id="h-huong-di">Hướng phát triển đề xuất</h2>
+  <p class="intro">Thứ tự đi theo dòng chảy dữ liệu của sơ đồ: khâu sau cần số liệu của khâu trước. Bước 0 và 1 giao được ngay; từ Bước 2, mỗi khối chỉ bắt đầu khi BA đã gửi đặc tả (tổng quan dự án yêu cầu gửi trước ít nhất 1 tuần). Đây là đề xuất, cần người dùng duyệt.</p>
+  <ol class="steps">
+    <li class="step">
+      <div><div class="step-num">BƯỚC 0</div><h3>Khép phần đang mở</h3><p class="gate"><span class="pill co">Giao được ngay</span></p></div>
+      <div><ul>
+        <li>Duyệt các phase đang Ready for review; sửa <code>02-trang-thai.md</code> cho khớp git (5.10, 5.11 đã gộp <code>main</code>; thêm dòng 5.13).</li>
+        <li>Làm hết việc trên máy chủ: <code>npm run migrate</code> (seed vai trò Toàn quyền, <code>MES_Hr/0002</code>, <code>MES_Core/0009</code>–<code>0011</code>, <code>MES_Order/0009</code>), deploy bằng <code>deploy/deploy.cjs</code>, tích bộ phận chuyền may, khai ngày lễ, Tết.</li>
+        <li>Sửa 3 lỗi tiềm ẩn mức Cao (mục Tồn đọng).</li>
+        <li>Xong phase 5.13 Phân bổ màu cỡ: đây là đầu vào trực tiếp của khâu Cắt.</li>
+      </ul></div>
+    </li>
+    <li class="step">
+      <div><div class="step-num">BƯỚC 1</div><h3>Nền cho nửa sau quy trình</h3><p class="gate"><span class="pill co">Giao được ngay</span> cần quyết định kiến trúc, ghi vào <code>13-quyet-dinh.md</code></p></div>
+      <div><ul>
+        <li><b>Ghi nhận sản lượng chung:</b> một cách ghi dùng cho Cắt, May, Endline, Hoàn thiện (theo kế hoạch, dòng dàn chuyền, màu cỡ, thời điểm), cộng vào lũy kế thay 4 cột số giả; kèm sự kiện giữa module (quyết định đã có nhưng chưa làm).</li>
+        <li><b>Realtime:</b> WebSocket trong NestJS, reverse proxy, HTTPS (Q30). Tổng quan dự án đặt mục tiêu trễ dưới 1–2 giây.</li>
+        <li><b>Điện thoại:</b> PWA có service worker (Q28), khung màn thao tác lớn cho 3 màn đã có cờ điện thoại (Phân cụm trưởng, Bấm năng suất cụm, Kiểm Endline).</li>
+        <li><b>Kho báo cáo:</b> <code>MES_Report</code> hoặc view công bố (QĐ 2.2). Chốt Q7 (hướng metadata-driven) trước khi làm báo cáo.</li>
+        <li><b>Kết nối GSD</b> trong lớp đồng bộ, khi có đầu mối và danh sách view.</li>
+        <li><b>Lịch tự đồng bộ</b> BRAVO, OSM (Q20). Tổng quan dự án ghi 10–15 phút một lần; hiện chỉ chạy khi bấm.</li>
+        <li><b>Seed:</b> vai trò cho nhà cắt, hoàn thiện; tài khoản mẫu cho vai trò Kiểm hàng (đang không có).</li>
+      </ul></div>
+    </li>
+    <li class="step">
+      <div><div class="step-num">BƯỚC 2</div><h3>Cắt</h3><p class="gate"><span class="pill chua">Chờ đặc tả BA</span></p></div>
+      <div><ul>
+        <li>Đồng bộ tiến độ cắt → Xác nhận cấp BTP → Quản lý in thêu.</li>
+        <li>Đầu vào là tỷ lệ cắt đã xác nhận và màu cỡ theo chuyền; đầu ra là LK cắt thật và "BTP cắt" cho chuyền may.</li>
+      </ul></div>
+    </li>
+    <li class="step">
+      <div><div class="step-num">BƯỚC 3</div><h3>May</h3><p class="gate"><span class="pill chua">Chờ BA và GSD</span> cần Bước 1</p></div>
+      <div><ul>
+        <li>Kế hoạch may → Phân cụm trưởng → Bấm năng suất cụm → Biểu đồ cân bằng chuyền.</li>
+        <li>Hai màn điện thoại đầu tiên; số liệu lên màn quản lý theo thời gian thực. Đây là khối rủi ro nhất (tổng quan dự án ước 65–70%).</li>
+      </ul></div>
+    </li>
+    <li class="step">
+      <div><div class="step-num">BƯỚC 4</div><h3>QMS · Endline</h3><p class="gate"><span class="pill chua">Chờ đặc tả BA</span> Danh mục lỗi lên khung sớm được</p></div>
+      <div><ul>
+        <li>Danh mục lỗi → Kiểm Endline (điện thoại) → Báo cáo chất lượng.</li>
+        <li>Nhận "năng suất cụm may ra", trả hàng đạt cho Hoàn thiện. Làm song song với Bước 3 được nếu BA gửi kịp.</li>
+      </ul></div>
+    </li>
+    <li class="step">
+      <div><div class="step-num">BƯỚC 5</div><h3>Hoàn thiện</h3><p class="gate"><span class="pill chua">Chờ đặc tả BA</span> mức nhập liệu cơ bản</p></div>
+      <div><ul>
+        <li>Kế hoạch hoàn thiện → Tiến độ gấp xếp → Tiến độ đóng thùng.</li>
+      </ul></div>
+    </li>
+    <li class="step">
+      <div><div class="step-num">BƯỚC 6</div><h3>Báo cáo quản trị</h3><p class="gate"><span class="pill chua">Chờ mẫu báo cáo</span> cần số liệu thật của Bước 2–5</p></div>
+      <div><ul>
+        <li>Tiến độ sản xuất, Sản lượng theo giờ, Doanh thu nhà máy, Chất lượng.</li>
+        <li>Chốt "Kế hoạch chuẩn bị sản xuất" ở nhóm Báo cáo là báo cáo riêng hay chính là màn đã có.</li>
+      </ul></div>
+    </li>
+  </ol>
+  <p class="cutline">Tổng quan dự án định nghĩa pilot xong khi luồng Cắt → May → Endline → Hoàn thiện chạy ổn định ở 1 nhà máy. Thiếu thời gian thì cắt theo thứ tự: báo cáo nâng cao, Hoàn thiện ngoài mức nhập liệu, cân bằng chuyền nâng cao. Không cắt: phân quyền theo nhà máy, đồng bộ, test phần tính sản lượng và phân quyền, sao lưu và phục hồi.</p>
+</section>
+
+<section id="yeu-cau-ba" aria-labelledby="h-yeu-cau-ba">
+  <h2 id="h-yeu-cau-ba">Yêu cầu gửi BA</h2>
+  <p class="intro">Mỗi màn cần một file yêu cầu theo mẫu <code>docs/yeu-cau.md</code> (mã YC-xxx). Câu hỏi theo khối lấy từ phần chi tiết của từng ô trên sơ đồ. Khi có YC, dev lead tách thành task 0,5–2 ngày trong file phase, tiêu chí xong lấy từ mục TC của YC.</p>
+  <div class="cards" id="baCards">
+    <div class="card wide">
+      <h3>Mỗi màn cần có</h3>
+      <p class="card-sub">Theo mẫu <code>docs/yeu-cau.md</code>, bản 1.2 ngày 13/10/2026</p>
+      <ol class="template">
+        <li>Bối cảnh, mục tiêu, phạm vi làm và không làm</li>
+        <li>Thuật ngữ của khâu</li>
+        <li>Ai được làm gì: Xem, Thêm, Sửa, Xóa, Xuất theo vai trò; dữ liệu theo ĐVCS hay dùng chung; cột nhạy cảm</li>
+        <li>Dữ liệu: mã D-xx, kiểu, bắt buộc, nguồn (nhập tay, BRAVO, OSM, GSD, công thức)</li>
+        <li>Màn hình: lưới, nút (hiện khi, khóa khi, làm gì), form, dùng trên PC hay điện thoại</li>
+        <li>Quy tắc QT-xx kèm ví dụ số</li>
+        <li>Chuyển trạng thái</li>
+        <li>Tiêu chí nghiệm thu TC-xx</li>
+        <li>Câu hỏi chưa chốt</li>
+      </ol>
+      <h4>Ngoài đặc tả màn</h4>
+      <ul>
+        <li>Danh mục gốc: lỗi, công đoạn, cụm, đơn vị tính, ca làm việc theo nhà máy.</li>
+        <li>Ma trận quyền cho vai trò mới (nhà cắt, hoàn thiện) và phạm vi theo chuyền.</li>
+        <li>Mẫu báo cáo, kịch bản UAT, nhà máy pilot và key user.</li>
+        <li>Đầu mối GSD: danh sách view chỉ đọc, khóa nối mã hàng với BRAVO.</li>
+      </ul>
+    </div>
+    <div class="card wide">
+      <h3>Còn chờ BA ở phần đã làm</h3>
+      <p class="card-sub">Theo <code>02-trang-thai.md</code>; code đang chạy theo giả định tạm</p>
+      <ul>
+        <li><b>Ánh xạ đơn hàng BRAVO (5.2.8):</b> đặc tả chính thức; xử lý đơn, PO bị xóa ở BRAVO; ngày tạo lấy ngày chứng từ hay lúc nạp.</li>
+        <li><b>Ghép OSM theo mã hàng:</b> <code>StyleName</code> hay <code>StyleName_OSM</code>.</li>
+        <li><b>Quy tắc tạm của Đơn hàng:</b> số ngày SX làm tròn lên; số ngày ra chuyền, nhập kho 3/3/2/5; logic ghi Kế hoạch xuất hàng ("mô tả logic sau"); hành vi 4 nút Cập nhật tỷ lệ cắt; thuật ngữ SL KHXH, NSBQ.</li>
+        <li><b>Kế hoạch chuẩn bị SX:</b> ngày KH theo ngày lịch hay ngày làm việc; quy tắc trạng thái; nguồn Loại mã, SL chốt UD, HS Ưu đãi VC; ai nhập TH từng bước; danh mục 16 hay 18 bước.</li>
+        <li><b>Cây tổ chức:</b> cấp cố định ĐVCS → Xưởng → Chuyền; chuyển chuyền sang xưởng khác thì số liệu cũ gom theo đâu.</li>
+        <li><b>Danh mục thật:</b> chức danh, loại phòng ban, danh mục lỗi, ca làm việc theo nhà máy.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="ton-dong" aria-labelledby="h-ton-dong">
+  <h2 id="h-ton-dong">Tồn đọng của phần đã làm</h2>
+  <p class="intro">Trạng thái theo <code>02-trang-thai.md</code>, đối chiếu với git trên máy này ngày 14/10/2026.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Phase</th><th>Nội dung</th><th>Trạng thái</th><th>Còn lại</th></tr></thead>
+      <tbody>
+        <tr><td>0–4</td><td>Nền móng, khung, phân quyền động, demo</td><td><span class="pill co">Approved</span></td><td class="dash">–</td></tr>
+        <tr><td>5.1</td><td>Nâng phân quyền, vai trò Toàn quyền</td><td><span class="pill plain">Ready for review</span></td><td>Giới hạn tần suất đăng nhập, phát hiện dùng lại refresh token, hạn tuyệt đối của phiên; seed Toàn quyền trên máy chủ</td></tr>
+        <tr><td>5.2</td><td>Đồng bộ BRAVO qua database trung gian</td><td><span class="pill plain">Ready for review</span></td><td>5.2.8 ánh xạ đơn hàng chờ BA</td></tr>
+        <tr><td>5.3–5.7</td><td>Đơn hàng, Danh mục, Chuẩn bị SX, Lưới xem dữ liệu, Hiệu năng</td><td><span class="pill plain">Ready for review</span></td><td>Quy tắc tạm của Đơn hàng, Chuẩn bị SX chờ BA</td></tr>
+        <tr><td>5.8</td><td>Nhân sự</td><td><span class="pill mp">In progress</span></td><td>Kiểm trên app; chốt M4 (Q11); 5.8.9 thiếu test frontend</td></tr>
+        <tr><td>5.9</td><td>ĐVCS, Nhà máy SX, Phân bổ PO, Kế hoạch xuất hàng (đến 5.9.15)</td><td><span class="pill mp">In progress</span></td><td>Seed, deploy, kiểm trên máy chủ; Q33, Q34</td></tr>
+        <tr><td>5.10</td><td>Nhà máy SX nhập tay, chuyền may là bộ phận</td><td><span class="pill plain">Ready for review</span></td><td><code>02</code> ghi "chưa gộp main, chưa push"; git: nhánh <code>phase-5-10</code> đã nằm trong <code>main</code>. Việc máy chủ vẫn còn</td></tr>
+        <tr><td>5.11</td><td>Màn đăng nhập, màu giao diện</td><td><span class="pill mp">In progress</span></td><td>Đã gộp <code>main</code>, <code>main</code> khớp <code>origin/main</code>; chờ người dùng xem lại để làm 5.11.4, 5.11.5; <code>LoginPage.tsx</code> đang có thay đổi chưa commit</td></tr>
+        <tr><td>5.12</td><td>Lịch làm việc, dàn chuyền tự tính ngày</td><td><span class="pill plain">Ready for review</span></td><td>Máy chủ cần <code>MES_Core/0011</code>; Q35; bộ database test <code>MES_*_T512</code> chưa xóa</td></tr>
+        <tr><td>5.13</td><td>Phân bổ màu cỡ theo kế hoạch xuất hàng</td><td><span class="pill mp">In progress</span></td><td>Chưa có trong <code>02</code>; đang sửa 14 file backend trên <code>main</code>, chưa commit</td></tr>
+        <tr><td>Triển khai</td><td>Cập nhật máy chủ không hạ web</td><td><span class="pill plain">Ready for review</span></td><td>Chưa chạy trên máy chủ; Q32 (pm2 tự chạy khi khởi động máy)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>Lỗi tiềm ẩn mức Cao</h3>
+      <ul>
+        <li><code>sync-gen.ts</code>, nhánh chép toàn bộ: không có chốt "xóa quá 20%". View trả thiếu thì một lần đồng bộ xóa phần lớn bảng chép; với <code>OSMDataFty</code> kéo theo mở khóa Nhà máy SX của đơn.</li>
+        <li><code>BaseRepository.listAll</code>: xuất file các lưới cắt im lặng ở 10.000 dòng; máy chủ có hơn 22.000 PO.</li>
+        <li><code>shipment.service.ts</code> (<code>draft</code>): số lượng màu cỡ trong popup Kế hoạch xuất hàng chưa qua chính sách cột; <code>/draft</code>, <code>/candidates</code> chỉ đòi quyền xem (Q34).</li>
+      </ul>
+      <p class="after-table">Thêm 9 lỗi mức Trung bình và 16 mức Thấp ở <code>02-trang-thai.md</code>.</p>
+    </div>
+    <div>
+      <h3>Việc trên máy chủ</h3>
+      <ul>
+        <li><code>npm run migrate</code> trước khi chạy code mới (seed Toàn quyền cho <code>admin</code>).</li>
+        <li>Deploy, kiểm <code>JWT_SECRET</code>; chuyển sang <code>deploy.cjs</code>.</li>
+        <li>Gắn ĐVCS cho 18 nhà máy gia công ngoài (670 đơn chưa lập kế hoạch được).</li>
+        <li>Phase 5.10: dừng backend cũ rồi migrate; tạo, tích bộ phận chuyền may; gán lại phạm vi Trưởng chuyền.</li>
+        <li>Phase 5.12: khai ngày lễ, Tết cho từng ĐVCS.</li>
+        <li>Nạp tăng dần đơn hàng BRAVO đang tắt; bật khi người dùng quyết định.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Tài liệu lệch thực tế</h3>
+      <ul>
+        <li><code>02-trang-thai.md</code>: 5.10 "chưa gộp main", 5.11 "main hơn origin 3 commit"; git trên máy này đã gộp cả hai, <code>main</code> khớp <code>origin/main</code>.</li>
+        <li>Phase 5.13 có file kế hoạch, đang sửa code, chưa có dòng trong trạng thái.</li>
+        <li>Danh mục bước chuẩn bị SX: seed 16 bước theo "TNG TT CHUAN BI SX.xls"; "QUẢN TRỊ KH CHUẨN BỊ 2026.xls" có 18 bước.</li>
+        <li>Sơ đồ: Nhân sự là hệ thống có sẵn; ADR 0012: MES tự quản.</li>
+        <li>Sơ đồ: Phân bổ PO → Kế hoạch xuất hàng; code: kế hoạch không đọc Phân bổ PO.</li>
+        <li>Tổng quan dự án: đồng bộ tự động 10–15 phút, realtime qua WebSocket; code: chỉ chạy khi bấm, chưa có WebSocket.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="nguon" aria-labelledby="h-nguon">
+  <h2 id="h-nguon">Nguồn đã rà</h2>
+  <ul class="sources">
+    <li><code>docs/nguon/quy-trinh-tong-quan.png</code>: sơ đồ quy trình</li>
+    <li><code>docs/nguon/tong-quan-du-an.md</code>: phạm vi giai đoạn 1, lộ trình 8 tuần</li>
+    <li><code>docs/nguon/BẢNG MÔ TẢ GIAO DIỆN MES - ĐƠN HÀNG.docx</code>: đặc tả BA duy nhất</li>
+    <li><code>docs/nguon/*.xls</code>: hai mẫu kế hoạch chuẩn bị SX (16 và 18 bước)</li>
+    <li><code>docs/nguon/Kết nối Bravo VietSun (2).xlsx</code>: 28 view BRAVO</li>
+    <li><code>docs/yeu-cau.md</code>: mẫu yêu cầu cho BA</li>
+    <li><code>docs/update_docs/01</code>, <code>02</code>, <code>03</code>, <code>06</code>–<code>09</code>, <code>13</code></li>
+    <li><code>docs/phases/phase-5-13-phan-bo-mau-co-theo-ke-hoach.md</code></li>
+    <li><code>backend/scripts/seed-data.ts</code>: menu, quyền mẫu, 16 bước chuẩn bị</li>
+    <li><code>frontend/src/routes/registry.tsx</code>: màn thật và trang giữ chỗ</li>
+    <li><code>backend/migrations/*</code>: bảng của 5 database</li>
+    <li><code>backend/src/modules/*</code>, <code>backend/src/platform/*</code></li>
+  </ul>
+  <footer>Trang này là ảnh chụp ngày 14/10/2026 để định hướng. Trạng thái chính thức vẫn ghi ở <code>docs/update_docs/02-trang-thai.md</code>; quyết định ở <code>13-quyet-dinh.md</code>.</footer>
+</section>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Tọa độ lưới của sơ đồ (viewBox 1300 × 910): 6 cột MES, mỗi cột 211px sau dải nhãn 34px
+  var CX = [139.5, 350.5, 561.5, 772.5, 983.5, 1194.5];
+  var RY = [300, 390, 480, 570, 660];
+  var QY = 853;
+  var NW = 146, NH = 54;
+
+  var LANES = { gsd: 'Công nghệ (GSD)', hr: 'Nhân sự', ord: 'Đơn hàng', cut: 'Cắt', sew: 'May', qms: 'QMS · Endline', fin: 'Hoàn thiện', rep: 'Báo cáo quản trị' };
+  var LANE_ORDER = ['gsd', 'hr', 'ord', 'cut', 'sew', 'qms', 'fin', 'rep'];
+  var STATUS = { co: 'Đã có màn', mp: 'Có một phần', chua: 'Chưa có màn', ngoai: 'Hệ thống ngoài' };
+  var BLOCK = { ba: 'Đặc tả BA', gsd: 'Kết nối GSD', rt: 'Realtime', mob: 'Điện thoại, HTTPS', evt: 'Ghi sản lượng chung', rpt: 'Kho báo cáo', cat: 'Danh mục gốc', role: 'Vai trò, quyền' };
+
+  var NODES = [
+    { id: 'gsd-analysis', lane: 'gsd', x: 230, y: 80, lines: ['Phân tích GSD', 'chuyền may'], name: 'Phân tích GSD chuyền may', status: 'ngoai', blockers: ['gsd'],
+      summary: 'Phân tích công đoạn và thời gian chuẩn của mã hàng. Đã có ở GSD; theo tổng quan dự án, MES chỉ đọc.',
+      in: ['Thực hiện trên GSD'],
+      out: ['Kho cụm công đoạn, Bảng quy trình (trong GSD)', 'Về sau: thời gian chuẩn cho Kế hoạch may, Biểu đồ cân bằng chuyền'],
+      gaps: ['Lớp đồng bộ chưa có nguồn GSD. Thêm nguồn phải sửa `sync-gen.ts`, `source-databases.ts` và thủ tục `usp_SyncRun_Execute` (`09-dong-bo.md`)'],
+      ask: ['Đầu mối GSD, danh sách view chỉ đọc, khóa nối mã hàng giữa GSD và BRAVO'] },
+    { id: 'gsd-ops', lane: 'gsd', x: 410, y: 80, lines: ['Kho cụm', 'công đoạn'], name: 'Kho cụm công đoạn', status: 'ngoai', blockers: ['gsd'],
+      summary: 'Thư viện công đoạn, cụm công đoạn dùng lại giữa các mã hàng. Đã có ở GSD; MES chỉ đọc.',
+      out: ['Bảng quy trình (trong GSD)'],
+      ask: ['MES cần xem cả kho cụm hay chỉ cần cụm đã chốt cho từng mã hàng'] },
+    { id: 'gsd-process', lane: 'gsd', x: 590, y: 80, lines: ['Bảng quy trình'], name: 'Bảng quy trình', status: 'ngoai', blockers: ['gsd'],
+      summary: 'Quy trình may của mã hàng. Trên sơ đồ, ô này nhận mũi tên "Xếp chuyền" từ MES.',
+      in: ['Kho cụm công đoạn', 'Theo sơ đồ: thông tin Xếp chuyền từ MES'],
+      out: ['Cập nhật cụm; Sơ đồ chuyền / Phân công đoạn'],
+      gaps: ['MES chưa gửi gì cho GSD. Quy tắc đã chốt: hệ thống ngoài chỉ đọc, MES không ghi vào GSD'],
+      ask: ['Chiều mũi tên "Xếp chuyền": GSD đọc một view dàn chuyền do MES công bố, hay người dùng tự tra trên MES?'] },
+    { id: 'gsd-cluster', lane: 'gsd', x: 770, y: 80, lines: ['Cập nhật cụm'], name: 'Cập nhật cụm', status: 'ngoai', blockers: ['gsd'],
+      summary: 'Chốt cụm công đoạn cho mã hàng. Tổng quan dự án ghi: cần kết nối với MES.',
+      in: ['Bảng quy trình'],
+      out: ['Phân cụm trưởng (App Mobile) ở MES', 'Sơ đồ chuyền / Phân công đoạn'],
+      gaps: ['Chưa có kết nối; đây là chỗ chặn chính của Phân cụm trưởng'],
+      ask: ['Cụm có mã ổn định không; GSD đổi cụm giữa chừng thì MES xử lý thế nào', 'Dữ liệu cần lấy: mã hàng, cụm, công đoạn trong cụm, thời gian chuẩn, thiết bị'] },
+    { id: 'gsd-line', lane: 'gsd', x: 990, y: 80, lines: ['Sơ đồ chuyền /', 'Phân công đoạn'], name: 'Sơ đồ chuyền / Phân công đoạn', status: 'ngoai', blockers: ['gsd'],
+      summary: 'Bố trí chuyền và giao công đoạn. Tổng quan dự án ghi: cần kết nối với MES.',
+      in: ['Bảng quy trình, Cập nhật cụm'],
+      ask: ['MES dùng sơ đồ chuyền ở màn nào: Phân cụm trưởng, Biểu đồ cân bằng chuyền?'] },
+
+    { id: 'hr-org', lane: 'hr', x: CX[0], y: RY[0], lines: ['Khai báo sơ đồ', 'tổ chức'], name: 'Khai báo sơ đồ tổ chức', status: 'co',
+      mes: { name: 'Sơ đồ tổ chức', path: '/hr/org-chart', code: 'hr.orgchart', phase: 'Phase 5.8 (In progress), 5.10' },
+      summary: 'Cây phòng ban của MES. Bộ phận tích "Xưởng sản xuất" là chuyền may, là nguồn chuyền cho mọi màn sản xuất.',
+      in: ['Nhập tay trên màn: MES tự quản dữ liệu nhân sự (ADR 0012)'],
+      out: ['Chuyền may cho Xếp chuyền, Phân bổ màu cỡ, Kế hoạch chuẩn bị SX', 'Phạm vi chuyền của Trưởng chuyền (theo mã bộ phận)'],
+      have: ['Thêm phòng ban con, cùng cấp, gốc; sửa; giải thể, khôi phục', 'Ô tích "Xưởng sản xuất" (người tích cần quyền sửa Phân quyền)', 'ĐVCS mặc định theo phòng ban cha (5.10.17)'],
+      gaps: ['Chưa có xuất file dù seed cấp `hr.orgchart:export` (Q12)', 'Máy chủ chưa có bộ phận nào là chuyền may: Xếp chuyền, Phân bổ màu cỡ, Chuẩn bị SX chưa có chuyền để chọn'],
+      ask: ['Q31: đổi ĐVCS của phòng ban có tự đổi cả nhánh con không', 'BA: cây sản xuất có cố định ĐVCS → Xưởng → Chuyền không'],
+      note: 'Sơ đồ tô ô này màu vàng (hệ thống khác đã có, MES chỉ lấy về). Thực tế MES tự quản theo ADR 0012. Nên thống nhất lại với BA trước khi làm Phân cụm trưởng.' },
+    { id: 'hr-emp', lane: 'hr', x: CX[0], y: RY[1], lines: ['Thông tin', 'nhân viên'], name: 'Thông tin nhân viên', status: 'co',
+      mes: { name: 'Thông tin nhân sự', path: '/hr/employees', code: 'hr.employee', phase: 'Phase 5.8 (In progress)' },
+      summary: 'Hồ sơ nhân viên theo cây phòng ban; nhập hàng loạt bằng cách dán từ Excel.',
+      in: ['Nhập tay, dán từ Excel (tối đa 500 dòng mỗi lần)'],
+      out: ['Chưa màn nào dùng', 'Về sau: công nhân của chuyền cho Phân cụm trưởng, Bấm năng suất cụm, Kiểm Endline'],
+      have: ['Thêm, sửa, chuyển Nghỉ việc (không xóa), xuất CSV', '5 trường nhạy cảm, mặc định Ẩn'],
+      gaps: ['Chưa nối tài khoản với nhân viên (`SysUser.EmployeeId`, ADR 0012)', 'Công nhân thuộc chuyền chỉ qua phòng ban; chưa có khái niệm cụm', 'Chưa có màn sửa Chức danh'],
+      ask: ['BA: công nhân may gắn vào chuyền bằng phòng ban, hay cần bảng riêng (cụm, vị trí, tay nghề)', 'Có lấy dữ liệu từ máy chấm công không'],
+      note: 'Sơ đồ tô vàng như ô Khai báo sơ đồ tổ chức; xem ghi chú ở ô đó.' },
+
+    { id: 'ord-po-alloc', lane: 'ord', x: CX[1], y: RY[0], lines: ['Phân bổ PO', 'cho nhà máy'], name: 'Phân bổ PO cho nhà máy', status: 'co',
+      mes: { name: 'Phân bổ PO', path: '/order/po-allocation', code: 'order.poallocation', phase: 'Phase 5.9.12, 5.10' },
+      summary: 'PO, màu nào của đơn nào về nhà máy SX nào, theo OSM. Nhà máy SX sửa tay được và giữ qua các lần đồng bộ.',
+      in: ['OSM `v_OSMData` → `MES_Sync.osm.OSMData` → bảng làm việc `PoAllocation`', 'Nhà máy SX nhập tay'],
+      out: ['Chưa lan sang màn khác. Kế hoạch xuất hàng chọn đơn theo Nhà máy SX của đơn (OSM `vOSMDataFty`), không đọc Phân bổ PO'],
+      have: ['Xem, lọc, xuất file (tối đa 50.000 dòng)', 'Đổi nhà máy SX theo khóa SO + PO + Style + Màu, hoặc trả về "Theo OSM"', 'Cảnh báo khi lần làm mới bị bỏ qua hoặc nguồn giảm quá ngưỡng'],
+      gaps: ['Không có cột số lượng (view OSM không có)', 'Mũi tên Phân bổ PO → Kế hoạch xuất hàng trên sơ đồ chưa có trong code'],
+      ask: ['Kế hoạch xuất hàng có phải lấy PO theo Phân bổ PO (kể cả nhà máy nhập tay) không', 'BA: ghép OSM theo `StyleName` hay `StyleName_OSM`'] },
+    { id: 'ord-shipment', lane: 'ord', x: CX[1], y: RY[1], lines: ['Kế hoạch', 'xuất hàng'], name: 'Kế hoạch xuất hàng', status: 'co',
+      mes: { name: 'Kế hoạch xuất hàng', path: '/order/shipment', code: 'order.shipment', phase: 'Phase 5.9.15 (In progress)' },
+      summary: 'Kế hoạch của một ĐVCS cho một đơn: chọn mã hàng, chọn PO, nhập SL KHXH theo màu cỡ và ngày xuất.',
+      in: ['Đơn hàng, PO, màu cỡ (BRAVO hoặc nhập tay); chỉ đơn có Nhà máy SX thuộc ĐVCS đăng nhập'],
+      out: ['PO của kế hoạch → Cập nhật tỷ lệ cắt', 'Kế hoạch → Xếp chuyền', 'Theo sơ đồ: "KH xuất hàng" → Kế hoạch may, Kế hoạch hoàn thiện, Kế hoạch chuẩn bị SX'],
+      have: ['Thêm qua Chọn mã hàng → PO → SL theo màu cỡ; sửa, xóa (chặn khi đã xếp chuyền), xuất', 'Khung dưới lưới: Màu cỡ / PO của kế hoạch', 'Cột LK cắt, LK May ra, LK Endline, LK Hoàn thiện'],
+      gaps: ['4 cột lũy kế là số giả do `seed`, `sim:board` điền; chưa có đường nào ghi số thật', 'Trạng thái Đang sản xuất, Hoàn thành chưa có đường nào đặt', 'Lỗi tiềm ẩn mức Cao: số lượng trong popup chưa qua chính sách cột (Q34)'],
+      ask: ['BA: logic ghi DB (tài liệu BA ghi "mô tả logic sau")', 'Q33: giữ cả khung Màu cỡ và PO?', 'Q21: người lập cần thêm quyền xem PO, có đúng ý?'] },
+    { id: 'ord-po-detail', lane: 'ord', x: CX[1], y: RY[2], lines: ['PO chi tiết', '(tỷ lệ cắt)'], name: 'PO chi tiết', status: 'co',
+      mes: { name: 'Cập nhật tỷ lệ cắt', path: '/order/cut-ratio', code: 'order.po', phase: 'Phase 5.3, 5.9.13' },
+      summary: 'Số lượng theo màu cỡ của từng PO. Xác nhận thì khóa tỷ lệ cho khâu cắt.',
+      in: ['PO nằm trong kế hoạch xuất hàng của ĐVCS đăng nhập, cộng PO nhập tay'],
+      out: ['Số đã, chưa xác nhận ở khung PO của Kế hoạch xuất hàng', 'Về sau: căn cứ cắt của khâu Cắt'],
+      have: ['Ba khung mã hàng → PO → màu cỡ', 'Sửa tỷ lệ (dán từ Excel), Xác nhận, Hủy xác nhận, thêm, xóa PO tay, xuất'],
+      gaps: ['BA chưa mô tả hành vi 4 nút Cập nhật, Xóa PO, Xác nhận, Hủy xác nhận: đang làm theo giả định', 'Xuất file cắt im lặng ở 10.000 dòng (lỗi tiềm ẩn mức Cao)'],
+      ask: ['BA: Mã PKL, Số tờ khai lấy từ đâu (BRAVO chưa có nguồn)', 'Q27: file xuất có cần cột Chi nhánh'] },
+    { id: 'ord-lineplan', lane: 'ord', x: CX[1], y: RY[3], lines: ['Xếp chuyền'], name: 'Xếp chuyền', status: 'co',
+      mes: { name: 'Xếp chuyền', path: '/order/line-plan', code: 'order.lineplan', phase: 'Phase 5.12 (Ready for review)' },
+      summary: 'Gán kế hoạch cho chuyền theo khoảng ngày; xem dạng bảng dàn chuyền (chuyền × ngày).',
+      in: ['Kế hoạch xuất hàng', 'Chuyền may từ Sơ đồ tổ chức', 'Lịch làm việc của ĐVCS'],
+      out: ['Phân bổ màu cỡ', 'Kế hoạch chuẩn bị SX (chép qua `ScheduleFeed` khi mở màn)', 'Theo sơ đồ: Bảng quy trình bên GSD'],
+      have: ['Popup Chi tiết dàn chuyền: chuyền, SL, NSBQ, ngày vào chuyền', 'Máy chủ tự tính số ngày SX, ngày nghỉ, ngày ra chuyền, ngày nhập kho theo lịch làm việc', 'Bảng dàn chuyền tối đa 190 ngày, tô ngày nghỉ'],
+      gaps: ['NSBQ nhập tay; về sau có thể lấy từ năng suất thực của May', 'Trạng thái Đang may, Đã xong chỉ có ở dữ liệu mô phỏng', 'Chưa có gì gửi sang GSD'],
+      ask: ['BA: số ngày ra chuyền, nhập kho mặc định 3/3/2/5 có đúng', 'Q22: đặt cột Ngày bắt đầu SX chỉ đọc thì khóa cả dàn chuyền, có chủ ý?'] },
+    { id: 'ord-colorsize', lane: 'ord', x: CX[1], y: RY[4], lines: ['Chia màu/cỡ', 'cho chuyền'], name: 'Chia màu/cỡ cho chuyền', status: 'co',
+      mes: { name: 'Phân bổ màu cỡ', path: '/order/color-size', code: 'order.colorsize', phase: 'Phase 5.13 đang đổi luồng (14/10)' },
+      summary: 'Mỗi chuyền may nhận màu nào, cỡ nào, bao nhiêu.',
+      in: ['Dòng dàn chuyền của kế hoạch', 'SL KHXH theo màu cỡ'],
+      out: ['Trạng thái Đã phân màu cỡ của dòng dàn chuyền', 'Theo sơ đồ: Đồng bộ tiến độ cắt'],
+      have: ['Popup nhập SL giao, không vượt SL kế hoạch', 'Trưởng chuyền chỉ thấy, sửa phần của chuyền mình'],
+      gaps: ['Phase 5.13 đang sửa trên `main`, chưa commit, chưa có trong `02-trang-thai.md`: một dòng mỗi kế hoạch, một màu cỡ tách được cho nhiều chuyền'],
+      ask: ['BA: nhà cắt cắt theo màu cỡ của chuyền hay theo PO'] },
+
+    { id: 'cut-progress', lane: 'cut', x: CX[2], y: RY[0], lines: ['Đồng bộ', 'tiến độ cắt'], name: 'Đồng bộ tiến độ cắt', status: 'chua', blockers: ['ba', 'evt', 'role'],
+      mes: { name: 'Đồng bộ tiến độ cắt', path: '/cutting/progress', code: 'cutting.progress', phase: 'Trang giữ chỗ' },
+      summary: 'Ghi nhận sản lượng cắt. Tổng quan dự án giới hạn giai đoạn 1 ở mức ghi nhận sản lượng.',
+      in: ['Tỷ lệ cắt đã xác nhận (PO chi tiết)', 'Màu cỡ theo chuyền (Phân bổ màu cỡ)'],
+      out: ['Xác nhận cấp BTP, Quản lý in thêu', 'LK cắt ở Kế hoạch xuất hàng (thay số giả)'],
+      have: ['Menu, quyền mẫu (Kế hoạch, Trưởng chuyền chỉ xem)'],
+      gaps: ['Chưa có bảng, API, màn', 'Chưa có vai trò cho nhân viên nhà cắt'],
+      ask: ['"Đồng bộ" nghĩa là lấy từ hệ thống khác (phần mềm cắt, BRAVO) hay nhập tay trên MES', 'Ghi theo bàn cắt, theo bó hay theo màu cỡ; theo ngày hay theo ca', 'Giữ ngoài phạm vi ghép cỡ sơ đồ, hạch toán cắt theo cây cuộn như tổng quan dự án?'] },
+    { id: 'cut-btp', lane: 'cut', x: CX[2], y: RY[1], lines: ['Xác nhận SL', 'cấp BTP'], name: 'Xác nhận số lượng cấp BTP', status: 'chua', blockers: ['ba', 'evt', 'role'],
+      mes: { name: 'Xác nhận cấp BTP', path: '/cutting/supply', code: 'cutting.supply', phase: 'Trang giữ chỗ' },
+      summary: 'Nhà cắt cấp bán thành phẩm (BTP) cho chuyền may và xác nhận số lượng.',
+      in: ['Sản lượng cắt'],
+      out: ['"BTP cắt" → Bấm năng suất cụm'],
+      have: ['Menu, quyền mẫu (chỉ Kế hoạch được xem)'],
+      ask: ['Ai xác nhận: nhà cắt giao, chuyền nhận, hay cả hai', 'Đơn vị cấp: bó, màu cỡ hay PO; có cho cấp thiếu, thừa không', 'Có in phiếu hoặc mã vạch bó hàng không'] },
+    { id: 'cut-emb', lane: 'cut', x: CX[2], y: RY[2], lines: ['Quản lý', 'in thêu'], name: 'Quản lý in thêu', status: 'chua', blockers: ['ba', 'role'],
+      mes: { name: 'Quản lý in thêu', path: '/cutting/embroidery', code: 'cutting.embroidery', phase: 'Trang giữ chỗ' },
+      summary: 'Theo dõi BTP gửi in, thêu và nhận về.',
+      in: ['Sản lượng cắt'],
+      out: ['BTP sau in thêu về chuyền'],
+      ask: ['In thêu trong nhà hay gia công ngoài; theo dõi gửi, nhận, lỗi thế nào', 'Có nối với bước CB06 "In thêu (nếu có)" của Kế hoạch chuẩn bị SX không'] },
+
+    { id: 'sew-plan', lane: 'sew', x: CX[3], y: RY[0], lines: ['Kế hoạch may'], name: 'Kế hoạch may', status: 'chua', blockers: ['ba'],
+      mes: { name: 'Kế hoạch may', path: '/sewing/plan', code: 'sewing.plan', phase: 'Trang giữ chỗ' },
+      summary: 'Kế hoạch may của chuyền, nhận "KH xuất hàng".',
+      in: ['Kế hoạch xuất hàng, dàn chuyền', 'Ca làm việc (danh mục Ca đã có, chưa màn nào dùng)'],
+      out: ['Chỉ tiêu cho Bấm năng suất cụm, Biểu đồ cân bằng chuyền'],
+      have: ['Menu, quyền mẫu (Kế hoạch được thêm, sửa, xuất)'],
+      ask: ['Khác gì dàn chuyền ở Xếp chuyền: chi tiết theo ngày, ca hay giờ', 'Chỉ tiêu giờ tính thế nào (thời gian chuẩn, số công nhân, hiệu suất)', 'Ai lập: Kế hoạch hay Trưởng chuyền'] },
+    { id: 'sew-cluster', lane: 'sew', x: CX[3], y: RY[1], lines: ['Phân cụm trưởng', '(App Mobile)'], name: 'Phân cụm trưởng', mobile: true, status: 'chua', blockers: ['ba', 'gsd', 'mob'],
+      mes: { name: 'Phân cụm trưởng', path: '/sewing/cluster', code: 'sewing.cluster', phase: 'Trang giữ chỗ, có cờ điện thoại' },
+      summary: 'Trưởng chuyền chia công đoạn thành cụm và giao cụm cho công nhân, làm trên điện thoại.',
+      in: ['Cụm công đoạn từ GSD (Cập nhật cụm)', 'Công nhân của chuyền (Thông tin nhân sự)'],
+      out: ['Bấm năng suất cụm'],
+      have: ['Menu có cờ dùng trên điện thoại; Trưởng chuyền có quyền thêm, sửa'],
+      gaps: ['Chưa kết nối GSD', 'Chưa có khung màn điện thoại, HTTPS'],
+      ask: ['Cụm lấy nguyên từ GSD hay trưởng chuyền gom lại trên MES', 'Một công nhân làm nhiều cụm được không; đổi cụm giữa ca thì sao'] },
+    { id: 'sew-output', lane: 'sew', x: CX[3], y: RY[2], lines: ['Bấm năng suất cụm', '(App Mobile)'], name: 'Bấm năng suất cụm', mobile: true, status: 'chua', blockers: ['ba', 'mob', 'rt', 'evt'],
+      mes: { name: 'Bấm năng suất cụm', path: '/sewing/output', code: 'sewing.output', phase: 'Trang giữ chỗ, có cờ điện thoại' },
+      summary: 'Ghi sản lượng từng cụm trên điện thoại; màn quản lý thấy số gần như tức thời.',
+      in: ['Phân cụm trưởng', '"BTP cắt" đã cấp', 'Kế hoạch may'],
+      out: ['"Năng suất cụm may ra" → Kiểm Endline', 'Biểu đồ cân bằng chuyền, Báo cáo sản lượng theo giờ', 'LK May ra ở Kế hoạch xuất hàng'],
+      have: ['Menu có cờ dùng trên điện thoại; Trưởng chuyền có quyền thêm, sửa; Kiểm hàng được xem'],
+      gaps: ['Chưa có realtime (WebSocket)', 'Chưa có nơi ghi sản lượng chung'],
+      ask: ['Bấm theo giờ, theo bó hay từng sản phẩm; ai bấm', '"May ra" tính ở cụm cuối hay theo Endline', 'Mạng yếu có cần ghi khi mất kết nối rồi gửi sau không'] },
+    { id: 'sew-balance', lane: 'sew', x: CX[3], y: RY[3], lines: ['Biểu đồ cân bằng', 'chuyền'], name: 'Biểu đồ cân bằng chuyền', status: 'chua', blockers: ['ba', 'gsd', 'rt'],
+      mes: { name: 'Biểu đồ cân bằng chuyền', path: '/sewing/balance', code: 'sewing.balance', phase: 'Trang giữ chỗ' },
+      summary: 'So sản lượng thực giữa các cụm để thấy điểm nghẽn của chuyền.',
+      in: ['Năng suất cụm', 'Thời gian chuẩn từ GSD', 'Kế hoạch may'],
+      ask: ['Công thức cân bằng (thời gian chuẩn, nhịp chuyền, tỷ lệ cân bằng)', 'Xem theo giờ hay theo ngày; ngưỡng cảnh báo'] },
+
+    { id: 'fin-plan', lane: 'fin', x: CX[4], y: RY[0], lines: ['Kế hoạch', 'hoàn thiện'], name: 'Kế hoạch hoàn thiện', status: 'chua', blockers: ['ba', 'role'],
+      mes: { name: 'Kế hoạch hoàn thiện', path: '/finishing/plan', code: 'finishing.plan', phase: 'Trang giữ chỗ' },
+      summary: 'Kế hoạch gấp xếp, đóng thùng, nhận "KH xuất hàng".',
+      in: ['Kế hoạch xuất hàng; ngày nhập kho của dàn chuyền'],
+      out: ['Tiến độ gấp xếp'],
+      have: ['Menu, quyền mẫu (Kế hoạch được thêm, sửa, xuất)'],
+      ask: ['Lập theo PO hay theo kế hoạch; mốc ngày lấy từ ngày nhập kho của dàn chuyền?', 'Hoàn thiện có tổ riêng không, hay theo chuyền may'] },
+    { id: 'fin-folding', lane: 'fin', x: CX[4], y: RY[1], lines: ['Tiến độ', 'gấp xếp'], name: 'Tiến độ gấp xếp', status: 'chua', blockers: ['ba', 'evt', 'role'],
+      mes: { name: 'Tiến độ gấp xếp', path: '/finishing/folding', code: 'finishing.folding', phase: 'Trang giữ chỗ' },
+      summary: 'Ghi tiến độ gấp xếp sau Endline.',
+      in: ['"Endline": hàng đạt từ Kiểm Endline', 'Kế hoạch hoàn thiện'],
+      out: ['Tiến độ đóng thùng', 'LK Hoàn thiện ở Kế hoạch xuất hàng'],
+      ask: ['Ghi theo màu cỡ hay theo PO; ai ghi (seed đang cho Trưởng chuyền thêm, sửa)'] },
+    { id: 'fin-packing', lane: 'fin', x: CX[4], y: RY[2], lines: ['Tiến độ', 'đóng thùng'], name: 'Tiến độ đóng thùng', status: 'chua', blockers: ['ba', 'evt', 'role'],
+      mes: { name: 'Tiến độ đóng thùng', path: '/finishing/packing', code: 'finishing.packing', phase: 'Trang giữ chỗ' },
+      summary: 'Ghi tiến độ đóng thùng, bước cuối trước xuất hàng.',
+      in: ['Tiến độ gấp xếp'],
+      out: ['Xuất hàng (nối sang WMS nằm ngoài phạm vi giai đoạn 1)'],
+      gaps: ['Kế hoạch xuất hàng không có cột lũy kế đóng thùng', 'Mã packing list chưa có nguồn từ BRAVO'],
+      ask: ['Đóng thùng theo packing list của PO? Số thùng, quy cách thùng lấy từ đâu'] },
+
+    { id: 'rep-prep', lane: 'rep', x: CX[5], y: RY[0], lines: ['Kế hoạch chuẩn bị', 'sản xuất'], name: 'Kế hoạch chuẩn bị sản xuất', status: 'mp', blockers: ['ba'],
+      mes: { name: 'Kế hoạch chuẩn bị SX', path: '/order/prep', code: 'order.prep', phase: 'Phase 5.5 (Ready for review)', extra: 'Nhóm Báo cáo quản trị còn một mục cùng tên, `report.prepare` (`/report/prepare`), là trang giữ chỗ.' },
+      summary: 'Các bước chuẩn bị (mẫu, NPL, thiết kế chuyền…) trước ngày vào chuyền. Ngày KH tính từ ngày vào chuyền, ngày TH người dùng nhập.',
+      in: ['Dòng dàn chuyền (chép qua `ScheduleFeed`)', 'Danh mục bước chuẩn bị (Cấu hình chuẩn bị SX)'],
+      out: ['Trạng thái Chưa đến ngày, Chưa đủ, Đủ điều kiện vào chuyền'],
+      have: ['Màn nhập TH như bảng tính, thanh tuần, xuất CSV (code ở module May, menu ở nhóm Đơn hàng)', 'Danh mục 16 bước CB01–CB16'],
+      gaps: ['Seed 16 bước theo file "TNG TT CHUAN BI SX.xls"; file "QUẢN TRỊ KH CHUẨN BỊ 2026.xls" có 18 bước, tên và thứ tự khác, có dòng phòng phụ trách', 'KH tính theo ngày lịch, chưa trừ ngày nghỉ', 'Ngày TH nhập tay, chưa lấy từ Kỹ thuật, Lab'],
+      ask: ['Mục `report.prepare` là báo cáo riêng hay chính là màn đã có (bỏ một mục menu)?', 'Danh mục bước dùng bản 2026 (18 bước)?', 'BA: ngày KH theo ngày lịch hay ngày làm việc; nguồn Loại mã, SL chốt UD, HS Ưu đãi VC'],
+      note: 'Sơ đồ đặt ô này ở cột Báo cáo quản trị; code đặt màn ở nhóm Quản trị đơn hàng (QĐ 9.4).' },
+    { id: 'rep-progress', lane: 'rep', x: CX[5], y: RY[1], shape: 'doc', lines: ['Báo cáo tiến độ', 'sản xuất'], name: 'Báo cáo tiến độ sản xuất', status: 'chua', blockers: ['ba', 'rpt', 'evt'],
+      mes: { name: 'Tiến độ sản xuất', path: '/report/progress', code: 'report.progress', phase: 'Trang giữ chỗ' },
+      summary: 'Tiến độ từ kế hoạch tới cắt, may, Endline, hoàn thiện.',
+      in: ['Kế hoạch, dàn chuyền, sản lượng các khâu'],
+      gaps: ['Chưa có `MES_Report` hay view công bố cho báo cáo xuyên module (QĐ 2.2)'],
+      ask: ['Mẫu báo cáo, kỳ (ngày, tuần), cấp gom (ĐVCS, nhà máy, chuyền, mã hàng)'] },
+    { id: 'rep-revenue', lane: 'rep', x: CX[5], y: RY[2], shape: 'doc', lines: ['Báo cáo doanh thu', 'nhà máy'], name: 'Báo cáo doanh thu nhà máy', status: 'chua', blockers: ['ba', 'rpt'],
+      mes: { name: 'Doanh thu nhà máy', path: '/report/revenue', code: 'report.revenue', phase: 'Trang giữ chỗ' },
+      summary: 'Doanh thu theo nhà máy. Seed cho Giám đốc, Kế toán xem và xuất.',
+      in: ['Sản lượng × đơn giá'],
+      gaps: ['Giá CM, đơn giá để trống khi nạp BRAVO (MES tự quản); chưa có chỗ nhập giá ngoài form đơn hàng'],
+      ask: ['Tính theo giá CM hay FOB; theo sản lượng nào (may ra, nhập kho, xuất hàng)', 'Giá lấy từ BRAVO hay nhập ở MES'] },
+    { id: 'rep-hourly', lane: 'rep', x: CX[5], y: RY[3], shape: 'doc', lines: ['Báo cáo sản lượng', 'theo giờ'], name: 'Báo cáo sản lượng theo giờ', status: 'chua', blockers: ['ba', 'rpt', 'rt'],
+      mes: { name: 'Sản lượng theo giờ', path: '/report/hourly', code: 'report.hourly', phase: 'Trang giữ chỗ' },
+      summary: 'Sản lượng từng giờ của chuyền, so với chỉ tiêu giờ.',
+      in: ['Bấm năng suất cụm', 'Ca làm việc, Kế hoạch may'],
+      ask: ['Có hiển thị trên màn hình lớn ở chuyền không; bao lâu làm mới một lần'] },
+
+    { id: 'qms-defect', lane: 'qms', x: CX[1], y: QY, lines: ['Danh mục lỗi'], name: 'Danh mục lỗi', status: 'chua', blockers: ['ba', 'cat'],
+      mes: { name: 'Danh mục lỗi', path: '/qms/defect', code: 'qms.defect', phase: 'Trang giữ chỗ' },
+      summary: 'Danh mục lỗi dùng khi kiểm Endline.',
+      out: ['Kiểm Endline, Báo cáo chất lượng'],
+      have: ['Menu, quyền mẫu (Kiểm hàng được thêm, sửa, xóa)'],
+      gaps: ['Chưa có bảng. Dựng được khung danh mục theo quy ước chung trước khi có danh sách thật'],
+      ask: ['Danh sách lỗi thật, nhóm lỗi, mức độ', 'Dùng chung toàn công ty hay riêng từng nhà máy'] },
+    { id: 'qms-endline', lane: 'qms', x: CX[2], y: QY, lines: ['Kiểm Endline'], name: 'Kiểm Endline', mobile: true, status: 'chua', blockers: ['ba', 'mob', 'evt'],
+      mes: { name: 'Kiểm Endline', path: '/qms/endline', code: 'qms.endline', phase: 'Trang giữ chỗ, có cờ điện thoại' },
+      summary: 'Kiểm hàng cuối chuyền, ghi lỗi theo danh mục.',
+      in: ['"Năng suất cụm may ra"', 'Danh mục lỗi'],
+      out: ['"Endline" (hàng đạt) → Tiến độ gấp xếp', 'LK Endline ở Kế hoạch xuất hàng', 'Báo cáo chất lượng'],
+      gaps: ['Seed chưa có tài khoản mẫu cho vai trò Kiểm hàng (QC)'],
+      ask: ['Kiểm 100% hay lấy mẫu (AQL)', 'Ghi lỗi theo công đoạn, công nhân? Hàng sửa lại tính thế nào', 'Ghi theo giờ trên điện thoại?'] },
+    { id: 'qms-report', lane: 'qms', x: CX[3], y: QY, lines: ['Báo cáo', 'chất lượng'], name: 'Báo cáo chất lượng', status: 'chua', blockers: ['ba', 'rpt'],
+      mes: { name: 'Báo cáo chất lượng', path: '/qms/report', code: 'qms.report', phase: 'Trang giữ chỗ' },
+      summary: 'Tỷ lệ lỗi, lỗi hay gặp theo chuyền, mã hàng, giờ.',
+      in: ['Kết quả Kiểm Endline'],
+      ask: ['Chỉ số cần có: tỷ lệ lỗi, tỷ lệ đạt lần đầu, lỗi hay gặp; cấp gom'] }
+  ];
+
+  var TERMS = [
+    { id: 'gsd-start', x: 90, y: 80, r: 20, t: 'BĐ' }, { id: 'gsd-end', x: 1150, y: 80, r: 20, t: 'KT' },
+    { id: 'hr-start', x: CX[0], y: 240, r: 15, t: 'BĐ' }, { id: 'fin-end', x: CX[4], y: RY[3], r: 18, t: 'KT' },
+    { id: 'qms-start', x: CX[0], y: QY, r: 18, t: 'BĐ' }, { id: 'qms-end', x: CX[4], y: QY, r: 18, t: 'KT' }
+  ];
+
+  // Đường nối: điểm gấp khúc đặt tay để các kênh dọc không chồng nhau
+  var QT = QY - NH / 2; // đỉnh ô QMS
+  var EDGES = [
+    ['gsd-start', 'gsd-analysis', 'flow', [[110, 80], [157, 80]]],
+    ['gsd-analysis', 'gsd-ops', 'flow', [[303, 80], [337, 80]]],
+    ['gsd-ops', 'gsd-process', 'flow', [[483, 80], [517, 80]]],
+    ['gsd-process', 'gsd-cluster', 'flow', [[663, 80], [697, 80]]],
+    ['gsd-cluster', 'gsd-line', 'flow', [[843, 80], [917, 80]]],
+    ['gsd-line', 'gsd-end', 'flow', [[1063, 80], [1130, 80]]],
+    ['gsd-process', 'gsd-line', 'flow', [[590, 53], [590, 40], [990, 40], [990, 53]]],
+    ['hr-start', 'hr-org', 'flow', [[CX[0], 255], [CX[0], 273]]],
+    ['hr-org', 'hr-emp', 'flow', [[CX[0], 327], [CX[0], 363]]],
+    ['ord-po-alloc', 'ord-shipment', 'flow', [[CX[1], 327], [CX[1], 363]]],
+    ['ord-shipment', 'ord-po-detail', 'flow', [[CX[1], 417], [CX[1], 453]]],
+    ['ord-po-detail', 'ord-lineplan', 'flow', [[CX[1], 507], [CX[1], 543]]],
+    ['ord-lineplan', 'ord-colorsize', 'flow', [[CX[1], 597], [CX[1], 633]]],
+    ['cut-progress', 'cut-btp', 'flow', [[CX[2], 327], [CX[2], 363]]],
+    ['cut-progress', 'cut-emb', 'flow', [[488.5, 312], [476.5, 312], [476.5, 480], [488.5, 480]]],
+    ['sew-cluster', 'sew-output', 'flow', [[CX[3], 417], [CX[3], 453]]],
+    ['sew-output', 'sew-balance', 'flow', [[CX[3], 507], [CX[3], 543]]],
+    ['sew-plan', 'sew-output', 'flow', [[699.5, 312], [687.5, 312], [687.5, 492], [699.5, 492]]],
+    ['sew-plan', 'sew-balance', 'flow', [[687.5, 492], [687.5, 570], [699.5, 570]]],
+    ['fin-plan', 'fin-folding', 'flow', [[CX[4], 327], [CX[4], 363]]],
+    ['fin-folding', 'fin-packing', 'flow', [[CX[4], 417], [CX[4], 453]]],
+    ['fin-packing', 'fin-end', 'flow', [[CX[4], 507], [CX[4], 552]]],
+    ['qms-start', 'qms-defect', 'flow', [[157.5, QY], [277.5, QY]]],
+    ['qms-defect', 'qms-endline', 'flow', [[423.5, QY], [488.5, QY]]],
+    ['qms-endline', 'qms-report', 'flow', [[634.5, QY], [699.5, QY]]],
+    ['qms-report', 'qms-end', 'flow', [[845.5, QY], [965.5, QY]]],
+
+    ['hr-org', 'ord-lineplan', 'data', [[212.5, 300], [232.5, 300], [232.5, 570], [277.5, 570]]],
+    ['hr-org', 'ord-colorsize', 'data', [[232.5, 570], [232.5, 660], [277.5, 660]]],
+    ['ord-lineplan', 'gsd-process', 'data', [[423.5, 570], [437.5, 570], [437.5, 150], [590, 150], [590, 107]], { t: 'Xếp chuyền', x: 515, y: 144 }],
+    ['ord-colorsize', 'cut-progress', 'data', [[423.5, 660], [451.5, 660], [451.5, 290], [488.5, 290]]],
+    ['ord-shipment', 'sew-plan', 'data', [[277.5, 390], [263.5, 390], [263.5, 256], [772.5, 256], [772.5, 273]], { t: 'KH xuất hàng', x: 772.5, y: 249 }],
+    ['ord-shipment', 'fin-plan', 'data', [[772.5, 256], [983.5, 256], [983.5, 273]], { t: 'KH xuất hàng', x: 983.5, y: 249 }],
+    ['ord-shipment', 'rep-prep', 'data', [[983.5, 256], [1194.5, 256], [1194.5, 273]], { t: 'KH xuất hàng', x: 1194.5, y: 249 }],
+    ['gsd-cluster', 'sew-cluster', 'data', [[830, 107], [830, 150], [866, 150], [866, 382], [845.5, 382]]],
+    ['cut-btp', 'sew-output', 'data', [[634.5, 390], [656, 390], [656, 470], [699.5, 470]], { t: 'BTP cắt', x: 648, y: 430, rot: true }],
+    ['sew-output', 'qms-endline', 'data', [[845.5, 492], [860, 492], [860, 738], [CX[2], 738], [CX[2], QT]], { t: 'Năng suất cụm may ra', x: 705, y: 732 }],
+    ['qms-endline', 'fin-folding', 'data', [[601.5, QT], [601.5, 756], [896, 756], [896, 398], [910.5, 398]], { t: 'Endline (hàng đạt)', x: 760, y: 771 }]
+  ];
+
+  var LINKS = [
+    { from: 'BRAVO (database trung gian)', to: 'Thông tin đơn hàng, PO, màu cỡ', data: 'Đơn hàng, PO, màu cỡ, danh mục', state: 'co', note: 'Đồng bộ khi quản trị bấm. Nạp tăng dần đơn hàng đang tắt (`BRAVO_ORDER_IMPORT=false`). Ánh xạ theo giả định tạm (5.2.8).' },
+    { from: 'OSM', to: 'Phân bổ PO; Nhà máy SX của đơn', data: '`v_OSMData`, `vOSMDataFty`', state: 'co', note: 'Chép vào `MES_Sync.osm`.' },
+    { from: 'Sơ đồ tổ chức', to: 'Xếp chuyền, Chia màu/cỡ', data: 'Chuyền may', state: 'co', note: 'Chuyền là bộ phận tích "Xưởng sản xuất".' },
+    { from: 'Phân bổ PO', to: 'Kế hoạch xuất hàng', data: 'PO theo nhà máy', state: 'khac', note: 'Kế hoạch chọn đơn theo Nhà máy SX của đơn (OSM), không đọc Phân bổ PO.' },
+    { from: 'Kế hoạch xuất hàng', to: 'PO chi tiết (tỷ lệ cắt)', data: 'PO của kế hoạch', state: 'co', note: '' },
+    { from: 'Kế hoạch xuất hàng', to: 'Xếp chuyền', data: 'Kế hoạch', state: 'co', note: '' },
+    { from: 'Xếp chuyền', to: 'Chia màu/cỡ cho chuyền', data: 'Dòng dàn chuyền', state: 'co', note: 'Phase 5.13 đang đổi luồng.' },
+    { from: 'Xếp chuyền', to: 'Kế hoạch chuẩn bị SX', data: 'Dòng dàn chuyền, ngày vào chuyền', state: 'co', note: 'Chép qua `ScheduleFeed` khi mở màn.' },
+    { from: 'Xếp chuyền', to: 'Bảng quy trình (GSD)', data: 'Thông tin xếp chuyền', state: 'chua', note: 'Cần chốt chiều: MES không ghi vào hệ thống ngoài.' },
+    { from: 'Kế hoạch xuất hàng', to: 'Kế hoạch may, Kế hoạch hoàn thiện', data: 'KH xuất hàng', state: 'chua', note: '' },
+    { from: 'Chia màu/cỡ cho chuyền', to: 'Đồng bộ tiến độ cắt', data: 'Màu cỡ theo chuyền', state: 'chua', note: '' },
+    { from: 'Cập nhật cụm (GSD)', to: 'Phân cụm trưởng', data: 'Cụm công đoạn', state: 'chua', note: 'Cần kết nối GSD.' },
+    { from: 'Xác nhận cấp BTP', to: 'Bấm năng suất cụm', data: 'BTP cắt', state: 'chua', note: '' },
+    { from: 'Bấm năng suất cụm', to: 'Kiểm Endline', data: 'Năng suất cụm may ra', state: 'chua', note: '' },
+    { from: 'Kiểm Endline', to: 'Tiến độ gấp xếp', data: 'Hàng đạt Endline', state: 'chua', note: '' },
+    { from: 'Cắt, May, Endline, Hoàn thiện', to: 'Kế hoạch xuất hàng', data: 'LK cắt, LK May ra, LK Endline, LK Hoàn thiện', state: 'gia', note: 'Số giả do `seed`, `sim:board` điền vào `MES_Order.ShipmentPlan`. Không có cột cho gấp xếp, đóng thùng.' },
+    { from: 'Mọi khối', to: 'Báo cáo quản trị', data: 'Số liệu tổng hợp', state: 'chua', note: 'Chưa có `MES_Report` hay view công bố (QĐ 2.2).' }
+  ];
+  var LINK_STATE = { co: ['co', 'Đã có'], khac: ['mp', 'Khác sơ đồ'], chua: ['chua', 'Chưa có'], gia: ['warn', 'Số giả'] };
+
+  var byId = {};
+  NODES.forEach(function (n) { byId[n.id] = n; });
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function fmt(s) { return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>'); }
+  function pts(p) { return 'M' + p.map(function (q) { return q[0] + ',' + q[1]; }).join(' L'); }
+
+  // ---------- Sơ đồ ----------
+  function buildMap() {
+    var s = '';
+    s += '<defs>' + ['flow', 'data', 'on'].map(function (k) {
+      return '<marker id="ah-' + k + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-' + k + '"/></marker>';
+    }).join('') + '</defs>';
+
+    // Bể GSD
+    s += '<rect class="pool" x="0.5" y="8.5" width="1299" height="120"/>';
+    s += '<rect class="band" x="1" y="9" width="1298" height="21"/><line class="band-line" x1="0.5" y1="30.5" x2="1299.5" y2="30.5"/>';
+    s += '<text class="band-t ext" x="650" y="24" text-anchor="middle">TTM (GSD)</text>';
+    s += '<line class="band-line" x1="34.5" y1="30.5" x2="34.5" y2="128.5"/>';
+    s += '<text class="strip-t" transform="translate(21,79) rotate(-90)" text-anchor="middle">CÔNG NGHỆ</text>';
+
+    // Bể MES
+    s += '<rect class="pool" x="0.5" y="176.5" width="1299" height="536"/>';
+    s += '<rect class="band" x="1" y="177" width="1298" height="21"/><line class="band-line" x1="0.5" y1="198.5" x2="1299.5" y2="198.5"/>';
+    s += '<text class="band-t" x="650" y="192" text-anchor="middle">MES</text>';
+    var heads = ['NHÂN SỰ', 'ĐƠN HÀNG', 'CẮT', 'MAY', 'HOÀN THIỆN', 'BÁO CÁO QUẢN TRỊ'];
+    heads.forEach(function (h, i) {
+      var x0 = 34 + 211 * i;
+      s += '<rect class="colhead" x="' + (x0 + 0.5) + '" y="199" width="211" height="21"/>';
+      s += '<text class="colhead-t" x="' + CX[i] + '" y="214" text-anchor="middle">' + h + '</text>';
+      if (i > 0) s += '<line class="divider" x1="' + (x0 + 0.5) + '" y1="198.5" x2="' + (x0 + 0.5) + '" y2="712.5"/>';
+    });
+    s += '<line class="band-line" x1="0.5" y1="220.5" x2="1299.5" y2="220.5" style="stroke:var(--line)"/>';
+    s += '<line class="band-line" x1="34.5" y1="198.5" x2="34.5" y2="712.5"/>';
+    s += '<text class="strip-t" transform="translate(21,455) rotate(-90)" text-anchor="middle">PHÂN HỆ MES</text>';
+
+    // Bể QMS
+    s += '<rect class="pool" x="0.5" y="784.5" width="1299" height="116"/>';
+    s += '<rect class="band" x="1" y="785" width="1298" height="21"/><line class="band-line" x1="0.5" y1="806.5" x2="1299.5" y2="806.5"/>';
+    s += '<text class="band-t" x="650" y="800" text-anchor="middle">QMS</text>';
+    s += '<line class="band-line" x1="34.5" y1="806.5" x2="34.5" y2="900.5"/>';
+    s += '<text class="strip-t" transform="translate(21,853) rotate(-90)" text-anchor="middle">ENDLINE</text>';
+
+    // Đường nối: mỗi đường dữ liệu có viền nền để chỗ cắt nhau đọc được
+    EDGES.forEach(function (e, i) {
+      var d = pts(e[3]);
+      if (e[2] === 'data') s += '<path class="halo" d="' + d + '"/>';
+      s += '<path class="edge ' + e[2] + '" data-i="' + i + '" d="' + d + '"/>';
+    });
+    EDGES.forEach(function (e) {
+      var l = e[4];
+      if (!l) return;
+      s += l.rot
+        ? '<text class="elabel" text-anchor="middle" transform="translate(' + l.x + ',' + l.y + ') rotate(-90)">' + esc(l.t) + '</text>'
+        : '<text class="elabel" x="' + l.x + '" y="' + l.y + '" text-anchor="middle">' + esc(l.t) + '</text>';
+    });
+
+    TERMS.forEach(function (t) {
+      s += '<circle class="term" cx="' + t.x + '" cy="' + t.y + '" r="' + t.r + '"/>';
+      s += '<text class="term-t" x="' + t.x + '" y="' + (t.y + 4) + '" text-anchor="middle">' + t.t + '</text>';
+    });
+
+    NODES.forEach(function (n) {
+      var x = n.x - NW / 2, y = n.y - NH / 2;
+      var shape;
+      if (n.shape === 'doc') {
+        shape = '<path class="shape" d="M' + x + ',' + y + ' H' + (x + NW - 14) + ' L' + (x + NW) + ',' + (y + 14) + ' V' + (y + NH) + ' H' + x + ' Z"/>' +
+                '<path class="shape fold" d="M' + (x + NW - 14) + ',' + y + ' V' + (y + 14) + ' H' + (x + NW) + '"/>';
+      } else {
+        shape = '<rect class="shape" x="' + x + '" y="' + y + '" width="' + NW + '" height="' + NH + '" rx="6"/>';
+      }
+      var lines = n.lines, start = n.y - (lines.length - 1) * 8 + 4.5;
+      var text = lines.map(function (ln, k) {
+        var sub = ln.charAt(0) === '(';
+        return '<text class="nl' + (sub ? ' sub' : '') + '" x="' + n.x + '" y="' + (start + k * 16) + '" text-anchor="middle">' + esc(ln) + '</text>';
+      }).join('');
+      var label = n.name + ', ' + STATUS[n.status];
+      s += '<g class="node st-' + n.status + '" data-id="' + n.id + '" tabindex="0" role="button" aria-label="' + esc(label) + '"><title>' + esc(label) + '</title>' + shape + text + '</g>';
+    });
+
+    var svg = document.getElementById('map');
+    svg.innerHTML = s;
+    svg.addEventListener('click', function (ev) {
+      var g = ev.target.closest('.node');
+      if (g) select(g.getAttribute('data-id'), { scroll: 'detail' });
+    });
+    svg.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      var g = ev.target.closest('.node');
+      if (!g) return;
+      ev.preventDefault();
+      select(g.getAttribute('data-id'), { scroll: 'detail' });
+    });
+  }
+
+  // ---------- Chọn một ô ----------
+  var current = null;
+  function select(id, opts) {
+    var n = byId[id];
+    if (!n) return;
+    current = id;
+    document.querySelectorAll('#map .node').forEach(function (g) { g.classList.toggle('sel', g.getAttribute('data-id') === id); });
+    document.querySelectorAll('#map .edge').forEach(function (p) {
+      var e = EDGES[+p.getAttribute('data-i')];
+      p.classList.toggle('on', e[0] === id || e[1] === id);
+    });
+    renderDetail(n);
+    try { history.replaceState(null, '', '#' + id); } catch (err) { /* khung xem chặn đổi URL thì bỏ qua */ }
+    if (opts && opts.scroll === 'detail') {
+      var d = document.getElementById('detail');
+      var r = d.getBoundingClientRect();
+      if (r.top > window.innerHeight - 120 || r.bottom < 0) d.scrollIntoView({ block: 'nearest' });
+    } else if (opts && opts.scroll === 'map') {
+      document.getElementById('so-do').scrollIntoView({ block: 'start' });
+    }
+  }
+
+  function list(title, items, cls) {
+    if (!items || !items.length) return '';
+    return '<div class="' + (cls || '') + '"><h4>' + title + '</h4><ul>' + items.map(function (t) { return '<li>' + fmt(t) + '</li>'; }).join('') + '</ul></div>';
+  }
+
+  function blockerChips(n) {
+    if (!n.blockers || !n.blockers.length) return '';
+    return n.blockers.map(function (b) { return '<span class="bchip">' + BLOCK[b] + '</span>'; }).join('');
+  }
+
+  function renderDetail(n) {
+    var mesLine = n.mes
+      ? 'Trong MES: <b>' + esc(n.mes.name) + '</b> · <code>' + esc(n.mes.path) + '</code> · quyền <code>' + esc(n.mes.code) + '</code> · ' + esc(n.mes.phase) + (n.mes.extra ? '<br>' + fmt(n.mes.extra) : '')
+      : 'Không làm màn trong MES. MES chỉ đọc qua lớp đồng bộ, hiện chưa có nguồn GSD.';
+    var html = '<div class="d-eyebrow">' + esc(LANES[n.lane]) + '</div>' +
+      '<h3>' + esc(n.name) + '</h3>' +
+      '<div class="d-pills"><span class="pill ' + n.status + '">' + STATUS[n.status] + '</span>' +
+      (n.mobile ? '<span class="pill plain">Dùng trên điện thoại</span>' : '') +
+      (n.blockers && n.blockers.length ? '<span class="d-mes" style="margin:0 2px 0 6px">Đang chặn bởi:</span>' + blockerChips(n) : '') + '</div>' +
+      '<p class="d-mes">' + mesLine + '</p>' +
+      '<p class="d-sum">' + fmt(n.summary) + '</p>' +
+      '<div class="d-grid">' +
+        list('Nhận dữ liệu từ', n.in) +
+        list('Chuyển dữ liệu tới', n.out) +
+        list('Đã có', n.have) +
+        list('Còn thiếu', n.gaps) +
+        list('Cần trả lời', n.ask, 'ask') +
+      '</div>' +
+      (n.note ? '<p class="d-note">' + fmt(n.note) + '</p>' : '');
+    document.getElementById('detail').innerHTML = html;
+  }
+
+  // ---------- Lọc trên sơ đồ ----------
+  function setMapFilter(f) {
+    document.querySelectorAll('[data-filter]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-filter') === f)); });
+    document.querySelectorAll('#map .node').forEach(function (g) {
+      var n = byId[g.getAttribute('data-id')];
+      g.classList.toggle('faded', f !== 'all' && n.status !== f);
+    });
+  }
+
+  // ---------- Tóm tắt số lượng ----------
+  function buildTally() {
+    var c = { co: 0, mp: 0, chua: 0, ngoai: 0 };
+    NODES.forEach(function (n) { c[n.status]++; });
+    var total = NODES.length;
+    document.querySelectorAll('[data-count]').forEach(function (el) {
+      var k = el.getAttribute('data-count');
+      el.textContent = k === 'all' ? total : c[k];
+    });
+    var order = ['co', 'mp', 'chua', 'ngoai'];
+    var bar = order.map(function (k) { return c[k] ? '<span class="' + k + '" style="width:' + (c[k] / total * 100) + '%" title="' + STATUS[k] + ': ' + c[k] + '"></span>' : ''; }).join('');
+    var legend = order.map(function (k) { return '<span><b>' + c[k] + '</b>' + STATUS[k].toLowerCase() + '</span>'; }).join('');
+    document.getElementById('tally').innerHTML =
+      '<div class="tally-head"><span><b>' + total + '</b> bước trên sơ đồ quy trình tổng quan</span><span>Đếm theo ô, không gồm Bắt đầu, Kết thúc</span></div>' +
+      '<div class="bar" role="img" aria-label="' + order.map(function (k) { return STATUS[k] + ' ' + c[k]; }).join(', ') + '">' + bar + '</div>' +
+      '<div class="tally-legend">' + legend + '</div>';
+  }
+
+  // ---------- Bảng đối chiếu ----------
+  function buildTable(f) {
+    var rows = '';
+    LANE_ORDER.forEach(function (lane) {
+      var items = NODES.filter(function (n) { return n.lane === lane && (f === 'all' || n.status === f); });
+      items.forEach(function (n, i) {
+        var mes = n.mes
+          ? esc(n.mes.name) + '<span class="sub"><code>' + esc(n.mes.path) + '</code> · <code>' + esc(n.mes.code) + '</code></span>'
+          : '<span class="dash">Không làm màn (GSD)</span>';
+        rows += '<tr class="' + (i === 0 ? 'lane-start' : '') + '" data-id="' + n.id + '" tabindex="0">' +
+          '<td class="lane">' + (i === 0 ? esc(LANES[lane]) : '') + '</td>' +
+          '<td>' + esc(n.name) + (n.mobile ? '<span class="sub">Dùng trên điện thoại</span>' : '') + '</td>' +
+          '<td>' + mes + '</td>' +
+          '<td><span class="pill ' + n.status + '">' + STATUS[n.status] + '</span></td>' +
+          '<td>' + (blockerChips(n) || '<span class="dash">Còn việc dở, xem chi tiết</span>') + '</td></tr>';
+      });
+    });
+    var tb = document.querySelector('#readyTable tbody');
+    tb.innerHTML = rows;
+  }
+
+  function buildLinks() {
+    document.querySelector('#linkTable tbody').innerHTML = LINKS.map(function (l) {
+      var st = LINK_STATE[l.state];
+      return '<tr><td>' + fmt(l.from) + '</td><td>' + fmt(l.to) + '</td><td>' + fmt(l.data) + '</td><td><span class="pill ' + st[0] + '">' + st[1] + '</span></td><td>' + (l.note ? fmt(l.note) : '<span class="dash">–</span>') + '</td></tr>';
+    }).join('');
+  }
+
+  // ---------- Thẻ câu hỏi cho BA ----------
+  function buildBaCards() {
+    var lanes = [
+      ['cut', 'Chưa có tài liệu. Cần trước Bước 2.'],
+      ['sew', 'Chưa có tài liệu. Cần công thức năng suất cụm, cân bằng chuyền.'],
+      ['qms', 'Chưa có tài liệu. Danh mục lỗi thật cần sớm nhất.'],
+      ['fin', 'Chưa có tài liệu. Mức nhập liệu cơ bản.'],
+      ['rep', 'Cần mẫu báo cáo và cách tính.'],
+      ['gsd', 'Cần đầu mối GSD, không phải BA màn hình.']
+    ];
+    var html = lanes.map(function (pair) {
+      var lane = pair[0];
+      var items = NODES.filter(function (n) { return n.lane === lane && n.ask && n.ask.length; });
+      return '<div class="card"><h3>' + esc(LANES[lane]) + '</h3><p class="card-sub">' + esc(pair[1]) + '</p>' +
+        items.map(function (n) {
+          return '<h4>' + esc(n.name) + '</h4><ul>' + n.ask.map(function (a) { return '<li>' + fmt(a) + '</li>'; }).join('') + '</ul>';
+        }).join('') + '</div>';
+    }).join('');
+    document.getElementById('baCards').insertAdjacentHTML('beforeend', html);
+  }
+
+  // ---------- Khởi động ----------
+  buildMap();
+  buildTally();
+  buildTable('all');
+  buildLinks();
+  buildBaCards();
+
+  document.querySelectorAll('[data-filter]').forEach(function (b) {
+    b.addEventListener('click', function () { setMapFilter(b.getAttribute('data-filter')); });
+  });
+  document.querySelectorAll('[data-tfilter]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var f = b.getAttribute('data-tfilter');
+      document.querySelectorAll('[data-tfilter]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      buildTable(f);
+    });
+  });
+  var tbody = document.querySelector('#readyTable tbody');
+  tbody.addEventListener('click', function (ev) {
+    var tr = ev.target.closest('tr[data-id]');
+    if (tr) select(tr.getAttribute('data-id'), { scroll: 'map' });
+  });
+  tbody.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    var tr = ev.target.closest('tr[data-id]');
+    if (tr) select(tr.getAttribute('data-id'), { scroll: 'map' });
+  });
+
+  var start = (location.hash || '').slice(1);
+  select(byId[start] ? start : 'ord-lineplan');
+})();
+</script>
+</body>
+</html>

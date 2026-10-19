@@ -1,0 +1,1957 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>MES Vietsun – Đề xuất metadata-driven</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Bố cục: thanh navy + dải mục ngang giống khung app (ADR 0003, Orange Cart), nội dung canh trái, tối đa 1180px.
+   Màu lấy từ frontend/src/theme/global.css để mockup trùng giao diện thật. */
+:root{
+  --bg:#f7f8f8;--surface:#ffffff;--section:#f0f2f2;--row:#f7fafa;
+  --line:#d5d9d9;--line-strong:#bbbfbf;--input-line:#888c8c;
+  --ink:#0f1111;--ink-soft:#565959;
+  --nav:#232f3e;--subnav:#37475a;--nav-ink:#ffffff;--nav-ink-soft:#cfd5da;
+  --brand:#ff9900;--brand-soft:#fff8eb;--gold:#ffd814;--gold-line:#fcd200;
+  --link:#007185;--link-soft:#e6f4f6;--focus:#c8f3fa;
+  --ok:#067d62;--ok-soft:#e5f4ef;--warn:#cc5500;--warn-soft:#fdf0e6;--err:#b12704;--err-soft:#fdecea;
+  --req-bg:#fff3c4;--req-line:#9a7400;
+  --code-bg:#eef1f1;
+  --m1:#067d62;--m2:#cc8a00;--m3:#7b8794;
+  --font-body:"Source Sans 3","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,"Courier New",monospace;
+  --elev-1:0 2px 5px rgba(15,17,17,.08);--elev-2:0 0 6px rgba(15,17,17,.15);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1418;--surface:#151c24;--section:#1c2530;--row:#1a232d;
+    --line:#2b3642;--line-strong:#3a4654;--input-line:#6b7889;
+    --ink:#e3e6e6;--ink-soft:#a2abb3;
+    --nav:#131a22;--subnav:#1f2a36;--nav-ink:#ffffff;--nav-ink-soft:#b8c1ca;
+    --brand-soft:#2b2110;--link:#4fc3d6;--link-soft:#132b31;--focus:rgba(79,195,214,.35);
+    --ok:#4cc9a4;--ok-soft:#102a24;--warn:#ffa45c;--warn-soft:#2e1d10;--err:#ff8a65;--err-soft:#3a1a14;
+    --req-bg:#2e2810;--req-line:#8a7426;--code-bg:#1f2833;
+    --m1:#4cc9a4;--m2:#e0a531;--m3:#8794a3;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1418;--surface:#151c24;--section:#1c2530;--row:#1a232d;
+  --line:#2b3642;--line-strong:#3a4654;--input-line:#6b7889;
+  --ink:#e3e6e6;--ink-soft:#a2abb3;
+  --nav:#131a22;--subnav:#1f2a36;--nav-ink:#ffffff;--nav-ink-soft:#b8c1ca;
+  --brand-soft:#2b2110;--link:#4fc3d6;--link-soft:#132b31;--focus:rgba(79,195,214,.35);
+  --ok:#4cc9a4;--ok-soft:#102a24;--warn:#ffa45c;--warn-soft:#2e1d10;--err:#ff8a65;--err-soft:#3a1a14;
+  --req-bg:#2e2810;--req-line:#8a7426;--code-bg:#1f2833;
+  --m1:#4cc9a4;--m2:#e0a531;--m3:#8794a3;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--font-body);-webkit-font-smoothing:antialiased}
+a{color:var(--link)}
+a:hover{text-decoration:underline}
+:focus-visible{outline:3px solid var(--focus);outline-offset:1px;box-shadow:0 0 0 1px var(--link)}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px}
+
+/* Thanh trên */
+.top{background:var(--nav);color:var(--nav-ink);padding-block:22px 18px;border-bottom:3px solid var(--brand)}
+.top h1{margin:0;font-size:1.75rem;line-height:1.2;font-weight:700;text-wrap:balance}
+.top p{margin:8px 0 0;color:var(--nav-ink-soft);max-width:78ch}
+.top .meta{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:12px;font-size:.86rem}
+.top .meta span{border:1px solid rgba(255,255,255,.22);border-radius:4px;padding:2px 8px;color:var(--nav-ink-soft)}
+.top .meta b{color:var(--nav-ink);font-weight:600}
+
+/* Dải mục như dải menu con của app */
+.sub{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--subnav);box-shadow:var(--elev-1)}
+.sub nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.sub a{flex:none;color:var(--nav-ink);text-decoration:none;font-size:.88rem;padding:9px 11px;border-bottom:3px solid transparent;white-space:nowrap}
+.sub a:hover,.sub a:focus-visible{border-bottom-color:var(--brand);background:rgba(255,255,255,.06)}
+
+main{padding-block:8px 48px}
+section{scroll-margin-top:52px}
+h2{font-size:1.4rem;line-height:1.25;margin:44px 0 6px;text-wrap:balance;display:flex;gap:10px;align-items:baseline}
+h2 .no{flex:none;font:600 .8rem var(--font-mono);color:var(--ink-soft);border:1px solid var(--line-strong);border-radius:4px;padding:1px 6px;transform:translateY(-2px)}
+h3{font-size:1.08rem;margin:26px 0 6px;text-wrap:balance}
+h4{font-size:.98rem;margin:18px 0 4px}
+p{margin:8px 0;max-width:80ch}
+.lead{color:var(--ink-soft);max-width:80ch;margin-top:2px}
+ul,ol{max-width:82ch;padding-left:22px;margin:8px 0}
+li{margin:4px 0}
+li::marker{color:var(--ink-soft)}
+code{font-family:var(--font-mono);font-size:.82em;background:var(--code-bg);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{font-family:var(--font-mono);font-size:.8rem;line-height:1.5;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;margin:10px 0;tab-size:2}
+pre code{background:none;padding:0;font-size:inherit;overflow-wrap:normal}
+.c-k{color:var(--link);font-weight:600}.c-s{color:var(--ok)}.c-n{color:var(--warn)}.c-c{color:var(--ink-soft);font-style:italic}
+
+/* Bảng */
+.tbl{overflow-x:auto;margin:10px 0;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{padding:7px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{background:var(--section);font-weight:700;font-size:.82rem;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--row)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.nw{white-space:nowrap}
+.grp td{background:var(--section);font-weight:700;font-size:.84rem}
+
+/* Nhãn mức */
+.lv{display:inline-flex;align-items:center;gap:5px;font-size:.78rem;font-weight:700;white-space:nowrap;padding:1px 7px;border-radius:2px;border:1px solid currentColor}
+.lv::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.lv.m1{color:var(--m1)}.lv.m2{color:var(--m2)}.lv.m3{color:var(--m3)}
+.tag{display:inline-block;font-size:.76rem;font-weight:600;padding:0 7px;border-radius:2px;background:var(--section);color:var(--ink-soft);border:1px solid var(--line);white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.tag.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.tag.err{background:var(--err-soft);color:var(--err);border-color:transparent}
+
+/* Khung chú thích */
+.note{border:1px solid var(--line);border-left:4px solid var(--link);background:var(--surface);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;max-width:90ch}
+.note.warn{border-left-color:var(--warn)}
+.note.err{border-left-color:var(--err)}
+.note.ok{border-left-color:var(--ok)}
+.note p{margin:4px 0}
+.note > b:first-child{display:block;margin-bottom:2px}
+
+/* Hai câu trả lời */
+.answers{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr));gap:14px;margin-top:12px}
+.ans{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.ans h3{margin:0 0 4px;font-size:1rem}
+.ans .q{color:var(--ink-soft);font-size:.88rem;margin:0 0 10px}
+.big{display:flex;flex-wrap:wrap;gap:8px 22px;margin:6px 0 8px}
+.big div{display:flex;flex-direction:column}
+.big b{font-size:1.9rem;line-height:1.1;font-weight:700;font-variant-numeric:tabular-nums}
+.big span{font-size:.82rem;color:var(--ink-soft)}
+
+/* Mẫu màn */
+.tpls{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:12px;margin-top:12px}
+.tpl{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.tpl h4{margin:0;font-size:.95rem;display:flex;gap:8px;align-items:baseline}
+.tpl h4 code{font-size:.78rem}
+.tpl p{margin:0;font-size:.86rem;color:var(--ink-soft)}
+.tpl .eg{font-size:.82rem}
+.wf{height:92px;border:1px solid var(--line-strong);border-radius:4px;background:var(--bg);padding:5px;display:grid;gap:4px}
+.wf i{display:block;border-radius:2px;background:var(--section);border:1px solid var(--line)}
+.wf .f{background:var(--brand-soft);border-color:var(--brand)}
+.wf .g{background:repeating-linear-gradient(var(--surface) 0 7px,var(--line) 7px 8px)}
+.wf .s{background:repeating-linear-gradient(90deg,transparent 0 17px,var(--line) 17px 18px),repeating-linear-gradient(var(--req-bg) 0 7px,var(--line) 7px 8px)}
+.wf .k{background:var(--link-soft);border-color:var(--link)}
+.wf .w{background:repeating-linear-gradient(135deg,var(--section) 0 6px,var(--surface) 6px 12px)}
+
+/* Biểu đồ thanh xếp chồng */
+.bars{max-width:760px}
+.stack{display:flex;height:30px;border-radius:4px;overflow:hidden;border:1px solid var(--line);margin:8px 0 4px}
+.stack div{display:flex;align-items:center;justify-content:center;color:#fff;font-size:.8rem;font-weight:700;font-variant-numeric:tabular-nums;min-width:0}
+.stack .s1{background:var(--m1)}.stack .s2{background:var(--m2)}.stack .s3{background:var(--m3)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.84rem;color:var(--ink-soft);margin:6px 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
+
+/* Hình */
+figure{margin:12px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 12px 10px}
+figcaption{font-size:.86rem;color:var(--ink-soft);margin-top:8px;max-width:96ch}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+svg.dg{display:block;width:100%;height:auto;color:var(--ink)}
+.scroll svg.dg{min-width:940px}
+.dg .b{fill:var(--surface);stroke:currentColor;stroke-width:1.2}
+.dg .bs{fill:var(--section);stroke:var(--line-strong);stroke-width:1}
+.dg .ba{fill:var(--link-soft);stroke:var(--link);stroke-width:1.8}
+.dg .bb{fill:var(--brand-soft);stroke:var(--brand);stroke-width:1.6}
+.dg .bn{fill:var(--req-bg);stroke:var(--req-line);stroke-width:1.4;stroke-dasharray:5 4}
+.dg .grp{fill:none;stroke:var(--line-strong);stroke-width:1.2;stroke-dasharray:3 3}
+.dg .lane{fill:var(--section);stroke:none}
+.dg .er{fill:var(--err)}
+.dg .t{font:13px var(--font-body);fill:currentColor}
+.dg .s{font-size:11.5px}
+.dg .w{font-weight:700}
+.dg .m{fill:var(--ink-soft)}
+.dg .ta{fill:var(--link);font-weight:700}
+.dg .mono{font-family:var(--font-mono);font-size:11px}
+.dg .ln{stroke:currentColor;stroke-width:1.3;fill:none}
+.dg .lna{stroke:var(--link);stroke-width:2;fill:none}
+.dg .lnb{stroke:var(--brand);stroke-width:2;fill:none}
+.dg .lnd{stroke:currentColor;stroke-width:1.2;fill:none;stroke-dasharray:5 4;opacity:.8}
+.dg .fc{fill:currentColor}.dg .fa{fill:var(--link)}.dg .fb{fill:var(--brand)}
+.dg .dot{fill:var(--link)}
+.dg .dn{font:700 11px var(--font-body);fill:var(--surface);text-anchor:middle}
+
+/* Hai cột */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:14px;margin-top:10px}
+.cols > *{min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.panel h4{margin-top:0}
+
+/* Designer thu nhỏ (mục 10): cùng màu ô với SheetGrid: vàng bắt buộc, xám chỉ đọc hoặc tự tính, đỏ sai */
+.demo{border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);overflow:hidden;margin-top:12px}
+.d-top{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;background:var(--nav);color:var(--nav-ink);padding:8px 12px}
+.d-title{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.d-chip{font-size:.78rem;border:1px solid rgba(255,255,255,.3);border-radius:4px;padding:1px 7px;color:var(--nav-ink-soft)}
+.d-as{display:flex;gap:8px;align-items:center;font-size:.86rem;color:var(--nav-ink-soft);flex-wrap:wrap}
+.d-as select{font:inherit;font-size:.86rem;height:31px;border-radius:4px;border:1px solid var(--input-line);background:var(--surface);color:var(--ink);max-width:100%}
+.d-body{display:grid;grid-template-columns:200px minmax(0,1fr) 250px;min-height:330px}
+.d-pal,.d-props{background:var(--section);padding:10px;min-width:0}
+.d-pal{border-right:1px solid var(--line)}
+.d-props{border-left:1px solid var(--line)}
+.d-h{font-size:.78rem;font-weight:700;color:var(--ink-soft);margin-bottom:6px}
+#d-fields{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-width:none}
+.d-f{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:3px 4px 3px 8px;cursor:grab;font-size:.84rem;margin:0}
+.d-f.used{opacity:.6;cursor:default}
+.d-f .ty{margin-left:auto;font:400 .7rem var(--font-mono);color:var(--ink-soft)}
+.d-f button{border:1px solid var(--line-strong);background:var(--surface);color:var(--link);border-radius:4px;width:24px;height:24px;line-height:20px;font-size:15px;cursor:pointer;padding:0;flex:none}
+.d-f button:disabled{color:var(--ink-soft);cursor:default}
+.d-hint,.d-note{font-size:.82rem;color:var(--ink-soft);margin:8px 0 0}
+.d-canvas{padding:10px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.d-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.d-bar-r{display:flex;gap:10px;align-items:center}
+.d-perf{font-size:.76rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.d-grid-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.d-grid{border-collapse:collapse;width:100%;font-size:.82rem;font-variant-numeric:tabular-nums}
+.d-grid th{background:var(--section);text-align:left;font-size:.76rem;padding:6px 4px 6px 8px;border-bottom:1px solid var(--line-strong);white-space:nowrap;cursor:grab;user-select:none}
+.d-grid th.sel{box-shadow:inset 0 -3px 0 var(--brand)}
+.d-grid th.drop{box-shadow:inset 3px 0 0 var(--link)}
+.d-grid th.end{color:var(--ink-soft);font-weight:400;cursor:default;border-left:1px dashed var(--line-strong);min-width:120px}
+.d-grid th.end.drop{background:var(--link-soft)}
+.d-grid th .x{margin-left:4px;border:0;background:none;color:var(--ink-soft);cursor:pointer;font-size:13px;padding:0 3px;min-width:20px;min-height:20px}
+.d-grid th .fx{font:600 .68rem var(--font-mono);color:var(--link);margin-right:4px}
+.d-grid td{padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.d-grid tr:last-child td{border-bottom:0}
+.d-grid td.n{text-align:right}
+.d-grid td.c{font-family:var(--font-mono);font-size:.76rem}
+.d-grid td.calc{background:var(--section)}
+.d-grid td.mask{color:var(--ink-soft);letter-spacing:.1em}
+.d-grid td.bad{background:var(--err-soft);color:var(--err);font-weight:700}
+.d-grid td.edit{background:var(--req-bg);padding:2px 4px}
+.d-grid td.edit input{width:88px;font:inherit;text-align:right;border:1px solid var(--input-line);border-radius:4px;background:var(--surface);color:var(--ink);height:26px;padding:0 6px}
+.d-grid td.bad.edit input{border-color:var(--err);color:var(--err)}
+.d-grid td.empty{color:var(--ink-soft);text-align:center;padding:18px}
+.d-issues{margin:0;padding-left:18px;font-size:.84rem;color:var(--err);max-width:none}
+.d-lb{display:block;font-size:.78rem;font-weight:600;margin:8px 0 3px}
+.d-in{width:100%;font:inherit;font-size:.84rem;height:31px;border:1px solid var(--input-line);border-radius:4px;background:var(--surface);color:var(--ink);padding:0 7px}
+textarea.d-in{height:auto;min-height:58px;padding:5px 7px;resize:vertical;line-height:1.4}
+.d-in.mono{font-family:var(--font-mono);font-size:.78rem}
+.d-in.err{border-color:var(--err);background:var(--err-soft)}
+.d-err{font-size:.78rem;color:var(--err);margin-top:3px}
+.d-row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.d-btn{font:inherit;font-size:.82rem;height:29px;padding:0 10px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
+.d-btn:disabled{opacity:.55;cursor:default}
+.d-chk{display:flex;gap:6px;align-items:center;font-size:.84rem;margin-top:8px}
+.d-chk input{width:16px;height:16px;accent-color:var(--link)}
+.d-small{font-size:.78rem;color:var(--ink-soft);margin:4px 0 0}
+.d-foot{border-top:1px solid var(--line)}
+.d-tabs{display:flex;gap:2px;background:var(--section);padding:0 8px;border-bottom:1px solid var(--line);overflow-x:auto}
+.d-tabs button{font:inherit;font-size:.84rem;border:0;background:none;color:var(--ink);padding:8px 10px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+.d-tabs button[aria-selected="true"]{border-bottom-color:var(--brand);font-weight:700}
+.d-foot pre{margin:0;border:0;border-radius:0;max-height:320px}
+.d-lint{list-style:none;margin:0;padding:8px 12px;font-size:.84rem;max-width:none}
+.d-lint li{display:flex;gap:8px;align-items:baseline;margin:3px 0}
+.d-lint .k{flex:none;font-size:.72rem;font-weight:700;padding:0 6px;border-radius:2px}
+.d-lint .k.e{background:var(--err-soft);color:var(--err)}
+.d-lint .k.w{background:var(--warn-soft);color:var(--warn)}
+.d-lint .k.i{background:var(--link-soft);color:var(--link)}
+@media (max-width:980px){
+  .d-body{grid-template-columns:minmax(0,1fr)}
+  .d-pal{border-right:0;border-bottom:1px solid var(--line)}
+  .d-props{border-left:0;border-top:1px solid var(--line)}
+  #d-fields{flex-direction:row;flex-wrap:wrap}
+}
+
+footer{border-top:1px solid var(--line);color:var(--ink-soft);font-size:.85rem;padding-block:18px 36px}
+@media (max-width:600px){
+  body{font-size:14.5px}
+  .top h1{font-size:1.4rem}
+  h2{font-size:1.22rem}
+  .big b{font-size:1.6rem}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>MES Vietsun – Đề xuất kiến trúc metadata-driven</h1>
+    <p>Trả lời hai câu hỏi: bao nhiêu màn quy về được dạng cấu hình (cột động, định nghĩa lưu trong CSDL, đổi giao diện không build lại), và kiến trúc hiện tại có đi theo hướng này được không, có tối ưu không. Kèm thiết kế đủ để quyết: sơ đồ, định nghĩa màn, phân quyền, validate, biểu thức tính toán, kéo thả.</p>
+    <div class="meta">
+      <span>Lập <b>11/10/2026</b></span>
+      <span>Căn cứ: code và tài liệu đến <b>Phase 5.6</b></span>
+      <span>Trạng thái: <b>đề xuất, chưa có code</b></span>
+      <span>Áp dụng cần: <b>ADR 0012 và một phase riêng</b></span>
+    </div>
+  </div>
+</header>
+<div class="sub">
+  <nav class="wrap" aria-label="Mục lục">
+    <a href="#ket-luan">Kết luận</a>
+    <a href="#hien-trang">Hiện trạng</a>
+    <a href="#cau-1">Câu 1: bao nhiêu màn</a>
+    <a href="#cau-2">Câu 2: có tối ưu không</a>
+    <a href="#kien-truc">Sơ đồ kiến trúc</a>
+    <a href="#vong-doi">Từ view đến menu</a>
+    <a href="#dinh-nghia">Định nghĩa màn</a>
+    <a href="#phan-quyen">Phân quyền</a>
+    <a href="#validate">Validate</a>
+    <a href="#bieu-thuc">Biểu thức</a>
+    <a href="#keo-tha">Kéo thả</a>
+    <a href="#debug">Debug, phát hành</a>
+    <a href="#hieu-nang">Hiệu năng</a>
+    <a href="#lo-trinh">Lộ trình</a>
+    <a href="#can-chot">Cần chốt</a>
+  </nav>
+</div>
+
+<main class="wrap">
+
+<section id="ket-luan">
+<h2><span class="no">0</span>Kết luận</h2>
+<p class="lead">Số liệu dưới đây đếm trên 33 màn của menu (seed hiện tại) và 66 endpoint của module Đơn hàng, May, Danh mục, Đồng bộ. 19 màn chưa có tài liệu BA nên được xếp theo tên và loại nghiệp vụ, cần đối chiếu lại khi có đặc tả.</p>
+
+<div class="answers">
+  <article class="ans">
+    <h3>Câu 1. Quy về được bao nhiêu dạng, áp cho bao nhiêu màn?</h3>
+    <p class="q">Form nhập liệu theo cột động, định nghĩa lưu trong CSDL, đổi giao diện không build lại.</p>
+    <div class="big">
+      <div><b>6</b><span>mẫu màn (4 có nhập liệu, 2 chỉ xem)</span></div>
+      <div><b>25/33</b><span>màn làm bằng metadata (76%)</span></div>
+      <div><b>23/25</b><span>màn nghiệp vụ (92%)</span></div>
+    </div>
+    <ul>
+      <li><span class="lv m1">M1</span> <b>18 màn</b> chỉ cần view và cấu hình, không viết code riêng.</li>
+      <li><span class="lv m2">M2</span> <b>7 màn</b> cấu hình cộng một đoạn code nhỏ đăng ký vào engine: lưu có khóa dòng và hạn mức (Kế hoạch xuất hàng, Xếp chuyền), widget đặc thù (Gantt, cây tổ chức).</li>
+      <li><span class="lv m3">M3</span> <b>8 màn</b> giữ code: 6 màn Quản trị lõi về bảo mật, 2 màn điện thoại bấm số realtime.</li>
+      <li>14 form nhập đang có (popup, lưới nhập, hộp xác nhận) quy về 4 dạng form và một loại hành động: 11 làm được bằng cấu hình, 3 cần hook. Chi tiết ở <a href="#cau-1">mục 2</a>.</li>
+    </ul>
+  </article>
+  <article class="ans">
+    <h3>Câu 2. Kiến trúc này đi theo metadata-driven được không, có tối ưu không?</h3>
+    <p class="q">NestJS + Kysely + SQL Server, React + Mantine, phân quyền 5 lớp.</p>
+    <div class="big">
+      <div><b>9/14</b><span>thành phần cần có đã có sẵn</span></div>
+      <div><b>53%</b><span>endpoint thay được ngay bằng engine</span></div>
+      <div><b>~44%</b><span>code service là cấu hình lặp lại</span></div>
+    </div>
+    <ul>
+      <li><b>Làm được.</b> Phần khó nhất của metadata-driven là cưỡng chế phân quyền theo dữ liệu, và lõi hiện tại đã làm việc này chung cho mọi màn: lọc nhà máy và phạm vi đọc từ <code>SysResourceScopeBinding</code>, chính sách cột khớp theo tên trường JSON, quyền theo mã chuỗi <code>module.resource:action</code>.</li>
+      <li><b>Tối ưu khi đi theo hướng lai.</b> Metadata cho màn chuẩn (tra cứu, danh mục, chủ–chi tiết, báo cáo); code cho phần có khóa dòng, hạn mức tính trên nhiều bản ghi, lịch làm việc, Gantt, realtime. Ép 100% thành cấu hình sẽ biến metadata thành một ngôn ngữ lập trình thứ hai, khó debug hơn code.</li>
+      <li>Hiệu năng gần như chỉ phụ thuộc chất lượng view. Phần engine thêm vào (đọc định nghĩa từ cache, dựng câu lệnh có tham số) tốn dưới 1 ms mỗi request.</li>
+    </ul>
+  </article>
+</div>
+
+<div class="note ok">
+  <b>Bốn điều kiện để yên tâm về framework</b>
+  <p>1. Engine chỉ chạy view nằm trong schema <code>ui</code> đã đăng ký và kiểm theo "hợp đồng view"; không có SQL tự do lúc chạy. 2. Mọi đọc ghi đi qua <code>BaseRepository</code> và chính sách cột hiện có, nên màn mới tự có đủ 5 lớp quyền. 3. Biểu thức chạy bằng bộ thông dịch an toàn dùng chung cho trình duyệt và máy chủ, không dùng <code>eval</code>. 4. Định nghĩa màn có phiên bản, xem trước như một người dùng cụ thể, phát hành và quay lại bằng một nút.</p>
+</div>
+<div class="note warn">
+  <b>Ba việc không nên làm</b>
+  <p>Không viết lại các màn đang chạy tốt (Kế hoạch xuất hàng, Xếp chuyền, Kế hoạch chuẩn bị SX) chỉ để chuyển sang cấu hình: phần khó của chúng là quy tắc nghiệp vụ, engine không làm rẻ hơn. Không cho người thiết kế tạo view thẳng trên database Production. Không để view tự viết điều kiện phân quyền: view trả cột <code>BranchCode</code>, <code>LineCode</code>, <code>CreatedBy</code>, engine tự gắn điều kiện.</p>
+</div>
+</section>
+<section id="hien-trang">
+<h2><span class="no">1</span>Hiện trạng: repo đã "metadata" tới đâu</h2>
+<p class="lead">Một màn hiện nay cần 6–7 mảnh code: repository (bảng, tài nguyên, cột sắp xếp), service (<code>FilterSpec</code>, bảng sắp xếp, hàm đổi tên trường, cột xuất file), controller với <code>@RequirePermission</code> và <code>@FieldResource</code> viết cứng, DTO <code>class-validator</code>, kiểu Kysely, trang React với mảng cột, và một dòng trong <code>routes/registry.tsx</code>. Nhưng các phần quyết định an toàn đã chạy theo dữ liệu.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Thành phần cần có</th><th>Hiện trạng</th><th>Ở đâu</th><th>Việc phải làm</th></tr></thead>
+<tbody>
+<tr><td>Menu động theo quyền</td><td><span class="tag ok">Có</span></td><td><code>SysMenu</code>, <code>GET /me/menu</code></td><td>Thêm API tạo, sửa menu (hiện chỉ seed); thêm <code>ScreenId</code> vào <code>MenuNode</code></td></tr>
+<tr><td>Tài nguyên và 5 hành động là dữ liệu</td><td><span class="tag ok">Có</span></td><td><code>SysResource</code>, <code>SysPermission</code>, màn Phân quyền</td><td>Sinh tài nguyên và quyền khi phát hành màn (hiện chỉ seed sinh)</td></tr>
+<tr><td>Lọc nhà máy, phạm vi chuyền, "của tôi" tự động</td><td><span class="tag ok">Có</span></td><td><code>BaseRepository.limit()</code>, <code>SysResourceScopeBinding</code></td><td>Không đổi; engine gọi lại đúng hàm này</td></tr>
+<tr><td>Ẩn, che, chỉ đọc theo cột</td><td><span class="tag ok">Có</span></td><td><code>FieldPolicyService</code>, <code>SysResourceField</code>, <code>SysFieldPolicy</code></td><td>Cho chạy không cần decorator tĩnh; cột chưa đăng ký mặc định Ẩn</td></tr>
+<tr><td>Danh mục mã–tên dùng chung</td><td><span class="tag ok">Có</span></td><td><code>SysCatalog</code>, <code>/admin/catalogs/items/:code</code></td><td>Dùng làm nguồn tra cứu (lookup) cho ô chọn</td></tr>
+<tr><td>Lọc theo cột, giá trị cột, phân trang, xuất file</td><td><span class="tag warn">Một phần</span></td><td><code>column-filter.ts</code>, <code>distinctValues</code>, <code>ExportService</code></td><td><code>FilterSpec</code> đang khai báo trong code từng service: sinh từ kiểu cột của view</td></tr>
+<tr><td>Lưới xem, lưới nhập, khung màn dùng chung</td><td><span class="tag warn">Một phần</span></td><td><code>DataGrid</code> (<code>Column&lt;T&gt;</code>), <code>SheetGrid</code>, <code>WorkPage</code></td><td>Cột đang là mảng TS; chỉ <code>render</code>, <code>filterLabel</code> là hàm: đổi sang tên renderer</td></tr>
+<tr><td>Đọc cấu trúc cột từ DB</td><td><span class="tag warn">Một phần</span></td><td>Danh mục BRAVO đọc <code>sys.columns</code>; <code>sync-gen.ts</code> đọc cấu trúc view</td><td>Dùng lại cho đăng ký view <code>ui.*</code></td></tr>
+<tr><td>Cột động theo danh mục</td><td><span class="tag warn">Một phần</span></td><td>Kế hoạch chuẩn bị SX: cặp KH/TH theo <code>PrepStep</code></td><td>Thành cơ chế chung "nhóm cột lặp theo danh mục"</td></tr>
+<tr><td>Kho định nghĩa màn có phiên bản</td><td><span class="tag err">Chưa</span></td><td>–</td><td>Bảng <code>SysUi*</code> ở <code>MES_Core</code>, định nghĩa JSON có kiểm schema</td></tr>
+<tr><td>API dữ liệu chung theo định nghĩa màn</td><td><span class="tag err">Chưa</span></td><td>Guard đọc quyền từ decorator tĩnh</td><td>Guard giải quyền động từ registry; đọc ghi qua <code>BaseRepository</code></td></tr>
+<tr><td>Biểu thức dùng chung trình duyệt và máy chủ</td><td><span class="tag err">Chưa</span></td><td>Công thức là TS, viết hai lần (ngày SX ở FE và BE)</td><td>Bộ thông dịch an toàn trong thư mục <code>shared</code></td></tr>
+<tr><td>Renderer dựng màn từ định nghĩa</td><td><span class="tag err">Chưa</span></td><td>Chỗ cắm sẵn: <code>FallbackRoute</code> → <code>ModulePage</code></td><td><code>MetaScreen</code> đứng giữa <code>pages[...]</code> và trang giữ chỗ</td></tr>
+<tr><td>Designer kéo thả, xem trước, phát hành</td><td><span class="tag err">Chưa</span></td><td>Không có thư viện kéo thả</td><td>Màn Quản trị › Thiết kế màn hình</td></tr>
+</tbody></table></div>
+
+<h3>Bằng chứng đo trên code</h3>
+<ul>
+  <li><b>66 endpoint</b> của Đơn hàng, May, Danh mục, Đồng bộ: 35 (53%) là CRUD hoặc đọc mà engine cơ bản thay được; 20 (30%) cần engine nâng cao (chủ–chi tiết thay cả lưới con, tổng con vào cha, chuyển trạng thái có điều kiện); 11 (17%) phải giữ code.</li>
+  <li><b>Khoảng 900 trên 2.021 dòng</b> service của Đơn hàng và May là khai báo lặp lại: <code>SORT</code>, <code>FILTER</code>, <code>EXPORT_COLUMNS</code>, hàm <code>present*</code>, các hàm list, values, export.</li>
+  <li><b>Bốn chỗ đã để máy chủ quyết định cột:</b> các bước chuẩn bị SX, ma trận Phân quyền, Chính sách cột và danh mục BRAVO. Riêng danh mục BRAVO nhận tên cột và kiểu SQL từ máy chủ rồi tự vẽ lưới, tức mô hình "bảng hoặc view → lưới" đã chạy thật.</li>
+  <li><b>Một thông tin, nhiều nơi khai báo:</b> nhãn cột ở frontend và ở <code>seed-data.ts</code> đã lệch ("Đơn giá (USD)" và "Đơn giá", "PO/Buy date" và "PO Buy date"); danh sách trạng thái lặp ở DTO, kiểu TS, CHECK của DB và frontend; luật màu cỡ viết lại ở <code>cutRatioRules.ts</code>; công thức ngày kết thúc SX viết ở cả hai đầu.</li>
+  <li><b>Lỗi review lặp lại vì mỗi màn tự làm phần chung:</b> review 5.5 #2 (HIGH) màn mới quên che tên khách hàng với Trưởng chuyền; review 5.5 #3 (HIGH) danh mục bước trả về dưới khóa <code>steps</code> trùng mã cột, đặt mức Che là trắng màn. Engine làm phần chung một lần, mỗi màn mới không còn chỗ để quên.</li>
+</ul>
+</section>
+<section id="cau-1">
+<h2><span class="no">2</span>Câu 1: quy về bao nhiêu dạng, áp cho bao nhiêu màn</h2>
+<p class="lead">Mọi màn của MES ghép từ một số ít khối (dải lọc, lưới xem, lưới nhập, form, thẻ số, biểu đồ, widget). Sáu cách ghép lặp lại đủ nhiều để thành mẫu màn có sẵn trong designer. Người thiết kế chọn mẫu, kéo trường vào, không bắt đầu từ trang trắng.</p>
+
+<div class="tpls">
+  <div class="tpl">
+    <div class="wf" style="grid-template-rows:14px 1fr" aria-hidden="true"><i class="f"></i><i class="g"></i></div>
+    <h4>T1 Tra cứu <span class="tag">chỉ xem</span></h4>
+    <p>Một view, dải lọc, lưới 100 dòng mới tạo lên trước, lọc theo giá trị cột, xuất file.</p>
+    <p class="eg">Nhật ký hệ thống, Thông tin nhân sự, Đồng bộ tiến độ cắt.</p>
+  </div>
+  <div class="tpl">
+    <div class="wf" style="grid-template-columns:1fr 34%;grid-template-rows:14px 1fr" aria-hidden="true"><i class="f" style="grid-column:1/3"></i><i class="g"></i><i class="f"></i></div>
+    <h4>T2 Danh sách và form <span class="tag ok">nhập liệu</span></h4>
+    <p>Thêm, sửa, xóa hoặc ngừng dùng một bản ghi của một bảng; số chứng từ tự sinh; ô chọn từ danh mục.</p>
+    <p class="eg">Thông tin đơn hàng, Danh mục lỗi, Ca làm việc, Quản lý in thêu.</p>
+  </div>
+  <div class="tpl">
+    <div class="wf" style="grid-template-rows:30px 1fr" aria-hidden="true"><i class="f"></i><i class="s"></i></div>
+    <h4>T3 Chủ – chi tiết <span class="tag ok">nhập liệu</span></h4>
+    <p>Phần đầu là form, phần dưới là lưới nhập kiểu bảng tính; lưu trong một transaction; tổng của lưới con ghi vào bản ghi cha.</p>
+    <p class="eg">Phân bổ màu cỡ, Thêm PO, Xác nhận cấp BTP, Kế hoạch hoàn thiện.</p>
+  </div>
+  <div class="tpl">
+    <div class="wf" style="grid-template-columns:38% 1fr;grid-template-rows:1fr 1fr" aria-hidden="true"><i class="g" style="grid-row:1/3"></i><i class="g"></i><i class="s"></i></div>
+    <h4>T4 Lưới liên kết nhiều tầng <span class="tag ok">nhập liệu</span></h4>
+    <p>Chọn dòng ở lưới trước thì lưới sau lọc theo; mỗi tầng có hành động riêng như Xác nhận, Hủy xác nhận.</p>
+    <p class="eg">Cập nhật tỷ lệ cắt (mã hàng → PO → màu cỡ), Danh mục hệ thống.</p>
+  </div>
+  <div class="tpl">
+    <div class="wf" style="grid-template-rows:14px 1fr" aria-hidden="true"><i class="f"></i><i class="s" style="background-size:36px 100%,100% 8px"></i></div>
+    <h4>T5 Lưới nhập cột động <span class="tag ok">nhập liệu</span></h4>
+    <p>Nhóm cột lặp theo từng dòng của một danh mục (bước, giờ, cỡ, loại lỗi); sửa nhiều ô rồi lưu một lần, phát hiện người khác sửa chen.</p>
+    <p class="eg">Kế hoạch chuẩn bị SX (cặp KH/TH theo bước), Sản lượng theo giờ, Tiến độ gấp xếp.</p>
+  </div>
+  <div class="tpl">
+    <div class="wf" style="grid-template-columns:1fr 1fr 1fr;grid-template-rows:20px 1fr" aria-hidden="true"><i class="k"></i><i class="k"></i><i class="k"></i><i class="w" style="grid-column:1/3"></i><i class="g"></i></div>
+    <h4>T6 Bảng điều khiển, báo cáo <span class="tag">chỉ xem</span></h4>
+    <p>Thẻ số, biểu đồ, bảng tổng hợp. Engine gom nhóm sau khi đã lọc phạm vi, để Trưởng chuyền chỉ cộng số của chuyền mình.</p>
+    <p class="eg">Tiến độ sản xuất, Doanh thu nhà máy, Báo cáo chất lượng, Biểu đồ cân bằng chuyền.</p>
+  </div>
+  <div class="tpl">
+    <div class="wf" aria-hidden="true"><i class="w"></i></div>
+    <h4>W Widget đặc thù <span class="tag warn">code một lần</span></h4>
+    <p>Viết bằng code, đặt vào màn và cấu hình bằng metadata (nguồn dữ liệu, màu theo trạng thái, nhãn thanh).</p>
+    <p class="eg">Gantt dàn chuyền, cây Nhà máy → Xưởng → Chuyền, bộ đếm cảm ứng trên điện thoại.</p>
+  </div>
+</div>
+
+<h3>Các khối dựng nên mẫu màn</h3>
+<div class="tbl"><table>
+<thead><tr><th>Khối</th><th>Dựng từ thành phần có sẵn</th><th>Người thiết kế cấu hình</th></tr></thead>
+<tbody>
+<tr><td>Dải lọc</td><td><code>OrderFilters</code>, <code>useUrlParams</code></td><td>Trường, kiểu ô (khoảng ngày, chọn, chữ), giá trị mặc định, thứ tự theo quy tắc UI/UX mục A.6</td></tr>
+<tr><td>Lưới xem</td><td><code>DataGrid</code>, <code>ColumnFilterButton</code></td><td>Cột, nhãn, định dạng, độ rộng mặc định, tiêu đề 2 tầng, lọc theo cột, sắp xếp, tô dòng theo điều kiện, dòng tổng</td></tr>
+<tr><td>Lưới nhập</td><td><code>SheetGrid</code> (<code>sheetNumber</code>, <code>sheetDate</code>, <code>sheetSelect</code>, <code>sheetReadonly</code>)</td><td>Kiểu ô, bắt buộc (tô vàng), khóa ô theo điều kiện (tô xám), luật kiểm (tô đỏ), cho thêm hoặc xóa dòng</td></tr>
+<tr><td>Form</td><td><code>@mantine/form</code>, <code>Guarded</code>, <code>onlyEditable</code></td><td>Phần, ô trên lưới 12 cột, bắt buộc, hiện khi, chỉ đọc khi, mặc định, công thức</td></tr>
+<tr><td>Popup chọn</td><td>Mới, theo mẫu "Chọn mã hàng"</td><td>Nguồn, cột, chọn một hay nhiều, trả trường nào về form</td></tr>
+<tr><td>Thẻ số</td><td><code>PrepSummary</code></td><td>Phép gom (đếm, đếm khác nhau, tổng), điều kiện, màu, câu giải thích</td></tr>
+<tr><td>Biểu đồ</td><td>Mới, cần thêm thư viện (ADR 0003)</td><td>Loại (cột, đường, Pareto), trục, chuỗi, đường tham chiếu như nhịp chuyền</td></tr>
+<tr><td>Tab, phần</td><td>Mantine <code>Tabs</code>, CSS <code>split-pane</code></td><td>Bố cục, thứ tự, ẩn trên điện thoại</td></tr>
+<tr><td>Widget</td><td><code>LineBoard</code>, <code>TreeSelect</code>…</td><td>Tên widget và tham số khai báo sẵn của widget đó</td></tr>
+</tbody></table></div>
+
+<h3>Kết quả trên 33 màn</h3>
+<div class="legend" aria-hidden="true">
+  <span><i style="background:var(--m1)"></i>M1: view và cấu hình, không code riêng</span>
+  <span><i style="background:var(--m2)"></i>M2: cấu hình cộng hook hoặc widget viết bằng code</span>
+  <span><i style="background:var(--m3)"></i>M3: giữ màn code riêng</span>
+</div>
+<div class="bars">
+<p style="margin-bottom:0"><b>Cả 33 màn</b></p>
+<div class="stack" role="img" aria-label="33 màn: M1 18, M2 7, M3 8"><div class="s1" style="flex:18">18</div><div class="s2" style="flex:7">7</div><div class="s3" style="flex:8">8</div></div>
+<p style="margin-bottom:0"><b>25 màn nghiệp vụ</b> (bỏ 8 màn Quản trị)</p>
+<div class="stack" style="width:75.76%" role="img" aria-label="25 màn nghiệp vụ: M1 17, M2 6, M3 2"><div class="s1" style="flex:17">17</div><div class="s2" style="flex:6">6</div><div class="s3" style="flex:2">2</div></div>
+</div>
+<p>Hai thanh cùng tỷ lệ: độ dài thanh dưới bằng 25/33 thanh trên, mỗi đoạn dài theo số màn. Màn đã chạy được xếp theo câu hỏi "nếu làm mới hoặc làm lại thì cần gì", không phải đề nghị viết lại.</p>
+<h3>Từng màn: mẫu, mức, phần phải giữ code</h3>
+<p>Nhóm Cắt, May, Chất lượng, Hoàn thiện, Nhân sự, Báo cáo chưa có tài liệu BA: mức ghi theo tên màn và nghiệp vụ thường gặp, đánh dấu <span class="tag">dự kiến</span>.</p>
+<div class="tbl"><table>
+<thead><tr><th>Màn</th><th>Mẫu</th><th>Mức</th><th>Ghi chú: cái gì cấu hình, cái gì giữ code</th></tr></thead>
+<tbody>
+<tr class="grp"><td colspan="4">Quản trị đơn hàng (đã chạy)</td></tr>
+<tr><td>Thông tin đơn hàng <code>order.allocation</code></td><td>T2</td><td><span class="lv m1">M1</span></td><td>Số đơn theo quy tắc đánh số <code>DH-{nhà máy}-{Id}</code>; ô chọn danh mục Loại, Đơn vị tính, Nhà máy SX; cột giá nhạy cảm. Engine làm được hết.</td></tr>
+<tr><td>Kế hoạch xuất hàng <code>order.shipment</code></td><td>T3 + popup chọn</td><td><span class="lv m2">M2</span></td><td>Lưới, form, popup Chọn mã hàng: cấu hình. Lưu: hook khóa đơn hàng rồi tính SL còn lại trên mọi kế hoạch của nhà máy.</td></tr>
+<tr><td>Cập nhật tỷ lệ cắt <code>order.po</code></td><td>T4</td><td><span class="lv m1">M1</span></td><td>Danh sách mã hàng là khối tổng hợp (gom PO sau khi lọc phạm vi); Xác nhận, Hủy xác nhận là chuyển trạng thái có điều kiện; màu + cỡ không trùng là luật của lưới con; xóa PO đã lập kế hoạch bị khóa ngoại chặn.</td></tr>
+<tr><td>Xếp chuyền <code>order.lineplan</code></td><td>T1 + T3 + Gantt</td><td><span class="lv m2">M2</span></td><td>Lưu dàn chuyền là hook: lịch làm việc bỏ Chủ nhật, tổng tính cả dòng ngoài phạm vi, dòng đang may không xóa, khóa theo thứ tự. Bảng dàn chuyền là widget.</td></tr>
+<tr><td>Phân bổ màu cỡ <code>order.colorsize</code></td><td>T3</td><td><span class="lv m1">M1</span></td><td>SL giao ≤ SL KH là luật dòng; trạng thái Đã xếp / Đã phân màu cỡ đặt khi lưu bằng biểu thức.</td></tr>
+<tr><td>Kế hoạch chuẩn bị SX <code>order.prep</code></td><td>T5 + T6</td><td><span class="lv m2">M2</span></td><td>Cặp cột KH/TH theo danh mục bước, thanh tuần, 4 thẻ số: cấu hình. Bước chép dàn chuyền trước khi đọc (ADR 0009) là hook.</td></tr>
+<tr class="grp"><td colspan="4">Quản trị nhà cắt <span class="tag">dự kiến</span></td></tr>
+<tr><td>Đồng bộ tiến độ cắt <code>cutting.progress</code></td><td>T1</td><td><span class="lv m1">M1</span></td><td>Xem dữ liệu chép về; nút đồng bộ gọi hàng đợi đồng bộ có sẵn.</td></tr>
+<tr><td>Xác nhận cấp BTP <code>cutting.supply</code></td><td>T3</td><td><span class="lv m1">M1</span></td><td>Phiếu cấp và dòng bó hàng; Xác nhận là chuyển trạng thái. Nếu phải chặn vượt SL cắt trên nhiều phiếu thì thành M2.</td></tr>
+<tr><td>Quản lý in thêu <code>cutting.embroidery</code></td><td>T2 hoặc T3</td><td><span class="lv m1">M1</span></td><td>Phiếu gửi đi, nhận về.</td></tr>
+<tr class="grp"><td colspan="4">Quản trị xưởng may <span class="tag">dự kiến</span></td></tr>
+<tr><td>Kế hoạch may <code>sewing.plan</code></td><td>Gantt + T3</td><td><span class="lv m2">M2</span></td><td>Dùng lại widget Gantt của Xếp chuyền; tính năng lực chuyền cần hook.</td></tr>
+<tr><td>Phân cụm trưởng <code>sewing.cluster</code> (điện thoại)</td><td>T3 bố cục điện thoại</td><td><span class="lv m2">M2</span></td><td>Cụm công đoạn lấy từ GSD qua lớp đồng bộ; thao tác gán bằng chạm cần widget.</td></tr>
+<tr><td>Bấm năng suất cụm <code>sewing.output</code> (điện thoại)</td><td>–</td><td><span class="lv m3">M3</span></td><td>Nút lớn bấm liên tục, đẩy số qua WebSocket, chịu được mất mạng: giữ code.</td></tr>
+<tr><td>Biểu đồ cân bằng chuyền <code>sewing.balance</code></td><td>T6</td><td><span class="lv m1">M1</span></td><td>Khối biểu đồ: cột theo công đoạn, đường tham chiếu nhịp chuyền.</td></tr>
+<tr class="grp"><td colspan="4">Quản trị chất lượng <span class="tag">dự kiến</span></td></tr>
+<tr><td>Danh mục lỗi <code>qms.defect</code></td><td>T2</td><td><span class="lv m1">M1</span></td><td>Danh mục có nhóm lỗi, mức độ.</td></tr>
+<tr><td>Kiểm Endline <code>qms.endline</code> (điện thoại)</td><td>–</td><td><span class="lv m3">M3</span></td><td>Bấm lỗi theo từng sản phẩm, DHU realtime: giữ code; nút lỗi đọc từ Danh mục lỗi.</td></tr>
+<tr><td>Báo cáo chất lượng <code>qms.report</code></td><td>T6</td><td><span class="lv m1">M1</span></td><td>DHU theo chuyền, theo ngày; Pareto lỗi.</td></tr>
+<tr class="grp"><td colspan="4">Quản trị hoàn thiện <span class="tag">dự kiến</span></td></tr>
+<tr><td>Kế hoạch hoàn thiện <code>finishing.plan</code></td><td>T3</td><td><span class="lv m1">M1</span></td><td>Theo kế hoạch xuất hàng và tiến độ may.</td></tr>
+<tr><td>Tiến độ gấp xếp <code>finishing.folding</code></td><td>T5</td><td><span class="lv m1">M1</span></td><td>Nhóm cột theo ngày hoặc ca.</td></tr>
+<tr><td>Tiến độ đóng thùng <code>finishing.packing</code></td><td>T3</td><td><span class="lv m1">M1</span></td><td>Thùng theo PO, màu, cỡ.</td></tr>
+<tr class="grp"><td colspan="4">Quản trị nhân sự <span class="tag">dự kiến</span></td></tr>
+<tr><td>Sơ đồ tổ chức <code>hr.orgchart</code></td><td>Widget cây</td><td><span class="lv m2">M2</span></td><td>Dùng lại cây Nhà máy → Xưởng → Chuyền.</td></tr>
+<tr><td>Thông tin nhân sự <code>hr.employee</code></td><td>T1</td><td><span class="lv m1">M1</span></td><td>Chỉ xem dữ liệu lấy về từ hệ thống Nhân sự.</td></tr>
+<tr class="grp"><td colspan="4">Báo cáo quản trị <span class="tag">dự kiến</span></td></tr>
+<tr><td>Kế hoạch chuẩn bị sản xuất <code>report.prepare</code></td><td>T1 hoặc T6</td><td><span class="lv m1">M1</span></td><td>Tổng hợp từ Kế hoạch chuẩn bị SX theo tuần, chi nhánh.</td></tr>
+<tr><td>Tiến độ sản xuất <code>report.progress</code></td><td>T6</td><td><span class="lv m1">M1</span></td><td>Lũy kế cắt, may, Endline, hoàn thiện so kế hoạch.</td></tr>
+<tr><td>Doanh thu nhà máy <code>report.revenue</code></td><td>T6</td><td><span class="lv m1">M1</span></td><td>Cột tiền là cột nhạy cảm; chính sách cột áp cả thẻ số và file xuất.</td></tr>
+<tr><td>Sản lượng theo giờ <code>report.hourly</code></td><td>T5 chỉ xem + biểu đồ</td><td><span class="lv m1">M1</span></td><td>Nhóm cột theo giờ trong ca (danh mục Ca làm việc).</td></tr>
+<tr class="grp"><td colspan="4">Quản trị (đã chạy)</td></tr>
+<tr><td>Người dùng, Vai trò, Phân quyền, Chính sách cột, Nhà máy</td><td>–</td><td><span class="lv m3">M3 (5 màn)</span></td><td>Trần quyền quản trị, chống tự nâng quyền (ADR 0004), bảng lõi của đăng nhập: giữ code, ít khi đổi.</td></tr>
+<tr><td>Nhật ký hệ thống <code>admin.audit</code></td><td>T1</td><td><span class="lv m1">M1</span></td><td>Ứng viên đầu tiên: phase 5.6 đã ghi cần chuyển sang lưới chung vì dữ liệu tăng mãi.</td></tr>
+<tr><td>Đồng bộ dữ liệu <code>admin.sync</code></td><td>–</td><td><span class="lv m3">M3</span></td><td>Hàng đợi chạy nền, tự tải lại khi đang chạy.</td></tr>
+<tr><td>Danh mục hệ thống <code>admin.catalog</code></td><td>T4 + widget cây</td><td><span class="lv m2">M2</span></td><td>Mã–tên, Ca làm việc, Cấu hình chuẩn bị SX, danh mục BRAVO: cấu hình. Cây xưởng, chuyền giữ code vì đổi phạm vi quyền.</td></tr>
+</tbody></table></div>
+
+<h3>Riêng phần "cột động"</h3>
+<p>Cột động ở đây là nhóm cột sinh ra theo dòng của một danh mục: thêm một dòng danh mục là lưới có thêm nhóm cột, không sửa màn. Engine lấy trang dữ liệu chính và các ô của đúng những dòng đó (hai truy vấn), rồi xoay thành cột ở trình duyệt. Không dùng PIVOT động trong SQL.</p>
+<div class="tbl"><table>
+<thead><tr><th>Màn</th><th>Nhóm cột lặp theo</th><th>Mỗi nhóm gồm</th><th>Hiện trạng</th></tr></thead>
+<tbody>
+<tr><td>Kế hoạch chuẩn bị SX</td><td>Danh mục bước <code>PrepStep</code> (16 bước)</td><td>KH (tự tính), TH (nhập)</td><td><span class="tag ok">đang chạy</span> viết riêng cho màn này</td></tr>
+<tr><td>Sản lượng theo giờ</td><td>Giờ trong ca (Ca làm việc)</td><td>SL theo giờ, lũy kế</td><td><span class="tag">dự kiến</span></td></tr>
+<tr><td>Tiến độ gấp xếp, đóng thùng</td><td>Ngày trong khoảng đang xem</td><td>SL theo ngày</td><td><span class="tag">dự kiến</span></td></tr>
+<tr><td>Kiểm Endline, Báo cáo chất lượng</td><td>Danh mục lỗi</td><td>Số lỗi</td><td><span class="tag">dự kiến</span></td></tr>
+<tr><td>Màu cỡ (tỷ lệ cắt, kế hoạch xuất hàng, phân bổ)</td><td>Cỡ của mã hàng</td><td>SL theo cỡ, mỗi dòng một màu</td><td>Hiện là dòng Màu, Cỡ, SL theo mô tả của BA; ma trận màu × cỡ là cách hiển thị thêm nếu BA muốn</td></tr>
+</tbody></table></div>
+
+<h3>14 form nhập đang có quy về 4 dạng form và một loại hành động</h3>
+<p>F1 form đơn, F2 chủ–chi tiết, F3 lưới nhập hàng loạt (kể cả cột động), F4 popup chọn. Không tính khoảng 10 form của các màn Quản trị lõi.</p>
+<div class="tbl"><table>
+<thead><tr><th>Form</th><th>Màn</th><th>Dạng</th><th>Mức</th></tr></thead>
+<tbody>
+<tr><td>Thêm, sửa đơn hàng</td><td>Thông tin đơn hàng</td><td>F1</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Tạo mới, sửa kế hoạch (đầu phiếu + lưới SL KHXH)</td><td>Kế hoạch xuất hàng</td><td>F2</td><td><span class="lv m2">M2</span></td></tr>
+<tr><td>Chọn mã hàng (đơn hàng → PO có ô chọn, PO/Buy date)</td><td>Kế hoạch xuất hàng</td><td>F4</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Cập nhật màu cỡ của PO</td><td>Cập nhật tỷ lệ cắt</td><td>F3</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Thêm PO (đầu phiếu + lưới màu cỡ)</td><td>Cập nhật tỷ lệ cắt</td><td>F2</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Xác nhận, Hủy xác nhận, Xóa PO</td><td>Cập nhật tỷ lệ cắt</td><td>Hành động</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Chi tiết dàn chuyền (thông tin chung + lưới dàn chuyền + Gantt)</td><td>Xếp chuyền</td><td>F2 + widget</td><td><span class="lv m2">M2</span></td></tr>
+<tr><td>Phân màu cỡ cho chuyền</td><td>Phân bổ màu cỡ</td><td>F2</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Nhập TH ngay trên lưới</td><td>Kế hoạch chuẩn bị SX</td><td>F3 cột động</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Cập nhật một dòng chuẩn bị (Loại mã, SL chốt UD, HS ưu đãi, số ngày KH riêng, ngày TH)</td><td>Kế hoạch chuẩn bị SX</td><td>F2</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Thêm, sửa chuyền và xưởng</td><td>Danh mục hệ thống</td><td>F1 + widget cây</td><td><span class="lv m2">M2</span></td></tr>
+<tr><td>Thêm, sửa mục danh mục mã–tên</td><td>Danh mục hệ thống</td><td>F1</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Thêm, sửa ca làm việc</td><td>Danh mục hệ thống</td><td>F1</td><td><span class="lv m1">M1</span></td></tr>
+<tr><td>Cấu hình chuẩn bị SX (sửa nhiều bước, đổi thứ tự)</td><td>Danh mục hệ thống</td><td>F3</td><td><span class="lv m1">M1</span></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="cau-2">
+<h2><span class="no">3</span>Câu 2: làm được không, có tối ưu không</h2>
+<p class="lead">Metadata-driven khó ở chỗ cưỡng chế quyền khi màn không còn code riêng. Repo này đã giải phần đó ở tầng nền tảng, nên câu hỏi còn lại chủ yếu là phạm vi: cấu hình hóa đến đâu thì dừng.</p>
+
+<h3>Làm được: bốn lý do lấy từ code</h3>
+<ol>
+  <li><b>Quyền chạy theo dữ liệu, không theo màn.</b> <code>BaseRepository.limit()</code> dựng điều kiện nhà máy và phạm vi từ <code>SysResourceScopeBinding</code>; <code>PermissionService</code> trả quyền theo mã chuỗi; <code>FieldPolicyService.shape()</code> ẩn và che theo khóa JSON. Màn metadata chỉ cần đúng mã tài nguyên và đúng tên trường là có đủ 5 lớp.</li>
+  <li><b>Lớp dữ liệu nhận tên bảng lúc chạy.</b> <code>BaseRepository</code> nhận <code>Kysely&lt;any&gt;</code> và tên bảng là chuỗi, nên một lớp con động dùng chung được cho mọi nguồn mà vẫn giữ lọc nhà máy, phạm vi L3, A00 chỉ đọc.</li>
+  <li><b>Thành phần giao diện gần như tuần tự hóa được.</b> <code>Column&lt;T&gt;</code> của <code>DataGrid</code> chỉ có <code>render</code> và <code>filterLabel</code> là hàm; <code>SheetGrid</code> dựng cột bằng <code>sheetNumber</code>, <code>sheetDate</code>, <code>sheetText</code>, <code>sheetSelect</code> nhận tham số thuần.</li>
+  <li><b>Đã có tiền lệ chạy thật.</b> Danh mục BRAVO đọc cột từ <code>sys.columns</code>, kiểm định danh, phân trang và tự vẽ lưới; <code>sync-gen.ts</code> sinh migration từ cấu trúc view; <code>FallbackRoute</code> là chỗ cắm renderer cho đường dẫn chưa có trang.</li>
+</ol>
+
+<h3>Phải sửa trong lõi trước khi mở engine</h3>
+<p>Các điểm này chạm <code>platform/auth</code>, <code>platform/data</code>, guard: theo CLAUDE.md mục 2 phải chạy <code>code-reviewer</code> ngay khi sửa.</p>
+<div class="tbl"><table>
+<thead><tr><th>Điểm trong code</th><th>Vì sao cản</th><th>Sửa</th></tr></thead>
+<tbody>
+<tr><td><code>PermissionGuard</code> đọc <code>@RequirePermission</code> tĩnh</td><td>Endpoint <code>/meta/data/:screen</code> không biết trước mã quyền</td><td>Guard giải quyền từ registry: <code>{tài nguyên của màn}:{hành động}</code>; màn chưa phát hành trả 404, không lộ tên</td></tr>
+<tr><td><code>FieldPolicyInterceptor</code> chỉ chạy khi có <code>@FieldResource</code></td><td>Quên gắn là mất chính sách cột</td><td>Engine gọi thẳng <code>shape</code>, <code>assertWritable</code>, <code>unreadable</code> trong service, không dựa vào decorator</td></tr>
+<tr><td><code>shape()</code> cho qua khóa chưa đăng ký; <code>selectAll</code> trả mọi cột</td><td>Cột mới thêm vào view lộ ra ngay</td><td>Engine chỉ SELECT cột đã đăng ký; cột mới của view mặc định Ẩn tới khi người thiết kế đăng ký</td></tr>
+<tr><td><code>safeSort</code> chỉ kiểm cặp đầu, <code>ordered()</code> nhận tới 6 cặp</td><td>Sắp xếp theo cột Che ở cặp thứ hai làm lộ thứ tự giá trị</td><td>Kiểm từng cặp</td></tr>
+<tr><td><code>ResourceRegistry.resolve</code> đòi <code>SourceTable</code> bằng chuỗi trong code; cache 30 giây, <code>invalidate()</code> chưa nơi nào gọi</td><td>Nguồn đọc (view) khác bảng ghi; sửa metadata phải có hiệu lực ngay</td><td>Tách nguồn đọc và bảng ghi; cache theo số <code>MetaVersion</code> giống <code>SysPermissionVersion</code></td></tr>
+<tr><td>Tài nguyên, quyền, menu, cột chỉ sinh từ seed; seed đồng bộ đè mục <code>IsSystem</code></td><td>Màn metadata do người thiết kế tạo lúc chạy</td><td>Màn metadata tạo dòng <code>IsSystem = 0</code>; seed không đụng dòng không phải hệ thống</td></tr>
+<tr><td>Một login SQL cho mọi database</td><td>Người viết view đọc được <code>SysUser.PasswordHash</code>, <code>SysUserSession</code></td><td>Login riêng cho việc tạo view: chỉ SELECT bảng của module, DENY trên <code>Sys*</code></td></tr>
+<tr><td>Chưa có giới hạn tần suất; timeout mặc định 15 giây</td><td>View nặng bấm lặp làm chậm cả hệ thống</td><td>Timeout theo màn, giới hạn tần suất theo người dùng</td></tr>
+</tbody></table></div>
+
+<h3>Có tối ưu không: so sánh trên từng tiêu chí</h3>
+<div class="tbl"><table>
+<thead><tr><th>Tiêu chí</th><th>Code tay như hiện nay</th><th>Metadata theo hướng lai</th></tr></thead>
+<tbody>
+<tr><td>Làm một màn chuẩn mới (T1, T2, T6)</td><td>6–7 mảnh code ở BE và FE, test, review: khoảng 1–2 ngày công (ước theo nhịp các phase 5.x)</td><td>View, cấu hình, xem trước: vài giờ; không có code mới cần review</td></tr>
+<tr><td>Đổi nhãn, thứ tự, độ rộng mặc định, thêm cột</td><td>Sửa code, build, deploy</td><td>Sửa, xem trước, phát hành trong vài phút; quay lại bằng một nút</td></tr>
+<tr><td>Nhất quán phân quyền</td><td>Mỗi màn tự gắn decorator, <code>FilterSpec</code>, tự loại cột giá: có chỗ để quên</td><td>Engine làm một lần cho mọi màn</td></tr>
+<tr><td>Quy tắc phức tạp (khóa dòng, hạn mức trên nhiều bản ghi, lịch làm việc)</td><td>Toàn quyền TypeScript, có test riêng</td><td>Viết hook bằng code; ép vào biểu thức là sai chỗ</td></tr>
+<tr><td>Hiệu năng</td><td>Truy vấn viết tay, tối ưu từng chỗ</td><td>Phụ thuộc chất lượng view; engine thêm dưới 1 ms</td></tr>
+<tr><td>Debug</td><td>Cần dev đọc code</td><td>Người biết SQL xem câu lệnh sinh ra, chạy thử view, xem vết tính biểu thức</td></tr>
+<tr><td>Kiểm thử</td><td>Test riêng từng màn</td><td>Test engine kỹ một lần, kiểm định nghĩa khi phát hành, test khói tự sinh cho từng màn</td></tr>
+<tr><td>Rủi ro mới</td><td>–</td><td>Lỗi engine ảnh hưởng mọi màn; cần quy trình duyệt view và định nghĩa</td></tr>
+<tr><td>Chi phí ban đầu</td><td>Không</td><td>Khoảng 30–40 ngày công cho engine và designer (<a href="#lo-trinh">mục 13</a>)</td></tr>
+</tbody></table></div>
+
+<h3>Khi nào không tối ưu</h3>
+<ul>
+  <li>Giao dịch nhiều bảng có khóa dòng và hạn mức tính trên cả nhà máy: Kế hoạch xuất hàng, lưu dàn chuyền.</li>
+  <li>Màn điện thoại bấm liên tục, cần realtime và chịu mất mạng: Bấm năng suất cụm, Kiểm Endline.</li>
+  <li>Màn quản trị quyền: lỗi ở đây là lỗi bảo mật, ít khi đổi, không đáng cấu hình hóa.</li>
+  <li>Khi số màn mới ít. Engine chỉ có lời khi đủ nhiều màn chuẩn; với 19 màn đang chờ tài liệu BA và báo cáo phát sinh về sau, điểm hòa vốn ước khoảng 15–20 màn.</li>
+</ul>
+<div class="note">
+  <b>Kết luận câu 2</b>
+  <p>Kiến trúc hiện tại là nền tốt cho metadata-driven vì đã tách phần cưỡng chế quyền ra khỏi từng màn. Hướng tối ưu là lai: engine đảm nhận màn chuẩn và mọi màn mới hợp mẫu; code giữ cho widget và hook nghiệp vụ, đăng ký vào engine bằng tên, không bằng SQL tự do.</p>
+</div>
+</section>
+
+<section id="kien-truc">
+<h2><span class="no">4</span>Sơ đồ kiến trúc</h2>
+<p class="lead">Đọc từ trên xuống: trình duyệt, backend, SQL Server. Màn code riêng và màn metadata đi song song và dùng chung các chốt cưỡng chế quyền (nền xanh). Engine chỉ thêm phần nền cam.</p>
+<figure>
+  <div class="scroll">
+  <svg class="dg" viewBox="0 0 1100 724" role="img" aria-label="Kiến trúc: người dùng mở màn code riêng hoặc màn do Renderer dựng từ định nghĩa; cả hai gọi backend qua AuthGuard và PermissionGuard, rồi BaseRepository và FieldPolicyService; Meta API lấy định nghĩa từ MetaRegistry; Designer ghi định nghĩa vào SysUi trong MES_Core qua Meta Admin API; dữ liệu đọc từ view schema ui và ghi vào bảng dbo của database module">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fc"/></marker>
+      <marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fa"/></marker>
+      <marker id="arB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fb"/></marker>
+    </defs>
+
+    <!-- người dùng -->
+    <rect class="b" x="220" y="14" width="300" height="40" rx="6"/>
+    <text class="t w" x="370" y="39" text-anchor="middle">Người dùng nhà máy</text>
+    <rect class="b" x="760" y="14" width="300" height="40" rx="6"/>
+    <text class="t w" x="910" y="39" text-anchor="middle">Người biết SQL (thiết kế màn)</text>
+    <path class="ln" d="M300 54 L192 95" marker-end="url(#ar)"/>
+    <path class="ln" d="M440 54 L518 95" marker-end="url(#ar)"/>
+    <path class="lnb" d="M910 54 L910 95" marker-end="url(#arB)"/>
+
+    <!-- trình duyệt -->
+    <rect class="grp" x="24" y="66" width="1052" height="160" rx="8"/>
+    <text class="t s m" x="36" y="84">Trình duyệt: React + Mantine</text>
+    <rect class="b" x="40" y="96" width="260" height="114" rx="6"/>
+    <text class="t w" x="56" y="118">Màn code riêng</text>
+    <text class="t s" x="56" y="138">Quản trị lõi, Đồng bộ, Xếp chuyền</text>
+    <text class="t s" x="56" y="156">widget: Gantt, cây, bộ đếm</text>
+    <text class="t s" x="56" y="174">khai báo ở routes/registry.tsx</text>
+    <text class="t s" x="56" y="192">DataGrid, SheetGrid dùng chung</text>
+
+    <rect class="bb" x="340" y="96" width="360" height="114" rx="6"/>
+    <text class="t w" x="356" y="118">Renderer MetaScreen</text>
+    <text class="t s" x="356" y="138">đọc định nghĩa đã phát hành, cache theo phiên bản</text>
+    <text class="t s" x="356" y="156">ghép khối: lưới xem, lưới nhập, form, thẻ số, biểu đồ</text>
+    <text class="t s" x="356" y="174">tính biểu thức ngay khi nhập (shared/expr)</text>
+    <text class="t s" x="356" y="192">FallbackRoute: trang code → màn metadata → giữ chỗ</text>
+
+    <rect class="bb" x="740" y="96" width="320" height="114" rx="6"/>
+    <text class="t w" x="756" y="118">Designer</text>
+    <text class="t s" x="756" y="138">Quản trị › Thiết kế màn hình</text>
+    <text class="t s" x="756" y="156">kéo thả trường, thuộc tính, luật, biểu thức</text>
+    <text class="t s" x="756" y="174">xem trước như người dùng X ở nhà máy Y</text>
+    <text class="t s" x="756" y="192">lưu nháp, gửi duyệt, phát hành, quay lại</text>
+
+    <!-- vào backend -->
+    <path class="ln" d="M170 210 L170 269" marker-end="url(#ar)"/>
+    <text class="t s m" x="178" y="235">REST</text>
+    <path class="ln" d="M520 210 L520 269" marker-end="url(#ar)"/>
+    <text class="t s m" x="528" y="235">định nghĩa, dữ liệu</text>
+    <path class="lnb" d="M900 210 L900 269" marker-end="url(#arB)"/>
+    <text class="t s m" x="908" y="235">lưu nháp, phát hành</text>
+
+    <!-- backend -->
+    <rect class="grp" x="24" y="244" width="1052" height="268" rx="8"/>
+    <text class="t s m" x="1064" y="262" text-anchor="end">Backend NestJS</text>
+    <rect class="ba" x="40" y="270" width="660" height="44" rx="6"/>
+    <text class="t w" x="56" y="288">AuthGuard</text>
+    <text class="t s" x="176" y="288">token, phiên chưa thu hồi, cờ A00 tra từ SysBranch</text>
+    <text class="t w" x="56" y="306">PermissionGuard</text>
+    <text class="t s" x="176" y="306">{tài nguyên}:{hành động}; tĩnh cho màn code, giải động cho màn metadata</text>
+
+    <rect class="b" x="40" y="334" width="260" height="84" rx="6"/>
+    <text class="t w" x="56" y="356">Module code riêng</text>
+    <text class="t s" x="56" y="374">order, sewing</text>
+    <text class="t s" x="56" y="392">controller → service → repository</text>
+    <text class="t s" x="56" y="410">quyền gắn bằng decorator</text>
+
+    <rect class="bb" x="340" y="334" width="360" height="84" rx="6"/>
+    <text class="t w" x="356" y="356">Meta API</text>
+    <text class="t s" x="356" y="374">MetaQuery: danh sách, giá trị lọc, xuất file</text>
+    <text class="t s" x="356" y="392">MetaCommand: kiểu, luật, biểu thức, transaction</text>
+    <text class="t s" x="356" y="410">hook viết bằng code, gọi theo tên đã đăng ký</text>
+
+    <path class="ln" d="M170 314 L170 333" marker-end="url(#ar)"/>
+    <path class="ln" d="M520 314 L520 333" marker-end="url(#ar)"/>
+    <path class="ln" d="M170 418 L170 437" marker-end="url(#ar)"/>
+    <path class="ln" d="M520 418 L520 437" marker-end="url(#ar)"/>
+
+    <rect class="ba" x="40" y="438" width="660" height="58" rx="6"/>
+    <text class="t w" x="56" y="460">BaseRepository</text>
+    <text class="t s" x="176" y="460">BranchCode của phiên, phạm vi L3 theo SysResourceScopeBinding, A00 chỉ đọc</text>
+    <text class="t w" x="56" y="480">FieldPolicyService</text>
+    <text class="t s" x="196" y="480">ẩn, che, chỉ đọc theo cột (L4); không lọc, không sắp xếp theo cột bị che</text>
+
+    <rect class="bb" x="740" y="270" width="320" height="84" rx="6"/>
+    <text class="t w" x="756" y="292">Meta Admin API</text>
+    <text class="t s" x="756" y="310">đăng ký view, kiểm hợp đồng view</text>
+    <text class="t s" x="756" y="328">xem trước như người dùng, xem SQL</text>
+    <text class="t s" x="756" y="346">lưu nháp, phát hành, quay lại phiên bản</text>
+
+    <rect class="bb" x="740" y="374" width="230" height="122" rx="6"/>
+    <text class="t w" x="756" y="396">MetaRegistry</text>
+    <text class="t s" x="756" y="414">định nghĩa đã phát hành</text>
+    <text class="t s" x="756" y="432">cache theo MetaVersion</text>
+    <text class="t s" x="756" y="450">tự sinh FilterSpec, danh sách</text>
+    <text class="t s" x="756" y="468">cột được đọc, cột được ghi</text>
+    <path class="lna" d="M700 400 L739 400" marker-end="url(#arA)"/>
+
+    <!-- SQL Server: hộp con nằm trên, tên database nằm dưới để mũi tên đi thẳng vào hộp con -->
+    <rect class="grp" x="24" y="530" width="1052" height="186" rx="8"/>
+    <text class="t s m" x="36" y="708">SQL Server: mỗi module một database (ADR 0001)</text>
+    <rect class="b" x="40" y="556" width="500" height="128" rx="6"/>
+    <rect class="bs" x="56" y="566" width="220" height="80" rx="4"/>
+    <text class="t s w" x="68" y="586">dbo: bảng nghiệp vụ</text>
+    <text class="t s" x="68" y="604">bảng ghi của màn</text>
+    <text class="t s" x="68" y="622">BranchCode, khóa ngoại ghép</text>
+    <rect class="bb" x="296" y="566" width="228" height="80" rx="4"/>
+    <text class="t s w" x="308" y="586">ui: view theo hợp đồng</text>
+    <text class="t s" x="308" y="604">nguồn đọc của màn</text>
+    <text class="t s" x="308" y="622">Id, BranchCode, cột phạm vi</text>
+    <text class="t s" x="308" y="640">không có điều kiện quyền</text>
+    <text class="t w" x="56" y="672">MES_Order, MES_Sewing, MES_Cutting…</text>
+
+    <rect class="bn" x="560" y="556" width="160" height="128" rx="6"/>
+    <text class="t w" x="576" y="586">MES_Report</text>
+    <text class="t s" x="576" y="606">view báo cáo</text>
+    <text class="t s" x="576" y="624">xuyên module</text>
+    <text class="t s m" x="576" y="642">chưa có</text>
+
+    <rect class="b" x="740" y="556" width="320" height="128" rx="6"/>
+    <rect class="bb" x="756" y="566" width="288" height="58" rx="4"/>
+    <text class="t s w" x="768" y="586">SysUi*: nguồn, định nghĩa màn</text>
+    <text class="t s" x="768" y="604">JSON có phiên bản, MetaVersion</text>
+    <text class="t w" x="756" y="650">MES_Core</text>
+    <text class="t s" x="756" y="670">Sys*: quyền, phạm vi, cột, menu</text>
+
+    <!-- xuống database: vẽ sau các hộp để đầu mũi tên không bị che -->
+    <path class="ln" d="M166 496 L166 565" marker-end="url(#ar)"/>
+    <text class="t s m" x="174" y="521">INSERT, UPDATE</text>
+    <path class="ln" d="M410 496 L410 565" marker-end="url(#ar)"/>
+    <text class="t s m" x="418" y="521">SELECT cột đã đăng ký</text>
+    <path class="lna" d="M855 496 L855 565" marker-end="url(#arA)"/>
+    <text class="t s m" x="863" y="521">đọc SysUi*</text>
+    <path class="lnb" d="M1030 354 L1030 565" marker-end="url(#arB)"/>
+    <text class="t s m" x="1022" y="521" text-anchor="end">ghi định nghĩa</text>
+  </svg>
+  </div>
+  <div class="legend" aria-hidden="true">
+    <span><i style="background:var(--brand-soft);border:1.5px solid var(--brand)"></i>Mới: engine, renderer, designer</span>
+    <span><i style="background:var(--link-soft);border:1.5px solid var(--link)"></i>Chốt cưỡng chế quyền đang có, dùng lại nguyên</span>
+    <span><i style="background:var(--surface);border:1.5px solid var(--ink)"></i>Đang có</span>
+    <span><i style="background:var(--req-bg);border:1.5px dashed var(--req-line)"></i>Đã chốt ở ADR, chưa làm</span>
+  </div>
+  <figcaption>Meta API không nhận tên bảng, tên cột hay câu SQL từ trình duyệt: trình duyệt chỉ gửi mã màn, mã khối và giá trị lọc. Mũi tên Meta API → MetaRegistry là lấy định nghĩa đã phát hành; từ định nghĩa đó engine biết view nào được đọc, cột nào được trả, bảng nào được ghi.</figcaption>
+</figure>
+
+<h3>API của engine</h3>
+<div class="tbl"><table>
+<thead><tr><th>Đường dẫn (tiền tố <code>/api/v1</code>)</th><th>Quyền</th><th>Việc</th></tr></thead>
+<tbody>
+<tr><td class="nw"><code>GET /meta/screens/:code</code></td><td><code>{tài nguyên}:view</code></td><td>Định nghĩa đã phát hành, đã cắt theo quyền: bỏ cột Ẩn, bỏ hành động người xem không có</td></tr>
+<tr><td class="nw"><code>GET /meta/data/:code/:block</code></td><td><code>:view</code></td><td>Danh sách: <code>page</code>, <code>pageSize</code> (100, tối đa 200), <code>sort</code>, <code>q</code>, <code>cf</code>, tham số của dải lọc</td></tr>
+<tr><td class="nw"><code>GET /meta/data/:code/:block/values</code></td><td><code>:view</code></td><td>Giá trị cho popup lọc theo cột (ADR 0011), qua <code>distinctValues</code></td></tr>
+<tr><td class="nw"><code>GET /meta/data/:code/:block/:id</code></td><td><code>:view</code></td><td>Một bản ghi cho form, kèm lưới con</td></tr>
+<tr><td class="nw"><code>POST, PUT, DELETE /meta/data/:code/:block</code></td><td><code>:create</code>, <code>:update</code>, <code>:delete</code></td><td>Ghi vào bảng ghi đã khai báo; chủ–chi tiết lưu trong một transaction</td></tr>
+<tr><td class="nw"><code>POST /meta/action/:code/:action</code></td><td>theo khai báo của hành động</td><td>Chuyển trạng thái có điều kiện, gọi hook</td></tr>
+<tr><td class="nw"><code>GET /meta/data/:code/:block/export</code></td><td><code>:export</code></td><td>CSV qua cùng chính sách cột, tối đa 10.000 dòng</td></tr>
+<tr><td class="nw"><code>/admin/designer/*</code></td><td><code>admin.designer</code>, <code>admin.release</code></td><td>Đọc cột của view, kiểm hợp đồng, xem trước, lưu nháp, phát hành, quay lại</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="vong-doi">
+<h2><span class="no">5</span>Từ view đến menu: vòng đời một màn</h2>
+<p class="lead">Màn T1 hoặc T2 đi hết vòng này trong vài giờ. Người biết SQL làm bước 1, 3, 4; người duyệt và quản trị làm bước 5, 7; hệ thống làm phần còn lại. Sửa màn là tạo phiên bản mới; phiên bản cũ vẫn giữ để quay lại.</p>
+<figure>
+  <div class="scroll">
+  <svg class="dg" viewBox="0 0 1180 304" role="img" aria-label="Tám bước: người biết SQL viết view, hệ thống kiểm hợp đồng view, người biết SQL kéo thả và xem trước, người duyệt phát hành, hệ thống sinh quyền và menu, quản trị cấp quyền cho vai trò, người dùng thấy màn; sửa màn quay lại bước kéo thả với phiên bản mới">
+    <defs>
+      <marker id="lf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fc"/></marker>
+    </defs>
+    <rect class="lane" x="10" y="26" width="1160" height="76" rx="6"/>
+    <rect class="lane" x="10" y="186" width="1160" height="76" rx="6"/>
+    <text class="t s w m" x="24" y="42">Người biết SQL</text>
+    <text class="t s w m" x="24" y="122">Người duyệt, quản trị</text>
+    <text class="t s w m" x="24" y="202">Hệ thống</text>
+
+    <!-- bước: x = 24 + i*144, rộng 122 -->
+    <rect class="bb" x="24" y="50" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="39" cy="72" r="9"/><text class="dn" x="39" y="76">1</text>
+    <text class="t s" x="54" y="68">Viết view ui.v…</text><text class="t s m" x="54" y="84">trên DEV, UAT</text>
+
+    <rect class="ba" x="168" y="210" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="183" cy="232" r="9"/><text class="dn" x="183" y="236">2</text>
+    <text class="t s" x="198" y="228">Kiểm hợp đồng,</text><text class="t s m" x="198" y="244">đọc sys.columns</text>
+
+    <rect class="bb" x="312" y="50" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="327" cy="72" r="9"/><text class="dn" x="327" y="76">3</text>
+    <text class="t s" x="342" y="68">Chọn mẫu, kéo thả,</text><text class="t s m" x="342" y="84">luật, biểu thức</text>
+
+    <rect class="bb" x="456" y="50" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="471" cy="72" r="9"/><text class="dn" x="471" y="76">4</text>
+    <text class="t s" x="486" y="68">Xem trước như</text><text class="t s m" x="486" y="84">người dùng X</text>
+
+    <rect class="b" x="600" y="130" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="615" cy="152" r="9"/><text class="dn" x="615" y="156">5</text>
+    <text class="t s" x="630" y="148">Duyệt view và</text><text class="t s m" x="630" y="164">định nghĩa</text>
+
+    <rect class="ba" x="744" y="210" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="759" cy="232" r="9"/><text class="dn" x="759" y="236">6</text>
+    <text class="t s" x="774" y="228">Sinh quyền, menu,</text><text class="t s m" x="774" y="244">MetaVersion + 1</text>
+
+    <rect class="b" x="888" y="130" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="903" cy="152" r="9"/><text class="dn" x="903" y="156">7</text>
+    <text class="t s" x="918" y="148">Cấp quyền cho</text><text class="t s m" x="918" y="164">vai trò</text>
+
+    <rect class="ba" x="1032" y="210" width="122" height="44" rx="6"/>
+    <circle class="dot" cx="1047" cy="232" r="9"/><text class="dn" x="1047" y="236">8</text>
+    <text class="t s" x="1062" y="228">Người dùng thấy</text><text class="t s m" x="1062" y="244">menu, màn chạy</text>
+
+    <path class="ln" d="M146 72 H157 V232 H167" marker-end="url(#lf)"/>
+    <path class="ln" d="M290 232 H301 V72 H311" marker-end="url(#lf)"/>
+    <path class="ln" d="M434 72 H455" marker-end="url(#lf)"/>
+    <path class="ln" d="M578 72 H589 V152 H599" marker-end="url(#lf)"/>
+    <path class="ln" d="M722 152 H733 V232 H743" marker-end="url(#lf)"/>
+    <path class="ln" d="M866 232 H877 V152 H887" marker-end="url(#lf)"/>
+    <path class="ln" d="M1010 152 H1021 V232 H1031" marker-end="url(#lf)"/>
+    <path class="lnd" d="M1093 254 V286 H373 V95" marker-end="url(#lf)"/>
+    <text class="t s m" x="733" y="281" text-anchor="middle">sửa màn: phiên bản mới, đi lại từ bước 3; quay lại phiên bản cũ bằng một nút</text>
+  </svg>
+  </div>
+  <figcaption>Bước 7 cố ý tách khỏi bước 6: phát hành chỉ tạo tài nguyên và 5 quyền, không gán cho vai trò nào. Theo nguyên tắc từ chối mặc định, màn mới không ai thấy cho tới khi quản trị cấp quyền ở màn Phân quyền, giống mọi màn hiện nay.</figcaption>
+</figure>
+<div class="note">
+  <b>Lên Production không cần build lại</b>
+  <p>Designer xuất "gói phát hành" gồm định nghĩa JSON và file migration tạo view (giống cách <code>sync-gen.ts</code> sinh migration). Gói được commit vào repo để có lịch sử và diff. Người chạy migration nạp gói bằng hai lệnh, <code>npm run migrate</code> và một lệnh nạp định nghĩa; frontend và backend chạy tiếp, không build, không khởi động lại.</p>
+</div>
+</section>
+
+<section id="dinh-nghia">
+<h2><span class="no">6</span>Định nghĩa màn hình</h2>
+<p class="lead">Một màn là một định nghĩa JSON có phiên bản, trỏ tới các nguồn dữ liệu đã đăng ký. Engine không lưu HTML hay code. Khi phát hành, máy chủ kiểm định nghĩa theo JSON Schema, kiểm mọi trường tham chiếu có trong nguồn, kiểm biểu thức đúng kiểu và không có vòng lặp, rồi mới đổi phiên bản.</p>
+
+<h3>Bảng lưu metadata (MES_Core, nhóm SysUi*)</h3>
+<div class="tbl"><table>
+<thead><tr><th>Bảng</th><th>Vai trò</th><th>Cột chính</th></tr></thead>
+<tbody>
+<tr><td><code>SysUiSource</code></td><td>Nguồn dữ liệu đã đăng ký: một view để đọc, một bảng để ghi (nếu có)</td><td><code>Code</code>, <code>DatabaseCode</code> (ORDER, SEWING…), <code>ReadObject</code> (<code>ui.vColorSizeLine</code>), <code>WriteTable</code>, <code>KeyColumn</code>, <code>ScopeType</code> (BRANCH, SHARED), <code>CheckedAt</code>, <code>IsActive</code></td></tr>
+<tr><td><code>SysUiSourceColumn</code></td><td>Cột đọc từ <code>sys.columns</code> của view, kèm thuộc tính engine cần</td><td><code>SourceId</code>, <code>Name</code>, <code>JsonKey</code> (camelCase), <code>SqlType</code>, <code>MaxLength</code>, <code>IsNullable</code>, <code>FilterKind</code> (text, number, date, day, datetime), <code>IsSensitive</code>, <code>IsWritable</code></td></tr>
+<tr><td><code>SysUiScreen</code></td><td>Màn: mã trùng mã tài nguyên, menu, mẫu</td><td><code>Code</code> (ví dụ <code>qms.defect</code>), <code>Name</code>, <code>ResourceId</code>, <code>MenuId</code>, <code>TemplateCode</code> (T1–T6), <code>PublishedVersionId</code>, <code>IsActive</code></td></tr>
+<tr><td><code>SysUiScreenVersion</code></td><td>Mỗi lần lưu là một phiên bản, không sửa tại chỗ</td><td><code>ScreenId</code>, <code>VersionNo</code>, <code>StatusCode</code> (DRAFT, IN_REVIEW, PUBLISHED, RETIRED), <code>Definition</code> NVARCHAR(MAX) có kiểm <code>ISJSON</code>, <code>Checksum</code>, <code>ChangeNote</code>, <code>ReviewedBy</code>, <code>PublishedAt</code>, <code>PublishedBy</code></td></tr>
+<tr><td><code>SysUiLookup</code></td><td>Nguồn tra cứu dùng lại: ô chọn, hiện tên thay mã</td><td><code>Code</code> (LINE, BRANCH_NAME, <code>CATALOG:UNIT</code>, <code>STATUS:LINE</code>), <code>Kind</code>, <code>ValueKey</code>, <code>LabelKey</code></td></tr>
+<tr><td><code>SysUiHook</code></td><td>Danh sách hook do code đăng ký lúc khởi động; designer chỉ chọn, không sửa</td><td><code>Code</code> (<code>order.shipment.save</code>), <code>Kind</code> (BEFORE_LOAD, SAVE, ACTION), <code>Description</code>, <code>ParamsSchema</code></td></tr>
+<tr><td><code>SysUiVersion</code></td><td>Một dòng: số phiên bản metadata, tăng cùng transaction với phát hành</td><td><code>Version</code>, <code>ModifiedAt</code>; frontend thấy đổi thì tải lại định nghĩa, như <code>X-Permission-Version</code></td></tr>
+</tbody></table></div>
+<p>Khi phát hành, engine tạo hoặc đồng bộ các dòng <code>SysResource</code>, 5 dòng <code>SysPermission</code>, <code>SysMenu</code>, <code>SysResourceScopeBinding</code>, <code>SysResourceField</code> với <code>IsSystem = 0</code>, ghi <code>SysAuditLog</code> và tăng <code>SysPermissionVersion</code> trong cùng transaction (ADR 0004).</p>
+
+<h3>Hợp đồng view: điều kiện để đăng ký</h3>
+<div class="cols">
+  <div class="panel">
+    <h4>Người viết view phải bảo đảm</h4>
+    <ol>
+      <li>Nằm trong schema <code>ui</code> của database module sở hữu dữ liệu, tên <code>ui.v&lt;Đối tượng&gt;</code>, PascalCase không dấu.</li>
+      <li>Mỗi dòng là một bản ghi, có cột <code>Id</code> duy nhất; màn có ghi thì <code>Id</code> trùng Id của bảng ghi.</li>
+      <li>Nguồn theo nhà máy có <code>BranchCode</code> của dòng gốc; cột phạm vi (<code>LineCode</code>, <code>CreatedBy</code>) ở đúng mức dòng; có <code>CreatedAt</code>.</li>
+      <li>Không có điều kiện quyền, không lọc nhà máy, không ORDER BY, TOP, DISTINCT.</li>
+      <li>Chỉ đọc bảng của chính module. Tên chuyền, tên chi nhánh, tên mục danh mục do engine tra qua lookup, không JOIN sang <code>MES_Core</code> hay <code>MES_Sync</code>. Báo cáo xuyên module đặt ở <code>MES_Report</code>.</li>
+      <li>Không gọi hàm vô hướng tự viết trên cột trả về, không đọc qua linked server.</li>
+    </ol>
+  </div>
+  <div class="panel">
+    <h4>Hệ thống tự kiểm khi đăng ký và mỗi lần phát hành</h4>
+    <ul>
+      <li>Đối tượng có thật trong <code>sys.views</code>, đúng schema <code>ui</code>, kiểm bằng <code>OBJECT_ID</code>; không nhận tên ba phần.</li>
+      <li>Mọi định danh khớp <code>^[A-Za-z_][A-Za-z0-9_]*$</code>; cột chỉ lấy từ <code>sys.columns</code> của chính view đó.</li>
+      <li>Có đủ cột bắt buộc theo <code>ScopeType</code> và theo chiều phạm vi đã khai báo; kiểu dữ liệu nằm trong danh sách hỗ trợ.</li>
+      <li>Chạy thử <code>SELECT TOP 1</code> với timeout ngắn, ghi thời gian vào lần kiểm.</li>
+      <li>Cột mới xuất hiện trong view: mặc định Ẩn, không trả ra cho tới khi người thiết kế đăng ký.</li>
+      <li>View tạo bằng login riêng: chỉ được tạo view trong <code>ui</code> và SELECT bảng của module, bị DENY trên <code>Sys*</code>.</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Ví dụ: Phân bổ màu cỡ viết bằng view và định nghĩa</h3>
+<p>Cùng màn đang có, viết lại để thấy độ dài thật của cấu hình. View đọc từ hai bảng của <code>MES_Order</code>; không có điều kiện nhà máy hay chuyền.</p>
+<pre><code><span class="c-c">-- MES_Order, file migration do designer xuất: MES_Order/00xx_ui_color_size.sql</span>
+<span class="c-k">CREATE OR ALTER VIEW</span> ui.vColorSizeLine <span class="c-k">AS</span>
+<span class="c-k">SELECT</span> l.Id, l.BranchCode, l.LineCode, l.CreatedBy, l.CreatedAt,
+       p.PlanNo, p.CustomerName, p.StyleCode, p.PoBuyDate, p.ShipDate,
+       l.StartDate, l.EndDate, l.AvgOutput, l.StatusCode,
+       l.Qty <span class="c-k">AS</span> PlanQty,
+       <span class="c-k">ISNULL</span>(c.AssignedQty, <span class="c-n">0</span>) <span class="c-k">AS</span> AssignedQty
+<span class="c-k">FROM</span> dbo.ShipmentPlanLine l
+<span class="c-k">JOIN</span> dbo.ShipmentPlan p
+  <span class="c-k">ON</span> p.Id = l.ShipmentPlanId <span class="c-k">AND</span> p.BranchCode = l.BranchCode
+<span class="c-k">LEFT JOIN</span> (<span class="c-k">SELECT</span> ShipmentPlanLineId, BranchCode, <span class="c-k">SUM</span>(AssignedQty) <span class="c-k">AS</span> AssignedQty
+           <span class="c-k">FROM</span> dbo.ShipmentPlanLineColorSize
+           <span class="c-k">GROUP BY</span> ShipmentPlanLineId, BranchCode) c
+  <span class="c-k">ON</span> c.ShipmentPlanLineId = l.Id <span class="c-k">AND</span> c.BranchCode = l.BranchCode;</code></pre>
+<p>Định nghĩa màn (rút gọn phần dải lọc). Trường viết theo khóa JSON camelCase, trùng <code>SysResourceField.Code</code> nên chính sách cột áp được ngay.</p>
+<pre><code>{
+  <span class="c-k">"code"</span>: <span class="c-s">"order.colorsize"</span>, <span class="c-k">"name"</span>: <span class="c-s">"Phân bổ màu cỡ"</span>, <span class="c-k">"template"</span>: <span class="c-s">"T3"</span>,
+  <span class="c-k">"menu"</span>: { <span class="c-k">"group"</span>: <span class="c-s">"order"</span>, <span class="c-k">"path"</span>: <span class="c-s">"/order/color-size"</span>, <span class="c-k">"sortOrder"</span>: <span class="c-n">50</span> },
+  <span class="c-k">"sources"</span>: {
+    <span class="c-k">"line"</span>: { <span class="c-k">"read"</span>: <span class="c-s">"ui.vColorSizeLine"</span>, <span class="c-k">"scope"</span>: <span class="c-s">"BRANCH"</span>,
+              <span class="c-k">"scopeColumns"</span>: { <span class="c-k">"LINE"</span>: <span class="c-s">"lineCode"</span>, <span class="c-k">"OWNER"</span>: <span class="c-s">"createdBy"</span> },
+              <span class="c-k">"write"</span>: <span class="c-s">"dbo.ShipmentPlanLine"</span>, <span class="c-k">"systemWritable"</span>: [<span class="c-s">"statusCode"</span>] },
+    <span class="c-k">"cell"</span>: { <span class="c-k">"read"</span>: <span class="c-s">"ui.vColorSizeCell"</span>, <span class="c-k">"write"</span>: <span class="c-s">"dbo.ShipmentPlanLineColorSize"</span>,
+              <span class="c-k">"parent"</span>: <span class="c-s">"line"</span>, <span class="c-k">"parentKey"</span>: <span class="c-s">"shipmentPlanLineId"</span>, <span class="c-k">"writable"</span>: [<span class="c-s">"assignedQty"</span>] }
+  },
+  <span class="c-k">"list"</span>: {
+    <span class="c-k">"source"</span>: <span class="c-s">"line"</span>, <span class="c-k">"pageSize"</span>: <span class="c-n">100</span>, <span class="c-k">"defaultSort"</span>: <span class="c-s">"createdAt:desc"</span>,
+    <span class="c-k">"columns"</span>: [
+      { <span class="c-k">"field"</span>: <span class="c-s">"customerName"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Khách hàng"</span>, <span class="c-k">"maxWidth"</span>: <span class="c-n">220</span>, <span class="c-k">"columnFilter"</span>: <span class="c-k">true</span> },
+      { <span class="c-k">"field"</span>: <span class="c-s">"styleCode"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Mã hàng"</span>, <span class="c-k">"format"</span>: <span class="c-s">"code"</span>, <span class="c-k">"columnFilter"</span>: <span class="c-k">true</span> },
+      { <span class="c-k">"field"</span>: <span class="c-s">"lineCode"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Chuyền may"</span>, <span class="c-k">"lookup"</span>: <span class="c-s">"LINE"</span>, <span class="c-k">"columnFilter"</span>: <span class="c-k">true</span> },
+      { <span class="c-k">"field"</span>: <span class="c-s">"planQty"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Số lượng kế hoạch"</span>, <span class="c-k">"format"</span>: <span class="c-s">"number"</span> },
+      { <span class="c-k">"field"</span>: <span class="c-s">"assignedQty"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Đã giao"</span>, <span class="c-k">"format"</span>: <span class="c-s">"number"</span> },
+      { <span class="c-k">"field"</span>: <span class="c-s">"remainQty"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Còn lại"</span>, <span class="c-k">"format"</span>: <span class="c-s">"number"</span>, <span class="c-k">"expr"</span>: <span class="c-s">"[planQty] - [assignedQty]"</span> },
+      { <span class="c-k">"field"</span>: <span class="c-s">"statusCode"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Trạng thái"</span>, <span class="c-k">"lookup"</span>: <span class="c-s">"STATUS:LINE"</span>, <span class="c-k">"columnFilter"</span>: <span class="c-k">true</span> },
+      { <span class="c-k">"field"</span>: <span class="c-s">"createdAt"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Ngày tạo"</span>, <span class="c-k">"format"</span>: <span class="c-s">"datetime"</span> }
+    ],
+    <span class="c-k">"rowTone"</span>: [{ <span class="c-k">"when"</span>: <span class="c-s">"[remainQty] &lt; 0"</span>, <span class="c-k">"tone"</span>: <span class="c-s">"error"</span>, <span class="c-k">"text"</span>: <span class="c-s">"Giao vượt kế hoạch"</span> }],
+    <span class="c-k">"open"</span>: { <span class="c-k">"on"</span>: <span class="c-s">"doubleClick"</span>, <span class="c-k">"detail"</span>: <span class="c-s">"allocate"</span> }
+  },
+  <span class="c-k">"details"</span>: { <span class="c-k">"allocate"</span>: {
+    <span class="c-k">"title"</span>: <span class="c-s">"Phân màu cỡ cho chuyền"</span>,
+    <span class="c-k">"header"</span>: [<span class="c-s">"customerName"</span>, <span class="c-s">"styleCode"</span>, <span class="c-s">"lineCode"</span>, <span class="c-s">"planQty"</span>],
+    <span class="c-k">"sheet"</span>: {
+      <span class="c-k">"source"</span>: <span class="c-s">"cell"</span>, <span class="c-k">"rows"</span>: <span class="c-s">"fixed"</span>,
+      <span class="c-k">"columns"</span>: [
+        { <span class="c-k">"field"</span>: <span class="c-s">"colorName"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Màu SP"</span>, <span class="c-k">"readonly"</span>: <span class="c-k">true</span> },
+        { <span class="c-k">"field"</span>: <span class="c-s">"sizeName"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Cỡ sản phẩm"</span>, <span class="c-k">"readonly"</span>: <span class="c-k">true</span> },
+        { <span class="c-k">"field"</span>: <span class="c-s">"planQty"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Số lượng KH"</span>, <span class="c-k">"readonly"</span>: <span class="c-k">true</span> },
+        { <span class="c-k">"field"</span>: <span class="c-s">"assignedQty"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Số lượng giao"</span>, <span class="c-k">"type"</span>: <span class="c-s">"int"</span>, <span class="c-k">"required"</span>: <span class="c-k">true</span>, <span class="c-k">"min"</span>: <span class="c-n">0</span> }
+      ],
+      <span class="c-k">"rules"</span>: [{ <span class="c-k">"check"</span>: <span class="c-s">"[assignedQty] &lt;= [planQty]"</span>,
+                  <span class="c-k">"message"</span>: <span class="c-s">"{colorName} / {sizeName}: còn {planQty}, đang nhập {assignedQty}"</span> }],
+      <span class="c-k">"footer"</span>: { <span class="c-k">"planQty"</span>: <span class="c-s">"SUM"</span>, <span class="c-k">"assignedQty"</span>: <span class="c-s">"SUM"</span> }
+    },
+    <span class="c-k">"onSave"</span>: {
+      <span class="c-k">"guard"</span>: <span class="c-s">"[statusCode] IN ('PLANNED', 'ALLOCATED')"</span>,
+      <span class="c-k">"guardMessage"</span>: <span class="c-s">"Dòng đang may hoặc đã xong, không phân lại màu cỡ."</span>,
+      <span class="c-k">"set"</span>: { <span class="c-k">"statusCode"</span>: <span class="c-s">"IF(SUM(rows.assignedQty) &gt; 0, 'ALLOCATED', 'PLANNED')"</span> }
+    }
+  } },
+  <span class="c-k">"actions"</span>: [
+    { <span class="c-k">"code"</span>: <span class="c-s">"save"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Lưu thay đổi"</span>, <span class="c-k">"permission"</span>: <span class="c-s">"update"</span>, <span class="c-k">"primary"</span>: <span class="c-k">true</span> },
+    { <span class="c-k">"code"</span>: <span class="c-s">"export"</span>, <span class="c-k">"label"</span>: <span class="c-s">"Xuất file"</span>, <span class="c-k">"permission"</span>: <span class="c-s">"export"</span> }
+  ]
+}</code></pre>
+<p>Khoảng 60 dòng cấu hình và 15 dòng SQL thay cho phần màn này hiện nằm ở <code>ColorSizePage.tsx</code>, <code>color-size.service.ts</code>, repository, DTO và controller. Phần màu chữ, nút chính vàng, ô bắt buộc tô vàng, ô sai tô đỏ, hỏi lại khi đóng popup chưa lưu đều do renderer lấy từ thành phần chung, nên màn mới tự đúng <code>quy-tac-ui-ux.md</code>.</p>
+
+<h3>Cột động: khai báo cho Kế hoạch chuẩn bị SX</h3>
+<pre><code><span class="c-k">"columnGroups"</span>: [{
+  <span class="c-k">"repeatFor"</span>: { <span class="c-k">"lookup"</span>: <span class="c-s">"SOURCE:prepStep"</span>, <span class="c-k">"where"</span>: <span class="c-s">"[isActive] = 1"</span>, <span class="c-k">"orderBy"</span>: <span class="c-s">"sortOrder"</span>,
+                 <span class="c-k">"key"</span>: <span class="c-s">"id"</span>, <span class="c-k">"label"</span>: <span class="c-s">"name"</span> },
+  <span class="c-k">"cells"</span>: { <span class="c-k">"source"</span>: <span class="c-s">"prepCell"</span>, <span class="c-k">"rowKey"</span>: <span class="c-s">"sewingPrepId"</span>, <span class="c-k">"groupKey"</span>: <span class="c-s">"prepStepId"</span> },
+  <span class="c-k">"columns"</span>: [
+    { <span class="c-k">"field"</span>: <span class="c-s">"planDate"</span>, <span class="c-k">"label"</span>: <span class="c-s">"KH"</span>, <span class="c-k">"format"</span>: <span class="c-s">"date"</span>, <span class="c-k">"readonly"</span>: <span class="c-k">true</span> },
+    { <span class="c-k">"field"</span>: <span class="c-s">"doneDate"</span>, <span class="c-k">"label"</span>: <span class="c-s">"TH"</span>, <span class="c-k">"type"</span>: <span class="c-s">"date"</span>, <span class="c-k">"editableIf"</span>: <span class="c-s">"[row.canEdit]"</span>, <span class="c-k">"max"</span>: <span class="c-s">"@Today"</span>,
+      <span class="c-k">"tone"</span>: [{ <span class="c-k">"when"</span>: <span class="c-s">"[doneDate] &gt; [planDate]"</span>, <span class="c-k">"tone"</span>: <span class="c-s">"error"</span>, <span class="c-k">"text"</span>: <span class="c-s">"Làm trễ"</span> }] }
+  ],
+  <span class="c-k">"fieldPolicy"</span>: <span class="c-s">"steps"</span>
+}]</code></pre>
+<p>KH tính trong view của ô (<code>DATEADD(day, -COALESCE(ps.PlanDays, s.PlanDays), StartDate)</code>) để lọc, sắp xếp, đếm thẻ số trong DB như ADR 0009. <code>fieldPolicy: "steps"</code> giữ đúng quy tắc hiện có: một mức chính sách cột áp cho cả nhóm cột KH, TH.</p>
+</section>
+
+<section id="phan-quyen">
+<h2><span class="no">7</span>Phân quyền cho màn metadata</h2>
+<p class="lead">Màn metadata không thêm mô hình quyền mới. Nó cắm vào đúng 5 lớp đang chạy (ADR 0002, 0004, 0005, 0006); khác biệt duy nhất là mã tài nguyên lấy từ định nghĩa thay vì viết trong decorator.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Lớp</th><th>Màn code hiện nay</th><th>Màn metadata: engine tự làm</th><th>Người thiết kế khai báo</th></tr></thead>
+<tbody>
+<tr><td class="nw">L1 Xác thực</td><td><code>AuthGuard</code>, phiên, A00 tra từ DB</td><td>Như cũ</td><td>–</td></tr>
+<tr><td class="nw">L2 Chức năng</td><td><code>@RequirePermission</code> viết cứng; tài nguyên, quyền, menu sinh bằng seed</td><td>Phát hành tạo tài nguyên, 5 quyền, menu; guard giải <code>{màn}:{hành động}</code>; nút của hành động không có quyền không hiện, API trả 403; không có <code>:view</code> thì mất mọi hành động khác</td><td>Nhóm menu; hành động nào cần quyền nào (Xác nhận PO cần <code>update</code>)</td></tr>
+<tr><td class="nw">L3 Phạm vi</td><td>Repository khai báo tài nguyên; gắn chiều bằng seed</td><td><code>scopeColumns</code> thành <code>SysResourceScopeBinding</code>; mọi đọc ghi qua <code>BaseRepository.limit()</code>; A00 đọc theo hợp phạm vi, ghi trả <code>AGGREGATE_READ_ONLY</code>; khối tổng hợp gom nhóm sau khi lọc</td><td>Cột nào trong view là nhà máy, chuyền, người tạo</td></tr>
+<tr><td class="nw">L4 Cột</td><td><code>@FieldResource</code>; cột đăng ký bằng seed</td><td>Mỗi cột đăng ký thành <code>SysResourceField</code> (mã là khóa JSON). Ẩn: bỏ khỏi JSON. Che: trả <code>***</code>. Chỉ đọc: gửi lên bị 403 <code>FIELD_READONLY</code>. Không lọc, không sắp xếp, không gợi ý giá trị theo cột Ẩn, Che. Xuất file cùng chính sách; ghi <code>SysSensitiveReadLog</code></td><td>Cờ nhạy cảm; designer gợi ý sẵn cho cột có tên chứa Price, Amount, Revenue, Cost</td></tr>
+<tr><td class="nw">L5 Ngoại lệ</td><td>Allow, Deny theo người; cột riêng theo người</td><td>Như cũ, vì khớp theo mã quyền và mã cột</td><td>–</td></tr>
+</tbody></table></div>
+
+<h3>Đường đi của một request</h3>
+<figure>
+  <div class="scroll">
+  <svg class="dg" viewBox="0 0 1100 250" role="img" aria-label="Đọc: kiểm token, kiểm quyền xem của màn, lấy định nghĩa, dựng SELECT từ cột đã đăng ký, gắn nhà máy và phạm vi, chạy view, ẩn che cột. Ghi: kiểm token, kiểm quyền sửa và A00, chặn cột chỉ đọc, kiểm kiểu luật biểu thức, kiểm phạm vi và chạy hook trong transaction, ghi bảng, ghi nhật ký">
+    <defs>
+      <marker id="rq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fc"/></marker>
+    </defs>
+    <text class="t s w m" x="20" y="22">Đọc danh sách: GET /meta/data/{màn}/{khối}</text>
+    <rect class="ba" x="20" y="32" width="138" height="52" rx="6"/><text class="t s w" x="89" y="54" text-anchor="middle">Token, phiên</text><text class="t s m" x="89" y="72" text-anchor="middle">AuthGuard</text>
+    <rect class="ba" x="176" y="32" width="138" height="52" rx="6"/><text class="t s w" x="245" y="54" text-anchor="middle">{màn}:view</text><text class="t s m" x="245" y="72" text-anchor="middle">guard quyền động</text>
+    <rect class="bb" x="332" y="32" width="138" height="52" rx="6"/><text class="t s w" x="401" y="54" text-anchor="middle">Lấy định nghĩa</text><text class="t s m" x="401" y="72" text-anchor="middle">MetaRegistry</text>
+    <rect class="bb" x="488" y="32" width="138" height="52" rx="6"/><text class="t s w" x="557" y="54" text-anchor="middle">Dựng SELECT</text><text class="t s m" x="557" y="72" text-anchor="middle">cột đã đăng ký, cf</text>
+    <rect class="ba" x="644" y="32" width="138" height="52" rx="6"/><text class="t s w" x="713" y="54" text-anchor="middle">Nhà máy, L3</text><text class="t s m" x="713" y="72" text-anchor="middle">BaseRepository</text>
+    <rect class="b" x="800" y="32" width="138" height="52" rx="6"/><text class="t s w" x="869" y="54" text-anchor="middle">Chạy view</text><text class="t s m" x="869" y="72" text-anchor="middle">timeout theo màn</text>
+    <rect class="ba" x="956" y="32" width="124" height="52" rx="6"/><text class="t s w" x="1018" y="54" text-anchor="middle">Ẩn, che cột</text><text class="t s m" x="1018" y="72" text-anchor="middle">FieldPolicy</text>
+    <path class="ln" d="M158 58 H175" marker-end="url(#rq)"/><path class="ln" d="M314 58 H331" marker-end="url(#rq)"/><path class="ln" d="M470 58 H487" marker-end="url(#rq)"/><path class="ln" d="M626 58 H643" marker-end="url(#rq)"/><path class="ln" d="M782 58 H799" marker-end="url(#rq)"/><path class="ln" d="M938 58 H955" marker-end="url(#rq)"/>
+    <text class="t s er" x="89" y="102" text-anchor="middle">401</text>
+    <text class="t s er" x="245" y="102" text-anchor="middle">403</text>
+    <text class="t s er" x="401" y="102" text-anchor="middle">404 nếu chưa phát hành</text>
+    <text class="t s er" x="557" y="102" text-anchor="middle">422 trường lạ trong cf</text>
+    <text class="t s m" x="713" y="102" text-anchor="middle">không phép gán: 0 dòng</text>
+    <text class="t s m" x="869" y="102" text-anchor="middle">quá giờ: báo lỗi, ghi log</text>
+    <text class="t s m" x="1018" y="102" text-anchor="middle">log đọc nhạy cảm</text>
+
+    <text class="t s w m" x="20" y="146">Ghi: POST, PUT /meta/data/{màn}/{khối}</text>
+    <rect class="ba" x="20" y="156" width="138" height="52" rx="6"/><text class="t s w" x="89" y="178" text-anchor="middle">Token, phiên</text><text class="t s m" x="89" y="196" text-anchor="middle">AuthGuard</text>
+    <rect class="ba" x="176" y="156" width="138" height="52" rx="6"/><text class="t s w" x="245" y="178" text-anchor="middle">{màn}:update</text><text class="t s m" x="245" y="196" text-anchor="middle">A00 chỉ đọc</text>
+    <rect class="ba" x="332" y="156" width="138" height="52" rx="6"/><text class="t s w" x="401" y="178" text-anchor="middle">Cột gửi lên</text><text class="t s m" x="401" y="196" text-anchor="middle">chỉ cột Sửa được</text>
+    <rect class="bb" x="488" y="156" width="138" height="52" rx="6"/><text class="t s w" x="557" y="178" text-anchor="middle">Kiểu, luật</text><text class="t s m" x="557" y="196" text-anchor="middle">biểu thức tính lại</text>
+    <rect class="ba" x="644" y="156" width="138" height="52" rx="6"/><text class="t s w" x="713" y="178" text-anchor="middle">Phạm vi, khóa</text><text class="t s m" x="713" y="196" text-anchor="middle">hook nếu có</text>
+    <rect class="b" x="800" y="156" width="138" height="52" rx="6"/><text class="t s w" x="869" y="178" text-anchor="middle">Ghi bảng dbo</text><text class="t s m" x="869" y="196" text-anchor="middle">một transaction</text>
+    <rect class="b" x="956" y="156" width="124" height="52" rx="6"/><text class="t s w" x="1018" y="178" text-anchor="middle">Nhật ký</text><text class="t s m" x="1018" y="196" text-anchor="middle">bỏ cột nhạy cảm</text>
+    <path class="ln" d="M158 182 H175" marker-end="url(#rq)"/><path class="ln" d="M314 182 H331" marker-end="url(#rq)"/><path class="ln" d="M470 182 H487" marker-end="url(#rq)"/><path class="ln" d="M626 182 H643" marker-end="url(#rq)"/><path class="ln" d="M782 182 H799" marker-end="url(#rq)"/><path class="ln" d="M938 182 H955" marker-end="url(#rq)"/>
+    <text class="t s er" x="89" y="226" text-anchor="middle">401</text>
+    <text class="t s er" x="245" y="226" text-anchor="middle">403, AGGREGATE_READ_ONLY</text>
+    <text class="t s er" x="401" y="226" text-anchor="middle">403 FIELD_READONLY</text>
+    <text class="t s er" x="557" y="226" text-anchor="middle">422 VALIDATION_FAILED</text>
+    <text class="t s er" x="713" y="226" text-anchor="middle">404, 403 SCOPE_DENIED</text>
+    <text class="t s er" x="869" y="226" text-anchor="middle">409 trùng, khóa ngoại</text>
+    <text class="t s m" x="1018" y="226" text-anchor="middle">sau khi commit</text>
+  </svg>
+  </div>
+  <figcaption>Mã lỗi giữ đúng hợp đồng API hiện có (<code>api-contract.md</code> mục 1), nên giao diện xử lý lỗi như các màn đang chạy. Dòng ngoài phạm vi trả 404 như dòng không tồn tại, không phân biệt.</figcaption>
+</figure>
+
+<h3>Quyền của người thiết kế</h3>
+<ul>
+  <li><code>admin.designer</code>: xem nguồn, soạn nháp, xem trước. <code>admin.release</code>: duyệt, phát hành, quay lại phiên bản. Hai quyền tách nhau để người soạn không tự phát hành; ở DEV có thể giao cả hai cho một người.</li>
+  <li>Phát hành không cấp quyền cho ai. Quản trị cấp ở màn Phân quyền như mọi màn khác; trần quyền quản trị của ADR 0004 không đổi.</li>
+  <li>Xem trước "như người dùng X ở nhà máy Y" dùng lại cách tính của <code>GET /admin/users/:id/effective</code>. Ở Production, dữ liệu xem trước lấy giao giữa quyền của người thiết kế và của X, để không ai mượn tên người khác xem dữ liệu mình không có quyền.</li>
+</ul>
+
+<h3>Rủi ro riêng của metadata và cách chặn</h3>
+<div class="tbl"><table>
+<thead><tr><th>Rủi ro</th><th>Chặn bằng</th></tr></thead>
+<tbody>
+<tr><td>Tên bảng, tên cột trong metadata trỏ sang schema hoặc database khác (Kysely tách chuỗi theo dấu chấm và theo <code> as </code>)</td><td>Kiểm từng phần tên bằng regex; chỉ schema <code>ui</code>; xác minh bằng <code>OBJECT_ID</code> và <code>sys.views</code>; cấm tên ba phần; không bao giờ đưa chuỗi metadata vào <code>sql.raw</code>, <code>sql.lit</code></td></tr>
+<tr><td>View đọc dữ liệu bí mật (<code>PasswordHash</code>, <code>RefreshTokenHash</code>) hoặc nhà máy khác</td><td>Login riêng bị DENY trên <code>Sys*</code>; view qua bước duyệt; engine luôn gắn <code>BranchCode</code> của phiên dù view không lọc</td></tr>
+<tr><td>Khai nhầm nguồn thành dùng chung để mất lọc nhà máy</td><td>Chỉ người có <code>admin.release</code> đổi loại phạm vi; nguồn có cột <code>BranchCode</code> mà khai dùng chung thì lint chặn phát hành</td></tr>
+<tr><td>Cột mới thêm vào view lộ ra</td><td>Chỉ SELECT cột đã đăng ký; cột mới mặc định Ẩn</td></tr>
+<tr><td>Dò giá trị cột Ẩn, Che qua sắp xếp, lọc, tìm, <code>/values</code></td><td>Dùng lại <code>unreadable</code>, <code>readableQuery</code>; kiểm từng cặp sắp xếp, không chỉ cặp đầu</td></tr>
+<tr><td>Ghi qua view, ghi cột không được phép</td><td>Không ghi vào view; chỉ ghi bảng khai báo và cột <code>writable</code>; <code>Id</code>, <code>BranchCode</code>, <code>CreatedBy</code> do repository đặt</td></tr>
+<tr><td>Biểu thức chạy code tùy ý</td><td>Bộ thông dịch cây cú pháp, danh sách hàm trắng, giới hạn độ dài, độ sâu, số bước; không <code>eval</code>, không <code>new Function</code></td></tr>
+<tr><td>Hook bị gọi tùy ý</td><td>Hook đăng ký bằng code, tra theo tên trong <code>SysUiHook</code>; trình duyệt chỉ gửi mã hành động của màn</td></tr>
+<tr><td>View nặng làm chậm cả hệ thống</td><td>Timeout theo màn; 200 dòng mỗi trang; 10.000 dòng mỗi lần xuất; 500 giá trị lọc; giới hạn tần suất theo người dùng</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="validate">
+<h2><span class="no">8</span>Validate</h2>
+<p class="lead">Một luật khai báo một lần, chạy hai nơi: trình duyệt để báo ngay khi rời ô, máy chủ để cưỡng chế. Hôm nay cùng một luật đang nằm ở DTO <code>class-validator</code>, ở service và chép lại ở frontend (<code>cutRatioRules.ts</code>, chuỗi <code>saveBlocked</code> của Kế hoạch xuất hàng); engine bỏ được phần chép lại này.</p>
+<div class="note">
+  <b>Luật gắn với bảng ghi, không chỉ với màn</b>
+  <p>Hai màn cùng ghi một bảng (như Kế hoạch xuất hàng và Xếp chuyền cùng dùng <code>ShipmentPlan</code>) phải chịu cùng luật toàn vẹn. Vì vậy luật toàn vẹn khai ở nguồn ghi (<code>SysUiSource</code>), mọi màn ghi vào đó đều chạy; luật của màn chỉ thêm phần hướng dẫn nhập.</p>
+</div>
+<div class="tbl"><table>
+<thead><tr><th>Tầng</th><th>Lấy từ đâu</th><th>Ví dụ trong MES</th><th>Chạy ở</th></tr></thead>
+<tbody>
+<tr><td>1. Kiểu dữ liệu</td><td>Tự suy từ <code>sys.columns</code>: INT, DECIMAL(p,s), NVARCHAR(n), DATE</td><td>SL là số nguyên; giá tối đa 4 chữ số lẻ; mã hàng tối đa 120 ký tự</td><td>Trình duyệt và máy chủ</td></tr>
+<tr><td>2. Luật trường</td><td>Khai báo: bắt buộc, nhỏ nhất, lớn nhất, độ dài, mẫu chữ, danh sách giá trị, nguồn tra cứu</td><td>Loại đơn hàng thuộc danh mục <code>ORDER_TYPE</code>; mã bước theo mẫu <code>^[A-Z0-9._-]{1,30}$</code>; ngày TH không sau hôm nay</td><td>Trình duyệt và máy chủ</td></tr>
+<tr><td>3. Luật dòng</td><td>Biểu thức trên nhiều trường của một dòng</td><td>SL giao ≤ SL KH; ngày kết thúc ≥ ngày bắt đầu; giờ nghỉ ngắn hơn ca</td><td>Trình duyệt và máy chủ</td></tr>
+<tr><td>4. Luật lưới con</td><td>Biểu thức gom trên các dòng con</td><td>Màu + cỡ không trùng, không phân biệt hoa thường; tổng SL KHXH lớn hơn 0; tối đa 300 dòng</td><td>Trình duyệt và máy chủ</td></tr>
+<tr><td>5. Luật cần dữ liệu khác</td><td>Ràng buộc DB (UNIQUE, FK, CHECK) hoặc hook</td><td>Số đơn duy nhất trong nhà máy; xóa PO đã có kế hoạch trả 409; SL còn lại tính trên mọi kế hoạch</td><td>Máy chủ</td></tr>
+<tr><td>6. Quyền</td><td>Chính sách cột, phạm vi, A00</td><td><code>FIELD_READONLY</code>, <code>SCOPE_DENIED</code>, <code>AGGREGATE_READ_ONLY</code></td><td>Máy chủ (trình duyệt ẩn, khóa ô trước)</td></tr>
+</tbody></table></div>
+
+<h3>Thứ tự kiểm khi bấm Lưu thay đổi</h3>
+<ol>
+  <li>Kiểm quyền hành động và nhà máy tổng hợp A00.</li>
+  <li>Bỏ trường không có trong định nghĩa; trường không Sửa được theo chính sách cột trả 403 <code>FIELD_READONLY</code>, nêu tên cột.</li>
+  <li>Ép kiểu, kiểm tầng 1 và 2.</li>
+  <li>Tính lại mọi trường biểu thức trên máy chủ từ dữ liệu gốc; giá trị trình duyệt gửi cho trường tính bị bỏ.</li>
+  <li>Kiểm tầng 3 và 4.</li>
+  <li>Mở transaction; khóa dòng theo thứ tự cha trước con nếu định nghĩa có khai; chạy hook nếu có; kiểm giá trị sau khi gộp vẫn trong phạm vi.</li>
+  <li>Ghi. Lỗi UNIQUE, FK, CHECK của DB đổi sang 409 hoặc 422 kèm câu dễ hiểu, như cách màn Thông tin đơn hàng đang làm với lỗi khóa ngoại.</li>
+  <li>Commit, ghi nhật ký (bỏ cột nhạy cảm), trả bản ghi đã qua chính sách cột.</li>
+</ol>
+
+<h3>Định dạng lỗi</h3>
+<p>Giữ khung lỗi hiện có, thêm <code>row</code> và <code>rule</code> vào từng chi tiết để giao diện tô đúng ô trong lưới nhập và hiện câu ngay dưới ô form (<code>validateInputOnBlur</code>, quy tắc UI/UX mục D.2).</p>
+<pre><code>{ <span class="c-k">"error"</span>: {
+    <span class="c-k">"code"</span>: <span class="c-s">"VALIDATION_FAILED"</span>,
+    <span class="c-k">"message"</span>: <span class="c-s">"Có 1 ô chưa hợp lệ."</span>,
+    <span class="c-k">"details"</span>: [ { <span class="c-k">"field"</span>: <span class="c-s">"assignedQty"</span>, <span class="c-k">"row"</span>: <span class="c-n">3</span>, <span class="c-k">"rule"</span>: <span class="c-s">"allocate.sheet.rules[0]"</span>,
+                   <span class="c-k">"message"</span>: <span class="c-s">"Đen / M: còn 120, đang nhập 150"</span> } ] },
+  <span class="c-k">"traceId"</span>: <span class="c-s">"…"</span> }</code></pre>
+</section>
+
+<section id="bieu-thuc">
+<h2><span class="no">9</span>Biểu thức và cách tính trên layout</h2>
+<p class="lead">Cú pháp gần công thức Excel, vì người dùng nhà máy và BA làm việc bằng Excel (các file mẫu Kế hoạch chuẩn bị SX đều là bảng tính). Biểu thức được dịch thành cây cú pháp lúc lưu; trình duyệt và máy chủ chạy cùng một bộ thông dịch đặt trong thư mục <code>shared</code> (CLAUDE.md mục 6).</p>
+
+<div class="cols">
+  <div class="panel">
+    <h4>Cú pháp</h4>
+    <div class="tbl" style="margin:0"><table>
+    <tbody>
+    <tr><td>Trường của dòng</td><td><code>[planQty]</code></td></tr>
+    <tr><td>Trường của bản ghi cha</td><td><code>[parent.planQty]</code></td></tr>
+    <tr><td>Lưới con trong hàm gom</td><td><code>SUM(rows.assignedQty)</code></td></tr>
+    <tr><td>Biến hệ thống</td><td><code>@Today</code>, <code>@Now</code> (giờ Việt Nam), <code>@UserId</code>, <code>@BranchCode</code>, <code>@IsAggregate</code></td></tr>
+    <tr><td>Toán tử</td><td><code>+ - * / %</code>, <code>= &lt;&gt; &lt; &lt;= &gt; &gt;=</code>, <code>AND OR NOT</code>, <code>IN (…)</code>, <code>&amp;</code> nối chuỗi</td></tr>
+    <tr><td>Hằng</td><td>số, <code>'chuỗi'</code>, <code>TRUE</code>, <code>FALSE</code>, <code>NULL</code></td></tr>
+    </tbody></table></div>
+  </div>
+  <div class="panel">
+    <h4>Hàm cho phép</h4>
+    <div class="tbl" style="margin:0"><table>
+    <tbody>
+    <tr><td>Số</td><td><code>ROUND CEILING FLOOR ABS MIN MAX MOD</code></td></tr>
+    <tr><td>Logic</td><td><code>IF IFS AND OR NOT COALESCE ISBLANK</code></td></tr>
+    <tr><td>Chuỗi</td><td><code>LEN UPPER LOWER TRIM LEFT RIGHT CONCAT CONTAINS</code></td></tr>
+    <tr><td>Ngày</td><td><code>TODAY DATE DATEADD DATEDIFF WEEKNUM WEEKDAY WORKDAY MINUTES</code></td></tr>
+    <tr><td>Gom lưới con</td><td><code>SUM COUNT AVG MINOF MAXOF DISTINCTCOUNT</code></td></tr>
+    <tr><td>Tra cứu (máy chủ)</td><td><code>LOOKUP('CATALOG:UNIT', [unitCode], 'name')</code></td></tr>
+    </tbody></table></div>
+  </div>
+</div>
+<p><code>WEEKNUM</code> theo tuần ISO như thanh tuần T1…T53. <code>WORKDAY</code> hiện bỏ Chủ nhật đúng quy tắc tạm của Xếp chuyền; khi BA chốt lịch nghỉ lễ thì hàm đọc bảng ngày nghỉ, mọi màn dùng hàm này đổi theo mà không sửa từng màn.</p>
+
+<h3>Dùng ở đâu trong định nghĩa</h3>
+<div class="tbl"><table>
+<thead><tr><th>Thuộc tính</th><th>Ý nghĩa</th><th>Ví dụ trong MES</th></tr></thead>
+<tbody>
+<tr><td><code>expr</code></td><td>Cột hoặc ô tính</td><td>Thành tiền <code>[qty] * [unitPrice]</code></td></tr>
+<tr><td><code>default</code></td><td>Giá trị điền sẵn suy ra từ dữ liệu (quy tắc UI/UX D.5)</td><td>SL KHXH <code>[remainingQty]</code></td></tr>
+<tr><td><code>visibleIf</code></td><td>Hiện khi</td><td>Ngày xác nhận hiện khi <code>[statusCode] = 'CONFIRMED'</code></td></tr>
+<tr><td><code>readonlyIf</code></td><td>Chỉ đọc khi (tô xám)</td><td>Dòng dàn chuyền <code>[statusCode] IN ('IN_PRODUCTION', 'DONE')</code></td></tr>
+<tr><td><code>requiredIf</code></td><td>Bắt buộc khi (tô vàng)</td><td>Ngày xuất hàng bắt buộc khi <code>[statusCode] &lt;&gt; 'NEW'</code></td></tr>
+<tr><td><code>rules[].check</code></td><td>Luật kiểm, kèm câu báo có chỗ điền giá trị</td><td><code>[assignedQty] &lt;= [planQty]</code></td></tr>
+<tr><td><code>tone[].when</code></td><td>Tô màu ô, dòng (luôn kèm chữ, quy tắc UI/UX C.3)</td><td>TH làm trễ <code>[doneDate] &gt; [planDate]</code></td></tr>
+<tr><td><code>footer</code></td><td>Dòng tổng</td><td><code>SUM</code> của SL giao</td></tr>
+<tr><td><code>onSave.set</code></td><td>Đặt giá trị khi lưu (máy chủ tính)</td><td>Trạng thái dòng theo <code>SUM(rows.assignedQty)</code></td></tr>
+<tr><td><code>actions[].guard</code></td><td>Điều kiện để hành động chạy được; nút khóa nói lý do</td><td>Xác nhận PO khi <code>[qty] &gt; 0 AND [statusCode] = 'DRAFT'</code></td></tr>
+</tbody></table></div>
+
+<h3>Cách engine tính</h3>
+<ol>
+  <li><b>Lúc phát hành:</b> dịch thành cây cú pháp và lưu kèm định nghĩa; kiểm kiểu theo kiểu cột; lập đồ thị phụ thuộc giữa các trường. Có vòng (A cần B, B cần A) thì từ chối phát hành và chỉ ra vòng.</li>
+  <li><b>Trên trình duyệt:</b> người dùng sửa một ô thì chỉ các trường phụ thuộc được tính lại, theo thứ tự của đồ thị, giống Excel tính lại ô. Luật, màu, dòng tổng đổi ngay, không gọi máy chủ.</li>
+  <li><b>Trên máy chủ:</b> khi lưu, tính lại mọi trường biểu thức từ dữ liệu gốc và chạy lại mọi luật; không tin giá trị tính sẵn của trình duyệt.</li>
+  <li><b>Số cần lọc, sắp xếp, đếm trong DB</b> (KH của bước chuẩn bị, doanh số, thẻ số) tính trong view hoặc cột tính của bảng, không bằng biểu thức trình duyệt, vì biểu thức chỉ thấy trang đang xem.</li>
+</ol>
+
+<h3>Quy tắc đang viết bằng TS, viết lại bằng biểu thức</h3>
+<pre><code><span class="c-c">-- Xếp chuyền (line-plan.service.ts và LinePlanPage.tsx đang viết hai lần)</span>
+productionDays = CEILING([qty] / [avgOutput])
+endDate        = WORKDAY([startDate], [productionDays] + [offDays])
+
+<span class="c-c">-- Ca làm việc (catalog.service.ts)</span>
+workMinutes    = MOD(MINUTES([endTime]) - MINUTES([startTime]) + 1440, 1440) - [breakMinutes]
+
+<span class="c-c">-- Trạng thái vào chuyền (prep.service.ts, chỉ xét bước đang dùng)</span>
+statusCode     = IFS([startDate] &gt; @Today, 'NOT_DUE',
+                     COUNT(rows.doneDate) = COUNT(rows.stepId), 'READY',
+                     TRUE, 'NOT_READY')</code></pre>
+
+<div class="note warn">
+  <b>An toàn của bộ thông dịch</b>
+  <p>Không dùng <code>eval</code> hay <code>new Function</code>. Bộ thông dịch duyệt cây cú pháp, chỉ gọi hàm trong danh sách trắng, không chạm biến toàn cục, mạng hay file. Giới hạn: 2.000 ký tự, độ sâu 32, 10.000 bước mỗi lần tính. Hàm ngày dùng múi giờ Asia/Ho_Chi_Minh như ADR 0011. Số tiền tính bằng kiểu thập phân chính xác hoặc để SQL tính, tránh lỗi làm tròn của số thực.</p>
+</div>
+</section>
+
+<section id="keo-tha">
+<h2><span class="no">10</span>Kéo thả: màn Thiết kế màn hình</h2>
+<p class="lead">Bản rút gọn của designer, chạy được ngay trên trang này với dữ liệu mẫu (khách hàng hư cấu như trong seed). Kéo trường vào tiêu đề lưới hoặc bấm dấu cộng; kéo tiêu đề để đổi thứ tự; bấm tiêu đề để sửa nhãn, công thức; sửa SL giao ngay trên lưới; đổi người xem để thấy phân quyền áp vào. Định nghĩa JSON và câu SQL đổi theo từng thao tác.</p>
+
+<div class="demo" id="demo">
+  <div class="d-top">
+    <div class="d-title"><b>Thiết kế màn: Phân bổ màu cỡ</b><span class="d-chip">Nháp, phiên bản 4</span></div>
+    <label class="d-as" for="d-user">Xem như
+      <select id="d-user">
+        <option value="planner">Lê Thị Mai, Kế hoạch A01 (cả nhà máy)</option>
+        <option value="leader">Nguyễn Văn Tâm, Trưởng chuyền 3 (A01-L03)</option>
+      </select>
+    </label>
+  </div>
+  <div class="d-body">
+    <aside class="d-pal" aria-label="Trường của nguồn dữ liệu">
+      <div class="d-h">Nguồn <code>ui.vColorSizeLine</code></div>
+      <ul id="d-fields"></ul>
+      <p class="d-hint">Kéo trường vào tiêu đề lưới, hoặc bấm +.</p>
+    </aside>
+    <div class="d-canvas">
+      <div class="d-bar">
+        <span class="d-h" style="margin:0">Lưới xem, 100 dòng mới tạo lên trước</span>
+        <span class="d-bar-r"><span id="d-perf" class="d-perf"></span><button type="button" class="d-btn" id="d-addcalc">Thêm cột tính</button></span>
+      </div>
+      <div class="d-grid-wrap"><table class="d-grid" id="d-grid" aria-label="Lưới xem trước"></table></div>
+      <ul class="d-issues" id="d-data-issues" aria-live="polite"></ul>
+    </div>
+    <aside class="d-props" aria-label="Thuộc tính">
+      <div class="d-h">Thuộc tính cột</div>
+      <div id="d-props"></div>
+      <div class="d-h" style="margin-top:14px">Luật kiểm của lưới</div>
+      <label class="d-lb" for="d-rule">Điều kiện đúng</label>
+      <input id="d-rule" class="d-in mono" value="[assignedQty] &lt;= [planQty]" spellcheck="false" autocomplete="off">
+      <label class="d-lb" for="d-msg">Câu báo khi sai</label>
+      <input id="d-msg" class="d-in" value="{styleCode}: SL giao {assignedQty} vượt SL KH {planQty}" autocomplete="off">
+    </aside>
+  </div>
+  <div class="d-foot">
+    <div class="d-tabs" role="tablist" aria-label="Kết quả">
+      <button type="button" role="tab" id="t-lint" aria-selected="true" aria-controls="o-lint">Vấn đề</button>
+      <button type="button" role="tab" id="t-json" aria-selected="false" aria-controls="o-json" tabindex="-1">JSON định nghĩa</button>
+      <button type="button" role="tab" id="t-sql" aria-selected="false" aria-controls="o-sql" tabindex="-1">SQL sinh ra</button>
+    </div>
+    <div id="o-lint" role="tabpanel" aria-labelledby="t-lint"><ul class="d-lint" id="d-lint"></ul></div>
+    <pre id="o-json" role="tabpanel" aria-labelledby="t-json" hidden></pre>
+    <pre id="o-sql" role="tabpanel" aria-labelledby="t-sql" hidden></pre>
+  </div>
+</div>
+<p class="d-note">Dữ liệu mẫu, không phải dữ liệu thật. Bộ thông dịch trong bản thử là phiên bản thu nhỏ của thiết kế ở mục 9: dịch công thức thành cây cú pháp rồi tính, không dùng <code>eval</code>. Thử gõ <code>[planQty] - [assignedQty] - [abc]</code> vào công thức, hoặc tạo hai cột tính trỏ vào nhau, để thấy lint chặn.</p>
+
+<h3>Designer đầy đủ gồm gì</h3>
+<div class="cols">
+  <div class="panel">
+    <h4>Bố cục</h4>
+    <ul>
+      <li><b>Thanh trên:</b> tên màn, phiên bản, Xem như người dùng nào ở nhà máy nào, Kiểm tra, Lưu nháp, Gửi duyệt, Phát hành.</li>
+      <li><b>Cột trái:</b> nguồn dữ liệu và trường (kiểu SQL, cờ nhạy cảm), các khối, sáu mẫu màn.</li>
+      <li><b>Giữa:</b> khung <code>WorkPage</code> thật ở chế độ thiết kế. Kéo trường vào lưới, form, dải lọc; kéo đổi thứ tự; kéo mép tiêu đề để đặt độ rộng mặc định.</li>
+      <li><b>Cột phải:</b> thuộc tính của phần đang chọn: nhãn, định dạng, bắt buộc, chỉ đọc khi, hiện khi, công thức, luật, lọc theo cột.</li>
+      <li><b>Dưới:</b> Vấn đề (lỗi chặn phát hành và cảnh báo), JSON, SQL, lịch sử phiên bản.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>Thao tác và cài đặt</h4>
+    <ul>
+      <li>Mỗi thao tác kéo có nút thay thế (Thêm, Chuyển trái, Chuyển phải, Bỏ) để dùng bằng bàn phím và trên máy cảm ứng.</li>
+      <li>Có hoàn tác, làm lại; tự lưu nháp; rời màn khi chưa lưu thì hỏi lại (<code>useLeaveGuard</code>).</li>
+      <li>Xem bố cục điện thoại 360 px; mỗi khối đặt được "ẩn trên điện thoại".</li>
+      <li>Designer dùng chính renderer ở chế độ thiết kế, nên thấy gì là chạy nấy; không có hai bộ vẽ.</li>
+      <li>Thư viện kéo thả <code>dnd-kit</code> (MIT, hỗ trợ bàn phím); định nghĩa kiểm bằng JSON Schema (<code>ajv</code>) ở cả hai đầu. Cả hai phải ghi vào ADR 0003.</li>
+      <li>Độ rộng cột: designer đặt mặc định dùng chung; người xem kéo giãn vẫn lưu riêng trên trình duyệt như ADR 0011, nút ở ô STT đưa về mặc định của designer.</li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<section id="debug">
+<h2><span class="no">11</span>Debug, kiểm thử, phát hành</h2>
+<p class="lead">Mục tiêu của người dùng: khi số sai thì sửa dữ liệu và công thức, không phải đọc code. Mỗi câu hỏi thường gặp có một công cụ trả lời trong designer.</p>
+<div class="tbl"><table>
+<thead><tr><th>Câu hỏi</th><th>Công cụ</th><th>Ở đâu</th></tr></thead>
+<tbody>
+<tr><td>Engine đọc gì, gắn điều kiện nhà máy và phạm vi nào?</td><td>Xem SQL kèm tham số</td><td>Designer, khi xem trước</td></tr>
+<tr><td>View có chậm không?</td><td>Thời gian chạy, số dòng của lần xem trước</td><td>Designer; log máy chủ theo mã màn</td></tr>
+<tr><td>Người X ở nhà máy Y thấy gì, cột nào bị che?</td><td>Xem như người dùng</td><td>Designer, dùng lại cách tính của <code>/admin/users/:id/effective</code></td></tr>
+<tr><td>Công thức ra số mấy với dòng này?</td><td>Thử biểu thức, xem giá trị từng nhánh của cây cú pháp</td><td>Ô thử cạnh công thức</td></tr>
+<tr><td>Dữ liệu mẫu vi phạm luật nào?</td><td>Thử luật trên vài dòng mẫu</td><td>Bảng thử trong designer</td></tr>
+<tr><td>Ai đổi gì, khi nào?</td><td>Lịch sử phiên bản, so sánh hai phiên bản, quay lại</td><td>Designer; <code>SysAuditLog</code></td></tr>
+<tr><td>Lỗi người dùng báo thuộc màn nào, phiên bản nào?</td><td><code>traceId</code> đã có trong mọi lỗi API; engine ghi thêm mã màn và số phiên bản vào log</td><td>Log máy chủ</td></tr>
+<tr><td>Định nghĩa có trỏ tới trường đã bỏ khỏi view không?</td><td>Kiểm tra (lint): trường không còn, vòng biểu thức, cột nhạy cảm đưa vào lọc, thiếu cột phạm vi</td><td>Chạy khi lưu, bắt buộc trước khi phát hành</td></tr>
+</tbody></table></div>
+
+<h3>Kiểm thử</h3>
+<ul>
+  <li><b>Engine:</b> test đơn vị cho bộ thông dịch (từng hàm, từng giới hạn); test qua HTTP cho phân quyền. 8 trên 14 file test backend đang gọi API bằng supertest và phủ L3, L4, L5: dùng lại làm bộ hồi quy cho engine.</li>
+  <li><b>Mỗi màn khi phát hành:</b> test khói tự sinh: tải định nghĩa, trang 1 với từng vai trò mẫu của seed, giá trị lọc, xuất file; chạy trên UAT.</li>
+  <li><b>Luật nghiệp vụ:</b> mỗi luật có thể kèm ca thử (dữ liệu vào, kết quả mong đợi) lưu cùng định nghĩa; phát hành là chạy lại. Đây là chỗ BA ghi tiêu chí nghiệm thu thành thứ chạy được.</li>
+</ul>
+
+<h3>Phát hành qua các môi trường</h3>
+<ul>
+  <li><b>DEV, UAT:</b> người thiết kế tạo, sửa view trong schema <code>ui</code> bằng login riêng; phát hành ngay để thử với người dùng thật.</li>
+  <li><b>Production:</b> chỉ nhận gói phát hành (file migration tạo view và định nghĩa JSON) đã commit vào repo; người chạy migration nạp bằng lệnh. Không build lại frontend, backend.</li>
+</ul>
+</section>
+
+<section id="hieu-nang">
+<h2><span class="no">12</span>Hiệu năng</h2>
+<p class="lead">Engine thêm rất ít chi phí; thời gian thật nằm ở view. Vì vậy quy tắc hiệu năng chủ yếu là quy tắc viết view.</p>
+<div class="cols">
+  <div class="panel">
+    <h4>Engine lo sẵn</h4>
+    <ul>
+      <li>Định nghĩa nằm trong bộ nhớ, đổi theo <code>MetaVersion</code>; không đọc DB ở mỗi request.</li>
+      <li>Câu lệnh có tham số, chỉ lấy cột cần, 100 dòng mỗi trang (tối đa 200).</li>
+      <li>Đếm tổng tắt được cho view nặng: lưới hiện "còn trang sau" thay cho tổng số.</li>
+      <li>Giá trị lọc lấy tối đa 501; xuất file tối đa 10.000 dòng; timeout theo màn.</li>
+      <li>Thẻ số cache 30–60 giây theo màn, nhà máy, bộ lọc.</li>
+      <li>Biểu thức trên trình duyệt chỉ tính trang đang xem: 100 dòng × 10 cột tính là 1.000 lần tính, dưới 1 ms.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>Người viết view chịu trách nhiệm</h4>
+    <ul>
+      <li>SQL Server gộp view thường vào câu lệnh ngoài, nên điều kiện <code>BranchCode</code>, <code>LineCode</code> được đẩy xuống bảng gốc. Cần index theo <code>(BranchCode, CreatedAt)</code>, <code>(BranchCode, LineCode)</code>; ADR 0011 đã ghi chưa có index <code>CreatedAt</code>.</li>
+      <li>Tránh hàm vô hướng tự viết trên cột trả về: 4 view BRAVO dùng <code>ufn_Agg_Concat</code> là ví dụ vừa chậm vừa cần quyền riêng.</li>
+      <li>Gom trước bằng JOIN như <code>ui.vColorSizeLine</code>, tránh truy vấn con tương quan trên cột hay hiển thị.</li>
+      <li>Không đọc qua linked server trong view màn hình.</li>
+      <li>Báo cáo nặng: tính sẵn vào bảng ở <code>MES_Report</code> theo lịch, màn đọc bảng đó.</li>
+    </ul>
+  </div>
+</div>
+<div class="note">
+  <b>Khối tổng hợp phải gom sau khi lọc phạm vi</b>
+  <p>View đã GROUP BY sẵn sẽ mất cột phạm vi ở mức dòng: tổng theo mã hàng của cả nhà máy không còn cột chuyền để lọc cho Trưởng chuyền. Vì vậy khối tổng hợp (danh sách mã hàng ở Tỷ lệ cắt, thẻ số, báo cáo) khai báo chiều gom và phép gom trong định nghĩa; engine dựng <code>SELECT chiều, SUM(...) FROM ui.v… WHERE {nhà máy, phạm vi} GROUP BY chiều</code> trên view mức dòng. Màn Tỷ lệ cắt hiện đang làm đúng như vậy bằng code.</p>
+</div>
+</section>
+
+<section id="lo-trinh">
+<h2><span class="no">13</span>Lộ trình đề xuất</h2>
+<p class="lead">Chia nhỏ để dừng được ở mỗi bước mà vẫn có giá trị. Ước lượng thô theo ngày công, Dev Lead hiệu chỉnh. Mỗi bước kết thúc bằng một lượt <code>code-reviewer</code>; M1 chạm guard và <code>BaseRepository</code> nên review ngay khi sửa.</p>
+<div class="tbl"><table>
+<thead><tr><th>Bước</th><th>Nội dung</th><th class="num">Ngày công</th><th>Xong khi</th></tr></thead>
+<tbody>
+<tr><td class="nw">M0</td><td>ADR 0012; bảng <code>SysUi*</code>; JSON Schema của định nghĩa; hợp đồng view; login riêng cho người viết view</td><td class="num">2–3</td><td>ADR được duyệt; migration <code>MES_Core</code> chạy trên DEV</td></tr>
+<tr><td class="nw">M1</td><td>Đọc: đăng ký view, <code>MetaRegistry</code>, guard quyền động, API danh sách, giá trị lọc, xuất file; renderer T1; sinh tài nguyên, quyền, menu, cột khi phát hành</td><td class="num">6–8</td><td>Nhật ký hệ thống chạy bằng metadata; test ma trận quyền qua</td></tr>
+<tr><td class="nw">M2</td><td>Ghi: form F1, lưới nhập F3, chủ–chi tiết F2, bộ thông dịch dùng chung, luật, đánh số chứng từ, khóa lạc quan</td><td class="num">8–10</td><td>Danh mục lỗi (màn mới) chạy; bản song song Phân bổ màu cỡ cho cùng kết quả test với bản code</td></tr>
+<tr><td class="nw">M3</td><td>Designer: kéo thả, thuộc tính, xem như người dùng, xem SQL, phiên bản, phát hành, quay lại, lint</td><td class="num">8–10</td><td>Người biết SQL tự làm một màn T2 từ đầu, không cần dev</td></tr>
+<tr><td class="nw">M4</td><td>T4, T5, T6: lưới liên kết, nhóm cột động, khối tổng hợp, thẻ số, biểu đồ, chuyển trạng thái, hook</td><td class="num">6–8</td><td>Tiến độ sản xuất và một màn cột động chạy</td></tr>
+<tr><td class="nw">M5</td><td>Gói phát hành DEV → UAT → Production, test khói tự sinh, hướng dẫn cho người thiết kế</td><td class="num">2–3</td><td>Phát hành thử lên UAT, không build</td></tr>
+<tr><td colspan="2"><b>Tổng</b></td><td class="num"><b>32–42</b></td><td></td></tr>
+</tbody></table></div>
+<p>Trong 19 màn chờ tài liệu BA: sau M2 làm được khoảng 8 màn (dạng T1, T2, T3); sau M4 thêm khoảng 6 màn báo cáo, cột động; 5 màn còn lại cần widget hoặc giữ code. Màn thí điểm đề xuất: Nhật ký hệ thống (T1, đang có, dữ liệu tăng mãi), Danh mục lỗi (T2, màn mới), Phân bổ màu cỡ bản song song (T3, so với bản code bằng test hiện có rồi mới quyết có thay hay không), Tiến độ sản xuất (T6).</p>
+</section>
+
+<section id="can-chot">
+<h2><span class="no">14</span>Mâu thuẫn với quy ước hiện tại và điểm cần chốt</h2>
+<p class="lead">CLAUDE.md mục 1 yêu cầu báo mâu thuẫn, không tự chọn. Ba điểm đầu đụng quy ước đang có hiệu lực; muốn làm phải có ADR 0012 trước khi viết code.</p>
+<div class="tbl"><table>
+<thead><tr><th>#</th><th>Vấn đề</th><th>Quy ước hiện tại</th><th>Đề xuất</th><th>Ai quyết</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Người biết SQL tạo view rồi lên web cấu hình</td><td>CLAUDE.md mục 5, 7: schema chỉ đổi qua migration có version; người duyệt và chạy</td><td>DEV, UAT: tạo view trong schema <code>ui</code> bằng login riêng, có nhật ký. Production: chỉ qua gói phát hành (file migration và JSON). Ghi ngoại lệ vào ADR 0012</td><td>Người dùng, Dev Lead</td></tr>
+<tr><td>2</td><td>View đọc chéo database để lấy tên chuyền, tên chi nhánh</td><td>ADR 0001, CLAUDE.md mục 3: module không đọc bảng của module khác</td><td>View chỉ đọc bảng của module chứa nó; tên hiển thị qua lookup của engine; báo cáo xuyên module đặt ở <code>MES_Report</code> như ADR 0001 đã nêu</td><td>Dev Lead</td></tr>
+<tr><td>3</td><td>SQL trong view và điều kiện quyền</td><td>CLAUDE.md mục 4.3: cấm SQL thô trong controller, service; cấm module tự viết điều kiện phân quyền</td><td>Engine không chạy chuỗi SQL từ metadata, chỉ dựng câu lệnh qua Kysely từ định danh đã kiểm; view không chứa điều kiện quyền; view được duyệt như migration</td><td>Dev Lead</td></tr>
+<tr><td>4</td><td>Thư viện mới</td><td>ADR 0003: thư viện lớn phải ghi ADR</td><td><code>dnd-kit</code>, <code>ajv</code>, một thư viện biểu đồ, có thể <code>decimal.js</code>; bộ thông dịch tự viết (khoảng 500–800 dòng, có test) để giữ quyền kiểm soát danh sách hàm</td><td>Dev Lead</td></tr>
+<tr><td>5</td><td>Khi nào làm</td><td>CLAUDE.md mục 2: chỉ làm phase đang In progress; 5.1–5.6 đang chờ duyệt</td><td>Mở phase riêng sau khi duyệt các phase đang chờ; hoặc làm M0–M1 trong lúc chờ tài liệu BA của Cắt, QMS</td><td>Người dùng</td></tr>
+<tr><td>6</td><td>Ai thiết kế, ai phát hành</td><td>Chưa có</td><td>Người biết SQL (BA hoặc dev nhà máy) giữ <code>admin.designer</code>; Dev Lead giữ <code>admin.release</code> trong giai đoạn đầu</td><td>Người dùng</td></tr>
+<tr><td>7</td><td>Các màn đang chạy</td><td>–</td><td>Giữ code; chỉ làm bản song song Phân bổ màu cỡ để kiểm engine</td><td>Người dùng</td></tr>
+<tr><td>8</td><td>Nơi lưu metadata</td><td>CLAUDE.md mục 3: nhóm <code>Sys*</code> ở <code>MES_Core</code></td><td>Bảng <code>SysUi*</code> trong <code>MES_Core</code></td><td>Dev Lead</td></tr>
+<tr><td>9</td><td>Phạm vi bản đầu</td><td>–</td><td>M0–M2 trước (tra cứu, danh mục, chủ–chi tiết), đánh giá rồi mới làm designer đầy đủ và báo cáo</td><td>Người dùng</td></tr>
+</tbody></table></div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Tài liệu đề xuất nội bộ, chưa phải quyết định kiến trúc. Số ngày công và tỷ lệ là ước lượng thô để Dev Lead hiệu chỉnh; 19 màn chưa có tài liệu BA được xếp theo tên màn. Căn cứ: code đến Phase 5.6 (backend <code>platform</code>, <code>modules</code>, migration, script, frontend), ADR 0001–0011, <code>docs/thiet-ke</code>, <code>docs/review</code>, mô tả giao diện Đơn hàng của BA.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+  var root = document.getElementById('demo');
+  if (!root) return;
+
+  var TODAY = '2026-10-11';
+  var FIELDS = [
+    { key: 'planNo', label: 'Số kế hoạch', type: 'nvarchar(30)', fmt: 'code' },
+    { key: 'customerName', label: 'Khách hàng', type: 'nvarchar(100)', fmt: 'text' },
+    { key: 'styleCode', label: 'Mã hàng', type: 'nvarchar(120)', fmt: 'code' },
+    { key: 'lineCode', label: 'Chuyền may', type: 'varchar(20)', fmt: 'code' },
+    { key: 'startDate', label: 'Ngày vào chuyền', type: 'date', fmt: 'date' },
+    { key: 'planQty', label: 'Số lượng KH', type: 'int', fmt: 'number' },
+    { key: 'assignedQty', label: 'SL giao', type: 'int', fmt: 'number', editable: true },
+    { key: 'statusCode', label: 'Trạng thái', type: 'varchar(20)', fmt: 'status' },
+    { key: 'createdAt', label: 'Ngày tạo', type: 'datetime2', fmt: 'datetime' }
+  ];
+  var FILTERABLE = { customerName: 1, styleCode: 1, lineCode: 1, startDate: 1, statusCode: 1, createdAt: 1, planQty: 1 };
+  var STATUS = { PLANNED: 'Đã xếp chuyền', ALLOCATED: 'Đã phân màu cỡ', IN_PRODUCTION: 'Đang may', DONE: 'Đã xong' };
+  /* Dữ liệu mẫu, khách hàng hư cấu như seed-order.ts; xếp mới tạo lên trước */
+  var ROWS = [
+    { id: 106, planNo: 'KH-A01-000427', customerName: 'Baltic Knit OÜ', styleCode: 'BK-2701-KN05', lineCode: 'A01-L08', startDate: '2026-10-29', planQty: 1200, assignedQty: 0, statusCode: 'PLANNED', createdAt: '2026-10-11T08:30' },
+    { id: 105, planNo: 'KH-A01-000424', customerName: 'Maple Workwear Inc', styleCode: 'MW-2701-VS02', lineCode: 'A01-L03', startDate: '2026-10-27', planQty: 2200, assignedQty: 900, statusCode: 'ALLOCATED', createdAt: '2026-10-10T14:48' },
+    { id: 104, planNo: 'KH-A01-000421', customerName: 'Sakura Sports KK', styleCode: 'SS-2612-TR11', lineCode: 'A01-L07', startDate: '2026-10-22', planQty: 1500, assignedQty: 1650, statusCode: 'ALLOCATED', createdAt: '2026-10-10T10:22' },
+    { id: 103, planNo: 'KH-A01-000418', customerName: 'Coastline Apparel Ltd', styleCode: 'CA-2612-SH03', lineCode: 'A01-L05', startDate: '2026-10-16', planQty: 3000, assignedQty: 0, statusCode: 'PLANNED', createdAt: '2026-10-10T07:05' },
+    { id: 102, planNo: 'KH-A01-000415', customerName: 'Alpenhaus GmbH', styleCode: 'AH-2611-PT07', lineCode: 'A01-L03', startDate: '2026-10-20', planQty: 1800, assignedQty: 1200, statusCode: 'ALLOCATED', createdAt: '2026-10-09T09:40' },
+    { id: 101, planNo: 'KH-A01-000412', customerName: 'Nordic Trail AB', styleCode: 'NT-2611-JK01', lineCode: 'A01-L03', startDate: '2026-10-14', planQty: 2400, assignedQty: 2400, statusCode: 'ALLOCATED', createdAt: '2026-10-09T08:12' }
+  ];
+  /* Như seed-demo.md mục 6: Trưởng chuyền chỉ thấy chuyền mình, cột Khách hàng bị Che ở Phân bổ màu cỡ */
+  var USERS = {
+    planner: { lines: null, masked: [] },
+    leader: { lines: ['A01-L03'], masked: ['customerName'] }
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fieldDef(k) { for (var i = 0; i < FIELDS.length; i++) if (FIELDS[i].key === k) return FIELDS[i]; return null; }
+  function mk(k) { var f = fieldDef(k); return { key: k, label: f.label, fmt: f.fmt, filter: !!FILTERABLE[k] }; }
+
+  var state = {
+    cols: [mk('customerName'), mk('styleCode'), mk('lineCode'), mk('planQty'), mk('assignedQty'),
+      { key: 'remainQty', label: 'Còn lại', computed: true, expr: '[planQty] - [assignedQty]', fmt: 'number' },
+      mk('statusCode')],
+    sel: 'remainQty', user: 'planner', calcSeq: 1
+  };
+
+  /* ---------- Bộ thông dịch biểu thức: token → cây cú pháp → tính. Không eval. ---------- */
+  function ExprError(msg) { this.message = msg; }
+  function tokenize(src) {
+    var toks = [], i = 0, c, j, two;
+    while (i < src.length) {
+      c = src.charAt(i);
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === '[') {
+        j = src.indexOf(']', i);
+        if (j < 0) throw new ExprError('thiếu dấu ] đóng tên trường');
+        toks.push({ t: 'field', v: src.slice(i + 1, j).trim() }); i = j + 1; continue;
+      }
+      if (c === "'") {
+        j = src.indexOf("'", i + 1);
+        if (j < 0) throw new ExprError("thiếu dấu ' đóng chuỗi");
+        toks.push({ t: 'str', v: src.slice(i + 1, j) }); i = j + 1; continue;
+      }
+      if (/[0-9]/.test(c)) {
+        j = i; while (j < src.length && /[0-9.]/.test(src.charAt(j))) j++;
+        toks.push({ t: 'num', v: parseFloat(src.slice(i, j)) }); i = j; continue;
+      }
+      if (c === '@') {
+        j = i + 1; while (j < src.length && /[A-Za-z]/.test(src.charAt(j))) j++;
+        toks.push({ t: 'var', v: src.slice(i + 1, j).toUpperCase() }); i = j; continue;
+      }
+      if (/[A-Za-z_]/.test(c)) {
+        j = i; while (j < src.length && /[A-Za-z0-9_]/.test(src.charAt(j))) j++;
+        toks.push({ t: 'id', v: src.slice(i, j).toUpperCase() }); i = j; continue;
+      }
+      two = src.substr(i, 2);
+      if (two === '<=' || two === '>=' || two === '<>') { toks.push({ t: 'op', v: two }); i += 2; continue; }
+      if ('+-*/%=<>&(),'.indexOf(c) >= 0) { toks.push({ t: 'op', v: c }); i++; continue; }
+      throw new ExprError('ký tự không dùng được "' + c + '"');
+    }
+    return toks;
+  }
+
+  var BP = { OR: 1, AND: 2, IN: 4, '=': 4, '<>': 4, '<': 4, '<=': 4, '>': 4, '>=': 4, '&': 5, '+': 6, '-': 6, '*': 7, '/': 7, '%': 7 };
+  function parse(src) {
+    if (src.length > 2000) throw new ExprError('dài quá 2.000 ký tự');
+    var toks = tokenize(src), k = 0, depth = 0;
+    function peek() { return toks[k]; }
+    function next() { return toks[k++]; }
+    function isOp(t, v) { return !!t && t.t === 'op' && t.v === v; }
+    function expect(v) { var t = next(); if (!isOp(t, v)) throw new ExprError('thiếu "' + v + '"'); }
+    function bp(t) { return t && (t.t === 'op' || t.t === 'id') && has(BP, t.v) ? BP[t.v] : 0; }
+    function list() {
+      var a = [];
+      if (isOp(peek(), ')')) return a;
+      a.push(expr(0));
+      while (isOp(peek(), ',')) { next(); a.push(expr(0)); }
+      return a;
+    }
+    function nud(t) {
+      if (!t) throw new ExprError('công thức chưa xong');
+      if (t.t === 'num') return { k: 'num', v: t.v };
+      if (t.t === 'str') return { k: 'str', v: t.v };
+      if (t.t === 'field') return { k: 'field', v: t.v };
+      if (t.t === 'var') return { k: 'var', v: t.v };
+      if (isOp(t, '(')) { var e = expr(0); expect(')'); return e; }
+      if (isOp(t, '-')) return { k: 'neg', a: expr(8) };
+      if (t.t === 'id') {
+        if (t.v === 'NOT') return { k: 'not', a: expr(3) };
+        if (t.v === 'TRUE' || t.v === 'FALSE') return { k: 'bool', v: t.v === 'TRUE' };
+        if (t.v === 'NULL') return { k: 'null' };
+        if (isOp(peek(), '(')) { next(); var args = list(); expect(')'); return { k: 'call', f: t.v, args: args }; }
+        throw new ExprError('không hiểu "' + t.v + '", tên trường phải đặt trong [ ]');
+      }
+      throw new ExprError('không hiểu "' + t.v + '"');
+    }
+    function expr(rbp) {
+      if (++depth > 32) throw new ExprError('lồng quá 32 tầng');
+      var left = nud(next()), t;
+      while (bp(peek()) > rbp) {
+        t = next();
+        if (t.v === 'IN') { expect('('); left = { k: 'in', a: left, list: list() }; expect(')'); continue; }
+        left = { k: 'bin', op: t.v, a: left, b: expr(BP[t.v]) };
+      }
+      depth--;
+      return left;
+    }
+    var ast = expr(0);
+    if (k < toks.length) throw new ExprError('thừa "' + toks[k].v + '"');
+    return ast;
+  }
+
+  function num(v) { return v == null || v === '' ? null : Number(v); }
+  function truthy(v) { return v === true || (typeof v === 'number' && v !== 0) || (typeof v === 'string' && v !== ''); }
+  var FN = {
+    IF: function (a) { if (a.length !== 3) throw new ExprError('IF cần 3 tham số'); return truthy(a[0]) ? a[1] : a[2]; },
+    ROUND: function (a) { var x = num(a[0]), d = a.length > 1 ? num(a[1]) || 0 : 0, m = Math.pow(10, d); return x == null ? null : Math.round(x * m) / m; },
+    CEILING: function (a) { var x = num(a[0]); return x == null ? null : Math.ceil(x); },
+    FLOOR: function (a) { var x = num(a[0]); return x == null ? null : Math.floor(x); },
+    ABS: function (a) { var x = num(a[0]); return x == null ? null : Math.abs(x); },
+    MIN: function (a) { var v = a.filter(function (x) { return x != null; }).map(Number); return v.length ? Math.min.apply(null, v) : null; },
+    MAX: function (a) { var v = a.filter(function (x) { return x != null; }).map(Number); return v.length ? Math.max.apply(null, v) : null; },
+    COALESCE: function (a) { for (var i = 0; i < a.length; i++) if (a[i] != null && a[i] !== '') return a[i]; return null; },
+    ISBLANK: function (a) { return a[0] == null || a[0] === ''; },
+    LEN: function (a) { return String(a[0] == null ? '' : a[0]).length; },
+    UPPER: function (a) { return String(a[0] == null ? '' : a[0]).toUpperCase(); },
+    DATEDIFF: function (a) {
+      if (a[0] == null || a[1] == null) return null;
+      return Math.round((Date.parse(String(a[1]).slice(0, 10)) - Date.parse(String(a[0]).slice(0, 10))) / 86400000);
+    }
+  };
+  function evaluate(ast, row) {
+    var steps = 0;
+    function ev(n) {
+      var a, b, v, i, f;
+      if (++steps > 10000) throw new ExprError('quá 10.000 bước');
+      switch (n.k) {
+        case 'num': case 'str': case 'bool': return n.v;
+        case 'null': return null;
+        case 'field': return has(row, n.v) ? row[n.v] : null;
+        case 'var':
+          if (n.v === 'TODAY') return TODAY;
+          if (n.v === 'BRANCHCODE') return 'A01';
+          throw new ExprError('không có biến @' + n.v);
+        case 'neg': v = ev(n.a); return v == null ? null : -v;
+        case 'not': return !truthy(ev(n.a));
+        case 'in': v = ev(n.a); for (i = 0; i < n.list.length; i++) if (ev(n.list[i]) === v) return true; return false;
+        case 'call':
+          f = FN[n.f];
+          if (!f || !has(FN, n.f)) throw new ExprError('hàm ' + n.f + ' không có trong danh sách cho phép');
+          return f(n.args.map(ev));
+        case 'bin':
+          if (n.op === 'AND') return truthy(ev(n.a)) && truthy(ev(n.b));
+          if (n.op === 'OR') return truthy(ev(n.a)) || truthy(ev(n.b));
+          a = ev(n.a); b = ev(n.b);
+          if (n.op === '&') return String(a == null ? '' : a) + String(b == null ? '' : b);
+          if (n.op === '=') return a === b;
+          if (n.op === '<>') return a !== b;
+          if (a == null || b == null) return null;
+          switch (n.op) {
+            case '+': return Number(a) + Number(b);
+            case '-': return Number(a) - Number(b);
+            case '*': return Number(a) * Number(b);
+            case '/': return Number(b) === 0 ? null : Number(a) / Number(b);
+            case '%': return Number(b) === 0 ? null : Number(a) % Number(b);
+            case '<': return a < b;
+            case '<=': return a <= b;
+            case '>': return a > b;
+            case '>=': return a >= b;
+          }
+      }
+      throw new ExprError('không tính được');
+    }
+    return ev(ast);
+  }
+  function refs(ast, out) {
+    out = out || [];
+    if (!ast || typeof ast !== 'object') return out;
+    if (ast.k === 'field') out.push(ast.v);
+    if (ast.a) refs(ast.a, out);
+    if (ast.b) refs(ast.b, out);
+    (ast.args || []).forEach(function (x) { refs(x, out); });
+    (ast.list || []).forEach(function (x) { refs(x, out); });
+    return out;
+  }
+  var cache = {};
+  function compile(src) {
+    if (has(cache, src)) return cache[src];
+    if (Object.keys(cache).length > 400) cache = {};
+    var r;
+    try { r = { ast: parse(src) }; } catch (e) { r = { error: e instanceof ExprError ? e.message : 'lỗi cú pháp' }; }
+    cache[src] = r;
+    return r;
+  }
+
+  /* ---------- Kiểm định nghĩa (lint) và thứ tự tính ---------- */
+  function analyze() {
+    var issues = [], calc = {}, deps = {}, order = [], src = {};
+    FIELDS.forEach(function (f) { src[f.key] = 1; });
+    state.cols.forEach(function (c) { if (c.computed) { calc[c.key] = c; c._ast = null; } });
+    if (state.cols.some(function (c) { return !String(c.label).trim(); })) issues.push(['e', 'Có cột chưa có nhãn.']);
+    Object.keys(calc).forEach(function (key) {
+      var c = calc[key], r, bad = [], dep = [];
+      if (!c.expr.trim()) { issues.push(['e', 'Cột "' + c.label + '": chưa có công thức.']); return; }
+      r = compile(c.expr);
+      if (r.error) { issues.push(['e', 'Công thức cột "' + c.label + '": ' + r.error + '.']); return; }
+      refs(r.ast).forEach(function (f) { if (src[f]) return; if (calc[f]) dep.push(f); else bad.push(f); });
+      if (bad.length) { issues.push(['e', 'Công thức cột "' + c.label + '": không có trường [' + bad.join('], [') + '] trong nguồn.']); return; }
+      c._ast = r.ast; deps[key] = dep;
+    });
+    var mark = {}, ok = {}, stack = [], cycleSaid = false;
+    function visit(key) {
+      var good = true, i;
+      if (mark[key] === 2) return !!ok[key];
+      if (mark[key] === 1) {
+        if (!cycleSaid) {
+          issues.push(['e', 'Vòng phụ thuộc giữa các cột tính: ' + stack.slice(stack.indexOf(key)).concat(key).map(function (k) { return calc[k].label; }).join(' → ') + '.']);
+          cycleSaid = true;
+        }
+        return false;
+      }
+      if (!deps[key]) { mark[key] = 2; return false; }
+      mark[key] = 1; stack.push(key);
+      for (i = 0; i < deps[key].length; i++) if (!visit(deps[key][i])) good = false;
+      stack.pop(); mark[key] = 2;
+      if (good) { ok[key] = 1; order.push(key); } else calc[key]._ast = null;
+      return good;
+    }
+    Object.keys(calc).forEach(visit);
+
+    var ruleSrc = $('d-rule').value, rule = null, rr, badR;
+    if (!ruleSrc.trim()) issues.push(['w', 'Lưới chưa có luật kiểm.']);
+    else {
+      rr = compile(ruleSrc);
+      if (rr.error) issues.push(['e', 'Luật kiểm: ' + rr.error + '.']);
+      else {
+        badR = refs(rr.ast).filter(function (f) { return !src[f] && !calc[f]; });
+        if (badR.length) issues.push(['e', 'Luật kiểm: không có trường [' + badR.join('], [') + '] trong nguồn.']);
+        else rule = { ast: rr.ast, fields: refs(rr.ast) };
+      }
+    }
+    if (!state.cols.length) issues.push(['e', 'Lưới chưa có cột nào.']);
+    if (!state.cols.some(function (c) { return c.key === 'createdAt'; })) {
+      issues.push(['w', 'Lưới xem nên có cột Ngày tạo để người xem thấy thứ tự mới tạo lên trước (ADR 0011). Kéo trường Ngày tạo vào lưới.']);
+    }
+    var u = USERS[state.user];
+    if (u.masked.length) {
+      issues.push(['i', 'Đang xem như Trưởng chuyền 3: chỉ thấy chuyền A01-L03; cột Khách hàng bị Che nên hiện *** và không lọc được.']);
+      if (Object.keys(calc).some(function (k) { return calc[k]._ast && refs(calc[k]._ast).some(function (f) { return u.masked.indexOf(f) >= 0; }); })) {
+        issues.push(['w', 'Có cột tính dùng cột bị Che với người xem này: kết quả để trống.']);
+      }
+    }
+    if (!issues.some(function (x) { return x[0] === 'e'; })) issues.push(['i', 'Không có lỗi chặn phát hành.']);
+    return { issues: issues, order: order, calc: calc, rule: rule };
+  }
+
+  function visibleRows() {
+    var u = USERS[state.user];
+    return ROWS.filter(function (r) { return !u.lines || u.lines.indexOf(r.lineCode) >= 0; });
+  }
+  function computeRow(r, an) {
+    var u = USERS[state.user], ctx = {}, errs = {}, pass = true, v;
+    FIELDS.forEach(function (f) { ctx[f.key] = u.masked.indexOf(f.key) >= 0 ? null : r[f.key]; });
+    an.order.forEach(function (key) {
+      var c = an.calc[key];
+      try { ctx[key] = c._ast ? evaluate(c._ast, ctx) : null; } catch (e) { ctx[key] = null; errs[key] = e.message; }
+    });
+    if (an.rule) {
+      try { v = evaluate(an.rule.ast, ctx); pass = v !== false; } catch (e) { errs._rule = e.message; }
+    }
+    return { ctx: ctx, errs: errs, ok: pass };
+  }
+
+  /* ---------- Định dạng theo quy tắc UI/UX: dd/mm/yyyy, số phân cách kiểu Việt Nam ---------- */
+  function fmtNum(n) {
+    if (!isFinite(n)) return '–';
+    var neg = n < 0, s = (Math.round(Math.abs(n) * 100) / 100).toString().split('.');
+    s[0] = s[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (neg ? '−' : '') + s.join(',');
+  }
+  function fmtDate(s) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? m[3] + '/' + m[2] + '/' + m[1] : s; }
+  function fmtDT(s) { var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s); return m ? m[3] + '/' + m[2] + '/' + m[1] + ' ' + m[4] + ':' + m[5] : s; }
+  function show(v, fmt) {
+    if (v === undefined || v === null || v === '') return '–';
+    if (typeof v === 'boolean') return v ? 'Đúng' : 'Sai';
+    if (fmt === 'number') return isNaN(Number(v)) ? String(v) : fmtNum(Number(v));
+    if (fmt === 'date') return fmtDate(String(v));
+    if (fmt === 'datetime') return fmtDT(String(v));
+    if (fmt === 'status') return STATUS[v] || String(v);
+    return String(v);
+  }
+  function template(msg, ctx) {
+    return String(msg).replace(/\{(\w+)\}/g, function (m, k) {
+      var col = null, f = fieldDef(k);
+      state.cols.forEach(function (x) { if (x.key === k) col = x; });
+      if (!has(ctx, k)) return m;
+      return show(ctx[k], col ? col.fmt : (f ? f.fmt : 'text'));
+    });
+  }
+
+  /* ---------- Vẽ ---------- */
+  function renderFields() {
+    var used = {};
+    state.cols.forEach(function (c) { used[c.key] = 1; });
+    $('d-fields').innerHTML = FIELDS.map(function (f) {
+      var u = !!used[f.key];
+      return '<li class="d-f' + (u ? ' used' : '') + '" draggable="' + (!u) + '" data-key="' + f.key + '">' +
+        '<span>' + esc(f.label) + '</span><span class="ty">' + esc(f.type) + '</span>' +
+        '<button type="button" data-add="' + f.key + '"' + (u ? ' disabled' : '') +
+        ' aria-label="' + (u ? esc(f.label) + ' đã có trong lưới' : 'Thêm cột ' + esc(f.label)) + '"' +
+        ' title="' + (u ? 'Đã có trong lưới' : 'Thêm vào lưới') + '">+</button></li>';
+    }).join('');
+  }
+
+  function now() { return window.performance && performance.now ? performance.now() : Date.now(); }
+  function renderGrid(focus) {
+    var an = analyze(), u = USERS[state.user], rows = visibleRows(), t0 = now();
+    var computed = rows.map(function (r) { return computeRow(r, an); });
+    var spent = now() - t0, count = Object.keys(an.calc).length * rows.length + (an.rule ? rows.length : 0);
+    $('d-perf').textContent = 'Tính ' + count + ' biểu thức trong ' + fmtNum(Math.max(spent, 0.01)) + ' ms';
+
+    var h = '<thead><tr>';
+    state.cols.forEach(function (c, i) {
+      var on = state.sel === c.key, name = String(c.label).trim() ? c.label : '(chưa có nhãn)';
+      h += '<th draggable="true" tabindex="0" data-col="' + i + '" class="' + (on ? 'sel' : '') + '" title="Kéo để đổi thứ tự, bấm để sửa thuộc tính">' +
+        (c.computed ? '<span class="fx">fx</span>' : '') + esc(name) +
+        '<button type="button" class="x" data-del="' + i + '" aria-label="Bỏ cột ' + esc(name) + '" title="Bỏ khỏi lưới">×</button></th>';
+    });
+    h += '<th class="end" data-col="' + state.cols.length + '">+ Thả trường vào đây</th></tr></thead>';
+
+    var b = '<tbody>', msgs = [];
+    if (!state.cols.length || !rows.length) {
+      b += '<tr><td class="empty" colspan="' + (state.cols.length + 1) + '">Chưa có cột nào. Kéo trường từ cột trái vào đây.</td></tr>';
+    } else {
+      rows.forEach(function (r, ri) {
+        var cr = computed[ri];
+        b += '<tr>';
+        state.cols.forEach(function (c) {
+          var cls = [], fd = fieldDef(c.key), v;
+          var bad = !cr.ok && an.rule && an.rule.fields.indexOf(c.key) >= 0 && ((fd && fd.editable) || c.computed);
+          if (!c.computed && u.masked.indexOf(c.key) >= 0) { b += '<td class="mask" title="Cột bị Che với người xem này">***</td>'; return; }
+          if (c.fmt === 'number') cls.push('n');
+          if (c.fmt === 'code') cls.push('c');
+          if (c.computed) cls.push('calc');
+          if (bad) cls.push('bad');
+          if (fd && fd.editable) {
+            cls.push('edit');
+            b += '<td class="' + cls.join(' ') + '"><input type="text" inputmode="numeric" data-row="' + r.id + '" data-key="' + c.key + '" value="' + esc(r[c.key] == null ? '' : r[c.key]) + '" aria-label="' + esc(c.label) + ' của ' + esc(r.styleCode) + '" aria-invalid="' + !!bad + '"></td>';
+            return;
+          }
+          v = c.computed ? (cr.errs[c.key] ? '#LỖI' : cr.ctx[c.key]) : r[c.key];
+          b += '<td class="' + cls.join(' ') + '"' + (cr.errs[c.key] ? ' title="' + esc(cr.errs[c.key]) + '"' : '') + '>' + esc(v === '#LỖI' ? v : show(v, c.fmt)) + '</td>';
+        });
+        b += '<td></td></tr>';
+        if (!cr.ok) msgs.push(template($('d-msg').value, cr.ctx));
+      });
+    }
+    b += '</tbody>';
+    $('d-grid').innerHTML = h + b;
+    $('d-data-issues').innerHTML = msgs.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('');
+    if (focus) {
+      var inp = root.querySelector('input[data-row="' + focus.row + '"]');
+      if (inp) { inp.focus(); try { inp.setSelectionRange(focus.pos, focus.pos); } catch (e) { /* trình duyệt không hỗ trợ thì bỏ qua */ } }
+    }
+    renderOutputs(an);
+  }
+
+  function selCol() {
+    for (var i = 0; i < state.cols.length; i++) if (state.cols[i].key === state.sel) return { c: state.cols[i], i: i };
+    return null;
+  }
+  function renderProps() {
+    var s = selCol(), el = $('d-props'), html = '', c, u, masked, r;
+    if (!s) { el.innerHTML = '<p class="d-small">Bấm vào một tiêu đề cột để sửa nhãn, định dạng, công thức.</p>'; return; }
+    c = s.c; u = USERS[state.user]; masked = u.masked.indexOf(c.key) >= 0;
+    html += '<label class="d-lb" for="p-label">Nhãn</label><input id="p-label" class="d-in" value="' + esc(c.label) + '" autocomplete="off">';
+    if (c.computed) {
+      r = compile(c.expr);
+      html += '<label class="d-lb" for="p-expr">Công thức</label><textarea id="p-expr" class="d-in mono' + (r.error ? ' err' : '') + '" spellcheck="false" aria-describedby="p-expr-err">' + esc(c.expr) + '</textarea>';
+      html += '<div class="d-err" id="p-expr-err">' + (r.error ? esc('Lỗi: ' + r.error) : '') + '</div>';
+      html += '<p class="d-small">Tên trường đặt trong [ ]. Hàm: IF, ROUND, CEILING, FLOOR, ABS, MIN, MAX, COALESCE, ISBLANK, LEN, UPPER, DATEDIFF. Biến: @Today.</p>';
+    } else {
+      html += '<p class="d-small">Trường nguồn <code>' + esc(c.key) + '</code>, kiểu ' + esc(fieldDef(c.key).type) + '.</p>';
+    }
+    html += '<label class="d-lb" for="p-fmt">Định dạng</label><select id="p-fmt" class="d-in">' +
+      [['text', 'Chữ'], ['code', 'Mã'], ['number', 'Số'], ['date', 'Ngày'], ['datetime', 'Ngày giờ'], ['status', 'Trạng thái']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (c.fmt === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select>';
+    if (!c.computed) {
+      html += '<label class="d-chk"><input type="checkbox" id="p-filter"' + (c.filter && !masked ? ' checked' : '') + (masked ? ' disabled' : '') + '> Lọc theo giá trị cột</label>';
+      if (masked) html += '<p class="d-small">Cột bị Che với người xem này nên không lọc được (ADR 0011).</p>';
+    } else {
+      html += '<p class="d-small">Cột tính không lọc trong DB được; cần lọc thì đưa công thức vào view.</p>';
+    }
+    html += '<div class="d-row"><button type="button" class="d-btn" id="p-left"' + (s.i === 0 ? ' disabled' : '') + '>Chuyển trái</button>' +
+      '<button type="button" class="d-btn" id="p-right"' + (s.i === state.cols.length - 1 ? ' disabled' : '') + '>Chuyển phải</button>' +
+      '<button type="button" class="d-btn" id="p-del">Bỏ khỏi lưới</button></div>';
+    el.innerHTML = html;
+  }
+
+  function definition() {
+    return {
+      code: 'order.colorsize', name: 'Phân bổ màu cỡ', template: 'T3',
+      sources: { line: { read: 'ui.vColorSizeLine', scope: 'BRANCH', scopeColumns: { LINE: 'lineCode', OWNER: 'createdBy' } } },
+      list: {
+        source: 'line', pageSize: 100, defaultSort: 'createdAt:desc',
+        columns: state.cols.map(function (c) {
+          var o = { field: c.key, label: c.label, format: c.fmt };
+          if (c.computed) o.expr = c.expr; else if (c.filter) o.columnFilter = true;
+          return o;
+        }),
+        rules: [{ check: $('d-rule').value, message: $('d-msg').value }]
+      }
+    };
+  }
+  function pascal(k) { return k.charAt(0).toUpperCase() + k.slice(1); }
+  function sqlText(an) {
+    var u = USERS[state.user], need = ['id'], seen = { id: 1 }, lines = [], skipped, calcs;
+    function add(k) { if (!seen[k] && fieldDef(k)) { seen[k] = 1; need.push(k); } }
+    state.cols.forEach(function (c) { if (c.computed) { if (c._ast) refs(c._ast).forEach(add); } else add(c.key); });
+    if (an.rule) an.rule.fields.forEach(add);
+    skipped = need.filter(function (k) { return u.masked.indexOf(k) >= 0; });
+    need = need.filter(function (k) { return u.masked.indexOf(k) < 0; });
+    lines.push('SELECT ' + need.map(function (k) { return 'v.[' + pascal(k) + ']'; }).join(', '));
+    lines.push('FROM [ui].[vColorSizeLine] AS v');
+    lines.push('WHERE v.[BranchCode] = @p1');
+    if (u.lines) lines.push('  AND v.[LineCode] IN (@p2)');
+    lines.push('ORDER BY v.[CreatedAt] DESC, v.[Id] DESC');
+    lines.push('OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY;');
+    lines.push('');
+    lines.push("-- @p1 = 'A01': nhà máy của phiên, lấy từ token, không nhận từ trình duyệt");
+    if (u.lines) lines.push("-- @p2 = 'A01-L03': phạm vi chuyền của phép gán Trưởng chuyền");
+    calcs = state.cols.filter(function (c) { return c.computed; }).map(function (c) { return c.label; });
+    if (calcs.length) lines.push('-- Cột tính không có trong SQL (' + calcs.join(', ') + '): engine tính trên dòng trả về');
+    if (skipped.length) lines.push('-- Không SELECT ' + skipped.map(pascal).join(', ') + ': bị Che với người xem này, trả "***"');
+    lines.push('-- Kèm một câu COUNT(*) cùng điều kiện để phân trang');
+    return lines.join('\n');
+  }
+  function renderOutputs(an) {
+    var errs = an.issues.filter(function (x) { return x[0] === 'e'; }).length;
+    $('d-lint').innerHTML = an.issues.map(function (x) {
+      return '<li><span class="k ' + x[0] + '">' + { e: 'Lỗi', w: 'Cảnh báo', i: 'Ghi chú' }[x[0]] + '</span><span>' + esc(x[1]) + '</span></li>';
+    }).join('');
+    $('t-lint').textContent = errs ? 'Vấn đề (' + errs + ' lỗi)' : 'Vấn đề';
+    $('o-json').textContent = JSON.stringify(definition(), null, 2);
+    $('o-sql').textContent = sqlText(an);
+  }
+  function renderAll() { renderFields(); renderGrid(); renderProps(); }
+
+  /* ---------- Thao tác ---------- */
+  function addCol(key, at) {
+    if (!fieldDef(key) || state.cols.some(function (c) { return c.key === key; })) return;
+    state.cols.splice(at, 0, mk(key));
+    state.sel = key;
+    renderAll();
+  }
+  function moveCol(from, at) {
+    if (isNaN(from) || from === at || from + 1 === at) return;
+    var col = state.cols.splice(from, 1)[0];
+    state.cols.splice(from < at ? at - 1 : at, 0, col);
+    state.sel = col.key;
+    renderAll();
+  }
+  var grid = $('d-grid');
+  function clearDrop() { var x = grid.querySelectorAll('th.drop'); for (var i = 0; i < x.length; i++) x[i].classList.remove('drop'); }
+
+  $('d-fields').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-add]');
+    if (btn) addCol(btn.getAttribute('data-add'), state.cols.length);
+  });
+  $('d-fields').addEventListener('dragstart', function (e) {
+    var li = e.target.closest('li[data-key]');
+    if (!li || li.classList.contains('used')) { e.preventDefault(); return; }
+    e.dataTransfer.setData('text/plain', 'add:' + li.getAttribute('data-key'));
+    e.dataTransfer.effectAllowed = 'copyMove';
+  });
+  grid.addEventListener('dragstart', function (e) {
+    var th = e.target.closest('th[data-col]');
+    if (!th || th.classList.contains('end')) return;
+    e.dataTransfer.setData('text/plain', 'move:' + th.getAttribute('data-col'));
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  grid.addEventListener('dragover', function (e) {
+    var th = e.target.closest('th[data-col]');
+    if (!th) return;
+    e.preventDefault();
+    if (!th.classList.contains('drop')) { clearDrop(); th.classList.add('drop'); }
+  });
+  grid.addEventListener('dragleave', function (e) {
+    var th = e.target.closest('th[data-col]');
+    if (th && !th.contains(e.relatedTarget)) th.classList.remove('drop');
+  });
+  grid.addEventListener('drop', function (e) {
+    var th = e.target.closest('th[data-col]'), at, d;
+    if (!th) return;
+    e.preventDefault(); clearDrop();
+    at = +th.getAttribute('data-col'); d = e.dataTransfer.getData('text/plain') || '';
+    if (d.indexOf('add:') === 0) addCol(d.slice(4), at);
+    else if (d.indexOf('move:') === 0) moveCol(+d.slice(5), at);
+  });
+  document.addEventListener('dragend', clearDrop);
+  grid.addEventListener('click', function (e) {
+    var del = e.target.closest('button[data-del]'), th, c;
+    if (del) {
+      c = state.cols.splice(+del.getAttribute('data-del'), 1)[0];
+      if (c && state.sel === c.key) state.sel = null;
+      renderAll(); return;
+    }
+    th = e.target.closest('th[data-col]');
+    if (!th || th.classList.contains('end')) return;
+    state.sel = state.cols[+th.getAttribute('data-col')].key;
+    renderGrid(); renderProps();
+  });
+  grid.addEventListener('keydown', function (e) {
+    var th = e.target.closest('th[data-col]'), p;
+    if (!th || th.classList.contains('end') || e.target !== th) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      state.sel = state.cols[+th.getAttribute('data-col')].key;
+      renderGrid(); renderProps();
+      p = $('p-label'); if (p) p.focus();
+    }
+  });
+  grid.addEventListener('input', function (e) {
+    var inp = e.target, raw, id, key, pos;
+    if (!inp.matches('input[data-row]')) return;
+    raw = inp.value.replace(/[^\d]/g, '').slice(0, 9);
+    id = +inp.getAttribute('data-row'); key = inp.getAttribute('data-key');
+    pos = inp.selectionStart != null ? inp.selectionStart : raw.length;
+    ROWS.forEach(function (r) { if (r.id === id) r[key] = raw === '' ? null : parseInt(raw, 10); });
+    renderGrid({ row: id, pos: Math.min(pos, raw.length) });
+  });
+
+  var props = $('d-props');
+  props.addEventListener('input', function (e) {
+    var s = selCol(), r;
+    if (!s) return;
+    if (e.target.id === 'p-label') { s.c.label = e.target.value; renderFields(); renderGrid(); }
+    else if (e.target.id === 'p-expr') {
+      s.c.expr = e.target.value; r = compile(s.c.expr);
+      e.target.classList.toggle('err', !!r.error);
+      $('p-expr-err').textContent = r.error ? 'Lỗi: ' + r.error : '';
+      renderGrid();
+    }
+  });
+  props.addEventListener('change', function (e) {
+    var s = selCol();
+    if (!s) return;
+    if (e.target.id === 'p-fmt') { s.c.fmt = e.target.value; renderGrid(); }
+    else if (e.target.id === 'p-filter') { s.c.filter = e.target.checked; renderGrid(); }
+  });
+  props.addEventListener('click', function (e) {
+    var s = selCol(), id = e.target.id, b;
+    if (!s) return;
+    if (id === 'p-left' && s.i > 0) { moveCol(s.i, s.i - 1); b = $('p-left'); }
+    else if (id === 'p-right' && s.i < state.cols.length - 1) { moveCol(s.i, s.i + 2); b = $('p-right'); }
+    else if (id === 'p-del') { state.cols.splice(s.i, 1); state.sel = null; renderAll(); }
+    if (b && !b.disabled) b.focus();
+  });
+
+  $('d-rule').addEventListener('input', function () {
+    var r = compile(this.value);
+    this.classList.toggle('err', !!r.error && this.value.trim() !== '');
+    renderGrid();
+  });
+  $('d-msg').addEventListener('input', function () { renderGrid(); });
+  $('d-user').addEventListener('change', function () { state.user = this.value; renderAll(); });
+  $('d-addcalc').addEventListener('click', function () {
+    var key, p;
+    state.calcSeq++;
+    key = 'calc' + state.calcSeq;
+    state.cols.push({ key: key, label: 'Cột tính ' + state.calcSeq, computed: true, expr: 'ROUND([assignedQty] / [planQty] * 100, 1)', fmt: 'number' });
+    state.sel = key;
+    renderAll();
+    p = $('p-expr'); if (p) p.focus();
+  });
+
+  var TABS = ['lint', 'json', 'sql'];
+  function selectTab(name, focus) {
+    TABS.forEach(function (t) {
+      var b = $('t-' + t), on = t === name;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+      $('o-' + t).hidden = !on;
+      if (on && focus) b.focus();
+    });
+  }
+  TABS.forEach(function (t, i) {
+    var b = $('t-' + t);
+    b.addEventListener('click', function () { selectTab(t); });
+    b.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') { e.preventDefault(); selectTab(TABS[(i + 1) % TABS.length], true); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); selectTab(TABS[(i + TABS.length - 1) % TABS.length], true); }
+    });
+  });
+
+  renderAll();
+  selectTab('lint');
+})();
+</script>
+</body>
+</html>
