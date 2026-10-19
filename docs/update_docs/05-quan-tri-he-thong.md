@@ -259,7 +259,8 @@ Bảng `SysWorkCalendar` (mỗi ĐVCS một dòng) và `SysWorkCalendarDay` (ng�
 - **Làm tròn Số ngày SX** (`ProductionRoundUpFrom`, `DECIMAL(3,2)`, MES_Core/0014, quyết định 6.11): Số ngày SX = Số lượng / Năng suất TB; phần lẻ từ ngưỡng trở lên thì thêm một ngày, dưới thì bỏ; ít nhất 1 ngày. Nhập 0,01–1, tối đa 2 chữ số lẻ (422, CHECK `CK_SysWorkCalendar_ProductionRoundUpFrom`); mặc định 0,5 (7,3 → 7; 7,5 → 8). 0,01 gần như luôn làm tròn lên (cách trước 15/10/2026), 1 luôn bỏ phần lẻ. Ô nhập hiện ví dụ 7,3; 7,5; 7,8 theo ngưỡng đang gõ. API nhận trường `productionRoundUpFrom` tùy chọn: không gửi thì giữ số đang có. Đổi ngưỡng không tính lại dàn chuyền đã lưu: Số ngày SX của dòng đổi khi dòng được lưu lại, các ngày chỉ đổi khi người dùng bấm "Tính lại theo công thức" hoặc sửa ô nhập.
 - **Ngày đặc biệt:** Nghỉ (lễ, Tết, nghỉ công ty) hoặc Làm bù (làm việc dù trùng ngày nghỉ hằng tuần), kèm tên tùy chọn. Đặt theo khoảng ngày (tối đa 62 ngày một lần, năm 2000–2100) cho một hay nhiều ĐVCS; ngày đã đặt trong khoảng được thay bằng loại, tên mới. Lưu lại đúng cấu hình đang có thì không ghi, không thêm nhật ký. Xóa theo đợt (các ngày liền nhau cùng loại, cùng tên gom thành một dòng). Xóa vật lý: dòng không có mã, không bảng nào tham chiếu.
 - **Giao diện:** chọn ĐVCS (mặc định ĐVCS đăng nhập) và năm; lịch 12 tháng tô ngày nghỉ hằng tuần (xám), nghỉ lễ (cam), làm bù (xanh), bấm một ngày để mở popup đặt ngày đó (ô ngày không nằm trong thứ tự Tab; bàn phím dùng nút "Thêm ngày nghỉ, làm bù"); bảng các đợt của năm. Chỉ có quyền xem thì không có nút ghi, ô ngày không bấm được. ĐVCS đã ngừng dùng chỉ còn xem và xóa ngày.
-- Sửa lịch không đổi ngay dàn chuyền đã lưu: dòng được tính lại khi người dùng bấm Lưu ở Chi tiết dàn chuyền (popup báo số dòng có ngày khác lịch hiện tại).
+- Sửa lịch không đổi ngày của dàn chuyền đã lưu: Chi tiết dàn chuyền giữ ngày đã lưu, báo số dòng có ngày khác công thức theo lịch hiện tại; người dùng bấm "Tính lại theo công thức" rồi Lưu (`frontend/src/features/order/LinePlanPage.tsx`, quyết định 6.10). Không có lệnh tính lại hàng loạt.
+- Chưa làm (phạm vi phase 5.12): lịch theo Nhà máy SX, theo chuyền, theo ca; ngày làm nửa buổi; tăng ca; áp lịch cho Kế hoạch chuẩn bị SX (chờ BA); lấy ngày lễ từ BRAVO hay Nhân sự; tự sinh Tết theo âm lịch (Tết nhập tay mỗi năm); chép ngày nghỉ từ năm khác hoặc ĐVCS khác (Q35).
 - Nhật ký `WORK_CALENDAR_UPDATE` (cấu hình cũ, mới), `WORK_CALENDAR_DAYS_SET` (ngày cũ trong khoảng, khoảng mới; mỗi ĐVCS một dòng), `WORK_CALENDAR_DAYS_DELETE` (ngày đã xóa), loại đối tượng `SysWorkCalendar`, ghi trong cùng transaction. Không tăng phiên bản quyền.
 
 ### Cấu hình chuẩn bị SX
@@ -314,7 +315,7 @@ Route `/` (`frontend/src/features/home/HomePage.tsx`), mọi người đã đăn
 
 ## API
 
-Tiền tố `/api/v1`. Định dạng lỗi `{ error: { code, message, details }, traceId }`; dữ liệu sai dạng ⇒ `422 VALIDATION_FAILED` kèm `details: [{ field, messages }]`; trường lạ trong body bị bỏ qua (`ValidationPipe` `whitelist`). Phân trang của quản trị: `page` từ 1, `pageSize` tối đa 100 (mặc định 100), kết quả `{ items, total, page, pageSize }`. Mọi `:id` là số nguyên (khác ⇒ 400). Quy ước chung của API: [03-kien-truc.md](03-kien-truc.md).
+Tiền tố `/api/v1`. Định dạng lỗi `{ error: { code, message, details }, traceId }`; dữ liệu sai dạng ⇒ `422 VALIDATION_FAILED` kèm `details: [{ field, messages }]`; trường lạ trong body bị bỏ qua (`ValidationPipe` `whitelist`). Phân trang của quản trị: `page` từ 1, `pageSize` tối đa 100 (mặc định 100), kết quả `{ items, total, page, pageSize }`. Mọi `:id` là số nguyên (khác ⇒ 400). Quy ước chung của API: [Kiến trúc](../ARCHITECTURE.md) mục 5.1.
 
 Cột "Lỗi đặc thù" chỉ ghi lỗi riêng của endpoint; mọi endpoint có thể trả `401`, `403 PERMISSION_DENIED`, `422 VALIDATION_FAILED`.
 
@@ -421,7 +422,7 @@ Module nghiệp vụ không đọc thẳng `MES_Core`; các service dưới đâ
 
 ## Bảng của `MES_Core` thuộc phần này
 
-Trạng thái cuối sau `backend/migrations/MES_Core/0001`–`0008`. Mọi thời điểm là `DATETIME2(3)` UTC; `CreatedBy`, `ModifiedBy` là `SysUser.Id` (NULL khi do seed hoặc hệ thống ghi). Bảng người dùng, vai trò, quyền, phạm vi, phiên, nhật ký, menu: [04-phan-quyen.md](04-phan-quyen.md). Khóa ngầm từ database khác trỏ vào các bảng này khai ở `backend/migrations/softkeys.json`: [03-kien-truc.md](03-kien-truc.md).
+Trạng thái cuối sau `backend/migrations/MES_Core/0001`–`0008`. Mọi thời điểm là `DATETIME2(3)` UTC; `CreatedBy`, `ModifiedBy` là `SysUser.Id` (NULL khi do seed hoặc hệ thống ghi). Bảng người dùng, vai trò, quyền, phạm vi, phiên, nhật ký, menu: [04-phan-quyen.md](04-phan-quyen.md). Khóa ngầm từ database khác trỏ vào các bảng này khai ở `backend/migrations/softkeys.json` (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3).
 
 ### `SysBranch` (Đơn vị cơ sở)
 
@@ -482,7 +483,7 @@ Ràng buộc giữ cây (database tự chặn, ADR 0010):
 
 - Chỉ mục: `IX_SysOrgUnit_ParentId`, `IX_SysOrgUnit_BranchCode`, `UX_SysOrgUnit_Path`.
 - Bảng có trigger nên `INSERT … OUTPUT` không dùng được: thêm rồi đọc lại theo mã.
-- Khóa ngoại trỏ tới: `SysUserRoleScope.OrgUnitId`. Khóa ngầm: `MES_Order.ShipmentPlanLine.LineCode`, `MES_Sewing.SewingPrep.LineCode` → `Code` (loại `LINE`, cùng ĐVCS).
+- Khóa ngoại trỏ tới: `SysUserRoleScope.OrgUnitId`. Không còn khóa ngầm nào trỏ tới bảng này: `LineCode` của dàn chuyền, Kế hoạch chuẩn bị SX, Kế hoạch may, Cấp BTP trỏ tới `MES_Hr.Department.Code` (`backend/migrations/softkeys.json`, từ phase 5.10).
 
 ### `SysCatalog` (loại danh mục mã-tên)
 

@@ -93,7 +93,7 @@ Bài test backend luôn đặt `BRAVO_ORDER_IMPORT=false`, `OSM_FACTORY_UPDATE=f
 | `npm run dev:backend` | Backend chế độ watch (`nest start --watch`), `http://localhost:3000/api/v1` |
 | `npm run dev:frontend` | Vite dev server cổng 5173, chuyển `/api` sang `http://localhost:3000` |
 | `npm run build` | Build backend (`backend/dist`) rồi frontend (`frontend/dist`) |
-| `npm run lint` | ESLint backend (`src`, `scripts`, `test`), frontend (`src`) rồi script triển khai (`deploy`, cấu hình `deploy/eslint.config.mjs`), không chấp nhận cảnh báo. Có luật ranh giới module ([Kiến trúc](03-kien-truc.md)) |
+| `npm run lint` | ESLint backend (`src`, `scripts`, `test`), frontend (`src`) rồi script triển khai (`deploy`, cấu hình `deploy/eslint.config.mjs`), không chấp nhận cảnh báo. Có luật ranh giới module ([Kiến trúc](../ARCHITECTURE.md) mục 4) |
 | `npm test` | Test backend (Jest), frontend (Vitest) rồi `test:deploy`; phần trước lỗi thì dừng |
 | `npm run test:deploy` | `node --test deploy/deploy.test.cjs`: hàm thuần của script triển khai (junction, dọn bản cũ, chọn bản quay về, đọc `.env`) trên thư mục tạm; không cần database, pm2 |
 | `npm run migrate` | Migrate mọi database rồi nạp dữ liệu hệ thống ([Migrate](#migrate)) |
@@ -136,7 +136,7 @@ Script không có lệnh npm, chạy trong thư mục `backend`: `npx tsx script
 
 ## Migrate
 
-`backend/scripts/migrate.ts`. Chỉ chạy khi có người gọi lệnh, backend không tự migrate lúc khởi động. Danh sách file migration và nội dung: [Kiến trúc › Migration](03-kien-truc.md#migration).
+`backend/scripts/migrate.ts`. Chỉ chạy khi có người gọi lệnh, backend không tự migrate lúc khởi động. Danh sách file migration và nội dung, cơ chế: [Kiến trúc](../ARCHITECTURE.md) mục 6.2.
 
 ### Việc lệnh làm
 
@@ -233,7 +233,7 @@ Không xóa vật lý bản ghi `MES_Core` nào ngoài phép gán của tài kho
 
 - Cần `MES_Sync` đã đồng bộ các nguồn đơn hàng (`bravo.DM_SanPhamDonHang` có dữ liệu), không thì dừng và nhắc đồng bộ trước.
 - Chép thêm ĐVCS theo danh mục chi nhánh BRAVO trước khi nạp.
-- Lấy khóa nạp của backend (chờ lần nạp tăng dần đang chạy), xóa Kế hoạch chuẩn bị SX, xóa dữ liệu đơn hàng rồi nạp lại, tất cả trong một transaction (mỗi câu tối đa 10 phút).
+- Lấy khóa nạp của backend (chờ lần nạp tăng dần đang chạy), xóa dữ liệu đơn hàng rồi nạp lại trong một transaction của `MES_Order` (mỗi câu tối đa 10 phút). Trong lúc đó xóa Kế hoạch chuẩn bị SX, Kế hoạch may (`clearSewingPrep`, `clearSewingDayPlan`) và dữ liệu Cắt (`clearCutting`) trên kết nối riêng của `MES_Sewing`, `MES_Cutting`: các bước này tự commit, không được hủy theo khi transaction đơn hàng lỗi (`backend/scripts/load-bravo-orders.ts`).
 - Nhà máy SX theo dữ liệu OSM đã chép; chưa có OSM thì tạm lấy Nhà máy SX cùng mã với chi nhánh nhận đơn (nếu đang dùng).
 - Mặc định sinh dàn chuyền mô phỏng (như `sim:board`, chuyền đọc từ `MES_Hr`); `--no-plans` bỏ phần này.
 - In bảng thống kê theo ĐVCS, ghi `SysAuditLog` `BRAVO_LOAD`, và nhắc: database giờ có dữ liệu thật, backend nghe mọi địa chỉ, tài khoản demo dùng chung `DEMO_PASSWORD`. Nên đặt `HOST=127.0.0.1` hoặc đổi `DEMO_PASSWORD` mạnh rồi `npm run seed -- --reset-passwords`.
@@ -258,7 +258,7 @@ Máy dùng thật không dùng lệnh này: backend tự nạp tăng dần (`BRA
 
 | Lệnh (thư mục) | Việc làm |
 |---|---|
-| `npm run check:softkeys -w backend` (gốc) | Chỉ đọc. Đối chiếu khóa ngầm giữa các database theo `backend/migrations/softkeys.json`; in OK/LỖI từng khóa, thoát mã 1 khi có bản ghi mồ côi; database chưa có thì bỏ qua kèm cảnh báo. Dòng dàn chuyền, Kế hoạch chuẩn bị SX gắn mã chuyền không là bộ phận nào ở `MES_Hr` (chuyền của danh mục chuyền cũ) được báo mồ côi ([Quyết định](13-quyet-dinh.md) mục 6.7). Danh sách khóa: [Kiến trúc](03-kien-truc.md), mục Khóa ngầm giữa các database |
+| `npm run check:softkeys -w backend` (gốc) | Chỉ đọc. Đối chiếu khóa ngầm giữa các database theo `backend/migrations/softkeys.json`; in OK/LỖI từng khóa, thoát mã 1 khi có bản ghi mồ côi; database chưa có thì bỏ qua kèm cảnh báo. Dòng dàn chuyền, Kế hoạch chuẩn bị SX gắn mã chuyền không là bộ phận nào ở `MES_Hr` (chuyền của danh mục chuyền cũ) được báo mồ côi ([Quyết định](13-quyet-dinh.md) mục 6.7). Danh sách khóa: chính `backend/migrations/softkeys.json` (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3) |
 | `node deploy/deploy.cjs --root <thư mục> […]` (gốc) | Triển khai bản mới lên máy chủ không hạ web; `--status`, `--rollback`, `--sync-env`. Không cần build trước, không dùng `tsx`. Chi tiết: [Cập nhật bản mới](#cap-nhat-ban-moi-len-may-chu) |
 | `npx tsx scripts/probe-db.ts` (`backend`) | Chỉ đọc. Kết nối `master`, in phiên bản SQL Server, danh sách database người dùng, tên database lõi, đơn hàng và tài khoản sẽ dùng (không in mật khẩu) |
 | `npx tsx scripts/sync-gen.ts [<Bảng>…] [--procs-only] --out migrations/MES_Sync/NNNN_ten.sql` (`backend`) | Đọc cấu trúc cột của view nguồn (qua linked server nếu có), sinh migration `MES_Sync` cho nguồn đồng bộ. Không tên bảng: mọi nguồn; `--procs-only`: chỉ sinh lại thủ tục chép. Dùng `--out`, không dùng `> file` (PowerShell 5.1 ghi UTF-16, hỏng chữ tiếng Việt). Cách thêm nguồn: [Đồng bộ](09-dong-bo.md) |
@@ -270,7 +270,7 @@ Máy dùng thật không dùng lệnh này: backend tự nạp tăng dần (`BRA
 | Chốt | Ở đâu | Áp cho |
 |---|---|---|
 | Thiếu `--yes` thì chỉ in mô tả, không làm gì | từng script | `reset:demo`, `load:bravo`, `sim:board` |
-| Từ chối khi `NODE_ENV=production` | `assertLocalDb` (`backend/scripts/local-db.ts`) | như trên, và hàm xóa `clearSewingPrep`, `clearHr` |
+| Từ chối khi `NODE_ENV=production` | `assertLocalDb` (`backend/scripts/local-db.ts`) | như trên, và các hàm xóa `clearSewingPrep`, `clearSewingDayPlan`, `clearHr`, `clearCutting` (qua `assertDemoMachine`) |
 | Chỉ SQL Server trên chính máy này: `DB_HOST` (bỏ phần `\instance`) là `localhost`, `127.0.0.1`, `::1`, `.`, `(local)` hoặc tên máy. Máy khác thì từ chối, trừ khi thêm `--allow-remote-db` | `assertLocalDb` | như trên |
 | Từ chối khi `SEED_SAMPLE_DATA=false` (máy dùng thật) | `assertDemoMachine` (`local-db.ts`) | như trên |
 | Kiểm trước cả lời mô tả: máy dùng thật nhận lỗi, không nhận hướng dẫn chạy lại với `--yes` | `main()` của từng script | như trên |
@@ -316,7 +316,7 @@ npm run demo                     # build rồi chạy backend --serve-web ở c�
 
 ## Triển khai máy chủ Windows
 
-Phần này chỉ giữ các bước phụ thuộc code. Linked server, tài khoản đọc phía BRAVO/OSM và các lỗi riêng của nguồn: [Đồng bộ](09-dong-bo.md). Việc còn chờ trên máy chủ: [Trạng thái](02-trang-thai.md).
+Phần này chỉ giữ các bước phụ thuộc code. Linked server, tài khoản đọc phía BRAVO/OSM và các lỗi riêng của nguồn: [Đồng bộ](09-dong-bo.md). Việc còn chờ trên máy chủ: [Trạng thái](../current/STATUS.md).
 
 <a id="chuan-bi-sql-server"></a>
 
@@ -483,7 +483,7 @@ Máy mới hoàn toàn: cài Node.js 22, Git, `npm install -g pm2@7.0.4`; chuẩ
 
 #### C. Cập nhật CSDL (thêm bảng, thêm cột)
 
-1. Máy dev: thêm file migration mới `backend/migrations/<Database>/NNNN_ten.sql` (số tiếp theo, không sửa file đã chạy, quy ước ở [Kiến trúc › Migration](03-kien-truc.md#migration)), chạy thử trên bộ database test riêng ([Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md#bo-database-test-rieng)), commit cùng code dùng bảng, cột mới, push.
+1. Máy dev: thêm file migration mới `backend/migrations/<Database>/NNNN_ten.sql` (số tiếp theo, không sửa file đã chạy, quy ước ở [Quy ước code](../CODE_CONVENTIONS.md) mục 6.3), chạy thử trên bộ database test riêng ([Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md#bo-database-test-rieng)), commit cùng code dùng bảng, cột mới, push.
 2. Chọn cách chạy:
 
    | Migration chỉ có | Cách | Vì sao |

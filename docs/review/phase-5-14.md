@@ -498,7 +498,7 @@ Thay đổi chưa commit trên `main` sau `aa4aaf2` (`git diff`, 7 file). Tôi �
 - **Rủi ro:** L17 được để lại với lý do `ShipmentPlanFeedRepository` là "**đọc** của hệ thống". Nay lớp này **ghi** bảng nghiệp vụ `ShipmentPlan`, không qua `BaseRepository`. Phiên `A00` (mở màn) ghi `CutQty` của mọi ĐVCS mà không qua `assertWritable`. Đây là số tổng hợp do hệ thống tính, không phải `A00` gắn dữ liệu, nên không trái luật 10. Nhưng:
   - 13.6 viết "chỉ kế hoạch của ĐVCS phiên", không nhắc `A00`.
   - `04-phan-quyen.md:424` (danh sách việc của hệ thống ghi mọi ĐVCS) chưa có mục này. Chép kế hoạch sang `MES_Cutting` cũng chưa có.
-- **Sửa:** 13.6 thêm "`A00`: mọi ĐVCS; việc của hệ thống, không qua `BaseRepository`/`assertWritable`, lý do…". `04-phan-quyen.md:424` thêm "ghi LK cắt và chép kế hoạch xuất hàng của module Cắt ([Cắt](15-cat.md))".
+- **Sửa:** 13.6 thêm "`A00`: mọi ĐVCS; việc của hệ thống, không qua `BaseRepository`/`assertWritable`, lý do…". `04-phan-quyen.md:424` thêm "ghi LK cắt và chép kế hoạch xuất hàng của module Cắt ([Cắt](../update_docs/15-cat.md))".
 
 **[LOW] L28 Tài liệu, vận hành chưa theo kịp**
 

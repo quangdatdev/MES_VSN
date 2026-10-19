@@ -16,9 +16,9 @@ Tổ cắt nhập số đã cắt mỗi ngày theo màu cỡ của từng kế h
 
 | File | Vai trò |
 |---|---|
-| `backend/src/modules/cutting/cutting.module.ts` | Khai module; import `OrderModule` để dùng `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards` |
+| `backend/src/modules/cutting/cutting.module.ts` | Khai module; import `OrderModule` để dùng `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards` |
 | `backend/src/modules/cutting/cutting.db.ts` | Kết nối riêng tới `MES_Cutting` (`DB_CUTTING_NAME`, mặc định `MES_Cutting`) |
-| `backend/src/modules/cutting/cutting.types.ts` | Kiểu Kysely của 3 bảng |
+| `backend/src/modules/cutting/cutting.types.ts` | Kiểu Kysely của 5 bảng (`CuttingPlan`, `CuttingPlanColorSize`, `CuttingPlanDaily`, `CuttingSupply`, `CuttingSupplyLine`) |
 | `backend/src/modules/cutting/cutting.dto.ts` | DTO, mã trạng thái `CUTTING_STATUSES`, giới hạn `MAX_DAY_QTY` (1.000.000), `MAX_SAVE_CELLS` (2.000) |
 | `backend/src/modules/order/shipment-plan-feed.service.ts` | API công khai của Đơn hàng: `plansOf`, `versionOf`, `exists`, `cutQtyOf`, `setCutQty` (đọc, ghi cột LK cắt qua `ShipmentPlanFeedRepository` trong `order.repositories.ts`) |
 | `backend/src/modules/order/shipment-plan-delete-guard.ts` | Điểm đăng ký chặn xóa kế hoạch (`ShipmentPlanDeleteGuards`), gọi trong `ShipmentService.remove` |
@@ -142,7 +142,7 @@ Khóa ngầm (`softkeys.json`): `BranchCode` của 3 bảng → `MES_Core.SysBra
 
 ## Xác nhận cấp BTP (phase 5.15)
 
-Tổ cắt ghi số bán thành phẩm (BTP) cấp cho từng chuyền may theo ngày, chuyền, mã hàng, màu, cỡ. Số cấp tự gom thành **lệnh cấp**: một lệnh mỗi ĐVCS, Ngày cấp, mã hàng (các chuyền chung mã hàng cấp cùng ngày vào một lệnh). Người cấp bấm Xác nhận cấp. Màn theo ảnh `docs/screens/cap-ban-thanh-pham.png`. Quyết định 13.8–13.10; kế hoạch `docs/phases/phase-5-15-xac-nhan-cap-btp.md`.
+Tổ cắt ghi số bán thành phẩm (BTP) cấp cho từng chuyền may theo ngày, chuyền, mã hàng, màu, cỡ. Số cấp tự gom thành **lệnh cấp**: một lệnh mỗi ĐVCS, Ngày cấp, mã hàng (các chuyền chung mã hàng cấp cùng ngày vào một lệnh). Người cấp bấm Xác nhận cấp. Màn theo ảnh `docs/screens/cap-ban-thanh-pham.png`. Quyết định 13.8–13.10; kế hoạch phase 5.15 đã xóa sau khi chuyển nội dung (bản gốc: `git show 98d19db:docs/phases/phase-5-15-xac-nhan-cap-btp.md`).
 
 | Màn | Đường dẫn | Quyền | Frontend | Backend |
 |---|---|---|---|---|

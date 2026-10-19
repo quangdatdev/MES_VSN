@@ -6,34 +6,35 @@ Mỗi quyết định gồm: nội dung đang áp dụng, lý do, điều phải
 
 ## Dùng file này thế nào
 
-- Quyết định ở đây thắng mô tả ở các file khác của bộ tài liệu. Tài liệu nói khác code thì báo trưởng dự án, không tự chọn bên nào.
-- Đổi hoặc thêm quyết định: sửa mục ở đây (hoặc thêm mục mới vào đúng chủ đề, đánh số tiếp), ghi lý do, hệ quả, nguồn (task, người chốt), rồi sửa tài liệu của khối liên quan. Quy trình: [Quy trình làm việc](14-quy-trinh-lam-viec.md).
-- Thuật ngữ (ĐVCS, Nhà máy SX, `A00`, PO, KHXH…): [Tổng quan](01-tong-quan.md).
+- Quyết định ở đây là căn cứ cho quy tắc và ý định; code là căn cứ cho hiện trạng (mục 16.2). Tài liệu nói khác code, hoặc khác quyết định ở đây: báo Tech Lead, không tự chọn bên nào.
+- Đổi hoặc thêm quyết định: sửa mục ở đây (hoặc thêm mục mới vào đúng chủ đề, đánh số tiếp), ghi lý do, hệ quả, nguồn (task, người chốt), rồi sửa tài liệu của khối liên quan. Quy trình: [Quy trình phát triển](../DEVELOPMENT_WORKFLOW.md) mục 6.
+- Thuật ngữ (ĐVCS, Nhà máy SX, `A00`, PO, KHXH…): [Tổng quan](../PROJECT_OVERVIEW.md).
+- Dòng **Nguồn** nhắc `docs/phases/…`, `docs/adr/…`, `docs/thiet-ke/…`: các file đó đã xóa ngày 19/10/2026 sau khi chuyển nội dung còn hiệu lực vào bộ tài liệu; cần đọc bản gốc thì `git show 98d19db:<đường dẫn>`. Comment trong code trích "ADR 00xx mục …": tra mục tương ứng ở bảng tra ADR cuối file.
 
 ## 1. Nền tảng và công nghệ
 
 ### 1.1 Modular Monolith, mỗi module một database
-- **Áp dụng:** một backend NestJS chia `platform/` (nền tảng) và `modules/` (nghiệp vụ `order`, `sewing`, `hr`); frontend React một trang. Mỗi module nghiệp vụ có database riêng (`MES_Order`, `MES_Sewing`, `MES_Hr`); bảng lõi `Sys*` ở `MES_Core`; dữ liệu chép từ hệ thống ngoài ở `MES_Sync`.
+- **Áp dụng:** một backend NestJS chia `platform/` (nền tảng) và `modules/` (nghiệp vụ `order`, `sewing`, `cutting`, `hr`); frontend React một trang. Mỗi module nghiệp vụ có database riêng (`MES_Order`, `MES_Sewing`, `MES_Cutting`, `MES_Hr`); bảng lõi `Sys*` ở `MES_Core`; dữ liệu chép từ hệ thống ngoài ở `MES_Sync`.
 - **Lý do:** dựng nhanh, triển khai một tiến trình; tách database để dễ nhìn và sao lưu theo module.
 - **Phải nhớ:** không có transaction chung giữa các database; sao lưu các database phải cùng thời điểm. Module mới dùng database mới, không thêm bảng vào database của module khác.
-- **Nguồn:** ADR 0001 mục 1–2 và Hệ quả. Code: `backend/src/app.module.ts`, `backend/src/modules/*/*.db.ts`. Chi tiết: [Kiến trúc](03-kien-truc.md).
+- **Nguồn:** ADR 0001 mục 1–2 và Hệ quả. Code: `backend/src/app.module.ts`, `backend/src/modules/*/*.db.ts`. Chi tiết: [Kiến trúc](../ARCHITECTURE.md).
 
 ### 1.2 Module chỉ dùng API công khai của nhau, lint cưỡng chế
-- **Áp dụng:** module không import phần bên trong module khác và không đọc bảng của module khác. Module May đọc dàn chuyền qua `ScheduleFeed` (export duy nhất của `OrderModule`). Module nghiệp vụ đọc dữ liệu chép từ BRAVO, OSM qua `SourceFeedService`, tên và danh mục BRAVO qua `CatalogLookupService`, dữ liệu nền tảng qua service của `platform`. Nền tảng không import module: module cấp dữ liệu cho nền tảng bằng cách đăng ký vào service của nền tảng (module Nhân sự đăng ký nguồn chuyền `LineSource` vào `OrgService`, mục 6.7). `backend/eslint.config.mjs` chặn bằng `no-restricted-imports`.
+- **Áp dụng:** module không import phần bên trong module khác và không đọc bảng của module khác. Module May đọc dàn chuyền qua `ScheduleFeed`. `OrderModule` xuất `ScheduleFeed`, `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards`, `LineDayPlanGuards`: module May, Cắt dùng các API này và đăng ký hàm kiểm vào các `*Guards`, nên module Đơn hàng không import ngược (mục 13.4, 13.8, 14.2). Module nghiệp vụ đọc dữ liệu chép từ BRAVO, OSM qua `SourceFeedService`, tên và danh mục BRAVO qua `CatalogLookupService`, dữ liệu nền tảng qua service của `platform`. Nền tảng không import module: module cấp dữ liệu cho nền tảng bằng cách đăng ký vào service của nền tảng (module Nhân sự đăng ký nguồn chuyền `LineSource` vào `OrgService`, mục 6.7). `backend/eslint.config.mjs` chặn bằng `no-restricted-imports`.
 - **Lý do:** giữ module tách được và phụ thuộc một chiều (Đơn hàng không biết May).
 - **Phải nhớ:** thêm module thì thêm khối luật lint riêng cho nó (flat config không gộp luật cùng tên giữa các khối). Luật ranh giới chỉ có ở backend. Chưa có hạ tầng sự kiện giữa module.
 - **Nguồn:** ADR 0001 mục 1; ADR 0003 (lint ranh giới); ADR 0007 mục Nơi lưu; ADR 0009 Hệ quả; ADR 0012. Code: `backend/eslint.config.mjs`, `backend/src/modules/order/schedule-feed.service.ts`, `backend/src/platform/feed/source-feed.service.ts`.
 
 ### 1.3 Công nghệ backend, phiên bản khóa
-- **Áp dụng:** Node.js 22, NestJS 11, TypeScript 5.9 strict (CommonJS), Kysely 0.28 với tedious cho SQL Server, `class-validator`/`class-transformer`, argon2id cho mật khẩu, `@nestjs/jwt` cho token.
+- **Áp dụng:** Node.js 22, NestJS 11, TypeScript strict (CommonJS; chuẩn hóa sang 6.0.3, mục dưới), Kysely 0.28 với tedious cho SQL Server, `class-validator`/`class-transformer`, argon2id cho mật khẩu, `@nestjs/jwt` cho token.
 - **Lý do:** Kysely là query builder có kiểu, cho chèn điều kiện phân quyền ở một chỗ (`BaseRepository`) mà vẫn viết T-SQL khi cần; ORM nặng khó bảo đảm mọi truy vấn đi qua một cổng. NestJS 12 và Kysely 0.29 chỉ hỗ trợ ESM.
-- **Phải nhớ:** không nâng NestJS 12, Kysely 0.29 khi chưa chuyển cả dự án sang ESM; TypeScript giữ 5.9 vì ts-jest. Thay thư viện truy cập dữ liệu là viết lại `BaseRepository`: phải có quyết định mới trước khi viết code.
+- **Phải nhớ:** không nâng NestJS 12, Kysely 0.29 khi chưa chuyển cả dự án sang ESM; TypeScript: Tech Lead duyệt 19/10/2026 chuẩn hóa sang 6.0.3 (thay quy tắc cũ "giữ 5.9 vì ts-jest"); Tech Lead xác nhận `ts-jest` đang chạy với 6.0.3. Việc nâng `backend`, `frontend` (đang khai `^5.9.3`) làm ở task riêng ([Trạng thái](../current/STATUS.md), task T3). Thay thư viện truy cập dữ liệu là viết lại `BaseRepository`: phải có quyết định mới trước khi viết code.
 - **Nguồn:** ADR 0003 bảng công nghệ, mục "Cập nhật khi dựng Phase 1–2". Code: `backend/package.json`.
 
 ### 1.4 Migration là file `.sql` có số thứ tự, người chạy
 - **Áp dụng:** `backend/migrations/<Database>/NNNN_ten.sql`, chạy bằng `backend/scripts/migrate.ts`; tên file đã chạy lưu ở `dbo.__MigrationHistory` của từng database. Runner chỉ chạy khi gọi `npm run migrate`, không chạy lúc backend khởi động.
 - **Lý do:** T-SQL thuần dễ review; khớp quy tắc AI tạo file migration, người duyệt và chạy.
-- **Phải nhớ:** lịch sử chỉ lưu tên file, không có checksum: sửa file đã chạy không có tác dụng, phải thêm file mới. Quy tắc AI với migration: [Quy trình làm việc](14-quy-trinh-lam-viec.md); lệnh: [Vận hành](11-van-hanh.md).
+- **Phải nhớ:** lịch sử chỉ lưu tên file, không có checksum: sửa file đã chạy không có tác dụng, phải thêm file mới. Quy tắc AI với migration: [AGENTS.md](../../AGENTS.md) mục 7; lệnh: [Vận hành](11-van-hanh.md).
 - **Nguồn:** ADR 0003 bảng công nghệ (Migration). Code: `backend/scripts/migrate.ts`.
 
 ### 1.5 Frontend
@@ -64,7 +65,7 @@ Mỗi quyết định gồm: nội dung đang áp dụng, lý do, điều phải
 ### 2.1 Khóa ngoại vật lý chỉ trong cùng database
 - **Áp dụng:** quan hệ giữa hai database là khóa ngầm: khai báo ở `backend/migrations/softkeys.json`, có chỉ mục, kiểm bản ghi mồ côi bằng `npm run check:softkeys -w backend` (chỉ đọc).
 - **Lý do:** SQL Server không có khóa ngoại giữa database; database đã tách theo module.
-- **Phải nhớ:** ghi vào hai database phải tự xử lý trường hợp lỗi giữa chừng. Danh sách khóa ngầm: [Kiến trúc](03-kien-truc.md).
+- **Phải nhớ:** ghi vào hai database phải tự xử lý trường hợp lỗi giữa chừng. Danh sách khóa ngầm: `backend/migrations/softkeys.json` (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3).
 - **Nguồn:** ADR 0001 Hệ quả. Code: `backend/scripts/check-softkeys.ts`.
 
 ### 2.2 Báo cáo xuyên module gom về một chỗ
@@ -336,7 +337,7 @@ Màn hình, luật nghiệp vụ, bảng, API: [Đơn hàng](06-don-hang.md).
   - PO còn khai `usedBy` (`ShipmentPlanPo.SalesOrderPoId`): ĐVCS có PO trong kế hoạch xuất hàng của mình cũng sửa, xóa được PO đó (kể cả màu cỡ, xác nhận).
   - `ChildRepository` lọc ĐVCS theo cách của cha: cha dùng chung thì dòng con chép `BranchCode` của cha và chỉ ghi được khi cha ghi được.
 - **Lý do:** Thông tin đơn hàng phải lấy hết dữ liệu BRAVO, không lọc ĐVCS; nhưng ĐVCS khác không được đổi Nhà máy SX hay SL gốc mà ĐVCS khác dựa vào. Nhiều đơn may ở nhà máy thuộc ĐVCS khác ĐVCS nhận đơn, nên ĐVCS lập kế hoạch phải sửa được tỷ lệ cắt PO trong kế hoạch của mình.
-- **Phải nhớ:** chỉ người làm việc ở ĐVCS nhận đơn mới chọn được Nhà máy SX cho đơn. Hai ĐVCS cùng đưa một PO vào kế hoạch thì cả hai sửa được; sửa màu cỡ, xác nhận, hủy xác nhận khóa dòng PO nên phải lần lượt. Ngoại lệ Allow ở `A00` với tài nguyên dùng chung thấy toàn bộ đơn hàng.
+- **Phải nhớ:** chỉ người làm việc ở ĐVCS nhận đơn mới chọn được Nhà máy SX cho đơn. Hai ĐVCS cùng đưa một PO vào kế hoạch thì cả hai sửa được: từ phase 5.17 mỗi PO chỉ thuộc một kế hoạch (mục 15.2 thay phần này, Tech Lead xác nhận 19/10/2026), nên trường hợp này chỉ còn ở dữ liệu lập trước đó; sửa màu cỡ, xác nhận, hủy xác nhận khóa dòng PO nên phải lần lượt. Ngoại lệ Allow ở `A00` với tài nguyên dùng chung thấy toàn bộ đơn hàng.
 - **Nguồn:** ADR 0013 mục 4, 11 (thay phạm vi theo nhà máy của ADR 0006). Code: `BaseRepository` (`originBranch`, `usedBy`, `limit`), `order.repositories.ts` (`SalesOrderRepository`, `SalesOrderPoRepository`).
 
 ### 7.3 Kế hoạch xuất hàng theo ĐVCS phiên, Chọn mã hàng theo nhà máy
@@ -448,7 +449,7 @@ Màn hình, bảng, API: [May](07-may.md).
 
 ### 9.1 Database `MES_Sewing`, bản chép dòng dàn chuyền
 - **Áp dụng:** Kế hoạch chuẩn bị SX lưu ở `MES_Sewing`. Mỗi dòng dàn chuyền (`MES_Order.ShipmentPlanLine`) có một dòng `SewingPrep` chép mã hàng, chuyền, số lượng, ngày vào chuyền, `BranchCode`, `LineCode`; lọc ĐVCS, chuyền (`order.prep`: `FACTORY → BranchCode`, `LINE → LineCode`), phân trang, lọc trạng thái chạy trong `MES_Sewing` qua `BaseRepository`.
-- **Lý do:** đúng "mỗi module một database"; phân quyền, sắp xếp, lọc trạng thái chạy được trong SQL thay vì ghép dữ liệu hai database trong ứng dụng.
+- **Lý do:** đúng "mỗi module một database"; phân quyền, sắp xếp, lọc trạng thái chạy được trong SQL thay vì ghép dữ liệu hai database trong ứng dụng. Đã cân nhắc và không chọn (ADR 0009): lưu ở `MES_Order` (lệch quy ước mỗi module một database); không chép mà ghép dữ liệu trong ứng dụng (không phân trang, lọc, phân quyền trong SQL được); đồng bộ bằng sự kiện khi lưu Xếp chuyền (module Đơn hàng phải biết module May, chưa có hạ tầng sự kiện); lưu sẵn ngày KH (phải tính lại mọi dòng khi đổi danh mục hay ngày vào chuyền).
 - **Phải nhớ:** `order.prep` không gắn chiều Người tạo (dòng do hệ thống chép), nên vai trò "Chỉ của mình" vẫn thấy theo ĐVCS, chuyền.
 - **Nguồn:** ADR 0009 mục 1, 2 và Hệ quả. Code: `backend/src/modules/sewing/sewing.repositories.ts`.
 
@@ -626,7 +627,7 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 ### 13.7 Lũy kế cắt không vượt Kế hoạch của màu cỡ
 - **Áp dụng:** lưu số cắt mà làm Lũy kế (mọi ngày) của một màu cỡ vượt SL Kế hoạch xuất hàng của màu cỡ đó thì 422 `VALIDATION_FAILED` ("Lũy kế vượt Kế hoạch ở …. Muốn cắt thêm, điều chỉnh Kế hoạch xuất hàng trước."), `details.cells` liệt kê màu cỡ, không ghi ô nào của lần lưu. Chỉ chặn ô tăng số: kế hoạch xuất hàng giảm sau khi đã cắt thì màu cỡ đã vượt vẫn giảm được số (tô đỏ, có dòng nhắc). Máy chủ chép lại kế hoạch trước khi kiểm (không đối chiếu LK cắt ở bước này) và kiểm trong transaction đã khóa kế hoạch (hai người lưu hai ngày khác nhau không cùng vượt). Giao diện kiểm cùng luật theo Kế hoạch đã tải khi Kế hoạch xem được (`raisedOverPlan`): tô đỏ, khóa nút Lưu lại, có nút "Tải lại kế hoạch" (tải lại mà giữ số đang nhập, `reapply`), nên tăng kế hoạch xuất hàng ở màn khác rồi quay lại lưu không phải đóng popup; lưu bị 422 cũng tự tải lại như vậy. Kế hoạch bị Che, Ẩn thì chỉ máy chủ kiểm. Màu cỡ đã bỏ khỏi kế hoạch (Kế hoạch 0) không tô đỏ, không tính là vượt (có dòng nhắc riêng, không sửa được). Thay câu "Cắt vượt kế hoạch được phép" của mục 13.3.
 - **Lý do:** người dùng chốt 15/10/2026: ảnh mẫu của BA (dòng Lũy kế vượt 1) mô tả sai; muốn cắt vượt thì phải điều chỉnh Kế hoạch xuất hàng trước.
-- **Phải nhớ:** màn Kế hoạch xuất hàng chưa chặn giảm SL màu cỡ xuống dưới Lũy kế cắt (câu hỏi Q36 ở [Trạng thái](02-trang-thai.md)), nên +/- vẫn có thể dương. Màu cỡ đã bỏ khỏi kế hoạch vốn không sửa được (mục 13.3). Thông báo lỗi nêu tên màu cỡ, không nêu số; dù vậy người được Sửa Trong ngày vẫn dò được SL Kế hoạch bị Che, Ẩn bằng cách nhập dần (200 hay 422): không Che `planQty` với vai trò được Sửa `dayQty` ([Phân quyền](04-phan-quyen.md) mục 8). Bước chép lại trước khi lưu lỗi (chỉ log) hoặc lần lưu nhập vào một lượt chép đang chạy đã đọc nguồn trước khi kế hoạch đổi thì kiểm theo Kế hoạch cũ: có thể 422 sai hoặc cho vượt mức kế hoạch vừa giảm; lần lưu sau theo kế hoạch mới.
+- **Phải nhớ:** màn Kế hoạch xuất hàng chưa chặn giảm SL màu cỡ xuống dưới Lũy kế cắt (câu hỏi Q36 ở [Trạng thái](../current/STATUS.md)), nên +/- vẫn có thể dương. Màu cỡ đã bỏ khỏi kế hoạch vốn không sửa được (mục 13.3). Thông báo lỗi nêu tên màu cỡ, không nêu số; dù vậy người được Sửa Trong ngày vẫn dò được SL Kế hoạch bị Che, Ẩn bằng cách nhập dần (200 hay 422): không Che `planQty` với vai trò được Sửa `dayQty` ([Phân quyền](04-phan-quyen.md) mục 8). Bước chép lại trước khi lưu lỗi (chỉ log) hoặc lần lưu nhập vào một lượt chép đang chạy đã đọc nguồn trước khi kế hoạch đổi thì kiểm theo Kế hoạch cũ: có thể 422 sai hoặc cho vượt mức kế hoạch vừa giảm; lần lưu sau theo kế hoạch mới.
 - **Nguồn:** phase 5.14, yêu cầu ngày 15/10/2026. Code: `cutting-progress.service.ts` (`save`), `frontend/src/features/cutting/cuttingProgressRules.ts` (`overPlan`, `raisedOverPlan`, `saveIssue`).
 
 ### 13.8 Xác nhận cấp BTP: số cấp theo ngày, lệnh cấp gom theo Ngày cấp và mã hàng
@@ -677,7 +678,7 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 ### 15.1 Mỗi ĐVCS một kế hoạch xuất hàng cho một đơn hàng
 - **Áp dụng:** một đơn hàng có tối đa một kế hoạch xuất hàng ở mỗi ĐVCS. Lập kế hoạch thứ hai ở cùng ĐVCS: 409, câu báo nêu số kế hoạch đang có khi người lập xem được kế hoạch đó. Popup Chọn mã hàng (Thêm mới) không hiện đơn đã có kế hoạch ở ĐVCS phiên. Muốn thêm số lượng thì mở kế hoạch đó, bấm "Chọn mã hàng" để thêm PO (mục 15.2). ĐVCS khác vẫn lập kế hoạch riêng cho cùng đơn được (đơn có nhà máy SX ở nhiều ĐVCS). Cưỡng chế ở service dưới khóa đơn hàng (lần lập nào cũng khóa đơn), không có chỉ mục UNIQUE.
 - **Lý do:** người dùng yêu cầu 16/10/2026, chốt Q1 (theo ĐVCS), Q2 (dữ liệu cũ giữ nguyên, chỉ chặn lập thêm, vì đang là dữ liệu test).
-- **Phải nhớ:** dữ liệu lập trước phase 5.17 có thể còn nhiều kế hoạch cho một đơn ở cùng ĐVCS; các kế hoạch đó vẫn sửa được. Muốn thêm chỉ mục UNIQUE `(BranchCode, SalesOrderId)` thì dọn dữ liệu đó trước.
+- **Phải nhớ:** dữ liệu lập trước phase 5.17 có thể còn nhiều kế hoạch cho một đơn ở cùng ĐVCS; các kế hoạch đó vẫn sửa được, hệ thống không tự gộp. Chưa có chức năng bỏ PO khỏi kế hoạch. Muốn thêm chỉ mục UNIQUE `(BranchCode, SalesOrderId)` thì dọn dữ liệu đó trước.
 - **Nguồn:** phase 5.17 (`docs/phases/phase-5-17-khxh-mot-ke-hoach-moi-don.md`) Q1, Q2.
 
 ### 15.2 Mỗi PO chỉ thuộc một kế hoạch, thêm PO khi sửa
@@ -690,6 +691,27 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 - **Áp dụng:** ở lưới màu cỡ (popup Thêm/Sửa, khung Màu cỡ), "SL đã tạo KHXH" là tổng SL KHXH theo màu cỡ của **các kế hoạch khác có dùng chung ít nhất một PO** với các PO đang xét (mọi ĐVCS); SL còn lại = Số lượng gốc − SL đã tạo KHXH. Với dữ liệu mới (mục 15.2) cột này bằng 0. Cột SL đã tạo KH, SL còn lại của bảng mã hàng ở popup Chọn mã hàng vẫn tính theo cả đơn (SL đơn hàng trừ mọi kế hoạch của đơn).
 - **Lý do:** trước đây trừ mọi kế hoạch của đơn theo màu cỡ, nên ĐVCS lập với PO khác bị chặn sai (A lập PO1 Đỏ/M 100, B lập PO2 Đỏ/M 100 thì B còn lại 0). Người dùng chốt Q6 (b) ngày 16/10/2026.
 - **Nguồn:** phase 5.17 Q6.
+
+## 16. Tài liệu, quy trình, công cụ
+
+### 16.1 Tài liệu hai lớp, mỗi quy tắc một nguồn
+- **Áp dụng:** lớp chính thức gồm `AGENTS.md` (quy tắc bắt buộc; `CLAUDE.md` import file này và chỉ thêm phần riêng của Claude Code), `docs/PROJECT_OVERVIEW.md`, `ARCHITECTURE.md`, `DATA_FLOWS.md`, `CODE_CONVENTIONS.md`, `ENGINEERING_STANDARDS.md`, `DEVELOPMENT_WORKFLOW.md`; trạng thái ở `docs/current/STATUS.md`; tài liệu module (`docs/update_docs/04`–`13`, `15`) làm tham chiếu chi tiết. Mỗi thông tin một nguồn, nơi khác dẫn link; bỏ cơ chế giữ `CLAUDE.md` và tài liệu khác cùng nội dung. `docs/` nằm trong git.
+- **Lý do:** bộ `update_docs` lệch code sau các phase 5.12–5.17, trùng với ADR, `thiet-ke`, file phase; `docs/` không có lịch sử git.
+- **Phải nhớ:** số mục 3–6 của `AGENTS.md` được comment trong code trích ("CLAUDE.md mục 4.5"), không đổi số. Tài liệu đã bị thay (`01`, `02`, `03`, `14`, ADR, file phase, `thiet-ke/*.md`…) đã xóa ngày 19/10/2026 sau khi chuyển nội dung; bản gốc ở commit `98d19db`, bảng "đã xóa → đọc ở đâu" ở [mục lục tài liệu tham chiếu](README.md); bảng đổi gì sửa file nào ở [DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 6.
+- **Nguồn:** Tech Lead duyệt 19/10/2026 theo `docs/DOCS_STANDARDIZATION_PLAN.md`.
+
+### 16.2 Căn cứ khi tài liệu và code khác nhau
+- **Áp dụng:** code và cấu hình là căn cứ cho hiện trạng; file này là căn cứ cho quy tắc và ý định. Thấy lệch thì báo Tech Lead, không tự chọn.
+- **Nguồn:** Tech Lead duyệt 19/10/2026.
+
+### 16.3 Ngoại lệ truy cập dữ liệu là nợ kỹ thuật
+- **Áp dụng:** các repository trong module không kế thừa `BaseRepository` (`HrCatalogRepository`, `PrepStepRepository`, `ShipmentPlanPriceRepository`, `ShipmentPlanFeedRepository`, `LineColorSizeFeedRepository`, `BravoOrderImportRepository`, `PoAllocationRefreshRepository`), `HrLineSource` đọc thẳng `Department`, service nền tảng truy vấn thẳng `MES_Core` là nợ kỹ thuật, không phải quy tắc được phép. Code mới không lấy làm mẫu.
+- **Nguồn:** Tech Lead chốt 19/10/2026. Hiện trạng: [ARCHITECTURE](../ARCHITECTURE.md) mục 10.
+
+### 16.4 Mô hình nhánh và CI
+- **Áp dụng:** `main` (bản chạy trên máy chủ), `develop` (tích hợp), `feature/<phase>-<tên>` từ `develop` gộp qua PR có CI và review, `hotfix/<tên>` từ `main` gộp về cả hai. CI viết theo cú pháp GitHub Actions ở `.github/workflows/` (chạy trên GitHub; Gitea Actions của máy chủ git nội bộ dùng lại được).
+- **Phải nhớ:** áp dụng khi Tech Lead bảo bắt đầu; tới lúc đó làm trên `main`. Bước kiểm cụ thể của CI, quy định PR, kiểu gộp còn là đề xuất ([DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 4).
+- **Nguồn:** Tech Lead duyệt 19/10/2026.
 
 ## Bảng tra ADR
 
@@ -705,10 +727,10 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 | 0008 | Lưới nhập kiểu bảng tính | Accepted | 11.1 | – |
 | 0009 | Module May, Kế hoạch chuẩn bị SX | Accepted | 9.1–9.5 | – |
 | 0010 | Cây Nhà máy → Xưởng → Chuyền | Accepted, bị ADR 0013 và phase 5.10 thay một phần | 6.4, 6.5 | Cấp gốc nay gọi là ĐVCS; cấp Xưởng, Chuyền, chuyển chuyền giữa xưởng, phạm vi cả xưởng: thay bằng bộ phận tích "Xưởng sản xuất" (mục 6.7) |
-| 0011 | Lưới xem dữ liệu, lọc theo cột | Proposed | 11.2–11.6, 7.8 | Ô tìm ở cây xưởng, chuyền của Danh mục hệ thống (mục 5): danh mục đó đã bỏ |
+| 0011 | Lưới xem dữ liệu, lọc theo cột | Accepted (Tech Lead duyệt 19/10/2026) | 11.2–11.6, 7.8 | Ô tìm ở cây xưởng, chuyền của Danh mục hệ thống (mục 5): danh mục đó đã bỏ |
 | 0012 | Module Nhân sự | Accepted | 10.1–10.6 | Cây phòng ban tách hẳn khỏi cây sản xuất: nay bộ phận tích "Xưởng sản xuất" là chuyền may (mục 6.7, 10.2) |
-| 0013 | Đơn vị cơ sở, Nhà máy SX, đơn hàng dùng chung | Proposed | 6.1–6.3, 6.6, 7.2–7.8, 8.1, 8.4, 8.5, 15.2 | Mục 11 phần nhiều ĐVCS cùng đưa một PO vào kế hoạch: từ phase 5.17 mỗi PO một kế hoạch (mục 15.2), chỉ còn ở dữ liệu cũ; mục 3 (tích Nhà máy SX theo người, `productionFactoryIds`): thay bằng mục 11; mục 4 "PO chỉ thêm ở ĐVCS của đơn" (`GetOptions.sameBranch`): thay bằng mục 11; Nhà máy SX tạm cùng mã chi nhánh nhận đơn: thay bằng theo OSM (mục 9), trừ máy demo chưa có OSM; mục 10 phần Phân bổ PO chỉ Xem, Xuất file, đọc bảng chép qua lớp đồng bộ (`SourceFeedService.osmPo*`, không qua `BaseRepository`), 12 cột đăng ký: thay bằng bảng làm việc `PoAllocation`, Nhà máy SX nhập tay (phase 5.10, mục 7.9) |
-| 0014 | Vai trò Toàn quyền | Proposed | 5.1–5.3 | – |
+| 0013 | Đơn vị cơ sở, Nhà máy SX, đơn hàng dùng chung | Accepted (Tech Lead duyệt 19/10/2026) | 6.1–6.3, 6.6, 7.2–7.8, 8.1, 8.4, 8.5, 15.2 | Mục 11 phần nhiều ĐVCS cùng đưa một PO vào kế hoạch: từ phase 5.17 mỗi PO một kế hoạch (mục 15.2), chỉ còn ở dữ liệu cũ; mục 3 (tích Nhà máy SX theo người, `productionFactoryIds`): thay bằng mục 11; mục 4 "PO chỉ thêm ở ĐVCS của đơn" (`GetOptions.sameBranch`): thay bằng mục 11; Nhà máy SX tạm cùng mã chi nhánh nhận đơn: thay bằng theo OSM (mục 9), trừ máy demo chưa có OSM; mục 10 phần Phân bổ PO chỉ Xem, Xuất file, đọc bảng chép qua lớp đồng bộ (`SourceFeedService.osmPo*`, không qua `BaseRepository`), 12 cột đăng ký: thay bằng bảng làm việc `PoAllocation`, Nhà máy SX nhập tay (phase 5.10, mục 7.9) |
+| 0014 | Vai trò Toàn quyền | Accepted (Tech Lead duyệt 19/10/2026) | 5.1–5.3 | – |
 
 ## Quyết định chưa khớp code
 
@@ -716,7 +738,7 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 
 | # | Quyết định | Nguồn | Trạng thái | Code hiện tại |
 |---|---|---|---|---|
-| 1 | Lint ranh giới module (`eslint-plugin-boundaries` hoặc tương đương) | ADR 0003 | Code khác (một phần) | Dùng `no-restricted-imports` trong `backend/eslint.config.mjs`, cho `modules/order`, `sewing`, `hr`, và cho `src/platform/**` (nền tảng không import `modules`); không có luật cho frontend. Frontend có import chéo giữa các khối màn: `frontend/src/features/admin/CatalogsPage.tsx` dùng `features/hr/*`, `features/sewing/api`; `PrepStepsPane.tsx` dùng `features/sewing/api` |
+| 1 | Lint ranh giới module (`eslint-plugin-boundaries` hoặc tương đương) | ADR 0003 | Code khác (một phần) | Dùng `no-restricted-imports` trong `backend/eslint.config.mjs`, cho `modules/order`, `sewing`, `cutting`, `hr`, và cho `src/platform/**` (nền tảng không import `modules`); không có luật cho frontend. Frontend có import chéo giữa các khối màn: `frontend/src/features/admin/CatalogsPage.tsx` dùng `features/hr/*`, `features/sewing/api`; `PrepStepsPane.tsx` dùng `features/sewing/api`; màn Cắt, Kế hoạch may dùng `features/order/common.tsx`, `features/order/api.ts` |
 | 2 | Khóa ngầm có "linter" kiểm cùng script mồ côi | ADR 0001 Hệ quả | Chưa làm | Chỉ có `backend/scripts/check-softkeys.ts` (kiểm mồ côi trên dữ liệu). Không có bước nào báo cột mới trỏ sang database khác mà chưa khai trong `softkeys.json` |
 | 3 | Module giao tiếp qua service công khai **và sự kiện** | ADR 0001 mục 1 | Chưa làm | Chưa có hạ tầng sự kiện; chỉ có service công khai (`ScheduleFeed`, `SourceFeedService`…) |
 | 4 | Báo cáo xuyên module gom về `MES_Report` hoặc view công bố | ADR 0001 Hệ quả | Chưa làm | Chưa có module báo cáo; menu `report.*` là trang giữ chỗ |

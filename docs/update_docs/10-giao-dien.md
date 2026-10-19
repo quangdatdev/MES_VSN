@@ -15,7 +15,7 @@ Khung frontend và mọi phần dùng chung: công nghệ, cấu trúc `frontend
 | `@tanstack/react-query` | `^5.104.1` | Dữ liệu từ máy chủ |
 | `zustand` | `^5.0.15` | Store phiên |
 | `react-router-dom` | `^7.18.4` | Route (`BrowserRouter`) |
-| `react-datasheet-grid` | `4.11.6` (khóa cứng) | Lưới nhập kiểu bảng tính, bọc trong `SheetGrid` (ADR 0008). `package.json` gốc có `overrides` buộc `react-resize-detector` dùng `react`/`react-dom` `^19.0.0`; nâng React thì chạy `npm ls react react-dom` để chắc chỉ còn một bản |
+| `react-datasheet-grid` | `4.11.6` (khóa cứng) | Lưới nhập kiểu bảng tính, bọc trong `SheetGrid` (ADR 0008). `package.json` gốc có `overrides` buộc `react-resize-detector` dùng `react`/`react-dom` `^19.0.0`; nâng React thì chạy `npm ls react react-dom` để chắc chỉ còn một bản. Gói này còn import `findDOMNode` (React 19 đã bỏ) nhưng chỉ trong nhánh thành phần lớp mà lưới không dùng; bản build production đã kiểm (ADR 0008) |
 | `dayjs` | `^1.11.23` | Locale `vi` cho `@mantine/dates` |
 | `@fontsource/source-sans-3`, `@fontsource/jetbrains-mono` | `^5.3.0` | Font tự host, không cần Internet |
 | `@fontsource/inter` | `^5.3.0` | Font riêng màn đăng nhập (quyết định 12.4), import trong `LoginPage.tsx`, chỉ bộ Latin và tiếng Việt |
@@ -38,7 +38,7 @@ Khung frontend và mọi phần dùng chung: công nghệ, cấu trúc `frontend
 | `store/` | `session.ts` (store Zustand của phiên), `auth.ts` (đăng nhập, chọn/đổi ĐVCS, khôi phục phiên, đăng xuất) |
 | `lib/` | Gọi API, React Query, định dạng, tham số URL, hộp xác nhận, chặn rời màn… (mục 10) |
 | `components/` | Thành phần dùng chung (mục 9) |
-| `features/<nhóm>/` | Màn hình: `auth`, `home`, `errors`, `module` (trang giữ chỗ), `order`, `sewing`, `hr`, `admin` |
+| `features/<nhóm>/` | Màn hình: `auth`, `home`, `errors`, `module` (trang giữ chỗ), `order`, `sewing`, `cutting`, `hr`, `admin` |
 | `theme/` | `theme.ts` (theme Mantine), `global.css` (token màu, CSS khung và thành phần) |
 | `test/` | Test Vitest và `setup.ts` |
 | `perf/` | Phép đo hiệu năng, chạy riêng |
@@ -123,6 +123,9 @@ Tên màn là tên menu do seed đặt (`backend/scripts/seed-data.ts`, mảng `
 | `/order/line-plan` | Xếp chuyền | `features/order/LinePlanPage.tsx` (bảng dàn chuyền `LineBoard.tsx`) | [Đơn hàng](06-don-hang.md) |
 | `/order/color-size` | Phân bổ màu cỡ | `features/order/ColorSizePage.tsx` | [Đơn hàng](06-don-hang.md) |
 | `/order/prep` | Kế hoạch chuẩn bị SX (nhóm Quản trị đơn hàng, dữ liệu module May, ADR 0009) | `features/sewing/PrepPlanPage.tsx` | [May](07-may.md) |
+| `/cutting/progress` | Đồng bộ tiến độ cắt | `features/cutting/CuttingProgressPage.tsx` | [Cắt](15-cat.md) |
+| `/cutting/supply` | Xác nhận cấp BTP | `features/cutting/CuttingSupplyPage.tsx` | [Cắt](15-cat.md) |
+| `/sewing/plan` | Kế hoạch may | `features/sewing/SewingPlanPage.tsx` | [May](07-may.md) |
 | `/hr/org-chart` | Sơ đồ tổ chức | `features/hr/OrgChartPage.tsx` | [Nhân sự](08-nhan-su.md) |
 | `/hr/employees` | Thông tin nhân sự | `features/hr/EmployeesPage.tsx` | [Nhân sự](08-nhan-su.md) |
 | `/admin/users` | Người dùng | `features/admin/UsersPage.tsx` (`UserAccessDrawer.tsx`, `UserBranchesDialog.tsx`) | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
@@ -134,7 +137,7 @@ Tên màn là tên menu do seed đặt (`backend/scripts/seed-data.ts`, mảng `
 | `/admin/audit` | Nhật ký hệ thống | `features/admin/AuditPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/sync` | Đồng bộ dữ liệu | `features/admin/SyncPage.tsx` | [Đồng bộ](09-dong-bo.md) |
 
-Các mục menu còn lại (nhóm Quản trị nhà cắt, xưởng may, chất lượng, hoàn thiện, Báo cáo quản trị) chưa có màn: mở ra `ModulePage`.
+Các mục menu còn lại (Quản lý in thêu; Phân cụm trưởng, Bấm năng suất cụm, Biểu đồ cân bằng chuyền; nhóm chất lượng, hoàn thiện, Báo cáo quản trị) chưa có màn: mở ra `ModulePage`. Danh sách đầy đủ: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.2.
 
 ### 4.4 Thêm một màn mới
 
@@ -440,7 +443,8 @@ Lọc kiểu Excel trên giá trị của một cột, chạy trong DB (ADR 0011
   - tối đa 500 giá trị (`MAX_FILTER_VALUES`); máy chủ báo `truncated` thì nhắc gõ để thu hẹp;
   - ô tìm chờ ngừng gõ 300 ms; Enter khi chữ chưa kịp tìm là tìm ngay, Enter lần nữa là áp dụng;
   - mặc định "Chọn tất cả" (`notIn` rỗng). Bỏ tích vài giá trị gửi `notIn`; đang tìm thì Áp dụng chỉ giữ các giá trị đang tích trong kết quả tìm (`in`), như Excel;
-  - so giá trị không phân biệt hoa thường, như SQL Server;
+  - so giá trị không phân biệt hoa thường, như SQL Server; ô chỉ có khoảng trắng coi như trống (SQL Server so `'   ' = ''` là đúng);
+  - cột ngày giờ (`CreatedAt`, lưu UTC) lọc theo ngày giờ Việt Nam (UTC+7), lưới hiện giờ theo múi giờ của máy người xem: giả định mọi máy đặt giờ Việt Nam, máy khác múi giờ có thể thấy ngày trên lưới lệch ngày trong popup ở các dòng tạo gần nửa đêm (ADR 0011);
   - nút Áp dụng bị khóa kèm lý do khi đang tìm hoặc tải, tải lỗi, chưa chọn giá trị nào, chọn quá 500 giá trị hoặc chuỗi `cf` sau mã hóa URL quá 6.000 ký tự (`MAX_FILTER_URL`; chữ Việt có dấu nở 2–3 lần, máy chủ trả 431 nếu dòng request quá dài);
   - "Xóa lọc" khi cột đang lọc; "Hủy" đóng không đổi.
 - **`ColumnFilterNote names`:** dòng "Lọc theo cột: …" ở dải lọc, vì tiêu đề cột có thể đã cuộn khuất. Nút "Xóa lọc" của dải lọc phải xóa cả lọc theo cột.
@@ -477,11 +481,11 @@ Lọc kiểu Excel trên giá trị của một cột, chạy trong DB (ADR 0011
 | `onRowOpen(row)` | Đúp chuột vào ô chỉ xem hoặc STT (ô nhập được thì đúp là sửa ô) |
 | `hint` | Câu hướng dẫn dưới lưới thay câu mặc định |
 
-- **Cột chỉ đọc ở lần vẽ đầu:** `react-datasheet-grid` 4.x xuất `DataSheetGrid` là bản tĩnh (`StaticDataSheetGrid`), nên `columns`, `createRow`, `duplicateRow`, `rowKey`, `rowClassName` truyền sau lần vẽ đầu bị bỏ qua. Dữ liệu đổi trong lúc nhập mà ô cần (tổng, lỗi chéo dòng) đọc qua `ref`; lưới vẽ lại mọi ô đang hiện mỗi lần `value` đổi nên ô theo dữ liệu mới. Ví dụ: popup Phân màu cỡ (`ColorSizePage.tsx`, `checkRef`). Các màn còn dựng lại cột (Cập nhật tỷ lệ cắt) đang chờ sửa: [Trạng thái](02-trang-thai.md) mục lỗi tiềm ẩn.
+- **Cột chỉ đọc ở lần vẽ đầu:** `react-datasheet-grid` 4.x xuất `DataSheetGrid` là bản tĩnh (`StaticDataSheetGrid`), nên `columns`, `createRow`, `duplicateRow`, `rowKey`, `rowClassName` truyền sau lần vẽ đầu bị bỏ qua. Dữ liệu đổi trong lúc nhập mà ô cần (tổng, lỗi chéo dòng) đọc qua `ref`; lưới vẽ lại mọi ô đang hiện mỗi lần `value` đổi nên ô theo dữ liệu mới. Ví dụ: popup Phân màu cỡ (`ColorSizePage.tsx`, `checkRef`). Các màn còn dựng lại cột (Cập nhật tỷ lệ cắt) đang chờ sửa: [Trạng thái](../current/STATUS.md) mục Lỗi đã biết.
 - **Không mất dữ liệu:** chữ đang gõ dở trong ô (chưa ghi vào dòng) cũng tính là chưa lưu (`useLeaveGuard`); hết khi ô ghi, chuyển ô hoặc Esc. Chữ tìm của ô chọn và ô tìm của popup lọc không tính.
 - Enter trong ô không gửi form chứa lưới (ví dụ popup Thêm PO). Popup có lưới nhập tắt "Esc để đóng", vì Esc trong lưới là thoát sửa ô.
 - Mở popup lọc hoặc mở chi tiết dòng thì lưới bỏ ô đang chọn, để phím gõ trong popup không sửa ô bên dưới (thư viện nghe phím trên cả trang).
-- **Bố cục:** lưới lấp đầy khung chứa (khung cha phải là flex cột có chiều cao), đặt tuyệt đối trong khung. Thanh cuộn ngang gốc bị ẩn, dùng thanh cuộn riêng đồng bộ (thanh gốc làm phép đo chiều cao của thư viện lệch, lưới co giãn liên tục). Firefox ẩn cả hai thanh cuộn: cuộn dọc bằng bánh xe hoặc phím. Có nhóm cột hoặc nút lọc thì một lớp tiêu đề phủ lên tiêu đề của thư viện và mọi cột giữ đúng `minWidth`. Menu chuột phải đưa ra `document.body` (khung Modal có `transform` làm lệch vị trí `fixed`).
+- **Bố cục:** lưới lấp đầy khung chứa (khung cha phải là flex cột có chiều cao), đặt tuyệt đối trong khung. Thanh cuộn ngang gốc bị ẩn, dùng thanh cuộn riêng đồng bộ (thanh gốc làm phép đo chiều cao của thư viện lệch, lưới co giãn liên tục); viền khung vẽ bằng `outline`, không dùng `border`, cùng lý do (ADR 0008). Firefox ẩn cả hai thanh cuộn: cuộn dọc bằng bánh xe hoặc phím. Có nhóm cột hoặc nút lọc thì một lớp tiêu đề phủ lên tiêu đề của thư viện và mọi cột giữ đúng `minWidth`. Menu chuột phải đưa ra `document.body` (khung Modal có `transform` làm lệch vị trí `fixed`).
 - **Truy cập:** vùng lưới có `role="region"` và nhãn; ô của thư viện không có nhãn riêng.
 
 ### 9.4 `TreeSelect` – ô chọn dạng cây
@@ -622,7 +626,7 @@ Chi tiết các tiện ích hay dùng:
 2. Nút xóa `variant="default" color="red"`; nút xác nhận trong hộp hỏi xóa màu đỏ.
 3. Chữ nút: tạo mới "Thêm <đối tượng>" (cả nút mở popup và nút gửi); lưu khi sửa "Lưu thay đổi"; đóng popup "Hủy", hoặc "Đóng" khi chỉ xem; giữ lại trong hộp hỏi xóa "Giữ lại".
 4. Footer popup: Hủy bên trái nút chính, cả nhóm canh phải.
-5. Một khái niệm một tên ở mọi màn. Trạng thái: "Đang dùng / Ngừng dùng" cho danh mục, vai trò, ĐVCS; "Hoạt động / Đã khóa / Khóa tạm" cho người dùng.
+5. Một khái niệm một tên, một trường một cách viết ở mọi màn (ví dụ "PO/Buy date"). Trạng thái: "Đang dùng / Ngừng dùng" cho danh mục, vai trò, ĐVCS; "Hoạt động / Đã khóa / Khóa tạm" cho người dùng.
 6. Bộ lọc đặt ở dải lọc ngay dưới tiêu đề, cùng thứ tự giữa các màn, có "Xóa lọc" (xóa cả lọc theo cột).
 
 **B. Chữ**
@@ -641,7 +645,7 @@ Chi tiết các tiện ích hay dùng:
 
 **D. Form, nhập liệu**
 1. Mọi ô có nhãn hiển thị (không chỉ placeholder); ô bắt buộc có `withAsterisk`. Vàng là bắt buộc, xám là chỉ đọc, đỏ là sai.
-2. Lỗi hiện ngay dưới ô (hoặc tô đỏ ô lưới), nói rõ cách sửa; kiểm khi rời ô (`validateInputOnBlur`), không đợi bấm Lưu.
+2. Lỗi hiện ngay dưới ô (hoặc tô đỏ ô lưới), nói rõ cách sửa (ví dụ "Đen / M: còn lại 120, đang nhập 150"); kiểm khi rời ô (`validateInputOnBlur`), không đợi bấm Lưu.
 3. Nút Lưu có `loading`; khóa khi chưa đổi gì hoặc còn lỗi, kèm lý do (`ActionButton`).
 4. Không làm mất phần đang nhập (mục 10.2).
 5. Không điền sẵn giá trị trông như người dùng đã nhập; chỉ điền giá trị suy ra từ dữ liệu (ví dụ số lượng còn lại).
@@ -649,7 +653,7 @@ Chi tiết các tiện ích hay dùng:
 7. Form Nhân sự đặt chú thích của ô trong tooltip (`FieldCell`, `features/hr/common.tsx`) để các ô cùng hàng thẳng nhau. Ngoại lệ: ô tích có lý do khóa quan trọng (ô "Xưởng sản xuất" ở Sơ đồ tổ chức) không qua `FieldCell`, hiện mô tả và lý do khóa ngay dưới ô (kèm biểu tượng khóa) để đọc được ngay, kể cả trên điện thoại.
 
 **E. Trạng thái**
-1. Mỗi vùng dữ liệu có đủ: đang tải (Skeleton hoặc Loader, không hiện "0 dòng"), lỗi kèm "Thử lại", rỗng (phân biệt "không khớp bộ lọc" kèm "Xóa lọc" với "chưa có gì" kèm gợi ý bước tiếp; `EmptyState` ở `features/order/common.tsx`), có dữ liệu (đổi trang, lọc giữ dữ liệu cũ kèm dấu hiệu đang tải).
+1. Mỗi vùng dữ liệu có đủ: đang tải (Skeleton hoặc Loader, không hiện "0 dòng", không nháy trống, không nhảy bố cục), lỗi kèm "Thử lại", rỗng (phân biệt "không khớp bộ lọc" kèm "Xóa lọc" với "chưa có gì" kèm gợi ý bước tiếp; `EmptyState` ở `features/order/common.tsx`), có dữ liệu (đổi trang, lọc giữ dữ liệu cũ kèm dấu hiệu đang tải).
 2. Thông báo thành công nêu đối tượng ("Đã xóa đơn hàng SO-…"); thông báo lỗi giữ lâu hơn.
 3. Thao tác nguy hiểm (xóa, khóa tài khoản, ngừng dùng, chép lại từ đầu) hỏi lại bằng `confirmAction`, nêu hậu quả.
 
@@ -660,7 +664,7 @@ Chi tiết các tiện ích hay dùng:
 4. Tên đọc của nút chứa chữ đang hiển thị (WCAG 2.5.3).
 
 **G. Bảng**
-1. Tiêu đề cột dính khi cuộn; có chỉ báo sắp xếp; phân trang có tổng số dòng.
+1. Tiêu đề cột dính khi cuộn (bảng mật độ cao đặt trong khung `data-fill`: `.table-frame[data-fill]`, `.grid-wrap[data-fill]`); có chỉ báo sắp xếp; phân trang có tổng số dòng.
 2. Chữ dài cắt gọn, rê chuột xem đủ; ô trống ghi "–".
 3. Dòng đang chọn nổi bật; mất chọn khi dòng không còn trong danh sách sau lọc, đổi trang; nút Sửa, Xóa lấy dữ liệu mới nhất của dòng, không dùng bản chụp cũ.
 4. Lưới xem tải 100 dòng, mới tạo lên trước, có cột "Ngày tạo" (mục 9.1).

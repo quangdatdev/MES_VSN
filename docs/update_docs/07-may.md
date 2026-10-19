@@ -24,7 +24,7 @@ Màn Kế hoạch chuẩn bị SX theo dõi các bước chuẩn bị sản xu�
 |---|---|
 | `backend/src/modules/sewing/sewing.module.ts` | Khai module; import `OrderModule` để dùng `ScheduleFeed` |
 | `backend/src/modules/sewing/sewing.db.ts` | Kết nối riêng tới `MES_Sewing` (tên lấy từ `DB_SEWING_NAME`, mặc định `MES_Sewing`) |
-| `backend/src/modules/sewing/sewing.types.ts` | Kiểu Kysely của 3 bảng |
+| `backend/src/modules/sewing/sewing.types.ts` | Kiểu Kysely của 5 bảng (`PrepStep`, `SewingPrep`, `SewingPrepStep`, `SewingDayPlan`, `SewingDayPlanItem`) |
 | `backend/src/modules/sewing/sewing.dto.ts` | DTO, bộ kiểm đầu vào, mã trạng thái `PREP_STATUSES` |
 | `backend/scripts/sewing-data.ts` | `hasSewingDb`, `clearSewingPrep` cho các script seed, reset |
 | `frontend/src/routes/registry.tsx` | Đăng ký `/order/prep` → `features/sewing/PrepPlanPage` |
@@ -332,7 +332,7 @@ Ràng buộc, chỉ mục: `FK_SewingPrepStep_Prep (SewingPrepId, BranchCode)` �
 
 ### Khóa ngầm
 
-Khai ở `backend/migrations/softkeys.json`, kiểm bản ghi mồ côi bằng `npm run check:softkeys -w backend` (cơ chế chung: [Kiến trúc](03-kien-truc.md)).
+Khai ở `backend/migrations/softkeys.json`, kiểm bản ghi mồ côi bằng `npm run check:softkeys -w backend` (cơ chế chung: [Kiến trúc](../ARCHITECTURE.md) mục 6.3).
 
 | Cột | Trỏ tới | Điều kiện |
 |---|---|---|
@@ -377,11 +377,12 @@ Việc chép dàn chuyền không ghi nhật ký; chỉ log máy chủ (`SewingP
 - Chưa phân quyền nhập TH theo từng bước hay bộ phận ("Người thực hiện" chỉ để hiển thị).
 - KH tính theo ngày lịch, chưa trừ ngày nghỉ, ngày lễ.
 - Danh mục bước dùng chung, chưa có danh mục riêng theo nhà máy.
-- Loại mã, Số lượng chốt UD, HS Ưu đãi VC nhập tay tạm, chờ BA chỉ nguồn. Các câu hỏi còn chờ BA: [Trạng thái](02-trang-thai.md).
+- Dấu phiên bản đã chép giữ trong bộ nhớ của tiến trình máy chủ: chạy nhiều tiến trình thì mỗi tiến trình chép một lần. Số dòng dàn chuyền rất lớn thì cân nhắc chép tăng dần theo `ModifiedAt` (ADR 0009).
+- Loại mã, Số lượng chốt UD, HS Ưu đãi VC nhập tay tạm, chờ BA chỉ nguồn. Các câu hỏi còn chờ BA: [Trạng thái](../current/STATUS.md).
 
 ## Kế hoạch may (phase 5.16)
 
-Kế hoạch sản xuất theo ngày cho từng dòng dàn chuyền (chuyền + mã hàng + PO của Xếp chuyền), làm căn cứ giao việc, nhập năng suất. Màn theo ảnh `docs/screens/ke-hoach-may.png`. Quyết định 14.1–14.3 ([Quyết định](13-quyet-dinh.md)); kế hoạch `docs/phases/phase-5-16-ke-hoach-may.md`.
+Kế hoạch sản xuất theo ngày cho từng dòng dàn chuyền (chuyền + mã hàng + PO của Xếp chuyền), làm căn cứ giao việc, nhập năng suất. Màn theo ảnh `docs/screens/ke-hoach-may.png`. Quyết định 14.1–14.3 ([Quyết định](13-quyet-dinh.md)); kế hoạch phase 5.16 đã xóa sau khi chuyển nội dung (bản gốc: `git show 98d19db:docs/phases/phase-5-16-ke-hoach-may.md`).
 
 | Màn | Đường dẫn | Quyền | Frontend | Backend |
 |---|---|---|---|---|

@@ -33,7 +33,7 @@ Một ĐVCS lập kế hoạch được cho đơn hàng của ĐVCS khác, miễ
 
 | Phần | Đường dẫn |
 |---|---|
-| Module NestJS | `backend/src/modules/order/order.module.ts` (6 controller, 13 repository của màn hình cộng hai repository của việc hệ thống `BravoOrderImportRepository`, `PoAllocationRefreshRepository`, 10 service; chỉ xuất `ScheduleFeed`) |
+| Module NestJS | `backend/src/modules/order/order.module.ts` (6 controller, 13 repository của màn hình cộng hai repository của việc hệ thống `BravoOrderImportRepository`, `PoAllocationRefreshRepository`, 10 service; xuất cho module khác `ScheduleFeed`, `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards`, `LineDayPlanGuards`) |
 | Controller | `backend/src/modules/order/order.controller.ts` |
 | DTO, kiểm dữ liệu vào | `backend/src/modules/order/order.dto.ts`, `order.rules.ts` (quy tắc cỡ, số dòng màu cỡ tối đa) |
 | Repository | `backend/src/modules/order/order.repositories.ts`; Phân bổ PO ở `po-allocation.repository.ts` (`PoAllocationRepository`, `PoAllocationRefreshRepository`) |
@@ -42,12 +42,12 @@ Một ĐVCS lập kế hoạch được cho đơn hàng của ĐVCS khác, miễ
 | Tiện ích | `order.util.ts` (lọc nghiệp vụ, ngày làm việc, chia theo tỷ lệ, mã lỗi) |
 | Nạp BRAVO, Nhà máy SX theo OSM | `bravo-order.mapping.ts`, `bravo-order-import.service.ts`, `bravo-order-import.repository.ts`, `osm-factory.service.ts` |
 | Làm mới Phân bổ PO theo OSM | `po-allocation-refresh.service.ts` |
-| API cho module khác | `schedule-feed.service.ts` |
+| API cho module khác | `schedule-feed.service.ts` (May), `line-day-plan-guard.ts` (May đăng ký), `shipment-plan-feed.service.ts`, `shipment-plan-delete-guard.ts`, `line-color-size-feed.service.ts`, `line-supply-guard.ts` (Cắt); luật import: [ARCHITECTURE](../ARCHITECTURE.md) mục 4 |
 | Migration | `backend/migrations/MES_Order/0001`–`0009` |
 | Script | `backend/scripts/load-bravo-orders.ts`, `simulate-board.ts`, `seed-order.ts`, `bravo-branches.ts` |
 | Frontend | `frontend/src/features/order/*` (đăng ký route ở `frontend/src/routes/registry.tsx`) |
 
-Ranh giới import (lint, `backend/eslint.config.mjs`): module Đơn hàng không import module May, Nhân sự, lớp đồng bộ (`platform/sync`); dữ liệu chép từ BRAVO, OSM đọc qua cổng `platform/feed/source-feed.service.ts` (ADR 0007). Module May chỉ được import `order.module` và `schedule-feed.service`.
+Ranh giới import (lint, `backend/eslint.config.mjs`): module Đơn hàng không import module May, Nhân sự, lớp đồng bộ (`platform/sync`); dữ liệu chép từ BRAVO, OSM đọc qua cổng `platform/feed/source-feed.service.ts` (ADR 0007). Module May chỉ được import `order.module`, `schedule-feed.service`, `line-day-plan-guard`; module Cắt chỉ được import 5 file công khai liệt kê ở [ARCHITECTURE](../ARCHITECTURE.md) mục 4; module Đơn hàng không import module Cắt.
 
 ## 2. Màn hình và tài nguyên
 
@@ -256,7 +256,7 @@ Hai tab (tab nằm trên URL `?view=board`):
   - Giảm số lượng của một dòng xuống dưới tổng đã giao cho dòng đó ở Phân bổ màu cỡ: 409, câu báo và `details` liệt kê chuyền (nêu số khi người lưu xem được Số lượng giao của Phân bổ màu cỡ); chỉ xét dòng đang giảm số lượng. Bỏ dòng đã phân màu cỡ thì phần giao của dòng đó bị xóa theo; giao diện hỏi lại trước khi lưu, nêu tên chuyền (không xem được cột Trạng thái thì hỏi cho mọi dòng đã lưu bị bỏ). Đổi chuyền của một dòng thì phần giao đi theo dòng sang chuyền mới, không hỏi.
   - Trạng thái kế hoạch Chưa xếp chuyền ↔ Đã xếp chuyền theo việc còn dòng nào không (chỉ khi kế hoạch đang ở một trong hai trạng thái này).
   - Khóa kế hoạch rồi khóa các dòng dàn chuyền trước khi chạm màu cỡ (cùng thứ tự với Phân bổ màu cỡ).
-  - Kế hoạch may (phase 5.16, quyết định 14.2): dòng đã có số ở Kế hoạch may không bỏ, không đổi chuyền; không giảm Số lượng xuống dưới tổng Kế hoạch ngày xưởng giao mọi ngày: 409, nêu chuyền (nêu số khi người lưu xem được Đã giao ở Kế hoạch may). Tra qua `LineDayPlanGuards` trước khi ghi; không tra được thì 409 "thử lại".
+  - Kế hoạch may (phase 5.16, quyết định 14.2): dòng đã có số ở Kế hoạch may không bỏ, không đổi chuyền; không giảm Số lượng xuống dưới tổng Kế hoạch ngày xưởng giao mọi ngày: 409, nêu chuyền (nêu số khi người lưu xem được Đã giao ở Kế hoạch may). Tra qua `LineDayPlanGuards` sau khi ghi dòng dàn chuyền, trước commit (dòng đang giữ khóa ghi nên lần Cập nhật Kế hoạch may chạy chồng phải chờ và đọc số mới; câu tra chờ khóa tối đa 3 giây); không tra được thì 409 "thử lại".
   - Nhật ký: `ShipmentPlan` `LINE_SCHEDULE` (dòng trước, sau).
 
 ### 4.6 Phân bổ màu cỡ (`order.colorsize`)
@@ -321,7 +321,7 @@ Cách module áp:
 - Popup Chọn mã hàng (`candidates`): service áp chính sách của `order.allocation` (dữ liệu đọc từ Thông tin đơn hàng, ADR 0006); SL còn lại suy ra được SL đơn hàng nên theo cùng mức của `qty`.
 - **Cột suy ra theo cột nguồn:**
   - "PO của kế hoạch": Ngày xác nhận theo `statusCode`; SL đã xác nhận, SL chưa xác nhận theo mức chặt hơn của `qty` và `statusCode`. Bị Che thì luôn `***`, kể cả khi giá trị trống hay bằng 0 (để trống là lộ trạng thái).
-  - Màu cỡ của kế hoạch (`GET /shipment-plans/:id`, `presentPlanLine`): `originalQty` theo `qty` của `order.po` (thiếu `order.po:view` thì như Ẩn); `plannedQty` theo `planQty`; `remainingQty` theo mức chặt hơn của hai cột. Lưới màu cỡ của popup (`GET /shipment-plans/draft`) chưa áp. Giao diện chỉ mở popup cho người có quyền thêm, sửa, nhưng `/draft`, `/candidates` chỉ đòi `order.shipment:view`: người chỉ xem có thêm `order.po:view` gọi thẳng API vẫn đọc được số chưa áp (có từ trước 5.9.15; mục "Cao", câu hỏi Q34 ở [Trạng thái](02-trang-thai.md)).
+  - Màu cỡ của kế hoạch (`GET /shipment-plans/:id`, `presentPlanLine`): `originalQty` theo `qty` của `order.po` (thiếu `order.po:view` thì như Ẩn); `plannedQty` theo `planQty`; `remainingQty` theo mức chặt hơn của hai cột. Lưới màu cỡ của popup (`GET /shipment-plans/draft`) chưa áp. Giao diện chỉ mở popup cho người có quyền thêm, sửa, nhưng `/draft`, `/candidates` chỉ đòi `order.shipment:view`: người chỉ xem có thêm `order.po:view` gọi thẳng API vẫn đọc được số chưa áp (có từ trước 5.9.15; mục "Cao", câu hỏi Q34 ở [Trạng thái](../current/STATUS.md)).
   - Phân bổ PO: `branchCode`, `osmFactoryName`, `isFactoryManual`, `isInOsm` theo mức chặt hơn của chính nó và `factoryName` (mục 4.2).
   - Phân bổ màu cỡ: tên chuyền không trả khi `lineCode` bị Ẩn/Che. Popup: khóa lồng trong `lines[]`, `colorSizes[]`, `rows[]` theo cùng mã (`qty` của chuyền và của màu cỡ theo Số lượng kế hoạch, `assignedQty` theo Số lượng giao); `hiddenQty` theo `assignedQty`. Thân lệnh lưu chỉ có `assignedQty` là cột đăng ký (`lineId` không phải), nên cần Sửa được cột Số lượng giao; service kiểm mức của cột này trước khi đọc kế hoạch, kể cả khi `rows` rỗng (bỏ hết phần giao, body không có khóa nào để `FieldPolicyInterceptor` chặn): 403 `FIELD_READONLY`.
   - Thông báo 409 của Xếp chuyền, Kế hoạch xuất hàng về phần đã giao nêu số (chỉ tổng của chuyền, của màu cỡ) khi người sửa có quyền xem Phân bổ màu cỡ và xem được cột Số lượng giao ở đó (`assignedVisible`); không xét phạm vi chuyền của người đó ở Phân bổ màu cỡ, như tổng của `totalExcept`.
@@ -331,7 +331,7 @@ Cách module áp:
 
 ## 6. API `/order/*`
 
-Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở cột "Quyền" (nhiều quyền thì cần đủ tất cả). Lỗi kiểm dữ liệu vào: 422 `VALIDATION_FAILED`. Dòng không có, của ĐVCS khác, ngoài phạm vi: 404 `NOT_FOUND`. Ghi ở `A00`: 403 `AGGREGATE_READ_ONLY`. Khóa chéo: 409 `CONFLICT`. Mã lỗi chung ở [Kiến trúc](03-kien-truc.md).
+Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở cột "Quyền" (nhiều quyền thì cần đủ tất cả). Lỗi kiểm dữ liệu vào: 422 `VALIDATION_FAILED`. Dòng không có, của ĐVCS khác, ngoài phạm vi: 404 `NOT_FOUND`. Ghi ở `A00`: 403 `AGGREGATE_READ_ONLY`. Khóa chéo: 409 `CONFLICT`. Mã lỗi chung ở [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2.
 
 **Tham số danh sách chung** (`OrderListQuery`): `page` (mặc định 1), `pageSize` (mặc định 100, tối đa 200), `q` (tìm nhanh, ≤60), `sort` (`trường:asc|desc`, theo danh sách trắng của màn; mặc định `createdAt:desc`), `shipFrom`, `shipTo` (`YYYY-MM-DD`), `customer` (chứa), `style` (chứa), `season` (bằng, chỉ đơn hàng), `status` (bằng), `line` (kế hoạch có chuyền đó, chỉ Phân bổ màu cỡ), `cf` (lọc theo cột, JSON, xem [Giao diện](10-giao-dien.md)). Kết quả `{ items, total, page, pageSize }`. Endpoint `/values` nhận thêm `field` (trường của danh sách trắng) và `search`, trả `{ values, truncated }` (tối đa 500 giá trị). Endpoint `/export` trả CSV UTF-8 có BOM, cùng bộ lọc, qua cùng chính sách cột, tối đa 10.000 dòng (riêng Phân bổ PO: 50.000; Phân bổ PO, Phân bổ màu cỡ quá giới hạn thì 422, các màn khác cắt ở giới hạn).
 
@@ -411,7 +411,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 
 ## 7. Database `MES_Order`
 
-Một database riêng của module (biến `DB_ORDER_NAME`, mặc định `MES_Order`). Quy ước chung (PascalCase, `DATETIME2(3)` UTC, bộ cột kiểm toán) ở [Kiến trúc](03-kien-truc.md).
+Một database riêng của module (biến `DB_ORDER_NAME`, mặc định `MES_Order`). Quy ước chung (PascalCase, `DATETIME2(3)` UTC, bộ cột kiểm toán) ở [Quy ước code](../CODE_CONVENTIONS.md) mục 1.1.
 
 ### Migration
 
@@ -465,7 +465,7 @@ Ràng buộc, chỉ mục: `UQ_SalesOrder_IdBranch UNIQUE (Id, BranchCode)` (kh�
 | `Id` | `INT IDENTITY` | không | PK |
 | `SalesOrderId` | `INT` | không | FK `FK_SalesOrderPo_SalesOrder` → `SalesOrder(Id)` |
 | `PoCode` | `VARCHAR(30)` | không | Mã PO `PO-<ĐVCS>-<Id>`; duy nhất trong `BranchCode` |
-| `PoNumber` | `NVARCHAR(192)` | không | PO# của khách (chữ hoa khi nhập tay); PO BRAVO không có số: `(trống)` |
+| `PoNumber` | `NVARCHAR(192)` | không | PO# của khách (chữ hoa khi nhập tay); PO BRAVO không có số: `(trống)`. PO nhập tay trước `MES_Order/0007` (cột còn là `VARCHAR`) có chữ tiếng Việt thì vẫn còn dấu "?" đã lưu |
 | `CustomerName` | `NVARCHAR(100)` | không | Bản chụp từ đơn lúc tạo PO |
 | `StyleCode` | `NVARCHAR(120)` | không | Bản chụp từ đơn lúc tạo PO |
 | `Qty` | `INT` | không | ≥ 0; luôn bằng tổng màu cỡ (service ghi cùng transaction) |
@@ -630,7 +630,7 @@ Một dòng (`Id = 1`, CHECK), migration tạo sẵn; chỉ bước làm mới g
 
 ### Khóa ngầm
 
-Khai báo ở `backend/migrations/softkeys.json`, bảng đầy đủ ở [Kiến trúc](03-kien-truc.md). Phần của `MES_Order`: `BranchCode` của 8 bảng → `SysBranch.Code`; `ShipmentPlanLine.LineCode` → `MES_Hr.Department.Code` (dòng gắn mã chuyền cũ không còn là bộ phận nào là mồ côi, `check:softkeys` báo); `SalesOrder.ProductionFactoryCode` → `SysProductionFactory.Code` (danh sách); `CreatedBy` của `SalesOrder`, `SalesOrderPo`, `ShipmentPlan`, `ShipmentPlanLine`, `SalesOrderPo.ConfirmedBy`, `PoAllocation.CreatedBy`, `PoAllocation.ModifiedBy` → `SysUser.Id`. `PoAllocation.ProductionFactoryCode` không khai khóa ngầm: dòng chưa nhập tay mang `FtyName` của `v_OSMData`, tên này không tự vào danh mục Nhà máy SX (danh mục chỉ tự thêm tên của `vOSMDataFty`), khai thì `check:softkeys` báo mồ côi giả; giá trị nhập tay đã kiểm với danh mục lúc ghi. Chiều ngược: `MES_Sewing.SewingPrep.ShipmentPlanId`, `ShipmentPlanLineId` trỏ vào `MES_Order`. `SalesOrder.SourceProductId` không phải khóa ngầm (trỏ tới dòng của BRAVO, bảng chép có thể mất dòng).
+Khai báo ở `backend/migrations/softkeys.json`, danh sách đầy đủ là chính file đó (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3). Phần của `MES_Order`: `BranchCode` của 8 bảng → `SysBranch.Code`; `ShipmentPlanLine.LineCode` → `MES_Hr.Department.Code` (dòng gắn mã chuyền cũ không còn là bộ phận nào là mồ côi, `check:softkeys` báo); `SalesOrder.ProductionFactoryCode` → `SysProductionFactory.Code` (danh sách); `CreatedBy` của `SalesOrder`, `SalesOrderPo`, `ShipmentPlan`, `ShipmentPlanLine`, `SalesOrderPo.ConfirmedBy`, `PoAllocation.CreatedBy`, `PoAllocation.ModifiedBy` → `SysUser.Id`. `PoAllocation.ProductionFactoryCode` không khai khóa ngầm: dòng chưa nhập tay mang `FtyName` của `v_OSMData`, tên này không tự vào danh mục Nhà máy SX (danh mục chỉ tự thêm tên của `vOSMDataFty`), khai thì `check:softkeys` báo mồ côi giả; giá trị nhập tay đã kiểm với danh mục lúc ghi. Chiều ngược: `MES_Sewing.SewingPrep.ShipmentPlanId`, `ShipmentPlanLineId` trỏ vào `MES_Order`. `SalesOrder.SourceProductId` không phải khóa ngầm (trỏ tới dòng của BRAVO, bảng chép có thể mất dòng).
 
 ## 8. Đơn hàng từ BRAVO và dữ liệu mô phỏng
 
@@ -658,7 +658,7 @@ Câu đọc ở `backend/src/platform/sync/bravo-order-source.ts` (`readBravoOrd
 
 ### 8.2 Ánh xạ (`backend/src/modules/order/bravo-order.mapping.ts`)
 
-Hàm thuần, không đọc ghi database, dùng chung cho nạp tăng dần và `load:bravo`. Đây là **giả định tạm** khi BA chưa chốt ánh xạ (các câu hỏi còn mở ở [Trạng thái](02-trang-thai.md)). Mọi chuỗi qua `clean`: bỏ ký tự điều khiển, gộp khoảng trắng, cắt theo độ dài cột.
+Hàm thuần, không đọc ghi database, dùng chung cho nạp tăng dần và `load:bravo`. Đây là **giả định tạm** khi BA chưa chốt ánh xạ (các câu hỏi còn mở ở [Trạng thái](../current/STATUS.md)). Mọi chuỗi qua `clean`: bỏ ký tự điều khiển, gộp khoảng trắng, cắt theo độ dài cột.
 
 | Cột MES | Lấy từ | Quy tắc |
 |---|---|---|
@@ -813,7 +813,7 @@ API công khai cho module Cắt (`ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`,
 - Chỉ lọc ĐVCS, không theo phạm vi người dùng: kết quả không trả thẳng cho người dùng mà đi qua repository của module May (lọc theo quyền `order.prep`). Xem [Module May](07-may.md).
 - `dayPlanLines(scope, { lineCodes?, activeOn?, ids? })` (phase 5.16, Kế hoạch may): dòng dàn chuyền của các chuyền đang chạy ở ngày `activeOn` (Ngày vào chuyền ≤ ngày ≤ Kết thúc ra chuyền; trống thì Kết thúc vào chuyền + số ngày ra chuyền của lịch ĐVCS), hoặc mọi dòng của các chuyền, cộng dòng trong `ids`; kèm PO/Buy date, Giá CM, số lượng. Đọc thẳng lúc mở màn, không chép.
 
-`LineDayPlanGuards` (`line-day-plan-guard.ts`, quyết định 14.2): module May đăng ký hàm tra số đã lập ở Kế hoạch may; Xếp chuyền gọi trước khi ghi dàn chuyền (mục 4.5). Đổi cột `ShipmentPlanLine` (Số lượng, chuyền, ngày) thì xem lại màn Kế hoạch may.
+`LineDayPlanGuards` (`line-day-plan-guard.ts`, quyết định 14.2): module May đăng ký hàm tra số đã lập ở Kế hoạch may; Xếp chuyền gọi sau khi ghi dàn chuyền, trước commit (`LinePlanService.saveLines`, mục 4.5). Đổi cột `ShipmentPlanLine` (Số lượng, chuyền, ngày) thì xem lại màn Kế hoạch may.
 
 ## 10. Test
 

@@ -2,7 +2,7 @@
 
 File này mô tả cách MES xác thực người dùng, giữ phiên, gắn phiên với một Đơn vị cơ sở (ĐVCS) và cưỡng chế phân quyền 5 lớp ở backend: token, guard, `PermissionService`, `BaseRepository`, chính sách cột, ngoại lệ, trần quyền quản trị, nhật ký.
 Đọc trước khi sửa `backend/src/platform/auth`, `platform/permission`, `platform/data`, các API quản trị phân quyền, hoặc khi viết repository cho module mới.
-API `/admin/*`, `/me`, các màn Quản trị và bảng `SysBranch`, `SysOrgUnit`: [Quản trị hệ thống](05-quan-tri-he-thong.md). Ma trận quyền mẫu, tài khoản mẫu: [Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md). Thuật ngữ (ĐVCS, Nhà máy SX, `A00`): [Tổng quan](01-tong-quan.md).
+API `/admin/*`, `/me`, các màn Quản trị và bảng `SysBranch`, `SysOrgUnit`: [Quản trị hệ thống](05-quan-tri-he-thong.md). Ma trận quyền mẫu, tài khoản mẫu: [Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md). Thuật ngữ (ĐVCS, Nhà máy SX, `A00`): [Tổng quan](../PROJECT_OVERVIEW.md).
 
 ## Mục lục
 
@@ -29,14 +29,11 @@ API `/admin/*`, `/me`, các màn Quản trị và bảng `SysBranch`, `SysOrgUni
 
 ### Luật không được vi phạm
 
-1. **Backend cưỡng chế, frontend chỉ phản chiếu.** Ẩn nút, ẩn menu không thay cho kiểm quyền ở API.
-2. **Deny by default.** Endpoint không khai báo `@Public`, `@Authenticated` hay `@RequirePermission` bị từ chối. Không có quyền được cấp rõ ràng thì từ chối. Phạm vi không hiểu được thì coi là tập rỗng, không bao giờ là "không giới hạn".
-3. **`BranchCode` của phiên lấy từ access token do server cấp**, cờ đơn vị tổng hợp tra từ DB. Không nhận `BranchCode` từ body, query, header. Ngoại lệ duy nhất: `branchCode` trong body của `POST /auth/select-branch` là *yêu cầu chọn*, server kiểm với `SysUserBranch` rồi mới cấp token (ADR 0002).
-4. **Mọi truy vấn dữ liệu nghiệp vụ đi qua `BaseRepository` hoặc `ChildRepository`.** Module không tự viết điều kiện phân quyền, không SQL thô trong controller, service.
-5. **Tài nguyên phải khai báo trong `SysResource`** đúng bảng nguồn và loại phạm vi (`BRANCH`/`SHARED`); không khai báo thì repository từ chối chạy.
-6. **Quyền, vai trò, phạm vi, chính sách cột, ngoại lệ là dữ liệu trong `MES_Core`**, đổi qua màn Quản trị. Menu, tài nguyên, danh sách quyền do seed nạp.
-7. **Mọi thay đổi phân quyền ghi `SysAuditLog` và tăng `SysPermissionVersion` trong cùng transaction** với thay đổi; ghi nhật ký lỗi thì hủy cả thay đổi (ADR 0004). Đăng nhập, đăng xuất, chọn ĐVCS cũng ghi nhật ký.
-8. **Không ai tự đổi quyền của chính mình** ở màn quản trị, và chỉ cấp, quản lý quyền `admin.*` mà mình đang có (ADR 0004).
+Luật bắt buộc nằm ở [AGENTS.md](../../AGENTS.md) mục 4 (nguồn duy nhất). File này mô tả cơ chế cưỡng chế từng luật. Ba chi tiết cưỡng chế cần nhớ:
+
+- Không có quyền được cấp rõ ràng thì từ chối; phạm vi không hiểu được thì coi là tập rỗng, không bao giờ là "không giới hạn" (mục 6.3).
+- `branchCode` trong body của `POST /auth/select-branch` là *yêu cầu chọn*, server kiểm với `SysUserBranch` rồi mới cấp token (ADR 0002). Một số API quản trị, danh mục nhận mã ĐVCS làm giá trị dữ liệu, không phải phạm vi của phiên: ĐVCS của phòng ban (`backend/src/modules/hr/hr.dto.ts`), của Nhà máy SX và lịch làm việc theo ĐVCS (`backend/src/platform/catalog/catalog.dto.ts`, `catalog.controller.ts`), ĐVCS để xem quyền hiệu lực (`backend/src/platform/admin/admin.dto.ts`).
+- Mọi thay đổi phân quyền ghi `SysAuditLog` và tăng `SysPermissionVersion` trong cùng transaction với thay đổi; ghi nhật ký lỗi thì hủy cả thay đổi (ADR 0004, mục 12). Đăng nhập, đăng xuất, chọn ĐVCS cũng ghi nhật ký.
 
 ### Năm lớp
 
@@ -53,7 +50,7 @@ Lọc ĐVCS chính là chiều phạm vi `FACTORY` lấy từ phiên: mọi tài
 
 ### Thứ tự kiểm trong một request
 
-Thứ tự của NestJS: guard → interceptor (trước handler) → pipe → handler → interceptor (sau handler). Sơ đồ cả request: [Kiến trúc](03-kien-truc.md).
+Thứ tự của NestJS: guard → interceptor (trước handler) → pipe → handler → interceptor (sau handler). Sơ đồ cả request: [Luồng dữ liệu](../DATA_FLOWS.md) mục 2.
 
 1. `AuthGuard`: kiểm token, phiên, ĐVCS, tính `UserAccess` (quyền kèm phạm vi), gắn `req.authUser`.
 2. `PermissionGuard`: endpoint phải khai báo; kiểm đủ các mã quyền của `@RequirePermission`.
@@ -207,6 +204,7 @@ Tài nguyên `SHARED` không có bảng nguồn (`SourceTable` trống) không �
 - Ngoại lệ Allow theo người ở `A00` khi không có phép gán vai trò nào có hiệu lực: tài nguyên `BRANCH` không thấy dòng nào (đóng an toàn); tài nguyên dùng chung thấy toàn bộ (ADR 0013 mục 4).
 - Nhà máy SX của phiên ở `A00`: mọi nhà máy đang dùng đã gắn ĐVCS (chỉ để đọc).
 - Vai trò Toàn quyền cũng chỉ đọc ở `A00` (ADR 0014).
+- Hướng mở rộng (ADR 0002, chưa làm): `A00` là trường hợp đặc biệt của "nhóm ĐVCS". Cần xem theo nhóm khác (ví dụ vùng) thì thêm bảng nhóm bằng dữ liệu, không đổi cách lọc; `BranchCode` là một chiều của mô hình phạm vi đa chiều (mục 7).
 
 <a id="quyen-theo-vai-tro"></a>
 ## 4. Quyền theo vai trò (L2) và menu động
@@ -315,7 +313,7 @@ Một điều kiện (`Condition`) có ba dạng: `in` (giá trị thuộc danh 
   - Seed (cuối mỗi lần chạy), `bootstrapFullAccess`, migration `MES_Core/0004`, `0007`, `0009`, `0010`.
   - Đặt lại mật khẩu không tăng phiên bản (thu hồi phiên thay vì vậy). Sửa tên, mô tả không tăng.
 - Header `X-Permission-Version` của mọi response có access token mang dấu `accessStamp`: `version`, hoặc `version.expiresAt` khi có mốc hết hạn. `GET /me/permissions` trả cùng dấu ở `stamp`. Giao diện thấy dấu khác thì tải lại `/me`, `/me/menu`, `/me/permissions`, `/me/field-policies` và dữ liệu đang hiện (`frontend/src/store/auth.ts`).
-- Chi phí mỗi request có access token: một câu `SysUserSession` theo khóa chính, một câu `SysPermissionVersion`, một câu `SysUserBranch`, cộng `SysBranch` khi cache hết hạn; tính lại `UserAccess` khi cache trống.
+- Chi phí mỗi request có access token: một câu `SysUserSession` theo khóa chính, một câu `SysPermissionVersion`, một câu `SysUserBranch`, cộng `SysBranch` khi cache hết hạn; tính lại `UserAccess` khi cache trống. Khi cần giảm tải có thể cache kết quả kiểm `SysUserSession` vài giây (ADR 0004, chưa làm).
 
 <a id="base-repository"></a>
 ## 6. BaseRepository và Resource Registry
@@ -418,7 +416,7 @@ Bảng con theo dòng cha (màu cỡ của PO, dòng dàn chuyền, màu cỡ c�
 - `inTransaction(db, fn)` (`transaction.ts`) giữ lỗi gốc của `fn` khi SQL Server đã tự rollback (deadlock 1205): lỗi rollback sau đó chỉ ghi log.
 - `AllExceptionsFilter` đổi lỗi deadlock thành 409 `CONFLICT` "Có người khác đang lưu cùng dữ liệu… Thử lại sau vài giây".
 - Khóa dùng `UPDLOCK` (không ghi), người chỉ đọc không bị chặn. Thứ tự khóa của từng module: [Đơn hàng](06-don-hang.md).
-- Không có transaction chung giữa các database ([Kiến trúc](03-kien-truc.md)).
+- Không có transaction chung giữa các database ([Kiến trúc](../ARCHITECTURE.md) mục 6.3).
 
 ### 6.9 Đường ghi không theo phiên
 
@@ -528,13 +526,15 @@ Mức hiệu lực của một cột với một người tại ĐVCS của phi�
 2. Không có: lấy mức **mở nhất** (Sửa > Chỉ đọc > Che > Ẩn) trong các vai trò có hiệu lực ở ĐVCS của phiên **và có quyền `<tài nguyên>:view`**. Vai trò không khai báo cột đó dùng mặc định: cột thường Sửa được, cột nhạy cảm Ẩn. Vai trò không liên quan tới màn không làm mở cột mà vai trò liên quan đã ẩn hay khóa.
 3. Không có vai trò liên quan nào (ví dụ chỉ có quyền nhờ Allow theo người): mặc định của cột.
 
+Che chỉ có một kiểu (`"***"`); cần kiểu che khác (ví dụ hiện 4 số cuối) thì thêm cột cấu hình bằng migration mới (ADR 0005).
+
 Mức Sửa được không thay quyền chức năng: vẫn cần `<tài nguyên>:update`. Chính sách theo vai trò không có hạn dùng (CHECK ở DB); chính sách theo người bắt buộc có lý do.
 
 ### 8.3 Cưỡng chế
 
 - **`FieldPolicyInterceptor`** (interceptor toàn cục, chỉ chạy khi endpoint có `@FieldResource` và token là access token):
   - `POST`, `PUT`, `PATCH`: duyệt body thô, cả object, mảng lồng nhau (ví dụ các dòng màu cỡ); khóa nào trùng mã cột có mức khác `EDITABLE` mà giá trị khác `undefined` (kể cả `null`) thì 403 `FIELD_READONLY`, `details.fields` liệt kê mã cột.
-  - Interceptor chỉ thấy khóa có trong body. Lệnh thay toàn bộ danh sách con mà gửi mảng rỗng được (bỏ hết dòng), hay lệnh đổi một cột mà có chế độ không gửi cột đó (xem trước), thì service tự kiểm mức của cột (`FieldPolicyService.levels`) trước khi đọc dữ liệu: Phân bổ PO (`po-allocation.service.ts` `setFactory`), Phân bổ màu cỡ (`color-size.service.ts` `save`). Cập nhật tỷ lệ cắt (`cut-ratio.service.ts` `updateColorSizes`) chưa kiểm: [Trạng thái](02-trang-thai.md) mục lỗi tiềm ẩn.
+  - Interceptor chỉ thấy khóa có trong body. Lệnh thay toàn bộ danh sách con mà gửi mảng rỗng được (bỏ hết dòng), hay lệnh đổi một cột mà có chế độ không gửi cột đó (xem trước), thì service tự kiểm mức của cột (`FieldPolicyService.levels`) trước khi đọc dữ liệu: Phân bổ PO (`po-allocation.service.ts` `setFactory`), Phân bổ màu cỡ (`color-size.service.ts` `save`). Cập nhật tỷ lệ cắt (`cut-ratio.service.ts` `updateColorSizes`) chưa kiểm: [Trạng thái](../current/STATUS.md) mục Lỗi đã biết.
   - Dữ liệu trả về (object, mảng; trừ file `StreamableFile`): duyệt mọi object lồng nhau, bỏ cột Ẩn, thay cột Che.
 - **Xuất file:** `ExportService.csv` (`backend/src/platform/export/export.service.ts`) đi qua cùng `shape` với chế độ `EXPORT`; cột Ẩn không có trong file, cột Che ra `***`. Cột phụ suy ra từ cột khác (tên theo mã) khai `field` để theo chính sách của cột gốc. Ô bắt đầu bằng `= + - @` được thêm dấu nháy để chặn công thức Excel.
 - **Sắp xếp, lọc, tìm:** sắp xếp, lọc hay tìm theo cột không xem được nguyên giá trị cũng làm lộ giá trị. `safeSort` bỏ tham số sắp xếp theo cột Ẩn/Che; `unreadable` trả các cột Ẩn/Che để module bỏ bộ lọc, cột tìm kiếm; hỏi giá trị cho popup lọc theo cột Ẩn/Che trả 403 `FIELD_NOT_READABLE` (`assertFilterField`, `backend/src/platform/data/column-filter.ts`).
@@ -665,7 +665,7 @@ Ghi khi cột nhạy cảm được trả ra không bị che (mục 8.3). Chỉ 
 <a id="ma-loi"></a>
 ## 13. Mã lỗi
 
-Lỗi trả dạng `{ "error": { "code", "message", "details" }, "traceId" }`, thông điệp tiếng Việt. Định nghĩa ở `backend/src/common/app.exception.ts` (`Errors`) và `http-exception.filter.ts`. Mã lỗi chung khác (`CONFLICT`, `VALIDATION_FAILED`, `INTERNAL_ERROR`…): [Kiến trúc](03-kien-truc.md).
+Lỗi trả dạng `{ "error": { "code", "message", "details" }, "traceId" }`, thông điệp tiếng Việt. Định nghĩa ở `backend/src/common/app.exception.ts` (`Errors`) và `http-exception.filter.ts`. Mã lỗi chung khác (`CONFLICT`, `VALIDATION_FAILED`, `INTERNAL_ERROR`…): [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2.
 
 | HTTP | `code` | Khi nào |
 |---|---|---|

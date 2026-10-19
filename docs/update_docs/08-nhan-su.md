@@ -37,7 +37,7 @@ MES **tự quản dữ liệu nhân sự**: thêm, sửa, nhập hàng loạt ng
 - `hr.orgchart`, `hr.employee` khai `ScopeType = 'SHARED'` (ADR 0012 mục 5): không lọc theo ĐVCS của phiên. Đọc, ghi vẫn qua `BaseRepository`: tài nguyên chưa khai báo thì từ chối, không có quyền thì không thấy gì.
 - **Ghi được ở mọi ĐVCS, kể cả `A00`**, vì dữ liệu không thuộc nhà máy nào (`BaseRepository.assertWritable` chỉ chặn `A00` với tài nguyên `BRANCH` hoặc có ĐVCS nguồn). Hai màn đặt `aggregateNote={false}` để không hiện ghi chú "A00 chỉ đọc". Khóa truy vấn frontend không kèm ĐVCS.
 - Bảng `Department`, `Employee` không có cột phạm vi `BranchCode`. `Department.BranchCode` chỉ là thuộc tính "phòng ban của ĐVCS nào", service tự ghi, không phải cột phạm vi do nền tảng đặt.
-- **Phạm vi nhà máy, chuyền không có tác dụng với `hr.*`**: gán vai trò Nhân sự kèm phạm vi nhà máy `A01` thì người đó vẫn xem, sửa, xuất mọi hồ sơ toàn công ty. Tạm thời không gán phạm vi nhà máy cho người dùng vai trò Nhân sự; cách xử lý lâu dài còn chờ chốt ([Trạng thái](02-trang-thai.md)). Giới hạn theo phòng ban (L3) chưa làm.
+- **Phạm vi nhà máy, chuyền không có tác dụng với `hr.*`**: gán vai trò Nhân sự kèm phạm vi nhà máy `A01` thì người đó vẫn xem, sửa, xuất mọi hồ sơ toàn công ty. Tạm thời không gán phạm vi nhà máy cho người dùng vai trò Nhân sự; cách xử lý lâu dài còn chờ chốt ([Trạng thái](../current/STATUS.md)). Giới hạn theo phòng ban (L3) chưa làm.
 
 ## Vai trò và quyền
 

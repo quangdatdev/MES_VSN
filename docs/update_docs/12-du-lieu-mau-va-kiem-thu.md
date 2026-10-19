@@ -59,7 +59,7 @@ Thứ tự trong bảng là `SortOrder` 10, 20, … 80. Mọi vai trò seed là 
 - Mỗi tài nguyên trong `resources` của `seed-data.ts` sinh một dòng `SysResource`, 5 quyền `SysPermission` mã `<tài nguyên>:<hành động>` với hành động `view`, `create`, `update`, `delete`, `export` (tên quyền dạng "Xem: Thông tin đơn hàng"), và một mục menu lá `menu.<tài nguyên>` dưới nhóm `menu.<module>`.
 - 8 nhóm menu theo thứ tự: `order` Quản trị đơn hàng, `cutting` Quản trị nhà cắt, `sewing` Quản trị xưởng may, `qms` Quản trị chất lượng, `finishing` Quản trị hoàn thiện, `hr` Quản trị nhân sự, `report` Báo cáo quản trị, `admin` Quản trị.
 - Mục menu đánh dấu điện thoại (`SysMenu.IsMobile`): `sewing.cluster`, `sewing.output`, `qms.endline`.
-- Danh sách màn, đường dẫn, màn nào đã có nội dung: [Tổng quan › Menu và màn hình](01-tong-quan.md).
+- Danh sách màn, đường dẫn, màn nào đã có nội dung: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.2.
 
 <a id="ma-tran-quyen-mau"></a>
 
@@ -283,7 +283,7 @@ Thay bằng đơn hàng BRAVO đã chép: `npm run load:bravo -- --yes` hoặc `
 
 ## Kịch bản demo
 
-Khoảng 12 phút. Nói rõ ngay từ đầu: dữ liệu demo là dữ liệu giả (trừ khi đã nạp BRAVO bằng `--bravo`); module Đơn hàng, Kế hoạch chuẩn bị SX, Nhân sự, Quản trị đã có màn; Cắt, May, QMS, Hoàn thiện, Báo cáo mới có menu và phân quyền.
+Khoảng 12 phút. Nói rõ ngay từ đầu: dữ liệu demo là dữ liệu giả (trừ khi đã nạp BRAVO bằng `--bravo`); module Đơn hàng, Kế hoạch chuẩn bị SX, Đồng bộ tiến độ cắt, Xác nhận cấp BTP, Kế hoạch may, Nhân sự, Quản trị đã có màn; các màn Cắt, May còn lại, QMS, Hoàn thiện, Báo cáo mới có menu và phân quyền.
 
 ### Chuẩn bị (15 phút trước)
 
@@ -305,7 +305,7 @@ Khoảng 12 phút. Nói rõ ngay từ đầu: dữ liệu demo là dữ liệu g
 | 5. Đổi quyền có hiệu lực ngay (2 phút) | `admin`, máy demo, chọn Nhà máy 1 | Quản trị › Chính sách cột, Màn hình: Phân bổ màu cỡ; dòng Trưởng chuyền, cột Khách hàng: Che → Chỉ đọc; bấm Lưu 1 thay đổi | Điện thoại tải lại trang: tên khách hiện rõ, không cần đăng nhập lại. Đổi lại Che, lưu. Dòng Quản trị hệ thống, Toàn quyền bị khóa với lời nhắc "Bạn đang giữ vai trò này nên không tự sửa được": không ai tự nâng quyền cho mình |
 | 6. Ngoại lệ cho một người (1 phút) | `admin` | Quản trị › Người dùng, dòng `truongchuyen.b`, nút Phân quyền chi tiết; tab Ngoại lệ quyền, rồi tab Xem thử | Ngoại lệ Cho phép xem Kế hoạch xuất hàng, hết hạn 31/12/2026, có lý do. Xem thử: người này dùng được màn nào, phạm vi nào, cột nào ẩn hay che |
 | 7. Nhật ký (30 giây) | `admin` | Quản trị › Nhật ký hệ thống, bấm Xem ở một dòng | Có đăng nhập, lập kế hoạch, đổi chính sách cột vừa làm, kèm trước/sau. Nhật ký sửa đơn hàng không chứa giá |
-| 8. Kết (1 phút) | | | Đã có: khung, phân quyền 5 lớp, module Đơn hàng, Kế hoạch chuẩn bị SX, Nhân sự, đồng bộ BRAVO/OSM. Chưa có: [Tổng quan › Chưa có](01-tong-quan.md), việc chờ: [Trạng thái](02-trang-thai.md) |
+| 8. Kết (1 phút) | | | Đã có: khung, phân quyền 5 lớp, module Đơn hàng, Kế hoạch chuẩn bị SX, Nhân sự, đồng bộ BRAVO/OSM. Chưa có: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.4, việc chờ: [Trạng thái](../current/STATUS.md) |
 
 Sau buổi demo: `npm run reset:demo -- --yes`. Sự cố khi demo: [Vận hành › Xử lý sự cố](11-van-hanh.md).
 
@@ -323,6 +323,7 @@ Mỗi tình huống: đăng nhập ai, làm gì, phải thấy gì. Mở mỗi t
 | A4 | `truongchuyen.a` | Xem menu; gõ thẳng `/order/info` | Không có Thông tin đơn hàng, Phân bổ PO, Kế hoạch xuất hàng; Báo cáo chỉ có Sản lượng theo giờ; không có nhóm Quản trị. Đường dẫn gõ tay báo chưa có quyền |
 | A5 | `quantri`, `A01` | Mở Thông tin đơn hàng | Xem được, không có Thêm; không có cột Đơn giá, Thành tiền, Giá CM |
 | A6 | Người có quyền ghi, ở `A00` | Thêm, sửa, xóa kế hoạch hoặc đơn hàng qua API | 403 `AGGREGATE_READ_ONLY` |
+| A7 | `admin` bỏ `order.po:view` của vai trò Kế hoạch (`PLANNER`) ở Phân quyền | `kehoach.a` mất menu Cập nhật tỷ lệ cắt và API trả 403 ngay ở lần tải kế tiếp (không cần đăng nhập lại) |
 
 ### B. Phạm vi (L3)
 
@@ -399,7 +400,7 @@ Tình huống khó làm bằng tay đã có test tự động (bảng dưới): 
 - `npm test -w backend` = `jest --runInBand`: chạy tuần tự, timeout mỗi bài 30 giây (`backend/jest.config.js`), file `backend/test/*.spec.ts`.
 - `backend/test/setup-env.ts` đặt `BRAVO_ORDER_IMPORT=false`, `OSM_FACTORY_UPDATE=false`, `PO_ALLOCATION_REFRESH=false`: app dựng trong test không tự nạp đơn hàng BRAVO, cập nhật Nhà máy SX hay làm mới Phân bổ PO xen vào bài test (bài test Phân bổ PO gọi thẳng bước làm mới, chỉ cho Brand riêng của bài).
 - Phần lớn bài chạy **trên database thật** theo `backend/.env`: dựng `AppModule` thật, gọi API bằng supertest, đăng nhập tài khoản mẫu bằng `DEMO_PASSWORD`. Cần trước: `npm run migrate`, `npm run seed` với dữ liệu mẫu (`SEED_SAMPLE_DATA=true`).
-- Bài tự tạo dữ liệu thử có tiền tố riêng (`TEST-…`, `TST…`, tài khoản `test.…`) và dọn khi xong; tài khoản thử chỉ bị vô hiệu, không xóa; nhật ký giữ lại. Không có chốt chặn database: không chạy trên database dùng thật ([Vận hành › Chốt chặn](11-van-hanh.md#chot-chan-an-toan-cua-script)).
+- Bài tự tạo dữ liệu thử có tiền tố riêng (`TEST-…`, `TST…`, tài khoản `test.…`; bài ghi dữ liệu Đơn hàng ở `phase5.spec.ts` dùng đơn riêng `TEST-P5-FIXTURE`, còn bài chỉ đọc cần có đơn hàng ở `A01`, `A02` nên chạy được trên cả dữ liệu giả và dữ liệu BRAVO) và dọn khi xong; tài khoản thử chỉ bị vô hiệu, không xóa; nhật ký giữ lại. Không có chốt chặn database: không chạy trên database dùng thật ([Vận hành › Chốt chặn](11-van-hanh.md#chot-chan-an-toan-cua-script)).
 - Chạy trên database demo thì xong nên `npm run reset:demo -- --yes`.
 - Bài refresh phiên trong `auth.spec.ts` gọi qua HTTP: cần `COOKIE_SECURE=false` (hoặc không đặt `NODE_ENV=production`), không thì cookie `Secure` không được gửi lại.
 - `sync.spec.ts` có 2 bài chép dữ liệu thật chỉ chạy khi `DB_TRUNGGIAN_NAME` cùng máy SQL Server (không qua linked server); không thì bỏ qua.
