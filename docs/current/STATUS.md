@@ -20,7 +20,7 @@ Kế hoạch phase mới ghi ở mục 1 theo khuôn ở [DEVELOPMENT_WORKFLOW](
 | T4: chuyển nội dung chỉ còn ở tài liệu cũ rồi xóa 59 file (`update_docs/01`, `02`, `03`, `14`, `docs/adr/*`, `docs/phases/*`, 11 file `thiet-ke`, `review/README.md`, `yeu-cau.md`, `bao-cao/*`) | Xong, chưa commit. Bảng "đã xóa → đọc ở đâu": [update_docs/README](../update_docs/README.md) |
 | Q49: dọn worktree, nhánh đã gộp | Xong: gỡ `MES-wt-511`, `MES-wt-512`; xóa 7 nhánh cục bộ đã gộp. **Giữ** `MES-wt-r4` và nhánh `fix-cut-ratio-qty` vì còn bản sửa lỗi HIGH chưa commit (task T12) |
 | Giai đoạn 5: kiểm liên kết, tính nhất quán | Xong (kết quả trong báo cáo của phiên) |
-| Bổ sung tài liệu module còn thiếu so với code | Chưa làm: task T15 |
+| T15: bổ sung tài liệu module còn thiếu so với code (`04`–`08`, `10`–`12`, `15`) | Xong 20/10/2026, chưa commit. Kết quả, điểm còn NEEDS VERIFICATION: mục 8.2 |
 
 Làm trên `main` theo chỉ đạo 19/10/2026 ("theo dõi trên nhánh main trước"). Đợt này không sửa source code, database, CI/CD.
 
@@ -30,14 +30,14 @@ Tech Lead 19/10/2026: các việc sửa code làm **sau khi chốt tài liệu**
 
 | # | Việc | Ghi chú |
 |---|---|---|
-| T15 | Bổ sung tài liệu module còn thiếu so với code | Danh sách ở mục 8.2 |
 | T12 | Sửa lỗi HIGH ở Cập nhật tỷ lệ cắt (mục 8.1, dòng đầu) | Bản sửa chưa commit ở worktree `MES-wt-r4` (nhánh `fix-cut-ratio-qty`: `backend/src/modules/order/cut-ratio.service.ts`, `backend/test/phase5.spec.ts`). Người dùng sửa ở phiên sau. Xong thì gỡ worktree, xóa nhánh |
 | T13 | Test body vượt 512 KB trả 413 hay 500 | [DATA_FLOWS](../DATA_FLOWS.md) mục 8 |
 | T1 | Sửa comment trong code trỏ tới tài liệu đã xóa | ~250 chỗ "ADR 00xx", ~12 chỗ `docs/thiet-ke/*.md` (ví dụ `backend/src/common/app.exception.ts`), 4 chỗ `11-van-hanh.md`; 17 file trích "CLAUDE.md mục…" đang đúng số mục của `AGENTS.md`. Tạm thời tra bảng ở [update_docs/README](../update_docs/README.md) |
 | T2 | Dựng CI GitHub Actions | Các bước: [ENGINEERING_STANDARDS](../ENGINEERING_STANDARDS.md) mục 9; 2 bài `catalog.spec.ts` cần dữ liệu BRAVO |
 | T3 | Thống nhất TypeScript 6.0.3 | `ts-jest` đã chạy 6.0.3 (Tech Lead xác nhận); `backend`, `frontend` còn khai `^5.9.3` |
 | T6 | Áp dụng mô hình nhánh, bật bảo vệ nhánh `main`, `develop` trên GitHub | Khi Tech Lead bảo bắt đầu ([DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 4) |
-| T7 | Mọi `DELETE` trả 200 kèm `{ removed: true }` | 6 route còn 204: [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) mục 4.1 |
+| T7 | Mọi `DELETE` trả 200 kèm `{ removed: true }` | 6 route còn 204, và `DELETE /cutting/progress/:id/entries` đổi theo chuẩn (Q52): [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) mục 4.1; sửa cả giao diện đang đọc body cũ |
+| T16 | Che tên khách hàng (`customerName`, mức Che) cho Trưởng chuyền ở `cutting.progress` (Q51) | Thêm dòng vào `roleFieldPolicies` (`backend/scripts/seed-data.ts`), như 4 màn Đơn hàng, Chuẩn bị SX; máy đã cài cần cách đưa dòng mới vào (kiểm seed có thêm chính sách cột còn thiếu không, hay cần migration); sửa [12](../update_docs/12-du-lieu-mau-va-kiem-thu.md) mục chính sách cột mẫu |
 | T8 | Kiểm kiểu `backend/scripts`, `backend/test` | [ENGINEERING_STANDARDS](../ENGINEERING_STANDARDS.md) mục 1.4 |
 | T9 | Chuyển phần dùng chung của `features/order/common.tsx`, `features/order/api.ts` sang `components`/`lib` | [ARCHITECTURE](../ARCHITECTURE.md) mục 10 A3 |
 | T10 | Gom `FIELD_NOT_READABLE`, `LINE_SCOPE_UPDATE_FAILED` vào `Errors` | [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) mục 5 |
@@ -90,7 +90,7 @@ Thêm việc mới cho máy chủ: ghi ở đây, kèm migration, có dừng b�
 
 ### 4.1 Chờ Tech Lead, người dùng
 
-Đã trả lời 19/10/2026: Q2, Q4, Q5, Q42–Q50 (mục 7).
+Đã trả lời: Q2, Q4, Q5, Q42–Q50 (19/10/2026), Q51, Q52 (20/10/2026) (mục 7).
 
 | # | Câu hỏi |
 |---|---|
@@ -188,6 +188,7 @@ Chuyển từ kế hoạch lộ trình sau demo (`git show 98d19db:docs/phases/p
 | Remote chính `origin` (Q45); kế hoạch phase trong STATUS; PR, squash, bảo vệ nhánh, commit, xung đột, revert | [DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 2, 4, 5 |
 | Máy chủ Node 22, đã làm hết việc chờ; 5.14 Approved | Mục 2, 3 |
 | Body > 512 KB: ghi lại, test sau khi xong tài liệu | T13 |
+| Q51: che tên khách cho Trưởng chuyền ở Đồng bộ tiến độ cắt; Q52: `DELETE /cutting/progress/:id/entries` đổi theo chuẩn Q42 (20/10/2026) | T16; [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) mục 4.1, T7 |
 | Xóa tài liệu cũ (T4); dọn worktree, nhánh (Q49); xóa nhánh `feature/docs-chuan-hoa` trên `origin` (Q50) | Mục 1.1, 2 |
 | Quyền đọc thẳng BRAVO chỉ theo dõi; chừa `docs/nguon/ba/`; không xử lý thông tin nhạy cảm trong tài liệu (IP là máy test nội bộ) | Mục 4.3; `docs/nguon/ba/README.md` |
 
@@ -229,19 +230,19 @@ Phát hiện khi rà code để viết tài liệu; chưa chạy thử từng tr
 | Thấp | `backend/scripts/seed.ts` | Phép gán ADMIN có hạn dùng thì phép gán Toàn quyền vẫn không hạn |
 | Thấp | `backend/scripts/reset-demo.ts` | Vai trò tự tạo trùng mã `FULL_ACCESS` bị đổi tên, xóa quyền (chỉ máy demo) |
 | Thấp | `frontend/src/shell/permissions.ts` | Menu chỉ đọc 2 tầng; `MODULE_PREFIXES` viết cứng |
-| Thấp | `SyncPage.tsx`, `AuditPage.tsx`, `sync-gen.ts` | Chữ trên màn Đồng bộ chỉ nói BRAVO; lỗi 50004 nhắc tên nút cũ; màn Nhật ký thiếu nhãn cho một số mã hành động, loại đối tượng (`SysWorkCalendar`, `WORK_CALENDAR_*`…) |
+| Thấp | `SyncPage.tsx`, `AuditPage.tsx`, `sync-gen.ts` | Chữ trên màn Đồng bộ chỉ nói BRAVO; lỗi 50004 nhắc tên nút cũ. Màn Nhật ký hiện nguyên mã khi chưa có nhãn: mã hành động `FACTORY_IMPORT`, `IMPORT`, `LOGIN_LOCKED`, `SELECT_BRANCH_DENIED`, `BRAVO_IMPORT`, `OSM_FACTORY_IMPORT`, `CONFIRM`, `UNCONFIRM`, `DELETE_ENTRIES` (có thể còn mã khác ghi qua biến); ô lọc đối tượng thiếu `DepartmentType`, `Employee`, `PrepStep`, `SewingPrep`, `SewingDayPlan`, `CuttingPlan`, `CuttingSupply`, còn lọc `ShipmentPlanLine` mà không code nào ghi loại này |
+| Thấp | Comment cũ | `backend/scripts/seed-data.ts` (khai `sewing.plan`) ghi "không dùng Thêm" trong khi lập Kế hoạch may lần đầu cho chuyền trong ngày cần quyền Thêm (`sewing-plan.service.ts`, `ensureHeaders`); `frontend/src/components/BrandMark.tsx` ghi logo gốc "nền trắng đặc" trong khi `logo-vs.png` đã nền trong suốt. Sửa cùng task T1 |
 | Thấp | Nhiều nơi | Code không dùng: `mantine-datatable`, `BranchName`, `onlyEditable`, prop `widthKey`, `AdminUsersService.roleCodes`, ảnh `frontend/public/Logo VS.png`, `logo-vs-mark.png`; comment cũ "Chưa đồng bộ BRAVO" |
 
-### 8.2 Tài liệu module còn thiếu so với code (task T15)
+### 8.2 Tài liệu module (task T15, 20/10/2026)
 
-| File | Còn thiếu |
+Đã bổ sung cho khớp code: `04` (tài nguyên `cutting.*`, `sewing.plan` ở mục 3.2, 7.3, 8.1; đường ghi không theo phiên; danh sách mã lỗi đủ; test bảo vệ luật), `05` (`ancestors` của `/me/lines`; bảng migration thay bằng link [ARCHITECTURE](../ARCHITECTURE.md) mục 6.2; màn Nhật ký; `work-calendar.ts`), `06` (vị trí code, repository hệ thống, mã 409 của API, khóa ngầm chiều ngược, `load:bravo`, `sim:board`), `07` (Kế hoạch may trong tổng quan, ranh giới, mục Database), `08` (`HrLineSource`, nơi dùng chuyền, khóa ngầm chiều ngược, ranh giới với module Cắt), `10` (khung, theme, token sau 5.11; manifest; `lib/`; bảng màn; danh sách test chuyển về `12`), `11` (`DB_HOST`, `reset:demo`, `sim:board --all`, `--sync-env`), `12` (`sewing.plan` ở bảng phạm vi, cột, chính sách cột mẫu; đủ 37 file test backend, 36 file test frontend), `15` (kết quả `DELETE`, `confirm`, ranh giới).
+
+Còn **NEEDS VERIFICATION**:
+
+| File | Điểm |
 |---|---|
-| `10-giao-dien.md` | Khung, theme vẫn tả theo trước 5.11 (kích thước thanh, logo, màu, bo góc, token); thiếu 11 file test; chưa ghi `lib/workCalendar.ts`, `__APP_VERSION__` |
-| `04-phan-quyen.md` | Mục 3.2, 7.3, 8.1, 17 thiếu `cutting.*`, `sewing.plan`; mục 13 thiếu mã `INTERNAL_ERROR`, `BAD_REQUEST`, `TOO_MANY_REQUESTS`, `SYNC_NOT_READY`, `FIELD_NOT_READABLE`, `LINE_SCOPE_UPDATE_FAILED`; mục 6.9 thiếu các đường ghi không theo phiên của module Cắt |
-| `05-quan-tri-he-thong.md` | `ancestors` của `/me/lines`; bảng migration riêng (trùng [ARCHITECTURE](../ARCHITECTURE.md) mục 6.2); màn Nhật ký thiếu đối tượng, nhãn |
-| `06-don-hang.md` | Bảng API thiếu vài mã 409; khóa ngầm chiều ngược của Cắt, Kế hoạch may; mục Migration trùng ARCHITECTURE mục 6.2 |
-| `07-may.md` | Mục Database chỉ ghi migration 0001, 0002 |
-| `08-nhan-su.md` | `HrLineSource` sau 5.16 (`ancestors`); khóa ngầm chiều ngược của Kế hoạch may, Cấp BTP |
-| `11-van-hanh.md` | Bước xóa Kế hoạch may, `MES_Cutting` của `reset:demo`; luật giữ kế hoạch có số cắt, cấp BTP, Kế hoạch may của `sim:board --all` |
-| `12-du-lieu-mau-va-kiem-thu.md` | `sewing.plan` ở bảng chiều phạm vi, cột đăng ký, chính sách cột mẫu; 6 file test |
-| `15-cat.md` | Kết quả `DELETE /cutting/supply/:id` (200 kèm `{ removed: true }`) |
+| `08-nhan-su.md` | Chỉ mục `IX_Department_ProductionWorkshop` không phủ cột `Path` mà `HrLineSource` nay đọc thêm: chưa đo plan thực thi |
+| `08-nhan-su.md` | Mục 2.4 dẫn `docs/nguon/KE-HOACH-MES-VSN.md`: file không có trong repo (chỉ có ở commit `957c09c`, không thuộc lịch sử `main`); cần nguồn thay thế hoặc bỏ tham chiếu |
+| `10-giao-dien.md` | Số đo màn đăng nhập (585px, 360×640, 960×599) ở mục 11.2: không kiểm được từ code |
+| `11-van-hanh.md` | Thư mục triển khai phải nằm trên ổ NTFS của chính máy chủ (script tạo junction, `deploy/lib.cjs`): code không kiểm điều này |

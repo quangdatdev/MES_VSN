@@ -6,7 +6,7 @@ Luật chung của `BaseRepository`, chính sách cột, vai trò Toàn quyền:
 
 ## Tổng quan
 
-MES **tự quản dữ liệu nhân sự**: thêm, sửa, nhập hàng loạt ngay trong MES, không lấy về từ hệ thống khác (ADR 0012 mục 1). Nếu sau này lấy từ hệ thống Nhân sự khác thì thêm nguồn đồng bộ qua `MES_Sync` và cột nhận diện nguồn, bảng giữ nguyên. Nghiệp vụ lấy theo hai màn của Support-Web nhưng không chép code, và sửa các điểm yếu của bản gốc (mã đổi được qua API, cha nằm trong nhánh con, giải thể làm mồ côi phòng ban con, chức danh không kiểm theo phòng ban, lộ CCCD…), xem `docs/nguon/KE-HOACH-MES-VSN.md` mục 2.4.
+MES **tự quản dữ liệu nhân sự**: thêm, sửa, nhập hàng loạt ngay trong MES, không lấy về từ hệ thống khác (ADR 0012 mục 1). Nếu sau này lấy từ hệ thống Nhân sự khác thì thêm nguồn đồng bộ qua `MES_Sync` và cột nhận diện nguồn, bảng giữ nguyên. Nghiệp vụ lấy theo hai màn của Support-Web nhưng không chép code, và sửa các điểm yếu của bản gốc (mã đổi được qua API, cha nằm trong nhánh con, giải thể làm mồ côi phòng ban con, chức danh không kiểm theo phòng ban, lộ CCCD…). NEEDS VERIFICATION: danh sách đầy đủ các điểm yếu này được dẫn tới `docs/nguon/KE-HOACH-MES-VSN.md` mục 2.4, file không có trong repo.
 
 | Màn | Đường dẫn | Quyền | Frontend | Backend |
 |---|---|---|---|---|
@@ -27,10 +27,10 @@ MES **tự quản dữ liệu nhân sự**: thêm, sửa, nhập hàng loạt ng
 | `backend/src/modules/hr/employee-fields.ts` | Định nghĩa **một chỗ** các trường của hồ sơ (khóa API, cột DB, nhãn, nhóm, kiểu, bắt buộc, độ dài, tên gọi khác khi dán Excel) |
 | `frontend/src/features/hr/api.ts`, `types.ts` | Hook gọi API, khóa truy vấn `HR_KEYS`, kiểu dữ liệu |
 | `frontend/src/features/hr/tree.ts` | Dựng cây từ danh sách phẳng, lọc cây, lựa chọn phòng ban thụt lề, bỏ dấu (`fold`) |
-| `frontend/src/features/hr/common.tsx` | `DepartmentSelect` (ô chọn phòng ban dạng cây), `FieldCell` (ô form có chú thích dạng tooltip), `WorkshopBadge` (dấu "Xưởng sản xuất"), `Splitter`, `useStoredSize`, `Fact`, `Trail`, `LoadError` |
+| `frontend/src/features/hr/common.tsx` | `DepartmentSelect` (ô chọn phòng ban dạng cây), `FieldCell` (ô form có chú thích dạng tooltip), `WorkshopBadge` (dấu "Xưởng sản xuất"), `DissolvedBadge` (nhãn "Đã giải thể"), `Splitter`, `useStoredSize`, `Fact`, `Trail`, `LoadError` |
 | `backend/scripts/hr-data.ts` | `hrDbState`, `seedHr`, `seedHrIfReady`, `clearHr` |
 
-**Ranh giới module** (lint ở `backend/eslint.config.mjs`): module Nhân sự không import module Đơn hàng, May, Đồng bộ; module khác không được import phần bên trong module Nhân sự. Module Đơn hàng, May lấy chuyền may qua `OrgService` của nền tảng, nơi module Nhân sự đăng ký nguồn chuyền.
+**Ranh giới module** (lint ở `backend/eslint.config.mjs`): module Nhân sự không import module Đơn hàng, May, Cắt và `platform/sync` (Đồng bộ); module Đơn hàng, May, Cắt không import phần nào của module Nhân sự (luật `NO_HR`: module Nhân sự chưa có API công khai). Module Đơn hàng, May, Cắt lấy chuyền may qua `OrgService` của nền tảng, nơi module Nhân sự đăng ký nguồn chuyền.
 
 ## Dữ liệu dùng chung toàn công ty
 
@@ -157,8 +157,8 @@ Code: `DepartmentService`.
 
 Quyết định: [Quyết định](13-quyet-dinh.md) mục 6.7. Phạm vi chuyền của Trưởng chuyền theo mã bộ phận: [Phân quyền](04-phan-quyen.md) mục 7.6.
 
-- Bộ phận tích "Xưởng sản xuất" (`Department.IsProductionWorkshop = 1`) là một chuyền may của ĐVCS gắn với nó: mã chuyền là mã bộ phận, tên chuyền là tên bộ phận, nhóm trong ô chọn là bộ phận cha. Chuyền hiện ở mọi ô chọn Chuyền may (Xếp chuyền, Kế hoạch chuẩn bị SX, ô lọc Chuyền, Tổ SX, ô Chuyền ở bộ sửa phạm vi) qua `OrgService` của nền tảng.
-- **Nguồn chuyền** `HrLineSource` (`backend/src/modules/hr/hr-line-source.ts`): đăng ký vào `OrgService` lúc khởi động; đọc thẳng bảng `Department` (không qua `BaseRepository`: đây là danh mục cho mọi người đăng nhập qua `/me/lines`, không phải dữ liệu nhân sự theo quyền `hr.orgchart`; `OrgService` lọc ĐVCS). Trả bộ phận đang tích có ĐVCS, kể cả đã giải thể (`isActive = false`, để dữ liệu cũ hiện tên), xếp theo ĐVCS, bộ phận cha (bộ phận ở gốc cây xếp sau), thứ tự, mã. Bộ phận bỏ tích không còn trong nguồn: dữ liệu gắn mã đó thành chuyền mồ côi ("<mã> (chuyền cũ)").
+- Bộ phận tích "Xưởng sản xuất" (`Department.IsProductionWorkshop = 1`) là một chuyền may của ĐVCS gắn với nó: mã chuyền là mã bộ phận, tên chuyền là tên bộ phận, nhóm trong ô chọn là bộ phận cha. Chuyền hiện ở mọi ô chọn Chuyền may (Xếp chuyền, Phân bổ màu cỡ, Kế hoạch chuẩn bị SX và Kế hoạch may (ô Tổ SX), Xác nhận cấp BTP, ô lọc Chuyền, ô Chuyền ở bộ sửa phạm vi) qua `OrgService` của nền tảng.
+- **Nguồn chuyền** `HrLineSource` (`backend/src/modules/hr/hr-line-source.ts`): đăng ký vào `OrgService` lúc khởi động; đọc thẳng bảng `Department` (không qua `BaseRepository`: đây là danh mục cho mọi người đăng nhập qua `/me/lines`, không phải dữ liệu nhân sự theo quyền `hr.orgchart`; `OrgService` lọc ĐVCS). Trả bộ phận đang tích có ĐVCS, kể cả đã giải thể (`isActive = false`, để dữ liệu cũ hiện tên), xếp theo ĐVCS, bộ phận cha (bộ phận ở gốc cây xếp sau), thứ tự, mã. Mỗi chuyền kèm bộ phận cha trực tiếp (`workshopCode`, `workshopName`, đọc bằng nối `ParentId`) và `ancestors`: mã, tên các bộ phận cha từ gốc cây tới bộ phận cha trực tiếp (rỗng khi chuyền nằm ở gốc). Mã lấy từ `Path` của chuyền; tên đọc bằng câu thứ hai trên `Department` theo mã (lô 1.000 mã, không lọc giải thể; không đọc được thì tên là mã). Ô Đơn vị phòng ban của Kế hoạch may dùng `ancestors` ([May](07-may.md)). Bộ phận bỏ tích không còn trong nguồn: dữ liệu gắn mã đó thành chuyền mồ côi ("<mã> (chuyền cũ)").
 - **Ô tích** "Xưởng sản xuất" ở form thêm, sửa (`DepartmentPanel.tsx`): mô tả "Hiện trong ô chọn Chuyền may của đơn vị cơ sở đã chọn." hiện sẵn; ô khóa, lý do hiện ngay dưới ô (kèm biểu tượng khóa) khi:
   - thiếu `admin.permission:update`: "Cần thêm quyền sửa Phân quyền: danh sách chuyền may quyết định Trưởng chuyền thấy dữ liệu nào.";
   - chưa tích mà chưa chọn ĐVCS: "Chọn đơn vị cơ sở trước: chuyền may phải thuộc một đơn vị cơ sở."
@@ -332,7 +332,7 @@ Khai `@FieldResource('hr.employee')`: dữ liệu gửi lên và trả về qua 
 
 ## Database `MES_Hr`
 
-Migration: `backend/migrations/MES_Hr/0001_hr_init.sql` (bốn bảng), `0002_department_production_workshop.sql` (cột `Department.IsProductionWorkshop`, ràng buộc, chỉ mục). Quản trị CSDL tạo `MES_Hr` trống và cấp `db_owner` cho tài khoản ứng dụng trước khi chạy migrate: [Vận hành](11-van-hanh.md). Quy ước: PascalCase, số ít, thời điểm `DATETIME2(3)` giờ UTC, ngày `DATE`. Không có `BranchCode` bắt buộc (dữ liệu dùng chung).
+Danh sách file migration (`backend/migrations/MES_Hr/`): [Kiến trúc](../ARCHITECTURE.md) mục 6.2. Quản trị CSDL tạo `MES_Hr` trống và cấp `db_owner` cho tài khoản ứng dụng trước khi chạy migrate: [Vận hành](11-van-hanh.md). Quy ước: PascalCase, số ít, thời điểm `DATETIME2(3)` giờ UTC, ngày `DATE`. Không có `BranchCode` bắt buộc (dữ liệu dùng chung).
 
 CHECK định dạng mã của mọi bảng có thêm `DATALENGTH(Code) = LEN(Code)`: `LIKE` trên `VARCHAR` bỏ qua khoảng trắng cuối nên `'NV1 '` sẽ lọt mẫu ký tự. Bảng có trigger thì ứng dụng không dùng `INSERT … OUTPUT`: thêm rồi đọc lại theo mã.
 
@@ -373,7 +373,7 @@ Trigger `TR_DepartmentType_CodeImmutable` (AFTER UPDATE, so nhị phân): đổi
 | `IsActive` | `BIT` | Không | Mặc định 1. `0` là đã giải thể |
 | `IsProductionWorkshop` | `BIT` | Không | Mặc định 0 (`0002`). `1`: bộ phận là chuyền may (ô "Xưởng sản xuất"); mã bộ phận là mã chuyền |
 
-Ràng buộc khác: `CK_Department_Dissolved` (đang dùng thì `DissolvedDate` `NULL`; đã giải thể thì phải có), `CK_Department_Dates` (`DissolvedDate ≥ EstablishedDate` khi có cả hai), `CK_Department_ProductionWorkshopBranch` (`IsProductionWorkshop = 0` hoặc có `BranchCode`). Chỉ mục: `UX_Department_Path`, `IX_Department_ParentId`, `IX_Department_BranchCode`, `IX_Department_ManagerEmployeeId`, `IX_Department_ProductionWorkshop` (`BranchCode, Code`, có lọc `WHERE IsProductionWorkshop = 1`, kèm `Name, ParentId, IsActive, SortOrder`; nguồn chuyền đọc chỉ mục này). Trigger:
+Ràng buộc khác: `CK_Department_Dissolved` (đang dùng thì `DissolvedDate` `NULL`; đã giải thể thì phải có), `CK_Department_Dates` (`DissolvedDate ≥ EstablishedDate` khi có cả hai), `CK_Department_ProductionWorkshopBranch` (`IsProductionWorkshop = 0` hoặc có `BranchCode`). Chỉ mục: `UX_Department_Path`, `IX_Department_ParentId`, `IX_Department_BranchCode`, `IX_Department_ManagerEmployeeId`, `IX_Department_ProductionWorkshop` (`BranchCode, Code`, có lọc `WHERE IsProductionWorkshop = 1`, kèm `Name, ParentId, IsActive, SortOrder`; `0002`), chỉ mục có lọc dành cho nguồn chuyền. Chỉ mục không kèm cột `Path` mà `HrLineSource` đọc thêm để dựng `ancestors`. NEEDS VERIFICATION: chưa đo plan thực thi của câu đọc chuyền (`backend/src/modules/hr/hr-line-source.ts`): SQL Server còn dùng chỉ mục này kèm tra thêm bảng, hay quét bảng. Trigger:
 - `TR_Department_CodeImmutable` (AFTER UPDATE, so nhị phân): chặn đổi `Code`.
 - `TR_Department_PathMatchesParent` (AFTER INSERT, UPDATE): `Path` của dòng vừa ghi phải bằng `Path` của cha + `Code` + `/` (gốc: `/Code/`), và `Path` của các con trực tiếp phải khớp dòng vừa ghi; sai thì báo `DEPARTMENT_PATH_MISMATCH` và rollback.
 
@@ -438,7 +438,7 @@ Khai ở `backend/migrations/softkeys.json`, kiểm bằng `npm run check:softke
 | `Department.CreatedBy` | `MES_Core.SysUser.Id` | Cho phép `NULL` |
 | `Employee.CreatedBy` | `MES_Core.SysUser.Id` | Cho phép `NULL` |
 
-Chiều ngược (khai ở module dùng): `MES_Order.ShipmentPlanLine.LineCode`, `MES_Sewing.SewingPrep.LineCode` → `Department.Code`, cùng ĐVCS, không lọc theo cờ (bộ phận đã bỏ tích, giải thể vẫn là đích hợp lệ; mã không còn là bộ phận nào là chuyền cũ mồ côi).
+Chiều ngược (khai ở module dùng): `MES_Order.ShipmentPlanLine.LineCode`, `MES_Sewing.SewingPrep.LineCode`, `MES_Sewing.SewingDayPlan.LineCode` (Kế hoạch may), `MES_Cutting.CuttingSupplyLine.LineCode` (Xác nhận cấp BTP) → `Department.Code`, cùng ĐVCS (`sameBranch`), không lọc theo cờ (bộ phận đã bỏ tích, giải thể vẫn là đích hợp lệ; mã không còn là bộ phận nào là chuyền cũ mồ côi).
 
 **Chưa có liên kết tài khoản ↔ nhân viên:** không khai khóa ngầm `SysUser.EmployeeCode → Employee.Code` vì mã nhân viên sửa được. Khi nối tài khoản với nhân viên thì thêm cột `SysUser.EmployeeId` (ADR 0012 mục 4). Module khác sau này trỏ tới nhân viên bằng `EmployeeId`.
 
@@ -460,7 +460,7 @@ Code: `backend/scripts/hr-data.ts`, dữ liệu ở cuối `backend/scripts/seed
 | `backend/test/line-source.spec.ts` | `OrgService` với nguồn chuyền giả: đóng an toàn khi chưa có nguồn, lọc ĐVCS, `assertLine`, cache và `invalidate`, đọc chung, nguồn lỗi, tên chuyền mồ côi |
 | `frontend/src/test/hr.test.tsx` | Hàm cây, chức danh theo phòng ban, file mẫu; Sơ đồ tổ chức (mở theo URL, thêm con/cùng cấp, cấp cuối, khóa giải thể, chọn phòng ban vừa thêm, điện thoại giữ form); Thông tin nhân sự (bỏ chức danh không hợp lệ, hỏi khi bỏ dở, giữ bộ lọc sau khi sửa, chỉ tải theo phòng ban trên link); ô "Xưởng sản xuất" (khóa nói lý do, cần ĐVCS, dấu trên cây, ô ĐVCS chỉ đọc khi thiếu quyền, báo trước người được giao chuyền, đổi ĐVCS, khôi phục, đã lưu mà chưa cập nhật phân quyền); ĐVCS mặc định theo phòng ban cha (điền sẵn, đổi theo cha, chọn hoặc xóa tay thì giữ, đã chọn tay từ trước thì giữ, cha không có ĐVCS thì giữ giá trị đã lưu, ĐVCS đã tắt thì không lấy, chuyền thiếu quyền thì không đổi, báo phòng ban con giữ ĐVCS, cache bị xóa không mất form, tải danh mục lỗi có Thử lại) |
 
-Chưa có test frontend riêng cho bảng Loại phòng ban.
+`ancestors` của `/me/lines` được kiểm ở `backend/test/sewing-plan.spec.ts` ([May](07-may.md)). Chưa có test frontend riêng cho bảng Loại phòng ban.
 
 ## Giới hạn hiện tại
 

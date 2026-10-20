@@ -19,6 +19,8 @@ Kế hoạch xuất hàng (ShipmentPlan): chọn đơn hàng theo Nhà máy SX c
                                                      └──► Kế hoạch chuẩn bị SX (module May, xem 07-may.md)
 ```
 
+Module May (Kế hoạch chuẩn bị SX, Kế hoạch may) và module Cắt (Đồng bộ tiến độ cắt, Xác nhận cấp BTP) đọc, kiểm dữ liệu đơn hàng qua API công khai (mục 9); thứ tự gọi của từng luồng xuyên module: [Luồng dữ liệu](../DATA_FLOWS.md) mục 5.
+
 ### Dữ liệu dùng chung và dữ liệu theo ĐVCS
 
 | Dữ liệu | Phạm vi | Ý nghĩa của `BranchCode` |
@@ -33,21 +35,21 @@ Một ĐVCS lập kế hoạch được cho đơn hàng của ĐVCS khác, miễ
 
 | Phần | Đường dẫn |
 |---|---|
-| Module NestJS | `backend/src/modules/order/order.module.ts` (6 controller, 13 repository của màn hình cộng hai repository của việc hệ thống `BravoOrderImportRepository`, `PoAllocationRefreshRepository`, 10 service; xuất cho module khác `ScheduleFeed`, `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards`, `LineDayPlanGuards`) |
+| Module NestJS | `backend/src/modules/order/order.module.ts` (6 controller; 13 repository của màn hình kế thừa `BaseRepository`, `ChildRepository` cộng 5 repository của việc hệ thống `ShipmentPlanPriceRepository`, `ShipmentPlanFeedRepository`, `LineColorSizeFeedRepository`, `BravoOrderImportRepository`, `PoAllocationRefreshRepository` (mục 3); 12 service; 3 điểm đăng ký kiểm tra `ShipmentPlanDeleteGuards`, `LineSupplyGuards`, `LineDayPlanGuards`; xuất cho module khác `ScheduleFeed`, `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards`, `LineDayPlanGuards`) |
 | Controller | `backend/src/modules/order/order.controller.ts` |
 | DTO, kiểm dữ liệu vào | `backend/src/modules/order/order.dto.ts`, `order.rules.ts` (quy tắc cỡ, số dòng màu cỡ tối đa) |
-| Repository | `backend/src/modules/order/order.repositories.ts`; Phân bổ PO ở `po-allocation.repository.ts` (`PoAllocationRepository`, `PoAllocationRefreshRepository`) |
+| Repository | `backend/src/modules/order/order.repositories.ts`; Phân bổ PO ở `po-allocation.repository.ts` (`PoAllocationRepository`, `PoAllocationRefreshRepository`); nạp BRAVO ở `bravo-order-import.repository.ts` |
 | Service theo màn | `sales-order.service.ts`, `po-allocation.service.ts`, `shipment.service.ts`, `cut-ratio.service.ts`, `line-plan.service.ts`, `color-size.service.ts` |
 | Kiểu bảng (Kysely), kết nối | `order.types.ts`, `order.db.ts` (database riêng `MES_Order`, biến `DB_ORDER_NAME`) |
 | Tiện ích | `order.util.ts` (lọc nghiệp vụ, ngày làm việc, chia theo tỷ lệ, mã lỗi) |
 | Nạp BRAVO, Nhà máy SX theo OSM | `bravo-order.mapping.ts`, `bravo-order-import.service.ts`, `bravo-order-import.repository.ts`, `osm-factory.service.ts` |
 | Làm mới Phân bổ PO theo OSM | `po-allocation-refresh.service.ts` |
 | API cho module khác | `schedule-feed.service.ts` (May), `line-day-plan-guard.ts` (May đăng ký), `shipment-plan-feed.service.ts`, `shipment-plan-delete-guard.ts`, `line-color-size-feed.service.ts`, `line-supply-guard.ts` (Cắt); luật import: [ARCHITECTURE](../ARCHITECTURE.md) mục 4 |
-| Migration | `backend/migrations/MES_Order/0001`–`0009` |
+| Migration | `backend/migrations/MES_Order/` (danh sách file: [ARCHITECTURE](../ARCHITECTURE.md) mục 6.2) |
 | Script | `backend/scripts/load-bravo-orders.ts`, `simulate-board.ts`, `seed-order.ts`, `bravo-branches.ts` |
 | Frontend | `frontend/src/features/order/*` (đăng ký route ở `frontend/src/routes/registry.tsx`) |
 
-Ranh giới import (lint, `backend/eslint.config.mjs`): module Đơn hàng không import module May, Nhân sự, lớp đồng bộ (`platform/sync`); dữ liệu chép từ BRAVO, OSM đọc qua cổng `platform/feed/source-feed.service.ts` (ADR 0007). Module May chỉ được import `order.module`, `schedule-feed.service`, `line-day-plan-guard`; module Cắt chỉ được import 5 file công khai liệt kê ở [ARCHITECTURE](../ARCHITECTURE.md) mục 4; module Đơn hàng không import module Cắt.
+Ranh giới import (lint, `backend/eslint.config.mjs`): module Đơn hàng không import module May, Cắt, Nhân sự và lớp đồng bộ (`platform/sync`); dữ liệu chép từ BRAVO, OSM đọc qua cổng `platform/feed/source-feed.service.ts` (ADR 0007). Module khác chỉ import `order.module` và các file ở dòng "API cho module khác"; file nào được import ở từng module: [ARCHITECTURE](../ARCHITECTURE.md) mục 4.
 
 ## 2. Màn hình và tài nguyên
 
@@ -89,11 +91,17 @@ Mọi truy vấn của màn hình đi qua repository trong `order.repositories.t
 | `ShipmentPlanRepository` | `ShipmentPlan` | `order.shipment` | `plannedBySalesOrder()` (tùy chọn `sharingPoIds`: chỉ kế hoạch dùng chung PO), `planOfOrder()` (kế hoạch của đơn ở ĐVCS phiên), `scheduledQty()`, `hasSchedule()`, `assignedByColorSize()` (tổng đã giao theo màu cỡ, cho luật sửa SL KHXH) |
 | `PlanColorSizeRepository`, `PlanPoRepository` | `ShipmentPlanColorSize`, `ShipmentPlanPo` | con của kế hoạch | |
 | `LinePlanRepository` | `ShipmentPlan` | `order.lineplan` | `listWithSchedule()` kèm tổng đã xếp, ngày bắt đầu, kết thúc |
-| `LinePlanLineRepository` | `ShipmentPlanLine` | con của `LinePlanRepository` | `scopeColumns LINE`; `totalExcept()`, `inRange()`, `feed()`, `feedVersion()` |
+| `LinePlanLineRepository` | `ShipmentPlanLine` | con của `LinePlanRepository` | `scopeColumns LINE`; `totalExcept()`, `inRange()`; cho `ScheduleFeed` của module May (chỉ lọc ĐVCS, không theo phạm vi người xem): `feed()`, `feedVersion()` (Kế hoạch chuẩn bị SX), `dayPlanFeed()` (Kế hoạch may) |
 | `LinePlanAllocationRepository` | `ShipmentPlanLineColorSize` | con ở màn Xếp chuyền | |
 | `LineAllocationRepository` | `ShipmentPlanLine` | `order.colorsize` | Bảng gom một dòng mỗi kế hoạch (`planPage()`, `planAll()`, `planRow()`, `planValues()`, `planLineValues()`; `ALLOCATION_FILTER`, `hasLines()`); `planLines()`, `planColorSizes()` (SL KHXH của kế hoạch có chuyền trong phạm vi xem), `assignedOutside()` |
 | `LineColorSizeRepository` | `ShipmentPlanLineColorSize` | con ở màn Phân bổ màu cỡ | |
 | `PoAllocationRepository` | `PoAllocation` | `order.poallocation` | `productionFactoryColumn = 'ProductionFactoryCode'`; `factoryBranchWrite`; `factoryDirectory()` trả `CatalogLookupService`; `sortable = ['Id']` (service sắp xếp bằng `ListOptions.orderBy`); `target()`, `setManual()`, `resetToOsm()`, `withWriteLock()` cho lần đổi Nhà máy SX; `refreshState()`, `countFor()`, `distinct()` |
+| `ShipmentPlanFeedRepository` | `ShipmentPlan`, `ShipmentPlanColorSize` | (việc của hệ thống, cho `ShipmentPlanFeed`) | Chỉ lọc ĐVCS do service truyền từ phiên (`null`: mọi ĐVCS); `plans()`, `colorSizes()`, `version()`, `createdAt()`, `cutQtyOf()`, `setCutQty()` (ghi LK cắt, không đổi `ModifiedAt`) |
+| `LineColorSizeFeedRepository` | `ShipmentPlanLineColorSize` nối `ShipmentPlanLine`, `ShipmentPlan` | (việc của hệ thống, cho `LineColorSizeFeed`, `LineSupplyGuards`) | Chỉ lọc ĐVCS; `totals()` (SL giao > 0 gom theo chuyền, mã hàng, màu, cỡ; nhận transaction của Đơn hàng khi kiểm số BTP đã cấp), `styles()` |
+| `BravoOrderImportRepository` | `SalesOrder`, `SalesOrderPo`, `SalesOrderPoColorSize` | (việc của hệ thống) | Kết nối riêng; `apply()` (nạp tăng dần, mục 8.3), `applyOsmFactories()` (mục 8.4) |
+| `PoAllocationRefreshRepository` | `PoAllocation`, `PoAllocationRefresh` | (việc của hệ thống) | Kết nối riêng; `refresh()` (mục 8.8) |
+
+Repository ghi "(việc của hệ thống)" không kế thừa `BaseRepository`, không lọc theo phạm vi người xem; chỉ được gọi từ service đã kiểm quyền hoặc từ tác vụ nền (các đường ghi không theo phiên: [Luồng dữ liệu](../DATA_FLOWS.md) mục 5).
 
 Luật ghi rút ra từ các khai báo trên:
 
@@ -134,7 +142,7 @@ Danh sách đơn hàng toàn công ty (BRAVO nạp vào, hoặc nhập tay), kh�
   - Trạng thái chọn tay (Mới, Đã lập kế hoạch, Đang sản xuất, Hoàn thành, Đã hủy); máy chủ không tự đổi khi lập kế hoạch (mục 4.7).
   - Xóa đơn đã có PO hoặc kế hoạch: 409 (gợi ý đổi trạng thái sang Hủy).
   - Ô nhập theo chính sách cột: Ẩn thì không có ô, Che hiện `***`, Chỉ đọc khóa. Thêm mới cần sửa được đủ 5 trường bắt buộc (Khách hàng, Mã hàng, Tên sản phẩm, Số lượng, Ngày xuất hàng), thiếu thì nút Thêm khóa kèm lý do. Khi sửa chỉ gửi trường đã đổi.
-  - Nhật ký `SysAuditLog` (`SalesOrder`, `CREATE`/`UPDATE`/`DELETE`) bỏ cột nhạy cảm (giá) trước khi ghi.
+  - Nhật ký `SysAuditLog` (`SalesOrder`, `CREATE`/`UPDATE`/`DELETE`) bỏ cột nhạy cảm (giá) trước khi ghi. Vì giá bị bỏ, `UPDATE` ghi thêm `changedFields`: ở Sửa đơn là tên các trường giá có đổi (`unitPrice`, `cmPrice`; không có giá nào đổi thì không có khóa này); ở đường sửa riêng Giá CM là `['cmPrice']`, hoặc `[]` khi giá gửi lên bằng giá đang có (`SalesOrderService.update`, `updateCmPrice`).
   - **Giá CM** (phase 5.16, quyết định 14.3): nhập tay, một giá mỗi đơn dùng chung mọi ĐVCS (nạp BRAVO không ghi đè). Đơn của ĐVCS khác mà ĐVCS phiên có kế hoạch xuất hàng của đơn (danh sách, chi tiết trả `cmPriceEditable`): nút Sửa mở popup chỉ có ô Giá CM nhập được (các ô khác chỉ xem, dòng giải thích), lưu qua `PUT /:id/cm-price`; Xóa vẫn khóa. Cần `order.allocation:update` và cột `cmPrice` Sửa được (mẫu: Kế hoạch, Toàn quyền). Sửa Giá CM ở đường nào (cả Sửa đơn của ĐVCS nguồn) thì Giá CM của mọi kế hoạch xuất hàng của đơn đổi theo trong cùng transaction: Doanh số Xếp chuyền, Giá CM ở Kế hoạch may theo giá mới.
 
 ### 4.2 Phân bổ PO (`order.poallocation`)
@@ -196,14 +204,14 @@ Kế hoạch của ĐVCS phiên (A00: mọi ĐVCS người xem được xem), m�
   - Lập mới: đơn phải có Nhà máy SX thuộc ĐVCS phiên (không thì 404 ở PO của đơn, lưới màu cỡ, lệnh tạo), không ở trạng thái Hoàn thành/Đã hủy (422). PO của đơn đọc qua phạm vi xem của `order.po`, nên người lập cần cả quyền xem Cập nhật tỷ lệ cắt (thiếu thì danh sách PO rỗng, lệnh tạo 422). Lệnh tạo khóa đơn hàng tới hết transaction rồi đọc lại đơn (nhà máy có thể vừa đổi) và tính lại SL còn lại: hai người ở bất kỳ ĐVCS nào cùng lập cho một đơn phải lần lượt.
   - Mỗi ĐVCS một kế hoạch mỗi đơn (quyết định 15.1): lệnh tạo kiểm sau khi khóa đơn hàng, đơn đã có kế hoạch ở ĐVCS phiên (không theo phạm vi người lập, `ShipmentPlanRepository.planOfOrder`) thì 409, câu báo nêu số kế hoạch khi người lập xem được kế hoạch đó và cột Số kế hoạch không bị Ẩn/Che. Không có chỉ mục UNIQUE: dữ liệu cũ có thể còn nhiều kế hoạch cho một đơn, vẫn sửa được.
   - Mỗi PO một kế hoạch (quyết định 15.2): lập, thêm PO kiểm lại dưới khóa đơn hàng; PO đã nằm trong kế hoạch nào (mọi ĐVCS, kể cả chính kế hoạch đang sửa) thì 409, câu báo không nêu số PO (cột có thể bị Ẩn), `details.poIds`. Tổng PO một kế hoạch tối đa 100 (422).
-  - Thêm PO khi sửa (`addPoIds`): phải gửi kèm `lines` (422 nếu thiếu), nên cần cột Số lượng KH Sửa được (interceptor chặn `planQty`). PO của kế hoạch đọc lại sau khi khóa đơn (hai người cùng thêm PO vào một kế hoạch thì lần lượt). PO thêm phải thuộc đơn của kế hoạch, xem được ở `order.po` (422, kiểm trước luật "đã nằm trong kế hoạch"). Đơn phải còn lập kế hoạch được như lúc lập mới: còn Nhà máy SX thuộc ĐVCS phiên, chưa Hoàn thành/Đã hủy (422 ở `GET /:id/candidate-pos`, `GET /draft` có `addPoIds`, `PUT`; review 5.17 M2). Sửa SL của PO đã có thì không đòi các điều kiện này.
+  - Thêm PO khi sửa (`addPoIds`): phải gửi kèm `lines` (422 nếu thiếu), nên cần cột Số lượng KH Sửa được (interceptor chặn `planQty`). PO của kế hoạch đọc lại sau khi khóa đơn (hai người cùng thêm PO vào một kế hoạch thì lần lượt). PO thêm phải thuộc đơn của kế hoạch, xem được ở `order.po` (422, kiểm trước luật "đã nằm trong kế hoạch"). Đơn phải còn lập kế hoạch được như lúc lập mới: còn Nhà máy SX thuộc ĐVCS phiên, chưa Hoàn thành/Đã hủy (422 ở `GET /:id/candidate-pos`, `GET /draft` có `addPoIds`, `PUT`; câu hỏi xác nhận luật này: Q41 ở [Trạng thái](../current/STATUS.md)). Sửa SL của PO đã có thì không đòi các điều kiện này.
   - `basePoIds` (giao diện gửi khi gửi `lines`): tập PO lưới màu cỡ trên màn dựng theo. Khác PO đang lưu (người khác vừa thêm PO) thì 409 "Kế hoạch vừa được thêm PO ở nơi khác…", không lưu lưới cũ đè mất màu cỡ của PO mới (review 5.17 M1). Không gửi thì không kiểm (giao diện cũ).
   - Mỗi màu cỡ: không lặp, phải có trong các PO đã chọn, SL KHXH ≤ SL còn lại; ít nhất một màu cỡ > 0 (vi phạm: 422, `details` liệt kê dòng vượt).
   - Kế hoạch mang ĐVCS phiên, số `KH-<ĐVCS>-<Id>`, trạng thái "Chưa xếp chuyền". Chụp từ đơn: khách hàng, mã hàng, tên sản phẩm, loại, giá CM, ngày đồng bộ (ADR 0006: màn khác không phải đọc bảng đơn hàng). Nhân viên lập = họ tên người lập.
   - Sửa kế hoạch đã lập không đòi đơn còn Nhà máy SX thuộc ĐVCS; kế hoạch phải xem được. Giảm SL kế hoạch xuống dưới SL đã xếp chuyền: 409.
   - Giảm SL KHXH của một màu cỡ xuống dưới tổng đã giao cho chuyền ở Phân bổ màu cỡ, hoặc bỏ màu cỡ đã giao: 409, câu báo và `details` liệt kê màu cỡ (nêu số đã giao khi người sửa xem được Số lượng giao của Phân bổ màu cỡ). Giảm phần giao ở Phân bổ màu cỡ trước. Chỉ xét màu cỡ đang bị giảm (SL mới nhỏ hơn SL đang lưu, đọc dưới khóa kế hoạch): kế hoạch đang giao lệch vài sản phẩm (dữ liệu chia theo tỷ lệ của cách làm cũ) vẫn sửa được các màu cỡ khác.
   - Xóa kế hoạch đã có dòng dàn chuyền: 409 (xóa dàn chuyền ở Xếp chuyền trước). Xóa kế hoạch xóa cả SL theo màu cỡ và PO của kế hoạch.
-  - Xóa kế hoạch đã có số cắt ở Đồng bộ tiến độ cắt: 409 (Xóa số cắt ở màn đó trước). Module Cắt đăng ký vào `ShipmentPlanDeleteGuards` (`shipment-plan-delete-guard.ts`), `ShipmentService.remove` gọi trước transaction xóa (quyết định 13.4, [Cắt](15-cat.md)).
+  - Xóa kế hoạch đã có số cắt ở Đồng bộ tiến độ cắt: 409 (Xóa số cắt ở màn đó trước). Module Cắt đăng ký vào `ShipmentPlanDeleteGuards` (`shipment-plan-delete-guard.ts`), `ShipmentService.remove` gọi trước transaction xóa (quyết định 13.4, [Cắt](15-cat.md)). Hàm kiểm lỗi (không kết nối được `MES_Cutting`) thì cũng 409 "Chưa kiểm được dữ liệu phụ thuộc của kế hoạch (module khác không phản hồi). Thử lại sau."
   - Kế hoạch xuất hàng (đầu kế hoạch, SL KHXH theo màu cỡ) là nguồn của module Cắt qua `ShipmentPlanFeed` (`shipment-plan-feed.service.ts`): đổi cột của `ShipmentPlan`, `ShipmentPlanColorSize` thì xem lại bản chép bên đó.
   - LK cắt lấy từ màn Đồng bộ tiến độ cắt (quyết định 13.6, [Cắt](15-cat.md)): module Cắt ghi Lũy kế vào cột `CutQty` sau mỗi lần lưu và khi chép kế hoạch. LK May ra, LK Endline, LK Hoàn thiện chưa có nguồn: chỉ dữ liệu mẫu, mô phỏng điền; sau này lấy từ module May, QMS, Hoàn thiện.
   - Nhật ký: `ShipmentPlan` `CREATE`/`UPDATE`/`DELETE`; `UPDATE` có thêm PO thì giá trị sau có `poIds` (sau khi thêm), `addedPoIds`.
@@ -284,7 +292,7 @@ Mỗi dòng là một kế hoạch xuất hàng đã xếp chuyền (phase 5.13)
   - Câu lỗi nêu chuyền, màu, cỡ (không nêu số dòng: giao diện bỏ dòng trống, dòng 0, dòng khóa khi gửi nên thứ tự khác số thứ tự trên lưới).
   - Nhật ký `ShipmentPlan` `COLOR_SIZE_ALLOCATE` (Id kế hoạch; phần giao trước, sau của các chuyền đã lưu, kèm mã chuyền).
 - Phần giao luôn đúng khi màn khác đổi: Xếp chuyền không giảm SL chuyền dưới phần đã giao, Kế hoạch xuất hàng không giảm SL KHXH của màu cỡ dưới phần đã giao (409, mục 4.3, 4.5); bỏ dòng dàn chuyền thì xóa phần giao của dòng đó.
-- Phần giao (cộng mọi kế hoạch cùng mã hàng) của một chuyền, màu, cỡ không giảm xuống dưới số BTP đã cấp ở Xác nhận cấp BTP: lưu Phân bổ màu cỡ, lưu Xếp chuyền (xóa dòng, đổi chuyền) trả 409 (quyết định 13.8, [Cắt](15-cat.md)). Module Cắt đăng ký vào `LineSupplyGuards` (`line-supply-guard.ts`); hai service chụp phần giao trước khi ghi và kiểm sau khi ghi, trước commit, chỉ xét ô giảm.
+- Phần giao (cộng mọi kế hoạch cùng mã hàng) của một chuyền, màu, cỡ không giảm xuống dưới số BTP đã cấp ở Xác nhận cấp BTP: lưu Phân bổ màu cỡ, lưu Xếp chuyền (xóa dòng, đổi chuyền) trả 409 (quyết định 13.8, [Cắt](15-cat.md)). Module Cắt đăng ký vào `LineSupplyGuards` (`line-supply-guard.ts`); hai service chụp phần giao trước khi ghi và kiểm sau khi ghi, trước commit, chỉ xét ô giảm. Không tra được số đã cấp (lần lưu số cấp cùng chuyền giữ khóa quá 3 giây, hoặc module Cắt không phản hồi) thì 409 "thử lại".
 
 ### 4.7 Trạng thái và ai đổi
 
@@ -331,7 +339,7 @@ Cách module áp:
 
 ## 6. API `/order/*`
 
-Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở cột "Quyền" (nhiều quyền thì cần đủ tất cả). Lỗi kiểm dữ liệu vào: 422 `VALIDATION_FAILED`. Dòng không có, của ĐVCS khác, ngoài phạm vi: 404 `NOT_FOUND`. Ghi ở `A00`: 403 `AGGREGATE_READ_ONLY`. Khóa chéo: 409 `CONFLICT`. Mã lỗi chung ở [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2.
+Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở cột "Quyền" (nhiều quyền thì cần đủ tất cả). Lỗi kiểm dữ liệu vào: 422 `VALIDATION_FAILED`. Dòng không có, của ĐVCS khác, ngoài phạm vi: 404 `NOT_FOUND`. Ghi ở `A00`: 403 `AGGREGATE_READ_ONLY`. Khóa chéo: 409 `CONFLICT`. Mã lỗi chung ở [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2. Các `DELETE` của module hiện trả 204 không có body (`@HttpCode(204)` ở `order.controller.ts`); quy ước đã duyệt là 200 kèm `{ removed: true }`: [Quy ước code](../CODE_CONVENTIONS.md) mục 4.1.
 
 **Tham số danh sách chung** (`OrderListQuery`): `page` (mặc định 1), `pageSize` (mặc định 100, tối đa 200), `q` (tìm nhanh, ≤60), `sort` (`trường:asc|desc`, theo danh sách trắng của màn; mặc định `createdAt:desc`), `shipFrom`, `shipTo` (`YYYY-MM-DD`), `customer` (chứa), `style` (chứa), `season` (bằng, chỉ đơn hàng), `status` (bằng), `line` (kế hoạch có chuyền đó, chỉ Phân bổ màu cỡ), `cf` (lọc theo cột, JSON, xem [Giao diện](10-giao-dien.md)). Kết quả `{ items, total, page, pageSize }`. Endpoint `/values` nhận thêm `field` (trường của danh sách trắng) và `search`, trả `{ values, truncated }` (tối đa 500 giá trị). Endpoint `/export` trả CSV UTF-8 có BOM, cùng bộ lọc, qua cùng chính sách cột, tối đa 10.000 dòng (riêng Phân bổ PO: 50.000; Phân bổ PO, Phân bổ màu cỡ quá giới hạn thì 422, các màn khác cắt ở giới hạn).
 
@@ -339,11 +347,11 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 
 | Method, path | Quyền | Body, tham số | Kết quả | Lỗi đặc thù |
 |---|---|---|---|---|
-| `GET /` | `order.allocation:view` | Tham số chung | Trang đơn hàng: `{ id, orderNo, customerName, styleCode, season, orderType, productName, staffName, qty, unitName, unitPrice, amount, cmPrice, syncedAt, shipDate, statusCode, branchCode, productionFactoryCode, factoryFromOsm, createdAt, modifiedAt }` | |
+| `GET /` | `order.allocation:view` | Tham số chung | Trang đơn hàng: `{ id, orderNo, customerName, styleCode, season, orderType, productName, staffName, qty, unitName, unitPrice, amount, cmPrice, syncedAt, shipDate, statusCode, branchCode, productionFactoryCode, factoryFromOsm, createdAt, modifiedAt, cmPriceEditable }`. `cmPriceEditable`: đơn của ĐVCS khác mà phiên sửa được Giá CM qua `PUT /:id/cm-price` (ĐVCS phiên có kế hoạch xuất hàng của đơn); đơn của ĐVCS phiên và mọi đơn ở phiên `A00`: `false` | |
 | `GET /options` | `order.allocation:view` | | `{ customers, seasons, orderTypes, orderTypeNames, units, factories: [{ code, name, branchCode, isActive }] }` (nhà máy gồm cả mục đã ngừng để hiện tên; cột bị Ẩn/Che thì rỗng) | |
 | `GET /values` | `order.allocation:view` | `field`, `search` + tham số chung | `{ values, truncated }` | 403 `FIELD_NOT_READABLE` |
 | `GET /export` | `order.allocation:export` | Tham số chung | CSV `thong-tin-don-hang-<ĐVCS>.csv` (Chi nhánh FOB, Nhà máy SX ghi tên) | |
-| `GET /:id` | `order.allocation:view` | | Một đơn | 404 |
+| `GET /:id` | `order.allocation:view` | | Một đơn, cùng trường như danh sách (kèm `cmPriceEditable`) | 404 |
 | `POST /` | `order.allocation:create` | `{ customerName, styleCode, productName, qty, shipDate, season?, orderType?, staffName?, unitName?, unitPrice?, cmPrice?, statusCode?, productionFactoryCode? }` | Đơn vừa tạo (201) | 422 nhà máy SX lạ, đã ngừng |
 | `PUT /:id` | `order.allocation:update` | Các trường như POST, chỉ gửi trường đổi | Đơn sau khi sửa | 404 (ĐVCS khác); 409 đổi Nhà máy SX theo OSM; 422 nhà máy lạ |
 | `PUT /:id/cm-price` | `order.allocation:update` | `{ cmPrice: number \| null }` (bắt buộc gửi khóa) | Đơn sau khi sửa, kèm `cmPriceEditable` | 404 (ĐVCS không phải nguồn, không có kế hoạch của đơn); 403 `AGGREGATE_READ_ONLY`, `FIELD_READONLY`; 422 |
@@ -373,7 +381,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 | `GET /:id/pos` | `order.shipment:view` **và** `order.po:view` | | `{ items: [{ id, poCode, poNumber, destination, shipDate, qty, statusCode, confirmedAt, confirmedQty, unconfirmedQty }], hiddenCount }` | 403 thiếu `order.po:view`; 404 kế hoạch không xem được |
 | `POST /` | `order.shipment:create` | `{ salesOrderId, poIds (1–100), poBuyDate (1–40 ký tự), shipDate?, lines: [{ colorName, sizeName, planQty }] (1–300) }` | Kế hoạch vừa tạo (201) | 404 đơn không có nhà máy SX của ĐVCS; 409 đơn đã có kế hoạch ở ĐVCS phiên, PO đã nằm trong kế hoạch; 422 đơn Hoàn thành/Hủy, vượt SL còn lại (`details`), màu cỡ lặp, lạ, tất cả bằng 0 |
 | `PUT /:id` | `order.shipment:update` | `{ poBuyDate?, shipDate?, lines?, addPoIds? (1–100, cần `lines`), basePoIds? }` | Kế hoạch sau khi sửa | 409 SL dưới SL đã xếp chuyền; 409 SL KHXH của màu cỡ dưới phần đã giao ở Phân bổ màu cỡ, bỏ màu cỡ đã giao (`details`); 409 PO thêm đã nằm trong kế hoạch, `basePoIds` khác PO đang lưu; 422 như POST, `addPoIds` thiếu `lines`, quá 100 PO, đơn không còn lập kế hoạch được |
-| `DELETE /:id` | `order.shipment:delete` | | 204 | 409 đã xếp chuyền |
+| `DELETE /:id` | `order.shipment:delete` | | 204 | 409 đã xếp chuyền; 409 đã có số cắt ở Đồng bộ tiến độ cắt; 409 chưa kiểm được dữ liệu phụ thuộc (module Cắt không phản hồi) |
 
 ### Cập nhật tỷ lệ cắt – `/order/cut-ratio`
 
@@ -398,7 +406,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 | `GET /values`, `GET /export` | `:view`, `:export` | | File `xep-chuyen-<ĐVCS>.csv` | |
 | `GET /board` | `order.lineplan:view` | `from`, `to` (bắt buộc), `style?`, `customer?` | `{ from, to, nonWorkingDays: { <mã ĐVCS>: [{ date, name }] }, lines: [{ code, name, branchCode, isActive }], bars: [{ id, planId, planNo, lineCode, startDate, endDate, qty, avgOutput, customerName, styleCode, poBuyDate, shipDate, statusCode }] }` | 422 khoảng ngày âm hoặc quá 190 ngày |
 | `GET /:id` | `order.lineplan:view` | | Kế hoạch + `lines: [{ id, lineCode, lineName, qty, avgOutput, startDate, productionDays, offDays, endDate, outStartDate, outEndDate, warehouseStartDate, warehouseEndDate, statusCode, editable }]`, `calendar: { weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays, productionRoundUpFrom, days: [{ date, dayType, name }] }` (lịch của ĐVCS kế hoạch; ngày đặc biệt từ dòng vào chuyền sớm nhất, hoặc một năm trước hôm nay, trở đi) | 404 |
-| `PUT /:id/lines` | `order.lineplan:update` | `{ lines: [{ id?, lineCode, qty, avgOutput, startDate, endDate?, outStartDate?, outEndDate?, warehouseStartDate?, warehouseEndDate? }] }` (tối đa 100; `lineCode` `^[A-Z0-9-]{1,20}$`; trường khác bị bỏ qua) | Chi tiết sau khi lưu | 422 chuyền lạ/ngừng/khác ĐVCS, ngày sai thứ tự, quá 366 ngày, lịch không đủ ngày làm việc, vượt SL kế hoạch, dòng không thuộc kế hoạch; 409 xóa/chuyển dòng đang may, giảm số lượng dưới phần đã giao ở Phân bổ màu cỡ (`details`), xóa, chuyển dòng làm phần giao xuống dưới số BTP đã cấp (`details`); 403 `SCOPE_DENIED`, `FIELD_READONLY` (gửi `endDate` khi cột Ngày kết thúc SX không sửa được) |
+| `PUT /:id/lines` | `order.lineplan:update` | `{ lines: [{ id?, lineCode, qty, avgOutput, startDate, endDate?, outStartDate?, outEndDate?, warehouseStartDate?, warehouseEndDate? }] }` (tối đa 100; `lineCode` `^[A-Z0-9-]{1,20}$`; trường khác bị bỏ qua) | Chi tiết sau khi lưu | 422 chuyền lạ/ngừng/khác ĐVCS, ngày sai thứ tự, quá 366 ngày, lịch không đủ ngày làm việc, vượt SL kế hoạch, dòng không thuộc kế hoạch; 409 xóa/chuyển dòng đang may, giảm số lượng dưới phần đã giao ở Phân bổ màu cỡ (`details`), xóa, chuyển dòng làm phần giao xuống dưới số BTP đã cấp (`details`); 409 bỏ, đổi chuyền dòng đã có số ở Kế hoạch may, giảm số lượng dưới tổng đã giao ở Kế hoạch may (`details`); 409 "thử lại" khi không tra được số BTP đã cấp hoặc số đã lập ở Kế hoạch may; 403 `SCOPE_DENIED`, `FIELD_READONLY` (gửi `endDate` khi cột Ngày kết thúc SX không sửa được) |
 
 ### Phân bổ màu cỡ – `/order/color-size`
 
@@ -407,7 +415,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 | `GET /` | `order.colorsize:view` | Tham số chung (`q` không dùng) | Trang, một dòng mỗi kế hoạch có dòng dàn chuyền trong phạm vi xem: `{ id (Id kế hoạch), planNo, customerName, styleCode, poBuyDate, branchCode, lineCode: string[], lineName?: string[], startDate, avgOutput: number (trung bình cộng NSBQ các chuyền trong phạm vi xem, làm tròn), endDate, shipDate, qty, assignedQty, statusCode (PLANNED, PARTIAL, FULL), createdAt }` | |
 | `GET /values`, `GET /export` | `:view`, `:export` | | `values?field=lineCode` trả từng mã chuyền, `values?field=avgOutput` trả số trung bình. File `phan-bo-mau-co-<ĐVCS>.csv`: Chuyền may (tên), NSBQ trung bình, Trạng thái ghi chữ | 422 xuất quá 10.000 kế hoạch |
 | `GET /:id` | `order.colorsize:view` | `:id` là Id kế hoạch | Như dòng danh sách, kèm `lines: [{ id, lineCode, lineName, qty, avgOutput, startDate, endDate, statusCode, assignedQty, editable }]` (dòng dàn chuyền trong phạm vi xem; `qty` là SL đã xếp), `colorSizes: [{ colorName, sizeName, qty, hiddenQty }]` (`qty` là SL KHXH; `hiddenQty` tổng đã giao cho chuyền ngoài phạm vi xem), `rows: [{ id, lineId, colorName, sizeName, assignedQty }]` (phần giao > 0 của chuyền trong phạm vi xem) | 404 kế hoạch không có chuyền nào trong phạm vi xem |
-| `PUT /:id` | `order.colorsize:update` | `{ rows: [{ lineId, colorName, sizeName, assignedQty }] }` (tối đa 3.000; dòng giao 0 bỏ qua) | Chi tiết sau khi lưu | 404 kế hoạch không có chuyền trong phạm vi sửa; 422 chuyền không thuộc kế hoạch hoặc ngoài phạm vi sửa, màu cỡ lạ, lặp, giao vượt SL KH của màu cỡ hoặc SL đã xếp của chuyền (`details`); 409 phần giao xuống dưới số BTP đã cấp (`details`); 403 `AGGREGATE_READ_ONLY`, `FIELD_READONLY` |
+| `PUT /:id` | `order.colorsize:update` | `{ rows: [{ lineId, colorName, sizeName, assignedQty }] }` (tối đa 3.000; dòng giao 0 bỏ qua) | Chi tiết sau khi lưu | 404 kế hoạch không có chuyền trong phạm vi sửa; 422 chuyền không thuộc kế hoạch hoặc ngoài phạm vi sửa, màu cỡ lạ, lặp, giao vượt SL KH của màu cỡ hoặc SL đã xếp của chuyền (`details`); 409 phần giao xuống dưới số BTP đã cấp (`details`); 409 "thử lại" khi không tra được số BTP đã cấp; 403 `AGGREGATE_READ_ONLY`, `FIELD_READONLY` |
 
 ## 7. Database `MES_Order`
 
@@ -415,17 +423,7 @@ Một database riêng của module (biến `DB_ORDER_NAME`, mặc định `MES_O
 
 ### Migration
 
-| File | Nội dung |
-|---|---|
-| `0001_order_init.sql` | Tạo 8 bảng. Bảng con mang `BranchCode` của cha, khóa ngoại ghép `(ParentId, BranchCode)` tới `UNIQUE (Id, BranchCode)` của cha |
-| `0002_order_owner_index.sql` | Chỉ mục `(BranchCode, CreatedBy)` cho chiều phạm vi "chỉ bản ghi do mình tạo" |
-| `0003_order_bravo_source.sql` | `StyleCode` → `NVARCHAR(120)` ở 3 bảng; `ColorName` → `NVARCHAR(100)` ở 3 bảng màu cỡ; thêm `SalesOrder.SourceProductId` |
-| `0004_sales_order_factory.sql` | Thêm `SalesOrder.ProductionFactoryCode` |
-| `0005_shared_sales_order.sql` | Đơn hàng dùng chung: khóa ngoại kế hoạch → đơn, PO của kế hoạch → PO đổi sang theo `Id`; đổi chỉ mục |
-| `0006_sales_order_source_hash.sql` | Thêm `SalesOrder.SourceHash` |
-| `0007_factory_osm_po_number.sql` | Đòi compatibility level ≥ 130 (`STRING_SPLIT`); `ProductionFactoryCode` → `NVARCHAR(400)` (danh sách), bỏ chỉ mục của cột; thêm `IsFactoryFromOsm`; xóa Nhà máy SX đoán theo mã chi nhánh ở đơn BRAVO chưa ai sửa; `PoNumber` → `NVARCHAR(192)`; sửa "(tr?ng)" thành "(trống)" |
-| `0008_po_used_by_plan_branch.sql` | Khóa ngoại PO → đơn hàng đổi sang theo `Id` (PO tay mang ĐVCS người nhập); chỉ mục `ShipmentPlanPo (SalesOrderPoId, BranchCode)` thay chỉ mục `(SalesOrderPoId)` |
-| `0009_po_allocation.sql` | Bảng Phân bổ PO `PoAllocation` (bản làm việc theo OSM, Nhà máy SX nhập tay) và `PoAllocationRefresh` (trạng thái lần làm mới, một dòng, tạo sẵn) |
+Danh sách file và nội dung từng file: [ARCHITECTURE](../ARCHITECTURE.md) mục 6.2. Ghi chú riêng của module: `0007_factory_osm_po_number.sql` đòi database có compatibility level từ 130 (`STRING_SPLIT`; `OPENJSON` của bước làm mới Phân bổ PO ở `0009` cũng cần), thấp hơn thì dừng (`THROW 50000`: nhờ quản trị CSDL nâng rồi chạy lại migrate); cùng file đó bỏ Nhà máy SX đoán theo mã chi nhánh ở đơn BRAVO chưa ai sửa và đổi `PoNumber` `(tr?ng)` thành `(trống)` ở PO nạp từ BRAVO.
 
 Bảng dưới là trạng thái sau `0009`. Tám bảng đơn hàng, kế hoạch có bộ cột kiểm toán `CreatedAt DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME()`, `CreatedBy INT NULL`, `ModifiedAt DATETIME2(3) NULL`, `ModifiedBy INT NULL` và `BranchCode VARCHAR(10) NOT NULL` (khóa ngầm → `MES_Core.SysBranch.Code`); bảng chỉ liệt kê lại khi có ý nghĩa riêng. Hai bảng Phân bổ PO ở cuối mục không có `BranchCode`.
 
@@ -550,7 +548,7 @@ Ràng buộc, chỉ mục: `UQ_ShipmentPlanColorSize UNIQUE (ShipmentPlanId, Col
 
 | Cột | Kiểu | NULL | Ghi chú |
 |---|---|---|---|
-| `Id` | `INT IDENTITY` | không | PK; khóa ngầm từ `MES_Sewing.SewingPrep.ShipmentPlanLineId` |
+| `Id` | `INT IDENTITY` | không | PK; khóa ngầm từ `MES_Sewing.SewingPrep.ShipmentPlanLineId`, `MES_Sewing.SewingDayPlanItem.ShipmentPlanLineId` |
 | `ShipmentPlanId` | `INT` | không | FK ghép `FK_ShipmentPlanLine_Plan (ShipmentPlanId, BranchCode)` → `ShipmentPlan(Id, BranchCode)` |
 | `LineCode` | `VARCHAR(20)` | không | Chuyền: mã bộ phận tích "Xưởng sản xuất"; khóa ngầm → `MES_Hr.Department.Code` (cùng ĐVCS, không lọc theo cờ) |
 | `Qty` | `INT` | không | > 0 |
@@ -630,7 +628,7 @@ Một dòng (`Id = 1`, CHECK), migration tạo sẵn; chỉ bước làm mới g
 
 ### Khóa ngầm
 
-Khai báo ở `backend/migrations/softkeys.json`, danh sách đầy đủ là chính file đó (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3). Phần của `MES_Order`: `BranchCode` của 8 bảng → `SysBranch.Code`; `ShipmentPlanLine.LineCode` → `MES_Hr.Department.Code` (dòng gắn mã chuyền cũ không còn là bộ phận nào là mồ côi, `check:softkeys` báo); `SalesOrder.ProductionFactoryCode` → `SysProductionFactory.Code` (danh sách); `CreatedBy` của `SalesOrder`, `SalesOrderPo`, `ShipmentPlan`, `ShipmentPlanLine`, `SalesOrderPo.ConfirmedBy`, `PoAllocation.CreatedBy`, `PoAllocation.ModifiedBy` → `SysUser.Id`. `PoAllocation.ProductionFactoryCode` không khai khóa ngầm: dòng chưa nhập tay mang `FtyName` của `v_OSMData`, tên này không tự vào danh mục Nhà máy SX (danh mục chỉ tự thêm tên của `vOSMDataFty`), khai thì `check:softkeys` báo mồ côi giả; giá trị nhập tay đã kiểm với danh mục lúc ghi. Chiều ngược: `MES_Sewing.SewingPrep.ShipmentPlanId`, `ShipmentPlanLineId` trỏ vào `MES_Order`. `SalesOrder.SourceProductId` không phải khóa ngầm (trỏ tới dòng của BRAVO, bảng chép có thể mất dòng).
+Khai báo ở `backend/migrations/softkeys.json`, danh sách đầy đủ là chính file đó (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3). Phần của `MES_Order`: `BranchCode` của 8 bảng → `SysBranch.Code`; `ShipmentPlanLine.LineCode` → `MES_Hr.Department.Code` (dòng gắn mã chuyền cũ không còn là bộ phận nào là mồ côi, `check:softkeys` báo); `SalesOrder.ProductionFactoryCode` → `SysProductionFactory.Code` (danh sách); `CreatedBy` của `SalesOrder`, `SalesOrderPo`, `ShipmentPlan`, `ShipmentPlanLine`, `SalesOrderPo.ConfirmedBy`, `PoAllocation.CreatedBy`, `PoAllocation.ModifiedBy` → `SysUser.Id`. `PoAllocation.ProductionFactoryCode` không khai khóa ngầm: dòng chưa nhập tay mang `FtyName` của `v_OSMData`, tên này không tự vào danh mục Nhà máy SX (danh mục chỉ tự thêm tên của `vOSMDataFty`), khai thì `check:softkeys` báo mồ côi giả; giá trị nhập tay đã kiểm với danh mục lúc ghi. Chiều ngược (cùng ĐVCS): `MES_Sewing.SewingPrep.ShipmentPlanId`, `ShipmentPlanLineId`; `MES_Sewing.SewingDayPlanItem.ShipmentPlanId`, `ShipmentPlanLineId`; `MES_Cutting.CuttingPlan.ShipmentPlanId` (NULL khi kế hoạch đã xóa mà còn số cắt) trỏ vào `MES_Order`. `SalesOrder.SourceProductId` không phải khóa ngầm (trỏ tới dòng của BRAVO, bảng chép có thể mất dòng).
 
 ## 8. Đơn hàng từ BRAVO và dữ liệu mô phỏng
 
@@ -748,7 +746,7 @@ Chỉ cho máy demo: thay toàn bộ đơn hàng giả bằng dữ liệu đã c
 
 1. Chép ĐVCS theo danh mục chi nhánh BRAVO `bravo.DM_CHINHANH` (`bravo-branches.ts`, nhật ký `BRANCH_IMPORT`) để không bỏ đơn của ĐVCS MES chưa có.
 2. Đòi `bravo.DM_SanPhamDonHang` có dữ liệu.
-3. Trong một transaction của `MES_Order` có khóa ứng dụng `MES_Order.BravoImport`: xóa bản chép Kế hoạch chuẩn bị SX trong `MES_Sewing` (danh mục bước giữ nguyên), xóa **mọi** dòng 8 bảng đơn hàng, kế hoạch của `MES_Order` (kể cả đơn nhập tay, kế hoạch người dùng lập; không đụng hai bảng Phân bổ PO) và đặt lại identity, rồi nạp đơn, PO, màu cỡ theo cùng ánh xạ.
+3. Trong một transaction của `MES_Order` có khóa ứng dụng `MES_Order.BravoImport` (chờ tối đa 10 giây): xóa bản chép Kế hoạch chuẩn bị SX (danh mục bước giữ nguyên) và Kế hoạch may trong `MES_Sewing`, xóa dữ liệu `MES_Cutting` (số cắt, bản chép kế hoạch, lệnh cấp BTP); các bước này chạy trên kết nối riêng của từng database, tự commit, không hủy theo khi transaction đơn hàng lỗi (`clearSewingPrep`, `clearSewingDayPlan`, `clearCutting`). Rồi xóa **mọi** dòng 8 bảng đơn hàng, kế hoạch của `MES_Order` (kể cả đơn nhập tay, kế hoạch người dùng lập; không đụng hai bảng Phân bổ PO) và đặt lại identity, rồi nạp đơn, PO, màu cỡ theo cùng ánh xạ.
 4. Sinh dàn chuyền mô phỏng cho từng ĐVCS (mục 8.6), trừ khi có `--no-plans`.
 5. Ghi nhật ký `BRAVO_LOAD`, in bảng thống kê theo ĐVCS (đơn, PO, ô màu cỡ, đơn chưa có Nhà máy SX, PO quá 300 ô, ô có cỡ ngoài quy tắc nhập tay, sản phẩm chưa nạp) và nhắc database đã chứa dữ liệu thật.
 
@@ -771,7 +769,7 @@ BRAVO không có kế hoạch xuất hàng, dàn chuyền (dữ liệu MES tự 
   - Phần giao màu cỡ chia lần lượt cho các chuyền của kế hoạch (`lineShares` ở `order.util.ts`: tổng mỗi chuyền không vượt SL chuyền, mỗi màu cỡ không vượt SL kế hoạch), chỉ lưu phần giao > 0, `PlanQty` là SL KHXH của màu cỡ; đúng luật của màn Phân bổ màu cỡ.
   - Luôn có ở mỗi ĐVCS đủ đơn: dòng đã xong, đang may, đã phân màu cỡ đủ hoặc một phần, chưa phân màu cỡ (có dòng vào chuyền trong 10 ngày tới); chuyền trống giữa hai việc, một chuyền chờ việc 7–12 ngày; kế hoạch nhiều chuyền, xếp một phần, chưa xếp chuyền, đơn tách hai đợt xuất, may xong sau ngày xuất.
   - Trạng thái dòng theo ngày so với hôm nay; kế hoạch, đơn mang trạng thái theo dòng. Lũy kế may, endline, hoàn thiện tính theo phần thời gian đã may; LK cắt để 0 (lấy từ Đồng bộ tiến độ cắt, quyết định 13.6).
-- **Chạy lại:** xóa kế hoạch mô phỏng cũ (cùng PO, màu cỡ, dòng, phân màu cỡ của chúng) và trả đơn không còn kế hoạch nào về trạng thái lúc nạp. Giữ nguyên (trừ khi có `--all`): kế hoạch người dùng lập; kế hoạch mô phỏng người dùng đã sửa (kế hoạch, màu cỡ, dòng, phân màu cỡ có `ModifiedAt`; dòng thêm sau ở Xếp chuyền, phân màu cỡ lưu sau ở Phân bổ màu cỡ quá 10 phút sau lúc lập kế hoạch; dòng đã nhập ở Kế hoạch chuẩn bị SX, đọc từ `MES_Sewing` trước transaction). Luôn giữ, kể cả `--all`: kế hoạch đã có số cắt (đọc từ `MES_Cutting` trước transaction, quyết định 13.4). Đơn ở Đã lập kế hoạch/Đang sản xuất mà không có kế hoạch nào thì chỉ báo.
+- **Chạy lại:** xóa kế hoạch mô phỏng cũ (cùng PO, màu cỡ, dòng, phân màu cỡ của chúng) và trả đơn không còn kế hoạch nào về trạng thái lúc nạp. Giữ nguyên (trừ khi có `--all`): kế hoạch người dùng lập; kế hoạch mô phỏng người dùng đã sửa (kế hoạch, màu cỡ, dòng, phân màu cỡ có `ModifiedAt`; dòng thêm sau ở Xếp chuyền, phân màu cỡ lưu sau ở Phân bổ màu cỡ quá 10 phút sau lúc lập kế hoạch; dòng đã nhập ở Kế hoạch chuẩn bị SX, đọc từ `MES_Sewing` trước transaction). Luôn giữ, kể cả `--all` (đọc trước transaction của `MES_Order`): kế hoạch đã có số cắt (`plansWithCuts`, quyết định 13.4) và kế hoạch có mã hàng đã cấp BTP ở ĐVCS của nó (`plansWithSupply`, quyết định 13.8), đọc từ `MES_Cutting`; kế hoạch có dòng dàn chuyền đã có bản ghi ở Kế hoạch may (`dayPlanLines`, đọc từ `MES_Sewing`, quyết định 14.2). Đơn ở Đã lập kế hoạch/Đang sản xuất mà không có kế hoạch nào thì chỉ báo.
 - Chạy trong một transaction cho mọi ĐVCS (màn đơn hàng chờ tới khi xong). Nhật ký `BOARD_SIMULATE` ghi ở `MES_Core` sau khi `MES_Order` đã commit.
 
 ### 8.7 Dữ liệu giả (`backend/scripts/seed-order.ts`)

@@ -16,16 +16,16 @@ Tổ cắt nhập số đã cắt mỗi ngày theo màu cỡ của từng kế h
 
 | File | Vai trò |
 |---|---|
-| `backend/src/modules/cutting/cutting.module.ts` | Khai module; import `OrderModule` để dùng `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards` |
+| `backend/src/modules/cutting/cutting.module.ts` | Khai module: 2 controller (`CuttingProgressController`, `CuttingSupplyController`); import `OrderModule` để dùng `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards` |
 | `backend/src/modules/cutting/cutting.db.ts` | Kết nối riêng tới `MES_Cutting` (`DB_CUTTING_NAME`, mặc định `MES_Cutting`) |
 | `backend/src/modules/cutting/cutting.types.ts` | Kiểu Kysely của 5 bảng (`CuttingPlan`, `CuttingPlanColorSize`, `CuttingPlanDaily`, `CuttingSupply`, `CuttingSupplyLine`) |
 | `backend/src/modules/cutting/cutting.dto.ts` | DTO, mã trạng thái `CUTTING_STATUSES`, giới hạn `MAX_DAY_QTY` (1.000.000), `MAX_SAVE_CELLS` (2.000) |
 | `backend/src/modules/order/shipment-plan-feed.service.ts` | API công khai của Đơn hàng: `plansOf`, `versionOf`, `exists`, `cutQtyOf`, `setCutQty` (đọc, ghi cột LK cắt qua `ShipmentPlanFeedRepository` trong `order.repositories.ts`) |
 | `backend/src/modules/order/shipment-plan-delete-guard.ts` | Điểm đăng ký chặn xóa kế hoạch (`ShipmentPlanDeleteGuards`), gọi trong `ShipmentService.remove` |
-| `backend/scripts/cutting-data.ts` | `hasCuttingDb`, `clearCutting`, `plansWithCuts` cho các script |
-| `frontend/src/routes/registry.tsx` | Đăng ký `/cutting/progress` → `features/cutting/CuttingProgressPage` |
+| `backend/scripts/cutting-data.ts` | `hasCuttingDb`, `clearCutting` (`reset:demo`, `load:bravo`), `plansWithCuts`, `plansWithSupply` (`sim:board`) |
+| `frontend/src/routes/registry.tsx` | Đăng ký `/cutting/progress` → `features/cutting/CuttingProgressPage`, `/cutting/supply` → `features/cutting/CuttingSupplyPage` |
 
-Ranh giới module (lint `backend/eslint.config.mjs`): module Cắt chỉ import `order.module`, `shipment-plan-feed.service`, `shipment-plan-delete-guard`, `line-color-size-feed.service`, `line-supply-guard` của Đơn hàng; Đơn hàng, Nhân sự không import module Cắt.
+Ranh giới module (lint `backend/eslint.config.mjs`; bảng luật của mọi module: [Kiến trúc](../ARCHITECTURE.md) mục 4): module Cắt chỉ import `order.module`, `shipment-plan-feed.service`, `shipment-plan-delete-guard`, `line-color-size-feed.service`, `line-supply-guard` của Đơn hàng, không import module May, Nhân sự, lớp đồng bộ (`platform/sync`); Đơn hàng, Nhân sự không import module Cắt.
 
 ## Quy tắc tính (quyết định 13.3)
 
@@ -102,11 +102,11 @@ CSV cùng bộ lọc, theo chính sách cột, tối đa 10.000 dòng: Số kế
 | `GET /cutting/progress/export` | `export` | CSV |
 | `GET /cutting/progress/:id?date=YYYY-MM-DD` | `view` | Popup: đầu kế hoạch, `branchName`, `date`, `today`, `entryDays`, `canEdit`, `canDelete`, `items[]` (`colorName`, `sizeName`, `inPlan`, `planQty`, `dayQty`, `cutQty`, `diffQty`). Ngày sau hôm nay: 422 |
 | `PUT /cutting/progress/:id` | `update` | `{ date, items: [{ colorName, sizeName, dayQty }] }`; trả như `GET :id` của ngày đó. 422: ngày sau hôm nay, số âm, số lẻ, màu cỡ ngoài kế hoạch, gửi trùng. 409: kế hoạch đã xóa |
-| `DELETE /cutting/progress/:id/entries` | `delete` | Xóa số cắt; trả `{ removedDays, removedRows, planRemoved }` |
+| `DELETE /cutting/progress/:id/entries` | `delete` | Xóa số cắt mọi ngày của kế hoạch (kế hoạch đã mất nguồn thì xóa cả bản chép); trả 200 `{ removedDays, removedRows, planRemoved }` (body khác `{ removed: true }` của quy ước ở [Quy ước code](../CODE_CONVENTIONS.md) mục 4.1). Không còn số nào mà kế hoạch còn nguồn: trả số 0, `planRemoved: false`, không ghi nhật ký. 404 kế hoạch ĐVCS khác; 403 `AGGREGATE_READ_ONLY` ở `A00` |
 
 ## Database `MES_Cutting`
 
-Migration `backend/migrations/MES_Cutting/0001_cutting_progress.sql`. `npm run migrate` tạo database theo collation của `MES_Core` nếu tài khoản có quyền; không thì quản trị CSDL tạo trước (cùng collation), cấp `db_owner` ([Vận hành](11-van-hanh.md)).
+Ba bảng dưới tạo ở `backend/migrations/MES_Cutting/0001_cutting_progress.sql` (danh sách file migration: [Kiến trúc](../ARCHITECTURE.md) mục 6.2). `npm run migrate` tạo database theo collation của `MES_Core` nếu tài khoản có quyền; không thì quản trị CSDL tạo trước (cùng collation), cấp `db_owner` ([Vận hành](11-van-hanh.md)).
 
 | Bảng | Cột chính | Ràng buộc, chỉ mục |
 |---|---|---|
@@ -200,9 +200,9 @@ API công khai của Đơn hàng dùng ở đây: `backend/src/modules/order/lin
 | `POST /cutting/supply/sheet` | `view` | `{ date, items: [{ line, style, colorName, sizeName }] }` trả `{ date, today, rows, supplies }`: số của các dòng theo Ngày cấp (mỗi dòng có thêm `locked`) và lệnh đã có của ngày đó (`id`, `supplyNo`, `styleCode`, `statusCode`, `locked`, `note`). Không ghi gì; `A00`: 403 |
 | `PUT /cutting/supply` | `update` (thêm `create` khi phải tạo lệnh) | `{ date, note?, styles, items: [{ line, style, colorName, sizeName, dayQty }] }`; trả `saved` (lệnh tạo, sửa, tự bỏ) và lưới tính lại. 422: ngày sau hôm nay, gửi trùng, ngoài phân bổ, Còn lại âm, vượt SL đồng bộ. 409: lệnh đã xác nhận, phân bổ vừa đổi |
 | `GET /cutting/supply/:id` | `view` | Chi tiết lệnh: đầu lệnh, `rows`, `canEdit`, `canDelete`, `canConfirm`, `canUnconfirm` |
-| `POST /cutting/supply/:id/confirm` | `update` | Xác nhận cấp; 409 nếu đã xác nhận |
-| `POST /cutting/supply/:id/unconfirm` | `update` | Hủy duyệt; 409 nếu chưa xác nhận |
-| `DELETE /cutting/supply/:id` | `delete` | Xóa lệnh Chưa cấp |
+| `POST /cutting/supply/:id/confirm` | `update` | Xác nhận cấp; trả 200, chi tiết lệnh như `GET :id`; 409 nếu đã xác nhận |
+| `POST /cutting/supply/:id/unconfirm` | `update` | Hủy duyệt; trả 200, chi tiết lệnh như `GET :id`; 409 nếu chưa xác nhận |
+| `DELETE /cutting/supply/:id` | `delete` | Xóa lệnh Chưa cấp cùng mọi số cấp của lệnh; trả 200 `{ removed: true }`. 409: lệnh đã xác nhận (Hủy duyệt trước); 404 lệnh ĐVCS khác; 403 `AGGREGATE_READ_ONLY` ở `A00` |
 
 Mỗi dòng (`rows`): `lineCode`, `lineName`, `styleCode`, `productName`, `colorName`, `sizeName`, `inPlan`, `planQty`, `syncQty`, `suppliedQty`, `dayQty`, `remainQty`, `otherLinesQty` (đã cấp mọi ngày cho chuyền khác cùng mã hàng, màu, cỡ: giao diện tự kiểm vượt SL đồng bộ).
 
@@ -219,7 +219,7 @@ Mỗi dòng (`rows`): `lineCode`, `lineName`, `styleCode`, `productName`, `color
 | `CuttingSupply` | `Id`, `SupplyNo`, `SupplyYear`, `SupplySeq`, `SupplyDate`, `StyleCode NVARCHAR(120)`, `Note NVARCHAR(500)`, `StatusCode` (`PENDING`, `PARTIAL`, `FULL`), `CreatorName`, `ConfirmedAt`, `ConfirmedBy`, `ConfirmerName`, `BranchCode` + bộ kiểm toán | `UNIQUE (Id, BranchCode)`, `(BranchCode, SupplyNo)`, `(BranchCode, SupplyYear, SupplySeq)`, `(BranchCode, SupplyDate, StyleCode)`; `CK_CuttingSupply_Confirm` (Chưa cấp thì chưa có người cấp, đã xác nhận thì phải có); `IX_CuttingSupply_Branch_Created`, `IX_CuttingSupply_Branch_Style`; `IX_CuttingSupply_CreatedBy`, `IX_CuttingSupply_ConfirmedBy` (`0003`) |
 | `CuttingSupplyLine` | `CuttingSupplyId`, `LineCode VARCHAR(20)`, `ColorName`, `SizeName`, `Qty > 0`, `SortOrder`, `BranchCode` + bộ kiểm toán | FK ghép tới lệnh, xóa theo lệnh; `UNIQUE (CuttingSupplyId, LineCode, ColorName, SizeName)`; `IX_CuttingSupplyLine_Branch_Line (BranchCode, LineCode) INCLUDE (…)` |
 
-Khóa ngầm (`softkeys.json`): `BranchCode` của hai bảng → `MES_Core.SysBranch.Code`; `CreatedBy`, `ConfirmedBy` → `MES_Core.SysUser.Id`; `CuttingSupplyLine.LineCode` → `MES_Hr.Department.Code` (cùng ĐVCS). Migration `MES_Cutting/0003_cutting_supply_indexes.sql` thêm chỉ mục cho hai khóa người dùng và `IX_CuttingPlan_Branch_Style (BranchCode, StyleCode)` cho SL đồng bộ.
+Khóa ngầm (`softkeys.json`): `BranchCode` của hai bảng → `MES_Core.SysBranch.Code`; `CuttingSupply.CreatedBy`, `CuttingSupply.ConfirmedBy` → `MES_Core.SysUser.Id`; `CuttingSupplyLine.LineCode` → `MES_Hr.Department.Code` (cùng ĐVCS). Migration `MES_Cutting/0003_cutting_supply_indexes.sql` thêm chỉ mục cho hai khóa người dùng và `IX_CuttingPlan_Branch_Style (BranchCode, StyleCode)` cho SL đồng bộ.
 
 ### Nhật ký
 

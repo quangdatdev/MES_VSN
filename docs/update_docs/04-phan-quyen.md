@@ -32,7 +32,7 @@ API `/admin/*`, `/me`, các màn Quản trị và bảng `SysBranch`, `SysOrgUni
 Luật bắt buộc nằm ở [AGENTS.md](../../AGENTS.md) mục 4 (nguồn duy nhất). File này mô tả cơ chế cưỡng chế từng luật. Ba chi tiết cưỡng chế cần nhớ:
 
 - Không có quyền được cấp rõ ràng thì từ chối; phạm vi không hiểu được thì coi là tập rỗng, không bao giờ là "không giới hạn" (mục 6.3).
-- `branchCode` trong body của `POST /auth/select-branch` là *yêu cầu chọn*, server kiểm với `SysUserBranch` rồi mới cấp token (ADR 0002). Một số API quản trị, danh mục nhận mã ĐVCS làm giá trị dữ liệu, không phải phạm vi của phiên: ĐVCS của phòng ban (`backend/src/modules/hr/hr.dto.ts`), của Nhà máy SX và lịch làm việc theo ĐVCS (`backend/src/platform/catalog/catalog.dto.ts`, `catalog.controller.ts`), ĐVCS để xem quyền hiệu lực (`backend/src/platform/admin/admin.dto.ts`).
+- `branchCode` trong body của `POST /auth/select-branch` là *yêu cầu chọn*, server kiểm với `SysUserBranch` rồi mới cấp token (ADR 0002). Một số API quản trị, danh mục nhận mã ĐVCS làm giá trị dữ liệu, không phải phạm vi của phiên: ĐVCS của phòng ban (`backend/src/modules/hr/hr.dto.ts`), của Nhà máy SX và lịch làm việc theo ĐVCS (`backend/src/platform/catalog/catalog.dto.ts`, `catalog.controller.ts`), ĐVCS để xem quyền hiệu lực (`backend/src/platform/admin/admin.dto.ts`). Bộ lọc theo ĐVCS trên màn (lọc theo cột `branchCode` qua `cf`, tham số `branch` của Kế hoạch chuẩn bị SX ở `backend/src/modules/sewing/sewing.dto.ts`) chỉ thu hẹp trong các dòng phiên đã xem được.
 - Mọi thay đổi phân quyền ghi `SysAuditLog` và tăng `SysPermissionVersion` trong cùng transaction với thay đổi; ghi nhật ký lỗi thì hủy cả thay đổi (ADR 0004, mục 12). Đăng nhập, đăng xuất, chọn ĐVCS cũng ghi nhật ký.
 
 ### Năm lớp
@@ -53,7 +53,7 @@ Lọc ĐVCS chính là chiều phạm vi `FACTORY` lấy từ phiên: mọi tài
 Thứ tự của NestJS: guard → interceptor (trước handler) → pipe → handler → interceptor (sau handler). Sơ đồ cả request: [Luồng dữ liệu](../DATA_FLOWS.md) mục 2.
 
 1. `AuthGuard`: kiểm token, phiên, ĐVCS, tính `UserAccess` (quyền kèm phạm vi), gắn `req.authUser`.
-2. `PermissionGuard`: endpoint phải khai báo; kiểm đủ các mã quyền của `@RequirePermission`.
+2. `PermissionGuard`: endpoint phải khai báo, không thì 403 `ENDPOINT_NOT_DECLARED` (chỉ khi request tới đây với access token hợp lệ; thiếu hoặc sai token thì bước 1 đã trả 401); kiểm đủ các mã quyền của `@RequirePermission`.
 3. `FieldPolicyInterceptor` (endpoint có `@FieldResource`): body thô của `POST`, `PUT`, `PATCH` có cột không được sửa thì 403 `FIELD_READONLY`. Chạy trước `ValidationPipe`, nên trường thừa trùng mã cột bị chặn cả khi DTO sẽ bỏ nó.
 4. `ValidationPipe` (DTO, `whitelist: true`): sai thì 422 `VALIDATION_FAILED`.
 5. Service gọi repository với `scopeOf(user)`: repository thêm điều kiện ĐVCS, phạm vi, chặn ghi ở `A00`.
@@ -188,12 +188,12 @@ Dùng lại `POST /auth/select-branch`, lần này bằng access token. Danh sá
 
 | Loại | Khai báo | Đọc | Ghi | Tài nguyên hiện có |
 |---|---|---|---|---|
-| Theo ĐVCS | `SysResource.ScopeType = 'BRANCH'`, bảng có cột `BranchCode` có index | `BranchCode` = ĐVCS của phiên; ở `A00` không lọc ĐVCS, chỉ lọc theo phạm vi | Tạo: `BranchCode` = ĐVCS của phiên. Sửa, xóa: chỉ dòng của ĐVCS phiên. `A00`: 403 | `order.shipment`, `order.lineplan` (`ShipmentPlan`), `order.colorsize` (`ShipmentPlanLine`), `order.prep` (`SewingPrep`) |
+| Theo ĐVCS | `SysResource.ScopeType = 'BRANCH'`, bảng có cột `BranchCode` có index | `BranchCode` = ĐVCS của phiên; ở `A00` không lọc ĐVCS, chỉ lọc theo phạm vi | Tạo: `BranchCode` = ĐVCS của phiên. Sửa, xóa: chỉ dòng của ĐVCS phiên. `A00`: 403 | `order.shipment`, `order.lineplan` (`ShipmentPlan`), `order.colorsize` (`ShipmentPlanLine`), `order.prep` (`SewingPrep`), `cutting.progress` (`CuttingPlan`), `cutting.supply` (`CuttingSupply`), `sewing.plan` (`SewingDayPlan`) |
 | Dùng chung | `ScopeType = 'SHARED'` | Không lọc ĐVCS | Không đóng dấu ĐVCS. Ghi được cả ở `A00` | `hr.orgchart` (`Department`), `hr.employee` (`Employee`) |
 | Dùng chung có ĐVCS nguồn | `SHARED`, repository khai `originBranch = true`, bảng có `BranchCode` (ĐVCS nguồn) | Không lọc ĐVCS | Tạo: `BranchCode` = ĐVCS của phiên. Sửa, xóa: dòng của ĐVCS phiên hoặc của ĐVCS đang dùng dòng (`usedBy`). `A00`: 403 | `order.allocation` (`SalesOrder`), `order.po` (`SalesOrderPo`) |
 | Dùng chung, ghi theo ĐVCS của nhà máy | `SHARED`, repository khai `factoryBranchWrite = true` và `productionFactoryColumn`, bảng không có `BranchCode` | Không lọc ĐVCS | Không tạo qua repository (dòng do hệ thống chép). Sửa, xóa: dòng mà không mã nhà máy nào đã gắn ĐVCS khác (mục 6.6). `A00`: 403 | `order.poallocation` (`PoAllocation`) |
 
-Tài nguyên `SHARED` không có bảng nguồn (`SourceTable` trống) không đi qua `BaseRepository`: nhóm `admin.*` (API quản trị tự kiểm quyền bằng `@RequirePermission`). Tài nguyên chưa có màn thật (`cutting.embroidery`, `sewing.cluster`…) cũng chưa có bảng nguồn; `cutting.progress` có bảng nguồn `CuttingPlan` từ phase 5.14, `cutting.supply` có `CuttingSupply` từ phase 5.15, `sewing.plan` có `SewingDayPlan` từ phase 5.16.
+Tài nguyên `SHARED` không có bảng nguồn (`SourceTable` trống) không đi qua `BaseRepository`: nhóm `admin.*` (API quản trị tự kiểm quyền bằng `@RequirePermission`). Tài nguyên chưa có màn thật (`cutting.embroidery`, `sewing.cluster`, `sewing.output`, `sewing.balance`, nhóm `qms.*`, `finishing.*`, `report.*`) có `ScopeType = 'BRANCH'` theo mặc định của seed nhưng chưa có bảng nguồn, chưa có repository.
 
 ### 3.3 Đơn vị tổng hợp A00
 
@@ -266,7 +266,7 @@ Tài nguyên `SHARED` không có bảng nguồn (`SourceTable` trống) không �
 
 - Metadata đọc bằng `getAllAndOverride`: đặt ở method thì thắng đặt ở class (ví dụ handler `@FieldResource('order.po')` trong controller khai `@FieldResource('order.shipment')`).
 - `@RequirePermission` đặt ở đâu cũng thắng `@Public`, `@Authenticated`: ghép decorator không làm lọt quyền.
-- Endpoint không có decorator nào trong ba loại trên: 403 `ENDPOINT_NOT_DECLARED`.
+- Endpoint không có decorator nào trong ba loại trên: 403 `ENDPOINT_NOT_DECLARED`, khi request có access token hợp lệ. Thiếu hoặc sai token, phiên đã thu hồi thì `AuthGuard` trả 401 trước; token tạm cũng 401 vì endpoint không có `@AllowPreAuth`.
 - Hai guard toàn cục đăng ký trong `AuthModule` theo thứ tự `AuthGuard` rồi `PermissionGuard`.
 
 ### 5.2 `PermissionGuard`
@@ -276,7 +276,7 @@ Tài nguyên `SHARED` không có bảng nguồn (`SourceTable` trống) không �
 1. Không có `@RequirePermission` mà có `@Public`: cho qua.
 2. Chưa có `req.authUser`: 401.
 3. Không có `@RequirePermission` mà có `@Authenticated`: cho qua.
-4. Không khai báo gì: 403 `ENDPOINT_NOT_DECLARED`.
+4. Không khai báo gì: 403 `ENDPOINT_NOT_DECLARED`. Chỉ request có access token hợp lệ mới tới bước này; thiếu token, token sai, phiên đã thu hồi thì `AuthGuard` đã trả 401.
 5. Có `@RequirePermission` mà token không phải access token: 401.
 6. Thiếu bất kỳ mã nào trong `UserAccess.permissions`: 403 `PERMISSION_DENIED`.
 
@@ -310,7 +310,7 @@ Một điều kiện (`Condition`) có ba dạng: `in` (giá trị thuộc danh 
   - Quản trị: gán vai trò, gán ĐVCS, bật/tắt tài khoản, bật/tắt/xóa vai trò, ma trận quyền của vai trò, phạm vi của phép gán, ngoại lệ, chính sách cột (theo vai trò và theo người), bật/tắt ĐVCS.
   - Danh mục hệ thống: thêm Nhà máy SX, đổi ĐVCS hoặc bật/tắt Nhà máy SX (quyền chọn mã hàng theo nhà máy).
   - Sơ đồ tổ chức: thêm bộ phận tích "Xưởng sản xuất", tích, bỏ tích, đổi ĐVCS, giải thể, khôi phục bộ phận là chuyền may. Ngoại lệ về transaction: bộ phận lưu ở `MES_Hr`, phiên bản tăng ở `MES_Core` ngay sau commit (mục 7.6).
-  - Seed (cuối mỗi lần chạy), `bootstrapFullAccess`, migration `MES_Core/0004`, `0007`, `0009`, `0010`.
+  - Seed (cuối mỗi lần chạy), `bootstrapFullAccess`, migration `MES_Core/0004`, `0007`, `0009`, `0010`, `0012`, `0013` (`0012`, `0013` chỉ khi có cấp quyền).
   - Đặt lại mật khẩu không tăng phiên bản (thu hồi phiên thay vì vậy). Sửa tên, mô tả không tăng.
 - Header `X-Permission-Version` của mọi response có access token mang dấu `accessStamp`: `version`, hoặc `version.expiresAt` khi có mốc hết hạn. `GET /me/permissions` trả cùng dấu ở `stamp`. Giao diện thấy dấu khác thì tải lại `/me`, `/me/menu`, `/me/permissions`, `/me/field-policies` và dữ liệu đang hiện (`frontend/src/store/auth.ts`).
 - Chi phí mỗi request có access token: một câu `SysUserSession` theo khóa chính, một câu `SysPermissionVersion`, một câu `SysUserBranch`, cộng `SysBranch` khi cache hết hạn; tính lại `UserAccess` khi cache trống. Khi cần giảm tải có thể cache kết quả kiểm `SysUserSession` vài giây (ADR 0004, chưa làm).
@@ -381,7 +381,7 @@ Ghi nhiều dòng chia lô vì SQL Server nhận tối đa 2.100 tham số mỗi
 Đơn hàng, PO lấy từ BRAVO là dữ liệu dùng chung toàn công ty, nhưng cột `BranchCode` vẫn ghi ĐVCS nguồn (Chi nhánh FOB) (ADR 0013 mục 4, 11):
 
 - `originBranch = true`: đọc không lọc ĐVCS; tạo mới đóng dấu ĐVCS của phiên; sửa, xóa chỉ dòng của ĐVCS phiên (dòng ĐVCS khác trả 404); `A00` không ghi được. Nhờ vậy ĐVCS khác không đổi được dữ liệu mà ĐVCS nguồn dựa vào (ví dụ Nhà máy SX của đơn).
-- `usedBy = { table, column }`: ĐVCS có dòng trong bảng `table` (cùng database, có `BranchCode`) trỏ tới dòng này qua `column` cũng sửa, xóa được dòng như ĐVCS nguồn. `SalesOrderPoRepository` khai `{ table: 'ShipmentPlanPo', column: 'SalesOrderPoId' }`: ĐVCS có PO trong kế hoạch xuất hàng của mình sửa được tỷ lệ cắt của PO đó. `SalesOrderPriceRepository` (phase 5.16, quyết định 14.3) khai `{ table: 'ShipmentPlan', column: 'SalesOrderId' }` trên bảng `SalesOrder`, chỉ dùng cho đường sửa riêng Giá CM: ĐVCS có kế hoạch xuất hàng của đơn sửa được Giá CM; `SalesOrderRepository` (Sửa đơn, Xóa) không khai `usedBy`, nên các cột khác vẫn chỉ ĐVCS nguồn sửa được.
+- `usedBy = { table, column }`: ĐVCS có dòng trong bảng `table` (cùng database, có `BranchCode`) trỏ tới dòng này qua `column` cũng sửa, xóa được dòng như ĐVCS nguồn. `SalesOrderPoRepository` khai `{ table: 'ShipmentPlanPo', column: 'SalesOrderPoId' }`: ĐVCS có PO trong kế hoạch xuất hàng của mình sửa được tỷ lệ cắt của PO đó. `SalesOrderPriceRepository` (quyết định 14.3) khai `{ table: 'ShipmentPlan', column: 'SalesOrderId' }` trên bảng `SalesOrder`, chỉ dùng cho đường sửa riêng Giá CM: ĐVCS có kế hoạch xuất hàng của đơn sửa được Giá CM; `SalesOrderRepository` (Sửa đơn, Xóa) không khai `usedBy`, nên các cột khác vẫn chỉ ĐVCS nguồn sửa được.
 - `inUseHere(scope)`: điều kiện lọc của màn (không phải phân quyền): dòng ĐVCS phiên đang dùng (`usedBy`), hoặc dòng người dùng nhập tay ở ĐVCS này (`CreatedBy` có giá trị và `BranchCode` = ĐVCS phiên; dòng nạp từ hệ thống nguồn để trống `CreatedBy`). Ở `A00`: của mọi ĐVCS. Màn Cập nhật tỷ lệ cắt dùng điều kiện này: [Đơn hàng](06-don-hang.md).
 
 ### 6.6 Nhà máy SX của dòng: `assignedFactories`, `factoryBranchWrite`
@@ -420,7 +420,14 @@ Bảng con theo dòng cha (màu cỡ của PO, dòng dàn chuyền, màu cỡ c�
 
 ### 6.9 Đường ghi không theo phiên
 
-Một số việc của hệ thống ghi mọi ĐVCS, không theo phiên người dùng, nên không đi qua cưỡng chế theo phiên: nạp tăng dần đơn hàng BRAVO, làm mới bảng Phân bổ PO theo OSM ([Đơn hàng](06-don-hang.md)), chép dàn chuyền sang Kế hoạch chuẩn bị SX ([May](07-may.md)), đọc bảng chép ở `MES_Sync` ([Đồng bộ](09-dong-bo.md)). Các chỗ này vẫn chỉ được gọi từ endpoint đã kiểm quyền hoặc từ tác vụ nền. Module Cắt ghi cột LK cắt (`ShipmentPlan.CutQty`) của Kế hoạch xuất hàng theo Lũy kế qua `ShipmentPlanFeed.setCutQty` (quyết định 13.6): theo ĐVCS của phiên, phiên `A00` thì mọi ĐVCS; chỉ ghi số tổng hợp, không theo quyền sửa của người xem.
+Một số việc của hệ thống đọc, ghi dữ liệu không theo phạm vi của người dùng, nên không đi qua cưỡng chế theo phiên của `BaseRepository`. Các chỗ này chỉ được gọi từ endpoint đã kiểm quyền hoặc từ tác vụ nền; ĐVCS do service lấy từ phiên (`Scope`, phiên `A00`: mọi ĐVCS) hoặc là việc của mọi ĐVCS, không nhận mã ĐVCS từ client.
+
+- Nạp tăng dần đơn hàng BRAVO, làm mới bảng Phân bổ PO theo OSM ([Đơn hàng](06-don-hang.md)); chép dàn chuyền sang Kế hoạch chuẩn bị SX ([May](07-may.md)); đọc bảng chép ở `MES_Sync` ([Đồng bộ](09-dong-bo.md)).
+- `ShipmentPlanPriceRepository.follow` (`backend/src/modules/order/order.repositories.ts`): đơn đổi Giá CM thì ghi Giá CM vào mọi kế hoạch xuất hàng của đơn ở mọi ĐVCS, trong transaction đã ghi đơn (quyết định 14.3, [Đơn hàng](06-don-hang.md)).
+- `ShipmentPlanFeedRepository` (cùng file, qua `ShipmentPlanFeed`): đọc kế hoạch xuất hàng, màu cỡ của ĐVCS phiên cho module Cắt chép sang; `setCutQty` ghi cột LK cắt (`ShipmentPlan.CutQty`) theo Lũy kế (quyết định 13.6), chỉ ghi số tổng hợp, không theo quyền sửa của người xem ([Cắt](15-cat.md)).
+- `LineColorSizeFeedRepository` (cùng file, qua `LineColorSizeFeed`, `LineSupplyGuards`): đọc phần giao ở Phân bổ màu cỡ gom theo chuyền, mã hàng, màu cỡ của ĐVCS phiên cho Xác nhận cấp BTP và để kiểm phần giao không xuống dưới số đã cấp; không theo phạm vi chuyền của người xem ([Cắt](15-cat.md)).
+- `CuttingPlanRepository.syncFromPlans` (`backend/src/modules/cutting/cutting.repositories.ts`): mỗi lần mở màn Đồng bộ tiến độ cắt, chép kế hoạch xuất hàng của ĐVCS phiên sang `CuttingPlan` dưới khóa ứng dụng (thêm, cập nhật, dọn hoặc tách bản chép mất nguồn; `BranchCode` lấy từ kế hoạch nguồn). `copyCount`, `sourceHasEntries`, `cutTotals` cùng lớp chỉ trả số đếm, số tổng ([Cắt](15-cat.md)).
+- `SewingDayPlanRepository.usageQuick` (`backend/src/modules/sewing/sewing-plan.repositories.ts`, qua `LineDayPlanGuards`): số đã lập ở Kế hoạch may của các dòng dàn chuyền, theo ĐVCS của kế hoạch Xếp chuyền đang lưu, chỉ trả số tổng ([May](07-may.md)).
 
 <a id="pham-vi"></a>
 ## 7. Phạm vi theo phép gán (L3)
@@ -471,12 +478,13 @@ Dữ liệu hệ thống, seed đồng bộ đúng khai báo ở `scopeBindings`
 | `order.prep` | `BRANCH` | `FACTORY → BranchCode`, `LINE → LineCode` |
 | `cutting.progress` | `BRANCH` | `FACTORY → BranchCode` (không chiều Chuyền, Người tạo: dòng do hệ thống chép từ kế hoạch xuất hàng) |
 | `cutting.supply` | `BRANCH` | `FACTORY → BranchCode` (không chiều Chuyền, Người tạo; quyết định 13.10) |
+| `sewing.plan` | `BRANCH` | `FACTORY → BranchCode`, `LINE → LineCode` (không chiều Người tạo); bảng con `SewingDayPlanItem` theo phạm vi của dòng cha |
 
 `SysResourceScopeBinding.ColumnName` chỉ nhận ký tự định danh (CHECK), vì tên cột được ghép vào điều kiện.
 
 ### 7.4 Ví dụ (dữ liệu mẫu)
 
-- `truongchuyen.a`: Trưởng chuyền, `LINE` `LIST` giá trị `A01-L03` (mã bộ phận chuyền mẫu tích "Xưởng sản xuất") → ở Phân bổ màu cỡ chỉ thấy kế hoạch có chuyền A01-L03 và chỉ phân màu cỡ cho chuyền đó (phần của chuyền khác chỉ thấy tổng); ở Kế hoạch chuẩn bị SX chỉ thấy, sửa dòng chuyền A01-L03. Bộ phận đó bị bỏ tích hay giải thể thì người này không thấy chuyền nào (không thành không giới hạn).
+- `truongchuyen.a`: Trưởng chuyền, `LINE` `LIST` giá trị `A01-L03` (mã bộ phận chuyền mẫu tích "Xưởng sản xuất") → ở Phân bổ màu cỡ chỉ thấy kế hoạch có chuyền A01-L03 và chỉ phân màu cỡ cho chuyền đó (phần của chuyền khác chỉ thấy tổng); ở Kế hoạch chuẩn bị SX, Kế hoạch may chỉ thấy dòng chuyền A01-L03 (vai trò mẫu chỉ có quyền Xem ở hai màn này; Giá CM, Doanh số kế hoạch của Kế hoạch may bị Ẩn). Bộ phận đó bị bỏ tích hay giải thể thì người này không thấy chuyền nào (không thành không giới hạn).
 - `ketoan`: Kế toán, `FACTORY` `LIST` A01, A02 → ở `A00` chỉ đọc kế hoạch của A01, A02; ở A03 không có quyền nào; đơn hàng dùng chung vẫn thấy hết.
 
 ### 7.5 Thay đổi phạm vi
@@ -509,7 +517,7 @@ ADR 0005, `backend/src/platform/permission/field-policy.service.ts`.
 
 - `SysResourceField`: cột của tài nguyên. **`Code` trùng đúng tên trường JSON** mà API nhận và trả (phân biệt hoa thường). `IsSensitive` đánh dấu cột nhạy cảm (giá, doanh số, giấy tờ nhân viên).
 - Chỉ cột đã đăng ký mới chịu chính sách. Cùng một dữ liệu xuất hiện ở nhiều tài nguyên thì phải đăng ký và đặt chính sách ở **mọi** tài nguyên đó; che ở màn này không che ở màn khác.
-- Danh sách cột của từng tài nguyên khai ở `resourceFields` (`backend/scripts/seed-data.ts`); seed đồng bộ tên, cờ nhạy cảm, thứ tự. Tài nguyên hiện có cột đăng ký: `order.allocation`, `order.poallocation`, `order.shipment`, `order.po`, `order.lineplan`, `order.colorsize`, `order.prep`, `cutting.progress`, `cutting.supply`, `hr.employee`. Cột nhạy cảm hiện có: `order.allocation` (`unitPrice`, `amount`, `cmPrice`), `order.lineplan` (`cmPrice`, `revenue`), `hr.employee` (`birthDate`, `idNumber`, `contactPhone`, `contactPerson`, `currentAddress`). Ý nghĩa từng cột: tài liệu module.
+- Danh sách cột của từng tài nguyên khai ở `resourceFields` (`backend/scripts/seed-data.ts`); seed đồng bộ tên, cờ nhạy cảm, thứ tự. Tài nguyên hiện có cột đăng ký: `order.allocation`, `order.poallocation`, `order.shipment`, `order.po`, `order.lineplan`, `order.colorsize`, `order.prep`, `cutting.progress`, `cutting.supply`, `sewing.plan`, `hr.employee`. Cột nhạy cảm hiện có: `order.allocation` (`unitPrice`, `amount`, `cmPrice`), `order.lineplan` (`cmPrice`, `revenue`), `sewing.plan` (`cmPrice`, `planRevenue`), `hr.employee` (`birthDate`, `idNumber`, `contactPhone`, `contactPerson`, `currentAddress`). Ý nghĩa từng cột: tài liệu module.
 
 ### 8.2 Mức và cách tính
 
@@ -655,6 +663,7 @@ Mã hành động của phần đăng nhập và phân quyền:
 | `SEED` | `System`, `SysRole` | Seed có thay đổi; tạo vai trò Toàn quyền | Ghi trực tiếp trong script |
 | `LINE_SET_CHANGE` | `Department` | Đổi tập chuyền may ở Sơ đồ tổ chức: `oldValue`, `newValue` có mã, cờ "Xưởng sản xuất", ĐVCS, còn dùng; `newValue.Operation` (`CREATE`, `TICK`, `UNTICK`, `BRANCH`, `DISSOLVE`, `RESTORE`), `newValue.AffectedUsers` (người đang được giao phạm vi chuyền mã đó: tên đăng nhập, họ tên) | `logStrict` trong transaction `MES_Core` cùng lần tăng phiên bản, ngay sau commit `MES_Hr` (mục 7.6) |
 | `USER_ROLE_SCOPE`, `SCOPE_DIMENSION_UPDATE`, `ORG_UNIT_RETIRE` | `SysUserRoleScope`, `SysScopeDimension`, `SysOrgUnit` | Migration `MES_Core/0009` chuyển phạm vi chuyền sang mã, đổi chiều `LINE` thành chiều giá trị, ngừng nút Xưởng, Chuyền (người `system`) | Ghi trực tiếp trong migration |
+| `ROLE_PERMISSIONS` | `SysRole` | Migration `MES_Core/0010`, `0012`, `0013` cấp quyền cho vai trò hệ thống trên máy đã cài (người `migrate`; `newValue.by` là tên file migration) | Ghi trực tiếp trong migration |
 
 `EntityId` của thao tác trên người dùng là Id người bị thay đổi; trên vai trò là Id vai trò; `LINE_SET_CHANGE` là Id bộ phận. Mã nhật ký của danh mục (Nhà máy SX) và của module (phòng ban: `CREATE`, `UPDATE`, `DISSOLVE`, `RESTORE`): tài liệu tương ứng.
 
@@ -665,27 +674,33 @@ Ghi khi cột nhạy cảm được trả ra không bị che (mục 8.3). Chỉ 
 <a id="ma-loi"></a>
 ## 13. Mã lỗi
 
-Lỗi trả dạng `{ "error": { "code", "message", "details" }, "traceId" }`, thông điệp tiếng Việt. Định nghĩa ở `backend/src/common/app.exception.ts` (`Errors`) và `http-exception.filter.ts`. Mã lỗi chung khác (`CONFLICT`, `VALIDATION_FAILED`, `INTERNAL_ERROR`…): [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2.
+Dạng body lỗi: [Kiến trúc](../ARCHITECTURE.md) mục 5.1. Bảng dưới là danh sách đủ các mã lỗi máy chủ trả: mã trong `Errors` (`backend/src/common/app.exception.ts`), mã do `AllExceptionsFilter` (`backend/src/common/http-exception.filter.ts`) đặt, `VALIDATION_FAILED` của `ValidationPipe` (`backend/src/app.factory.ts`) và mã service tạo thẳng bằng `new AppException`. Thông điệp bằng tiếng Việt, trừ `BAD_REQUEST` giữ thông điệp gốc của Nest. Điểm kiểm phát ra từng mã trong một request: [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2.
 
 | HTTP | `code` | Khi nào |
 |---|---|---|
+| 400 (hoặc HTTP của lỗi gốc) | `BAD_REQUEST` | `HttpException` của Nest không phải `AppException`, trừ 404 và 429 (ví dụ `ParseIntPipe` gặp `:id` không phải số) |
 | 401 | `UNAUTHENTICATED` | Thiếu hoặc sai token; token tạm gọi API khác; phiên đã thu hồi; tài khoản đã vô hiệu; token tạm cấp trước khi đổi mật khẩu; refresh không hợp lệ |
 | 401 | `TOKEN_EXPIRED` | Access token hoặc token tạm hết hạn |
 | 401 | `INVALID_CREDENTIALS` | Sai tên đăng nhập hoặc mật khẩu (không phân biệt hai trường hợp) |
 | 423 | `ACCOUNT_LOCKED` | Tài khoản đang khóa tạm; `details.until` là lúc hết khóa |
 | 403 | `BRANCH_NOT_ALLOWED` | Chọn ĐVCS không được gán hoặc đã tắt; phiên đang ở ĐVCS vừa bị gỡ hoặc tắt |
-| 403 | `ENDPOINT_NOT_DECLARED` | Endpoint chưa khai báo quyền truy cập |
-| 403 | `PERMISSION_DENIED` | Thiếu mã quyền của `@RequirePermission` |
+| 403 | `ENDPOINT_NOT_DECLARED` | Endpoint chưa khai báo quyền truy cập, với request có access token hợp lệ (thiếu, sai token thì 401 `UNAUTHENTICATED` trước, mục 5.1) |
+| 403 | `PERMISSION_DENIED` | Thiếu mã quyền của `@RequirePermission`. Service kiểm thêm quyền khi decorator không diễn tả được: lưu tạo lệnh cấp BTP mới, lập Kế hoạch may lần đầu cho chuyền trong ngày cần quyền Thêm (`grantsFor(scope, 'create')`); `GET /hr/departments/line-holders` cần Thêm hoặc Sửa Sơ đồ tổ chức |
 | 403 | `AGGREGATE_READ_ONLY` | Ghi ở `A00` trên dữ liệu theo ĐVCS, có ĐVCS nguồn, hoặc ghi theo ĐVCS của nhà máy |
 | 403 | `SCOPE_DENIED` | Tạo, sửa dữ liệu ra ngoài phạm vi được giao |
 | 403 | `FACTORY_OF_OTHER_BRANCH` | Sửa dữ liệu dùng chung ghi theo ĐVCS của nhà máy (Phân bổ PO) mà có dòng thuộc nhà máy của ĐVCS khác; không dòng nào được ghi. `details.rows`, `details.total`: số dòng bị chặn, số dòng bị áp |
 | 403 | `FIELD_READONLY` | Gửi giá trị cho cột không Sửa được; `details.fields` là mã cột |
-| 403 | `FIELD_NOT_READABLE` | Hỏi giá trị lọc của cột bị Ẩn hoặc Che |
+| 403 | `FIELD_NOT_READABLE` | Hỏi giá trị cho popup lọc theo cột của cột bị Ẩn hoặc Che (`assertFilterField`, `backend/src/platform/data/column-filter.ts`), hoặc của cột suy ra từ cột bị Ẩn, Che (Đồng bộ tiến độ cắt, Phân bổ PO) |
 | 403 | `SELF_ELEVATION_FORBIDDEN` | Tự đổi quyền của mình, hoặc vượt trần quyền quản trị |
-| 404 | `NOT_FOUND` | Không có, thuộc ĐVCS khác, hoặc ngoài phạm vi (không phân biệt) |
+| 404 | `NOT_FOUND` | Không có, thuộc ĐVCS khác, hoặc ngoài phạm vi (không phân biệt); lệnh lưu nhiều dòng kèm `details.ids` là các dòng đó (Kế hoạch chuẩn bị SX, Kế hoạch may). Đường dẫn API không có: "Không tìm thấy đường dẫn." |
+| 409 | `CONFLICT` | Deadlock SQL Server (`AllExceptionsFilter`, "Thử lại sau vài giây"); luật nghiệp vụ chặn, dữ liệu vừa được người khác lưu, trùng mã, chờ khóa ứng dụng quá lâu (thông điệp nói cách xử lý) |
 | 422 | `CODE_IMMUTABLE` | Sửa mã (vai trò, ĐVCS…) sau khi tạo |
+| 422 | `VALIDATION_FAILED` | DTO sai (`ValidationPipe`, `details` là `[{ field, messages }]`); kiểm đầu vào ở service (`details` tùy màn) |
+| 429 | `TOO_MANY_REQUESTS` | `AllExceptionsFilter` đổi mọi `HttpException` 429 sang mã này; backend hiện không có giới hạn tần suất nào phát ra 429 (mục 2.8) |
+| 500 | `INTERNAL_ERROR` | Lỗi không lường trước (không phải `HttpException`, không phải deadlock); máy chủ ghi log kèm `traceId` |
 | 500 | `RESOURCE_NOT_REGISTERED` | Repository chạy trên tài nguyên chưa khai báo hoặc sai bảng nguồn (lỗi lập trình, không phải lỗi người dùng) |
-| 500 | `LINE_SCOPE_UPDATE_FAILED` | Bộ phận chuyền may đã lưu ở `MES_Hr` nhưng sau 3 lần vẫn chưa ghi được nhật ký `LINE_SET_CHANGE` và tăng phiên bản quyền; `details.department` là bộ phận đã lưu (màn hình hiện đúng dữ liệu; `null` khi đọc lại cũng lỗi), `details.departmentId` là Id. Máy chủ ghi log đủ để dựng lại nhật ký (mục 7.6) |
+| 500 | `LINE_SCOPE_UPDATE_FAILED` | Bộ phận chuyền may đã lưu ở `MES_Hr` nhưng sau 3 lần vẫn chưa ghi được nhật ký `LINE_SET_CHANGE` và tăng phiên bản quyền; `details.department` là bộ phận đã lưu (màn hình hiện đúng dữ liệu; `null` khi đọc lại cũng lỗi), `details.departmentId` là Id. Máy chủ ghi log đủ để dựng lại nhật ký (mục 7.6). Tạo ở `PermissionService.recordLineSetChange` |
+| 503 | `SYNC_NOT_READY` | API màn Đồng bộ dữ liệu (`SyncService`, `backend/src/platform/sync/sync.service.ts`) khi chưa có `MES_Sync`, tài khoản ứng dụng chưa được cấp quyền vào, hoặc chưa chạy migration ([Đồng bộ](09-dong-bo.md)) |
 
 Giao diện tự sinh thêm hai mã 409 không đến từ máy chủ: `BRANCH_SWITCHED`, `BRANCH_CHANGED` (request bị giữ lại vì vừa đổi ĐVCS), xem `frontend/src/lib/api.ts`.
 
@@ -1062,3 +1077,9 @@ Test backend chạy trên database thật (cần migrate, seed trước), dùng 
 | `hr.spec.ts` | Deny by default ở module Nhân sự; dữ liệu dùng chung sửa được ở mọi ĐVCS; cột nhạy cảm của nhân viên theo vai trò, cả file xuất; chuyền may: tích, bỏ tích, đổi ĐVCS, giải thể, khôi phục cần `admin.permission:update` và tăng phiên bản quyền, người đang giữ phạm vi mã đó không tự làm, `line-holders`, nhật ký `LINE_SET_CHANGE`, lỗi tăng phiên bản thành `LINE_SCOPE_UPDATE_FAILED` |
 | `line-source.spec.ts` | `OrgService`: chưa có nguồn thì không có chuyền (đóng an toàn), nguồn lỗi đi tới bên gọi và không cache, lần đọc cũ không ghi đè sau `invalidate`, tên chuyền mồ côi |
 | `phase5-line-scope-migration.spec.ts` | Migration `MES_Core/0009` trên phạm vi cũ: danh sách nút thành mã, cả nhánh thành chuyền đang dùng, dòng vô tác dụng thành `~mã`, bỏ trùng, chiều khác giữ nguyên, nhật ký, tăng phiên bản (chạy trong transaction rồi hủy) |
+| `po-allocation-grant-migration.spec.ts`, `cutting-grant-migration.spec.ts`, `cutting-supply-grant-migration.spec.ts` | Migration cấp quyền cho máy đã cài (`MES_Core/0010`, `0012`, `0013`; chạy trong transaction rồi hủy): chỉ cấp cho vai trò hệ thống (`0010`: `PLANNER`, `FULL_ACCESS`; `0012`, `0013`: `PLANNER` còn quyền Xem, đã bị gỡ Xem thì không cấp), không đổi vai trò khác, chạy lại không trùng, nhật ký `ROLE_PERMISSIONS` như màn Vai trò, tăng phiên bản quyền; database chưa seed thì không làm gì |
+| `shipment-plan-pos.spec.ts` | Dữ liệu PO trong khung PO của kế hoạch theo quyền, phạm vi, chính sách cột của `order.po` (ADR 0006): kế hoạch của ĐVCS khác 404, `A00` xem được; Chặn `order.po:view` thì 403 `PERMISSION_DENIED` dù xem được kế hoạch; Số lượng bị Che thì cột suy ra cũng che, Trạng thái bị Ẩn thì bỏ cả cột suy ra; PO ngoài phạm vi "chỉ bản ghi do mình tạo" không hiện, chỉ đếm (`hiddenCount`) |
+| `sewing.spec.ts` | Kế hoạch chuẩn bị SX (`order.prep`): Trưởng chuyền chỉ thấy chuyền được giao, không sửa được (403); dòng ngoài chuyền được giao theo Id 404; `A00` xem mọi ĐVCS, ghi 403 `AGGREGATE_READ_ONLY` kể cả với vai trò có quyền Sửa; lưu trên bảng có dòng của ĐVCS khác hoặc ngoài chuyền được giao thì 404 kèm `details.ids`, không ghi gì; các bước Chỉ đọc thì 403 `FIELD_READONLY`, bị Ẩn thì không có trong dữ liệu và file xuất; Mã hàng bị Che thì câu báo xung đột không nêu mã hàng; Tổ SX bị Che thì không trả tên chuyền; số liệu đầu màn theo phạm vi và chính sách cột |
+| `cutting.spec.ts` | Đồng bộ tiến độ cắt (`cutting.progress`): `ShipmentPlanFeed` và danh sách lọc theo ĐVCS của phiên, `A00` thấy mọi ĐVCS; kế hoạch của ĐVCS khác 404; `A00` lưu 403 `AGGREGATE_READ_ONLY`; Giám đốc, Trưởng chuyền không lưu được, Kế hoạch không Xóa số cắt (403, theo ma trận mẫu); SL KH bị Che thì +/- và Trạng thái cũng che, không lọc, không sắp xếp theo +/- (giá trị lọc 403); Trong ngày Chỉ đọc thì 403 `FIELD_READONLY`, kể cả gửi `null`; xuất file theo chính sách cột. Danh sách đủ: [Cắt](15-cat.md) |
+| `cutting-supply.spec.ts` | Xác nhận cấp BTP (`cutting.supply`): `LineColorSizeFeed` lọc theo ĐVCS của phiên, `A00` thấy mọi ĐVCS; `A00` xem được; lưu 403 `AGGREGATE_READ_ONLY`, tính lưới nhập (`POST /cutting/supply/sheet`) và Xác nhận cấp cũng 403; Giám đốc không lưu được, Trưởng chuyền không xem được (403); lệnh của ĐVCS khác 404 (xem, xóa); thiếu quyền Thêm thì vẫn lưu lệnh đã có, không tạo được lệnh mới (403); SL kế hoạch bị Che thì Còn lại cũng che, câu báo vượt không nêu số; Số lượng cấp trong ngày Chỉ đọc thì 403 `FIELD_READONLY`; xuất file theo chính sách cột. Danh sách đủ: [Cắt](15-cat.md) |
+| `sewing-plan.spec.ts` | Kế hoạch may (`sewing.plan`): `ScheduleFeed.dayPlanLines` lọc ĐVCS theo phiên; `A00` xem được, Cập nhật 403 `AGGREGATE_READ_ONLY`, Chốt 403; Giám đốc không lưu được; Trưởng chuyền chỉ thấy chuyền được giao, Giá CM, Doanh số kế hoạch Ẩn theo mặc định; ĐVCS khác không thấy dòng, lưu 404; lập lần đầu cho chuyền trong ngày cần quyền Thêm (403); Tổng kế hoạch bị Che thì Còn lại không trả, câu báo vượt không nêu số; Kế hoạch ngày xưởng giao Chỉ đọc thì 403 `FIELD_READONLY`; sửa riêng Giá CM theo `usedBy` (ĐVCS có kế hoạch của đơn sửa được; cột khác của đơn, đơn chưa có kế hoạch ở ĐVCS này 404; `A00` 403 `AGGREGATE_READ_ONLY`; Giám đốc 403); nhật ký không kèm giá. Danh sách đủ: [May](07-may.md) |

@@ -12,6 +12,7 @@ Màn Kế hoạch chuẩn bị SX theo dõi các bước chuẩn bị sản xu�
 |---|---|---|---|---|
 | Kế hoạch chuẩn bị SX | `/order/prep` (nhóm menu Quản trị đơn hàng) | `order.prep:view`, `:update`, `:export` | `frontend/src/features/sewing/PrepPlanPage.tsx`, `PrepSummary.tsx`, `WeekStrip.tsx`, `api.ts` | `backend/src/modules/sewing/sewing.controller.ts` (`PrepController`), `prep.service.ts`, `sewing.repositories.ts` |
 | Cấu hình chuẩn bị SX (danh mục bước) | `/admin/catalogs?c=PREP_STEP` (Quản trị › Danh mục hệ thống) | `admin.catalog:view`, `:create`, `:update` | `frontend/src/features/admin/PrepStepsPane.tsx` (gắn trong `CatalogsPage.tsx`) | `sewing.controller.ts` (`PrepStepController`), `prep-step.service.ts` |
+| Kế hoạch may (mục Kế hoạch may ở cuối file) | `/sewing/plan` (nhóm Quản trị xưởng may) | `sewing.plan:view`, `:create`, `:update` | `frontend/src/features/sewing/SewingPlanPage.tsx`, `sewingPlanRules.ts`, `api.ts` | `sewing.controller.ts` (`SewingPlanController`), `sewing-plan.service.ts`, `sewing-plan.repositories.ts`, `sewing-plan.dto.ts` |
 
 **Màn thuộc nhóm Đơn hàng, code và dữ liệu thuộc module May** (ADR 0009 mục 6):
 - Menu nhóm theo tiền tố mã tài nguyên, nên tài nguyên là `order.prep` và đường dẫn `/order/prep`. Migration `backend/migrations/MES_Core/0004_move_prep_to_order.sql` đổi mã cũ `sewing.prep` sang `order.prep` tại chỗ (giữ Id, nên quyền và chính sách cột đã cấp không mất).
@@ -22,14 +23,14 @@ Màn Kế hoạch chuẩn bị SX theo dõi các bước chuẩn bị sản xu�
 
 | File | Vai trò |
 |---|---|
-| `backend/src/modules/sewing/sewing.module.ts` | Khai module; import `OrderModule` để dùng `ScheduleFeed` |
+| `backend/src/modules/sewing/sewing.module.ts` | Khai module: 3 controller (`PrepController`, `PrepStepController`, `SewingPlanController`); import `OrderModule` để dùng `ScheduleFeed` (đọc dàn chuyền) và `LineDayPlanGuards` (`SewingPlanService` đăng ký hàm tra số đã lập ở Kế hoạch may lúc khởi động) |
 | `backend/src/modules/sewing/sewing.db.ts` | Kết nối riêng tới `MES_Sewing` (tên lấy từ `DB_SEWING_NAME`, mặc định `MES_Sewing`) |
 | `backend/src/modules/sewing/sewing.types.ts` | Kiểu Kysely của 5 bảng (`PrepStep`, `SewingPrep`, `SewingPrepStep`, `SewingDayPlan`, `SewingDayPlanItem`) |
 | `backend/src/modules/sewing/sewing.dto.ts` | DTO, bộ kiểm đầu vào, mã trạng thái `PREP_STATUSES` |
-| `backend/scripts/sewing-data.ts` | `hasSewingDb`, `clearSewingPrep` cho các script seed, reset |
-| `frontend/src/routes/registry.tsx` | Đăng ký `/order/prep` → `features/sewing/PrepPlanPage` |
+| `backend/scripts/sewing-data.ts` | `hasSewingDb`, `clearSewingPrep`, `clearSewingDayPlan`, `dayPlanLines` cho các script `seed`, `reset:demo`, `load:bravo`, `sim:board` |
+| `frontend/src/routes/registry.tsx` | Đăng ký `/order/prep` → `features/sewing/PrepPlanPage`, `/sewing/plan` → `features/sewing/SewingPlanPage` |
 
-**Ranh giới module** (lint ở `backend/eslint.config.mjs`): module May chỉ được import `OrderModule` và `schedule-feed.service` của module Đơn hàng; module Đơn hàng không được import module May. Module May không đọc bảng của `MES_Order`.
+**Ranh giới module** (lint ở `backend/eslint.config.mjs`; bảng luật của mọi module: [Kiến trúc](../ARCHITECTURE.md) mục 4): module May chỉ được import `order.module`, `schedule-feed.service` và `line-day-plan-guard` của module Đơn hàng, không import module Nhân sự, lớp đồng bộ (`platform/sync`); module Đơn hàng không được import module May. Module May không đọc bảng của `MES_Order`.
 
 ## Quy tắc tính
 
@@ -218,7 +219,7 @@ Danh mục không qua `BaseRepository` (bảng không có cột nhà máy, như 
 
 ## API `/sewing/*`
 
-Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập. `PrepController` có `@FieldResource('order.prep')`: chính sách cột áp cho dữ liệu gửi lên và trả về. Route tĩnh (`values`, `summary`, `export`) khai trước `:id`. Mã lỗi chung (401, 403 `PERMISSION_DENIED`, 422 `VALIDATION_FAILED` của DTO…): [Phân quyền](04-phan-quyen.md).
+Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập. `PrepController` có `@FieldResource('order.prep')`: chính sách cột áp cho dữ liệu gửi lên và trả về. Mục này gồm `/sewing/prep`, `/sewing/prep-steps`; API của Kế hoạch may (`/sewing/plan`, `SewingPlanController`, `@FieldResource('sewing.plan')`) ở mục Kế hoạch may. Route tĩnh (`values`, `summary`, `export`) khai trước `:id`. Mã lỗi chung (401, 403 `PERMISSION_DENIED`, 422 `VALIDATION_FAILED` của DTO…): [Phân quyền](04-phan-quyen.md).
 
 **Tham số lọc dùng chung** (`PrepListQuery`) cho `GET /sewing/prep`, `/values`, `/summary`, `/export`:
 
@@ -260,7 +261,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập. `PrepController` có 
 
 ## Database `MES_Sewing`
 
-Migration: `backend/migrations/MES_Sewing/0001_sewing_prep.sql`, `0002_sewing_prep_source.sql`. Quản trị CSDL tạo database trước và cấp `db_owner` (tài khoản ứng dụng không có quyền `CREATE DATABASE`); cách chạy migrate: [Vận hành](11-van-hanh.md). Quy ước như `MES_Order`: thời điểm `DATETIME2(3)` giờ UTC; bảng con mang `BranchCode` của cha và khóa ngoại ghép `(ParentId, BranchCode)` tới `UNIQUE (Id, BranchCode)` của cha.
+Danh sách file migration: [Kiến trúc](../ARCHITECTURE.md) mục 6.2. Mục này mô tả ba bảng của Kế hoạch chuẩn bị SX (`PrepStep`, `SewingPrep`, `SewingPrepStep`; tạo ở `0001`, `0002`); hai bảng của Kế hoạch may (`SewingDayPlan`, `SewingDayPlanItem`) và khóa ngầm của chúng ở mục Kế hoạch may › Database. `npm run migrate` tạo database nếu tài khoản có quyền; không thì quản trị CSDL tạo trước (cùng collation với `MES_Core`) và cấp `db_owner`; cách chạy migrate: [Vận hành](11-van-hanh.md). Quy ước như `MES_Order`: thời điểm `DATETIME2(3)` giờ UTC; bảng con mang `BranchCode` của cha và khóa ngoại ghép `(ParentId, BranchCode)` tới `UNIQUE (Id, BranchCode)` của cha.
 
 ### `PrepStep`: danh mục bước chuẩn bị
 

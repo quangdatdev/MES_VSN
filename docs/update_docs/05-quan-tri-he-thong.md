@@ -201,7 +201,7 @@ Bố cục: cột trái là danh sách danh mục (điện thoại: ô chọn), 
 | `UNIT` | Đơn vị tính | `SysCatalog` + `SysCatalogItem` | Danh mục mã-tên |
 | `ORDER_TYPE` | Loại đơn hàng | `SysCatalog` + `SysCatalogItem` | Danh mục mã-tên |
 | `SHIFT` | Ca làm việc | `SysShift` | |
-| `WORK_CALENDAR` | Lịch làm việc | `SysWorkCalendar` + `SysWorkCalendarDay` | Theo ĐVCS; Chi tiết dàn chuyền tự tính ngày theo lịch. Số cạnh tên là số ĐVCS có lịch riêng |
+| `WORK_CALENDAR` | Lịch làm việc | `SysWorkCalendar` + `SysWorkCalendarDay` | Theo ĐVCS; Chi tiết dàn chuyền tự tính ngày theo lịch. Số cạnh tên là số ĐVCS đang dùng có lịch riêng |
 | `PREP_STEP` | Cấu hình chuẩn bị SX | `MES_Sewing` | Module May, xem [07-may.md](07-may.md) |
 | `DEPT_TYPE` | Loại phòng ban | `MES_Hr` | Module Nhân sự, xem [08-nhan-su.md](08-nhan-su.md) |
 | `BRAVO.DM_*` | Danh mục chép từ BRAVO | `MES_Sync.bravo.*` | Chỉ xem |
@@ -255,12 +255,12 @@ Bảng `SysWorkCalendar` (mỗi ĐVCS một dòng) và `SysWorkCalendarDay` (ng�
 
 - **Theo ĐVCS**, như Nhà máy SX: có cột `BranchCode`, không qua `BaseRepository`; một người có `admin.catalog:update` sửa được lịch mọi ĐVCS (nhập Tết một lần cho nhiều ĐVCS). Không có lịch cho đơn vị tổng hợp (422). ĐVCS đang ngừng dùng không ghi được lịch (422), vẫn xem được nếu đã có lịch.
 - **ĐVCS chưa có lịch riêng** dùng lịch mặc định viết trong code (`DEFAULT_WORK_CALENDAR`: nghỉ Chủ nhật, cộng thêm 3/3/2/5 ngày, ngưỡng làm tròn 0,5), khung hiện "Đang dùng lịch mặc định". Lần lưu cấu hình hoặc đặt ngày đầu tiên tạo dòng `SysWorkCalendar`.
-- **Cấu hình tuần:** các thứ nghỉ hằng tuần (phải còn ít nhất một ngày làm việc) và 4 số ngày cộng thêm (0–60, ngày lịch, kể cả ngày nghỉ; quyết định 6.9): Bắt đầu ra chuyền tính từ bắt đầu vào chuyền, Kết thúc ra chuyền từ kết thúc vào chuyền, Bắt đầu nhập kho từ bắt đầu ra chuyền, Kết thúc nhập kho từ kết thúc ra chuyền. Số của Kết thúc ra chuyền phải từ số của Bắt đầu trở lên, và tổng (ra chuyền + nhập kho) của Kết thúc từ tổng của Bắt đầu trở lên, để ngày bắt đầu không sau ngày kết thúc kể cả dòng chỉ may một ngày (422, CHECK `CK_SysWorkCalendar_Offsets`).
-- **Làm tròn Số ngày SX** (`ProductionRoundUpFrom`, `DECIMAL(3,2)`, MES_Core/0014, quyết định 6.11): Số ngày SX = Số lượng / Năng suất TB; phần lẻ từ ngưỡng trở lên thì thêm một ngày, dưới thì bỏ; ít nhất 1 ngày. Nhập 0,01–1, tối đa 2 chữ số lẻ (422, CHECK `CK_SysWorkCalendar_ProductionRoundUpFrom`); mặc định 0,5 (7,3 → 7; 7,5 → 8). 0,01 gần như luôn làm tròn lên (cách trước 15/10/2026), 1 luôn bỏ phần lẻ. Ô nhập hiện ví dụ 7,3; 7,5; 7,8 theo ngưỡng đang gõ. API nhận trường `productionRoundUpFrom` tùy chọn: không gửi thì giữ số đang có. Đổi ngưỡng không tính lại dàn chuyền đã lưu: Số ngày SX của dòng đổi khi dòng được lưu lại, các ngày chỉ đổi khi người dùng bấm "Tính lại theo công thức" hoặc sửa ô nhập.
-- **Ngày đặc biệt:** Nghỉ (lễ, Tết, nghỉ công ty) hoặc Làm bù (làm việc dù trùng ngày nghỉ hằng tuần), kèm tên tùy chọn. Đặt theo khoảng ngày (tối đa 62 ngày một lần, năm 2000–2100) cho một hay nhiều ĐVCS; ngày đã đặt trong khoảng được thay bằng loại, tên mới. Lưu lại đúng cấu hình đang có thì không ghi, không thêm nhật ký. Xóa theo đợt (các ngày liền nhau cùng loại, cùng tên gom thành một dòng). Xóa vật lý: dòng không có mã, không bảng nào tham chiếu.
+- **Cấu hình tuần:** các thứ nghỉ hằng tuần (phải còn ít nhất một ngày làm việc) và 4 số ngày cộng thêm (0–60, ngày lịch, kể cả ngày nghỉ; quyết định 6.9): Bắt đầu ra chuyền tính từ bắt đầu vào chuyền, Kết thúc ra chuyền từ kết thúc vào chuyền, Bắt đầu nhập kho từ bắt đầu ra chuyền, Kết thúc nhập kho từ kết thúc ra chuyền. Số của Kết thúc ra chuyền phải từ số của Bắt đầu trở lên, và tổng (ra chuyền + nhập kho) của Kết thúc từ tổng của Bắt đầu trở lên, để ngày bắt đầu không sau ngày kết thúc kể cả dòng chỉ may một ngày (422, CHECK `CK_SysWorkCalendar_Offsets`). Lưu lại đúng cấu hình đang có (kể cả ngưỡng làm tròn) thì không ghi, không thêm nhật ký.
+- **Làm tròn Số ngày SX** (`ProductionRoundUpFrom`, `DECIMAL(3,2)`, MES_Core/0014, quyết định 6.11): Số ngày SX = Số lượng / Năng suất TB; phần lẻ từ ngưỡng trở lên thì thêm một ngày, dưới thì bỏ; ít nhất 1 ngày. Nhập 0,01–1, tối đa 2 chữ số lẻ (422, CHECK `CK_SysWorkCalendar_ProductionRoundUpFrom`); mặc định 0,5 (7,3 → 7; 7,5 → 8). 0,01 gần như luôn làm tròn lên, 1 luôn bỏ phần lẻ. Ô nhập hiện ví dụ 7,3; 7,5; 7,8 theo ngưỡng đang gõ. API nhận trường `productionRoundUpFrom` tùy chọn: không gửi thì giữ số đang có. Đổi ngưỡng không tính lại dàn chuyền đã lưu: Số ngày SX của dòng đổi khi dòng được lưu lại, các ngày chỉ đổi khi người dùng bấm "Tính lại theo công thức" hoặc sửa ô nhập.
+- **Ngày đặc biệt:** Nghỉ (lễ, Tết, nghỉ công ty) hoặc Làm bù (làm việc dù trùng ngày nghỉ hằng tuần), kèm tên tùy chọn. Đặt theo khoảng ngày (tối đa 62 ngày một lần, năm 2000–2100) cho một hay nhiều ĐVCS; ngày đã đặt trong khoảng được thay bằng loại, tên mới (mỗi lần đặt đều ghi và có nhật ký). Xóa theo đợt (các ngày liền nhau cùng loại, cùng tên gom thành một dòng). Xóa vật lý: dòng không có mã, không bảng nào tham chiếu.
 - **Giao diện:** chọn ĐVCS (mặc định ĐVCS đăng nhập) và năm; lịch 12 tháng tô ngày nghỉ hằng tuần (xám), nghỉ lễ (cam), làm bù (xanh), bấm một ngày để mở popup đặt ngày đó (ô ngày không nằm trong thứ tự Tab; bàn phím dùng nút "Thêm ngày nghỉ, làm bù"); bảng các đợt của năm. Chỉ có quyền xem thì không có nút ghi, ô ngày không bấm được. ĐVCS đã ngừng dùng chỉ còn xem và xóa ngày.
 - Sửa lịch không đổi ngày của dàn chuyền đã lưu: Chi tiết dàn chuyền giữ ngày đã lưu, báo số dòng có ngày khác công thức theo lịch hiện tại; người dùng bấm "Tính lại theo công thức" rồi Lưu (`frontend/src/features/order/LinePlanPage.tsx`, quyết định 6.10). Không có lệnh tính lại hàng loạt.
-- Chưa làm (phạm vi phase 5.12): lịch theo Nhà máy SX, theo chuyền, theo ca; ngày làm nửa buổi; tăng ca; áp lịch cho Kế hoạch chuẩn bị SX (chờ BA); lấy ngày lễ từ BRAVO hay Nhân sự; tự sinh Tết theo âm lịch (Tết nhập tay mỗi năm); chép ngày nghỉ từ năm khác hoặc ĐVCS khác (Q35).
+- Chưa làm (phạm vi phase 5.12): lịch theo Nhà máy SX, theo chuyền, theo ca; ngày làm nửa buổi; tăng ca; áp lịch cho Kế hoạch chuẩn bị SX (chờ BA); lấy ngày lễ từ BRAVO hay Nhân sự; tự sinh Tết theo âm lịch (Tết nhập tay mỗi năm); chép ngày nghỉ từ năm khác hoặc ĐVCS khác (câu hỏi Q35: [Trạng thái](../current/STATUS.md)).
 - Nhật ký `WORK_CALENDAR_UPDATE` (cấu hình cũ, mới), `WORK_CALENDAR_DAYS_SET` (ngày cũ trong khoảng, khoảng mới; mỗi ĐVCS một dòng), `WORK_CALENDAR_DAYS_DELETE` (ngày đã xóa), loại đối tượng `SysWorkCalendar`, ghi trong cùng transaction. Không tăng phiên bản quyền.
 
 ### Cấu hình chuẩn bị SX
@@ -280,9 +280,11 @@ Danh mục loại phòng ban của Sơ đồ tổ chức, dữ liệu ở `MES_H
 ## Màn Nhật ký hệ thống
 
 Route `/admin/audit`, cần `admin.audit:view`. Đọc `SysAuditLog`, mới nhất lên đầu, 100 dòng mỗi trang.
-- Lọc: ô tìm (người thực hiện, mã hành động, `EntityId`), loại đối tượng (`entity` trên URL). API nhận thêm `from`, `to` (ISO 8601, theo `EventAt`), `userId`, màn hình chưa dùng.
-- Cột: thời điểm (giờ máy, có giây), người thực hiện, ĐVCS của phiên, hành động (nhãn tiếng Việt theo `ACTION_TEXT`, mã lạ hiện nguyên mã), đối tượng (nhãn theo `ENTITIES`) kèm `EntityId`. Nút Xem mở popup Trước / Sau (JSON định dạng lại).
+- Lọc: ô tìm (người thực hiện, mã hành động, `EntityId`), loại đối tượng (`entity` trên URL; chỉ nhận loại có trong danh sách lọc bên dưới, giá trị khác bị bỏ qua). API nhận thêm `from`, `to` (ISO 8601, theo `EventAt`), `userId`, màn hình chưa dùng.
+- Cột: thời điểm (giờ máy, có giây), người thực hiện, ĐVCS của phiên, hành động (nhãn tiếng Việt theo `ACTION_TEXT`, mã chưa có nhãn hiện nguyên mã), đối tượng (nhãn theo `ENTITIES`, loại chưa có nhãn hiện nguyên mã) kèm `EntityId`. Dòng có giá trị cũ hoặc mới thì có nút Xem, mở popup Trước / Sau (JSON định dạng lại).
 - Nhật ký chỉ ghi thêm, không sửa, xóa được (trigger). Không có xuất file.
+
+Loại đối tượng lọc được và có nhãn (`ENTITIES` trong `frontend/src/features/admin/AuditPage.tsx`): `SysUser`, `SysRole`, `SysBranch`, `SysProductionFactory`, `SysUserRoleScope`, `SysUserPermissionOverride`, `SysFieldPolicy`, `SalesOrder`, `SalesOrderPo`, `ShipmentPlan`, `ShipmentPlanLine`, `PoAllocation`, `SyncRun`, `SysOrgUnit` (nhãn "Danh mục: xưởng, chuyền may (cũ)"), `SysScopeDimension`, `Department` ("Phòng ban, chuyền may"), `SysCatalogItem`, `SysShift`, `SysWorkCalendar`, `Auth`. Loại đối tượng, mã hành động đang được ghi mà màn chưa có nhãn: [Trạng thái](../current/STATUS.md) mục 8.1.
 
 Mã hành động do phần quản trị ghi:
 
@@ -296,14 +298,16 @@ Mã hành động do phần quản trị ghi:
 | `SysBranch` | `BRANCH_CREATE`, `BRANCH_UPDATE`, `BRANCH_IMPORT` |
 | `SysOrgUnit` | `WORKSHOP_CREATE`, `WORKSHOP_UPDATE`, `LINE_CREATE`, `LINE_UPDATE` (danh mục cũ, không còn ghi mới; màn Nhật ký giữ nhãn "(danh mục cũ)" để đọc lịch sử); `ORG_UNIT_RETIRE` (migration `MES_Core/0009`) |
 | `SysScopeDimension` | `SCOPE_DIMENSION_UPDATE` (migration `MES_Core/0009`) |
-
-Màn Nhật ký có thêm loại đối tượng "Phòng ban, chuyền may" (`Department`: `CREATE`, `UPDATE`, `DISSOLVE`, `RESTORE`, `LINE_SET_CHANGE`, xem [08-nhan-su.md](08-nhan-su.md)) và nhãn cho mã của module Đơn hàng (`PO_ALLOCATION_FACTORY`, `PO_ALLOCATION_REFRESH`). Ý nghĩa `LINE_SET_CHANGE`: [04-phan-quyen.md](04-phan-quyen.md).
 | `SysProductionFactory` | `FACTORY_CREATE`, `FACTORY_UPDATE`, `FACTORY_IMPORT` |
 | `SysCatalogItem` | `CATALOG_ITEM_CREATE`, `CATALOG_ITEM_UPDATE` |
 | `SysShift` | `SHIFT_CREATE`, `SHIFT_UPDATE` |
 | `SysWorkCalendar` | `WORK_CALENDAR_UPDATE`, `WORK_CALENDAR_DAYS_SET`, `WORK_CALENDAR_DAYS_DELETE` |
 
-Nhật ký đăng nhập (`Auth`), seed, script, đồng bộ và module nghiệp vụ: [04-phan-quyen.md](04-phan-quyen.md), [06-don-hang.md](06-don-hang.md), [07-may.md](07-may.md), [08-nhan-su.md](08-nhan-su.md), [09-dong-bo.md](09-dong-bo.md), [11-van-hanh.md](11-van-hanh.md).
+Migration cũng ghi một số mã trên: `MES_Core/0009` ghi `USER_ROLE_SCOPE`, `SCOPE_DIMENSION_UPDATE`, `ORG_UNIT_RETIRE` (người `system`); `MES_Core/0010`, `0012`, `0013` ghi `ROLE_PERMISSIONS` (người `migrate`).
+
+`ACTION_TEXT` có nhãn cho: mọi mã của bảng trên trừ `FACTORY_IMPORT`; mã đăng nhập `LOGIN`, `LOGIN_FAILED`, `SELECT_BRANCH`, `LOGOUT`; mã chung `CREATE`, `UPDATE`, `DELETE`; mã của Sơ đồ tổ chức `DISSOLVE`, `RESTORE`, `LINE_SET_CHANGE` ([08-nhan-su.md](08-nhan-su.md); ý nghĩa `LINE_SET_CHANGE`: [04-phan-quyen.md](04-phan-quyen.md)); mã của module Đơn hàng `CUT_RATIO_UPDATE`, `CUT_RATIO_CONFIRM`, `CUT_RATIO_UNCONFIRM`, `LINE_SCHEDULE`, `COLOR_SIZE_ALLOCATE`, `PO_ALLOCATION_FACTORY`, `PO_ALLOCATION_REFRESH`; `SYNC_START`; mã của script `SEED`, `DEMO_RESET`, `BRAVO_LOAD`.
+
+Nhật ký đăng nhập (`Auth`), seed, script, đồng bộ và module nghiệp vụ: [04-phan-quyen.md](04-phan-quyen.md), [06-don-hang.md](06-don-hang.md), [07-may.md](07-may.md), [08-nhan-su.md](08-nhan-su.md), [15-cat.md](15-cat.md), [09-dong-bo.md](09-dong-bo.md), [11-van-hanh.md](11-van-hanh.md).
 
 ## Màn Đồng bộ dữ liệu
 
@@ -387,8 +391,8 @@ Không có route `/catalog/*` riêng: danh mục nằm dưới `/admin/catalogs`
 | `GET /admin/catalogs/work-calendars` | `admin.catalog:view` | | `{ defaults: { weeklyOffDays, outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays, productionRoundUpFrom }, items: [{ branchCode, branchName, branchActive, configured, weeklyOffDays, …4 số ngày, productionRoundUpFrom, dayCount }] }`: mọi ĐVCS đang dùng trừ tổng hợp, cộng ĐVCS đã ngừng mà có lịch riêng | |
 | `PUT /admin/catalogs/work-calendars/:branchCode` | `admin.catalog:update` | `{ weeklyOffDays: [1–7] (tối đa 6), outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays (0–60), productionRoundUpFrom? (0,01–1, tối đa 2 chữ số lẻ; không gửi thì giữ số đang có) }` | `{ ok }`; chưa có lịch thì tạo | 404 ĐVCS không có; 422 tổng hợp, đang ngừng, nghỉ cả tuần, số ngày sai thứ tự; 409 hai người cùng tạo |
 | `GET /admin/catalogs/work-calendars/:branchCode/days?year` | `admin.catalog:view` | | `[{ id, date, dayType, name }]` của năm | 404; 422 tổng hợp |
-| `POST /admin/catalogs/work-calendars/days` | `admin.catalog:update` | `{ branchCodes: [mã] (1–50), from, to, dayType: OFF \| WORK, name? }` | `201 { count }` | 422 ngày không có thật, khoảng ngược, quá 62 ngày, ĐVCS tổng hợp hoặc đang ngừng; 404 ĐVCS không có |
-| `DELETE /admin/catalogs/work-calendars/:branchCode/days?from&to` | `admin.catalog:update` | | `{ deleted }` | 404; 422 khoảng sai, ngoài năm 2000–2100, quá 366 ngày |
+| `POST /admin/catalogs/work-calendars/days` | `admin.catalog:update` | `{ branchCodes: [mã] (1–50), from, to, dayType: OFF \| WORK, name? }` | `201 { count }` | 422 ngày không có thật, khoảng ngược, quá 62 ngày, ĐVCS tổng hợp hoặc đang ngừng; 404 ĐVCS không có; 409 người khác vừa sửa cùng lịch |
+| `DELETE /admin/catalogs/work-calendars/:branchCode/days?from&to` | `admin.catalog:update` | | `{ deleted }` | 404; 422 tổng hợp, khoảng sai, ngoài năm 2000–2100, quá 366 ngày |
 | `GET /admin/catalogs/external/:code/rows?page&pageSize&q` | `admin.catalog:view` | | `{ total, page, pageSize, columns: [{ name, type, key }], rows: [[giá trị]] }` | 404 mã lạ, không phải nguồn `CATALOG`; 503 `SYNC_NOT_READY` |
 
 Endpoint của module khác dùng quyền danh mục: `GET/POST/PUT /sewing/prep-steps` ([07-may.md](07-may.md)), `GET/POST /hr/department-types`, `PUT /hr/department-types/:id` ([08-nhan-su.md](08-nhan-su.md)). Đồng bộ: `GET /admin/sync/sources`, `GET /admin/sync/runs`, `POST /admin/sync/start` ([09-dong-bo.md](09-dong-bo.md)).
@@ -404,7 +408,7 @@ Mọi endpoint `/me` chỉ cần access token đã chọn ĐVCS (`@Authenticated
 | `GET /me/menu` | Cây menu đã lọc: mục lá hiện khi tài nguyên đang dùng và có `<tài nguyên>:view`; nhóm hiện khi còn ít nhất một con. `[{ code, name, icon, path, isMobile, children }]` |
 | `GET /me/permissions` | `{ version, stamp, permissions: [mã quyền] }` tại ĐVCS của phiên, đã tính ngoại lệ |
 | `GET /me/field-policies` | `{ version, resources: { <tài nguyên>: { <cột>: mức } } }` cho tài nguyên xem được |
-| `GET /me/lines` | Chuyền may **đang dùng** (bộ phận tích "Xưởng sản xuất", chưa giải thể) của ĐVCS của phiên (`A00`: mọi ĐVCS) `[{ code, name, branchCode, isActive, workshopCode, workshopName }]`; `workshopCode`, `workshopName` là bộ phận cha. Xếp theo ĐVCS, bộ phận cha (chuyền nằm ở gốc cây phòng ban xếp cuối của ĐVCS), thứ tự, mã |
+| `GET /me/lines` | Chuyền may **đang dùng** (bộ phận tích "Xưởng sản xuất", chưa giải thể) của ĐVCS của phiên (`A00`: mọi ĐVCS) `[{ code, name, branchCode, isActive, workshopCode, workshopName, ancestors }]`; `workshopCode`, `workshopName` là bộ phận cha trực tiếp; `ancestors: [{ code, name }]` là các bộ phận cha từ gốc cây phòng ban tới bộ phận cha trực tiếp (rỗng khi chuyền nằm ở gốc), dùng cho ô Đơn vị phòng ban của Kế hoạch may ([07-may.md](07-may.md)). Xếp theo ĐVCS, bộ phận cha (chuyền nằm ở gốc cây phòng ban xếp cuối của ĐVCS), thứ tự, mã |
 | `GET /me/branch-names` | `[{ code, name }]` mọi ĐVCS trừ tổng hợp: tên là `TenChiNhanh` của danh mục chi nhánh BRAVO, chưa đọc được thì `SysBranch.Name`; cả hai trống thì không có trong danh sách (màn hình hiện mã). Chỉ là tên hiển thị cho cột Chi nhánh, ĐVCS |
 
 ## Dịch vụ cho module khác
@@ -414,15 +418,15 @@ Module nghiệp vụ không đọc thẳng `MES_Core`; các service dưới đâ
 | Service | File | Cung cấp | Cache, xóa cache |
 |---|---|---|---|
 | `CatalogLookupService` | `backend/src/platform/catalog/catalog-lookup.service.ts` (module toàn cục) | `items(code)`, `activeItems(code)` (danh mục mã-tên, kể cả mục đã ngừng để dữ liệu cũ hiện đúng tên); `productionFactories()` (mọi nhà máy SX kèm ĐVCS); `workCalendar(branchCode)` (lịch làm việc của ĐVCS, chưa có thì lịch mặc định); `branchNames()`, `withBranchNames(rows)` (tên ĐVCS cho màn hình, file xuất) | 30 giây; `invalidate(code)`, `invalidateFactories()`, `invalidateBranchNames()`, `invalidateWorkCalendars()` (lần đọc lịch bắt đầu trước khi sửa không ghi vào cache). Tên ĐVCS: các request đến cùng lúc dùng chung một lần đọc, lần đọc bắt đầu trước khi sửa không ghi tên cũ vào cache, lỗi đọc BRAVO chỉ cảnh báo một lần |
-| `OrgService` | `backend/src/platform/org/org.service.ts` (toàn cục) | Chuyền may từ nguồn module Nhân sự đăng ký (`registerSource(LineSource)`, [08-nhan-su.md](08-nhan-su.md)): `lines(branchCode, isAggregate, { includeInactive })`; `assertLine(branchCode, code)`: chuyền phải đang dùng và đúng ĐVCS, khác thì 422; `lineNamer()`: tên chuyền theo mã trên mọi ĐVCS, kể cả chuyền đã giải thể; mã không còn là chuyền (bộ phận bỏ tích, chuyền cũ) thì "<mã> (chuyền cũ)"; `activeLineCodes()`: mã chuyền đang dùng mọi ĐVCS (phạm vi chiều `LINE`). Chưa có nguồn thì không có chuyền; nguồn lỗi thì lỗi đi tới bên gọi | 30 giây theo tiến trình; các request cùng lúc chờ chung một lần đọc; `invalidate()` sau mọi lần ghi bộ phận, lần đọc bắt đầu trước đó không ghi vào cache |
+| `OrgService` | `backend/src/platform/org/org.service.ts` (toàn cục) | Chuyền may từ nguồn module Nhân sự đăng ký (`registerSource(LineSource)`, [08-nhan-su.md](08-nhan-su.md)): `lines(branchCode, isAggregate, { includeInactive })` trả `LineInfo` (`code`, `name`, `branchCode`, `isActive`, `workshopCode`, `workshopName` là bộ phận cha trực tiếp, `ancestors` tùy chọn là các bộ phận cha từ gốc cây; nguồn của module Nhân sự luôn trả `ancestors`); `assertLine(branchCode, code)`: chuyền phải đang dùng và đúng ĐVCS, khác thì 422; `lineNamer()`: tên chuyền theo mã trên mọi ĐVCS, kể cả chuyền đã giải thể; mã không còn là chuyền (bộ phận bỏ tích, chuyền cũ) thì "<mã> (chuyền cũ)"; `activeLineCodes()`: mã chuyền đang dùng mọi ĐVCS (phạm vi chiều `LINE`). Chưa có nguồn thì không có chuyền; nguồn lỗi thì lỗi đi tới bên gọi | 30 giây theo tiến trình; các request cùng lúc chờ chung một lần đọc; `invalidate()` sau mọi lần ghi bộ phận, lần đọc bắt đầu trước đó không ghi vào cache |
 | `UserDirectoryService` | `backend/src/platform/org/user-directory.service.ts` | `fullName(userId)` cho cột "Nhân viên lập", "Người lập" | 60 giây |
 | `ExportService` | `backend/src/platform/export/export.service.ts` | `csv(user, resource, columns, rows, fileName)`: CSV UTF-8 có BOM, bỏ cột Ẩn, che cột Che (cả cột tên đi theo cột mã qua `field`), chặn chèn công thức Excel (ô bắt đầu bằng `= + - @` thêm dấu nháy), ghi nhật ký đọc dữ liệu nhạy cảm `EXPORT` | Luật cột: [04-phan-quyen.md](04-phan-quyen.md) |
-| `work-calendar.ts` | `backend/src/platform/catalog/work-calendar.ts` | Hàm thuần: `lineDates(lịch, ngày bắt đầu, số ngày SX)` (số ngày nghỉ, kết thúc, ra chuyền, nhập kho), `nonWorkingDays`, `isOffDay`, `nextWorkingDay`, `presentCalendar`; `readWorkCalendars(db)` đọc mọi lịch (script seed, mô phỏng dùng). Bản sao giao diện: `frontend/src/lib/workCalendar.ts`, cùng bộ ca `backend/test/fixtures/work-calendar-cases.json` | |
+| `work-calendar.ts` | `backend/src/platform/catalog/work-calendar.ts` | Hàm thuần: `lineDates(lịch, ngày bắt đầu, số ngày SX)` (số ngày nghỉ, kết thúc, ra chuyền, nhập kho); `productionDaysOf(lịch, số lượng, năng suất TB)` (Số ngày SX theo ngưỡng làm tròn của lịch, ít nhất 1); `offDaysBetween(lịch, từ, đến)` (số ngày nghỉ sau ngày đầu tới hết ngày cuối, cho Kết thúc vào chuyền nhập tay); `datesOrderError(ngày bắt đầu, năm ngày)` (lỗi thứ tự đầu tiên của các ngày nhập tay, kèm cột); `offsetsInOrder` (4 số ngày cộng thêm đúng thứ tự, như `CK_SysWorkCalendar_Offsets`); `nonWorkingDays`, `isOffDay`, `nextWorkingDay`, `presentCalendar`, `isRealDate`, `addCalendarDays`, `maskOf`, `weekdaysOf`, `DEFAULT_WORK_CALENDAR`; `readWorkCalendars(db)` đọc mọi lịch (`CatalogLookupService`, script seed, `load:bravo`, `sim:board` dùng). Bản sao giao diện: `frontend/src/lib/workCalendar.ts`, cùng bộ ca `backend/test/fixtures/work-calendar-cases.json` | |
 | `factory-list.ts` | `backend/src/platform/catalog/factory-list.ts` | `splitFactories`, `joinFactories`, `normalizeFactories`, `factoryListFor`: chuẩn hóa danh sách mã nhà máy SX cách nhau dấu phẩy (bỏ khoảng trắng thừa, bỏ trùng không phân biệt hoa thường, giữ thứ tự; danh sách dài quá 400 ký tự thì không ghi) | |
 
 ## Bảng của `MES_Core` thuộc phần này
 
-Trạng thái cuối sau `backend/migrations/MES_Core/0001`–`0008`. Mọi thời điểm là `DATETIME2(3)` UTC; `CreatedBy`, `ModifiedBy` là `SysUser.Id` (NULL khi do seed hoặc hệ thống ghi). Bảng người dùng, vai trò, quyền, phạm vi, phiên, nhật ký, menu: [04-phan-quyen.md](04-phan-quyen.md). Khóa ngầm từ database khác trỏ vào các bảng này khai ở `backend/migrations/softkeys.json` (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3).
+Trạng thái cuối sau mọi file trong `backend/migrations/MES_Core/` (danh sách file: [Kiến trúc](../ARCHITECTURE.md) mục 6.2). Mọi thời điểm là `DATETIME2(3)` UTC; `CreatedBy`, `ModifiedBy` là `SysUser.Id` (NULL khi do seed hoặc hệ thống ghi). Bảng người dùng, vai trò, quyền, phạm vi, phiên, nhật ký, menu: [04-phan-quyen.md](04-phan-quyen.md). Khóa ngầm từ database khác trỏ vào các bảng này khai ở `backend/migrations/softkeys.json` (loại quan hệ: [Kiến trúc](../ARCHITECTURE.md) mục 6.3).
 
 ### `SysBranch` (Đơn vị cơ sở)
 
@@ -443,7 +447,7 @@ Trạng thái cuối sau `backend/migrations/MES_Core/0001`–`0008`. Mọi th�
 
 - `UX_SysBranch_Aggregate`: chỉ mục duy nhất có lọc `(IsAggregate) WHERE IsAggregate = 1`, chỉ một đơn vị tổng hợp. Vì chỉ mục có lọc, lệnh sửa `SysBranch` phải chạy với `QUOTED_IDENTIFIER ON` (tedious mặc định ON; `sqlcmd` thêm `-I`).
 - `TR_SysBranch_CodeImmutable` (AFTER UPDATE): đổi `Code` thì `RAISERROR` `CODE_IMMUTABLE` và rollback.
-- Khóa ngoại trỏ tới: `SysUserBranch.BranchId` (theo `Id`), `SysOrgUnit.BranchCode`, `SysProductionFactory.BranchCode` (theo `Code`).
+- Khóa ngoại trỏ tới: `SysUserBranch.BranchId` (theo `Id`), `SysOrgUnit.BranchCode`, `SysProductionFactory.BranchCode`, `SysWorkCalendar.BranchCode` (theo `Code`).
 
 ### `SysOrgUnit` (cây tổ chức; chỉ còn dùng nút ĐVCS)
 
@@ -458,7 +462,7 @@ Nút gốc loại `FACTORY` (mã = `BranchCode`) là ĐVCS, dùng cho phạm vi 
 | `OrgType` | `VARCHAR(10)` | Không | `CK_SysOrgUnit_OrgType`: `FACTORY` (nút gốc = ĐVCS), `WORKSHOP`, `LINE` |
 | `ParentId` | `INT` | Có | Cha; NULL ở nút gốc |
 | `BranchCode` | `VARCHAR(10)` | Không | `FK_SysOrgUnit_Branch` → `SysBranch(Code)` |
-| `Path` | `VARCHAR(400)` | Không | `/<mã ĐVCS>/[<mã xưởng>/]<mã nút>/`, ví dụ `/A01/A01-X01/A01-L03/`. `UX_SysOrgUnit_Path` duy nhất. Phạm vi "cả nhánh" lọc bằng `LIKE '<Path>%'` |
+| `Path` | `VARCHAR(400)` | Không | `/<mã ĐVCS>/[<mã xưởng>/]<mã nút>/`, ví dụ `/A01/A01-X01/A01-L03/`. `UX_SysOrgUnit_Path` duy nhất. Phạm vi "cả nhánh" lấy các nút có `Path` bắt đầu bằng `Path` của nút được chọn (`PermissionService`); lúc lưu, `AdminGrantsService` kiểm nhánh có nút đúng loại bằng `LIKE '<Path>%'` |
 | `SortOrder` | `INT` | Không | Mặc định 0 |
 | `IsActive` | `BIT` | Không | Mặc định 1 |
 | `IsSystem` | `BIT` | Không | Mặc định 0; nút do seed hoặc bản chép ĐVCS từ BRAVO tạo đặt 1 |
@@ -483,7 +487,7 @@ Ràng buộc giữ cây (database tự chặn, ADR 0010):
 
 - Chỉ mục: `IX_SysOrgUnit_ParentId`, `IX_SysOrgUnit_BranchCode`, `UX_SysOrgUnit_Path`.
 - Bảng có trigger nên `INSERT … OUTPUT` không dùng được: thêm rồi đọc lại theo mã.
-- Khóa ngoại trỏ tới: `SysUserRoleScope.OrgUnitId`. Không còn khóa ngầm nào trỏ tới bảng này: `LineCode` của dàn chuyền, Kế hoạch chuẩn bị SX, Kế hoạch may, Cấp BTP trỏ tới `MES_Hr.Department.Code` (`backend/migrations/softkeys.json`, từ phase 5.10).
+- Khóa ngoại trỏ tới: `SysUserRoleScope.OrgUnitId`. Không khóa ngầm nào trỏ tới bảng này: `LineCode` của dàn chuyền (`MES_Order.ShipmentPlanLine`), Kế hoạch chuẩn bị SX (`MES_Sewing.SewingPrep`), Kế hoạch may (`MES_Sewing.SewingDayPlan`), Cấp BTP (`MES_Cutting.CuttingSupplyLine`) trỏ tới `MES_Hr.Department.Code` (`backend/migrations/softkeys.json`).
 
 ### `SysCatalog` (loại danh mục mã-tên)
 
@@ -556,7 +560,7 @@ Khóa ngầm trỏ tới: `MES_Order.SalesOrder.ProductionFactoryCode` → `Code
 | Cột | Kiểu | NULL | Ghi chú |
 |---|---|---|---|
 | `Id` | `INT IDENTITY` | Không | `PK_SysWorkCalendar` |
-| `BranchCode` | `VARCHAR(10)` | Không | FK → `SysBranch(Code)`; `UQ_SysWorkCalendar_Branch`. Không phải đơn vị tổng hợp (service kiểm) |
+| `BranchCode` | `VARCHAR(10)` | Không | `FK_SysWorkCalendar_Branch` → `SysBranch(Code)`; `UQ_SysWorkCalendar_Branch`. Không phải đơn vị tổng hợp (service kiểm) |
 | `WeeklyOffMask` | `TINYINT` | Không | Mặc định 64 (Chủ nhật); mỗi thứ một bit: 1 = thứ Hai … 64 = Chủ nhật; `CK_SysWorkCalendar_WeeklyOffMask` < 127 |
 | `OutStartOffsetDays`, `OutEndOffsetDays`, `WarehouseStartOffsetDays`, `WarehouseEndOffsetDays` | `INT` | Không | Mặc định 3, 3, 2, 5; mỗi cột 0–60; `CK_SysWorkCalendar_Offsets`: `OutStart <= OutEnd` và `OutStart + WarehouseStart <= OutEnd + WarehouseEnd` |
 | `ProductionRoundUpFrom` | `DECIMAL(3,2)` | Không | Mặc định 0,50 (`DF_SysWorkCalendar_ProductionRoundUpFrom`); `CK_SysWorkCalendar_ProductionRoundUpFrom`: 0,01–1,00. Ngưỡng làm tròn Số ngày SX (MES_Core/0014, quyết định 6.11) |
@@ -567,9 +571,9 @@ Khóa ngầm trỏ tới: `MES_Order.SalesOrder.ProductionFactoryCode` → `Code
 | Cột | Kiểu | NULL | Ghi chú |
 |---|---|---|---|
 | `Id` | `INT IDENTITY` | Không | `PK_SysWorkCalendarDay` |
-| `WorkCalendarId` | `INT` | Không | FK → `SysWorkCalendar(Id)`; `UQ_SysWorkCalendarDay_Date (WorkCalendarId, CalendarDate)` |
+| `WorkCalendarId` | `INT` | Không | `FK_SysWorkCalendarDay_Calendar` → `SysWorkCalendar(Id)`; `UQ_SysWorkCalendarDay_Date (WorkCalendarId, CalendarDate)` |
 | `CalendarDate` | `DATE` | Không | |
-| `DayType` | `VARCHAR(10)` | Không | `OFF` (nghỉ) hoặc `WORK` (làm bù), CHECK |
+| `DayType` | `VARCHAR(10)` | Không | `OFF` (nghỉ) hoặc `WORK` (làm bù), `CK_SysWorkCalendarDay_DayType` |
 | `Name` | `NVARCHAR(100)` | Có | Ví dụ "Tết Nguyên đán" |
 | `CreatedAt`, `CreatedBy`, `ModifiedAt`, `ModifiedBy` | | | Xóa vật lý được (nhật ký giữ ngày đã xóa) |
 
@@ -578,19 +582,11 @@ Bảng gán người dùng ↔ nhà máy SX tạo ở `0007`: `Id INT IDENTITY` 
 
 ### Migration liên quan
 
-| File | Nội dung thuộc phần này |
-|---|---|
-| `0001_init.sql` | `SysBranch` và trigger mã bất biến (cùng các bảng người dùng, quyền: [04-phan-quyen.md](04-phan-quyen.md)) |
-| `0002_scope_field_override.sql` | `SysOrgUnit` (bản hai cấp Nhà máy → Chuyền), trigger mã; `UX_SysBranch_Aggregate` |
-| `0003_catalog.sql` | `SysCatalog`, `SysCatalogItem`, `SysShift`, trigger mã |
-| `0004_move_prep_to_order.sql` | Đổi tài nguyên, menu `sewing.prep` → `order.prep` (giữ Id), tăng phiên bản quyền. Chỉ chạy khi database còn `sewing.prep` |
-| `0005_org_workshop.sql` | Cấp `WORKSHOP`, cột `ParentOrgType`, `UQ_SysOrgUnit_IdBranchType`, khóa ngoại ghép mới, `CK_SysOrgUnit_Level` (bỏ `CK_SysOrgUnit_Line`, `UQ_SysOrgUnit_IdBranch`) |
-| `0006_org_path_guard.sql` | Tạo lại `CK_SysOrgUnit_Level`; kiểm dữ liệu cũ rồi tạo `TR_SysOrgUnit_PathMatchesParent` (dữ liệu sai thì `THROW 50001`, phải sửa trước) |
-| `0007_production_factory.sql` | `SysProductionFactory`, `SysUserProductionFactory`; chép mục `PROD_FACTORY` sang (giữ mã, gắn ĐVCS cùng mã nếu có), ngừng `PROD_FACTORY`; đổi tên chiều phạm vi `FACTORY` thành "Đơn vị cơ sở"; tăng phiên bản quyền |
-| `0008_factory_code_osm.sql` | `SysProductionFactory.Code` thành `NVARCHAR(100)`, CHECK mới (không dấu phẩy, không khoảng trắng đầu cuối) |
-| `0011_work_calendar.sql` | `SysWorkCalendar`, `SysWorkCalendarDay` (phase 5.12); không có dữ liệu, ĐVCS chưa có lịch dùng lịch mặc định |
-| `0014_work_calendar_rounding.sql` | Cột `SysWorkCalendar.ProductionRoundUpFrom` (5.12.3); lịch đã có nhận 0,50 |
-| `0009_line_scope_by_code.sql` | Ngừng nút `LINE`, `WORKSHOP` của `SysOrgUnit` (nhật ký `ORG_UNIT_RETIRE`); phạm vi chiều Chuyền sang theo mã: [04-phan-quyen.md](04-phan-quyen.md) |
+Danh sách file migration của `MES_Core` và nội dung từng file: [Kiến trúc](../ARCHITECTURE.md) mục 6.2. Ghi chú khi chạy một số file (theo chú thích đầu file):
+- `0002_scope_field_override`, `0005_org_workshop`, `0006_org_path_guard`: dừng backend trước khi chạy; `0002` còn nêu các truy vấn phải kiểm trước.
+- `0004_move_prep_to_order`: chỉ đổi khi database còn tài nguyên `sewing.prep` và chưa có `order.prep`; không thì không làm gì.
+- `0006_org_path_guard`: kiểm `Path` của dữ liệu đang có trước khi tạo `TR_SysOrgUnit_PathMatchesParent`; có dòng không khớp cây thì dừng (`THROW 50001`), phải sửa dữ liệu rồi chạy lại.
+- `0014_work_calendar_rounding`: lịch đã có nhận ngưỡng 0,50 (mặc định của cột); bản build cũ không đọc cột này nên chạy được trước khi deploy bản mới.
 
 ## Dữ liệu do seed tạo
 
@@ -603,7 +599,7 @@ Chi tiết dữ liệu mẫu, tài khoản, ma trận quyền: [12-du-lieu-mau-v
 
 | File | Kiểm |
 |---|---|
-| `backend/test/catalog.spec.ts` | Quyền danh mục; danh mục mã-tên (mã viết hoa, trùng, bất biến, ngừng dùng mất khỏi gợi ý, nhật ký); chép ĐVCS từ BRAVO (bỏ mã sai, không đè `A00`, chạy lại không đổi, có nút gốc cây, tên theo BRAVO không sửa được); nhà máy SX (ĐVCS hợp lệ, mã bất biến, có hiệu lực ngay trong `/me`, cần `admin.permission:update`, tự thêm theo OSM); API chuyền, xưởng cũ trả 404, không tạo nút cây; database vẫn giữ cấp của cây cũ; chuyền mồ côi hiện "(chuyền cũ)"; ca làm việc; lịch làm việc (quyền, tổng hợp, nghỉ cả tuần, số ngày sai thứ tự, ngày không có thật, khoảng quá dài, đặt cho nhiều ĐVCS, ghi đè ngày đã có, xóa theo khoảng, nhật ký); danh mục BRAVO chỉ xem |
+| `backend/test/catalog.spec.ts` | Quyền danh mục; danh mục mã-tên (mã viết hoa, trùng, bất biến, ngừng dùng mất khỏi gợi ý, nhật ký); chép ĐVCS từ BRAVO (bỏ mã sai, không đè `A00`, chạy lại không đổi, có nút gốc cây, tên theo BRAVO không sửa được); nhà máy SX (ĐVCS hợp lệ, mã bất biến, có hiệu lực ngay trong `/me`, cần `admin.permission:update`, tự thêm theo OSM); API chuyền, xưởng cũ trả 404, không tạo nút cây; database vẫn giữ cấp của cây cũ; chuyền mồ côi hiện "(chuyền cũ)"; ca làm việc; lịch làm việc (quyền, tổng hợp, nghỉ cả tuần, số ngày sai thứ tự, ngày không có thật, khoảng quá dài, đặt cho nhiều ĐVCS, ghi đè ngày đã có, xóa theo khoảng, lưu lại cấu hình cũ không thêm nhật ký, ngưỡng làm tròn, nhật ký); danh mục BRAVO chỉ xem |
 | `backend/test/branch-names.spec.ts` | `CatalogLookupService.branchNames`: tên theo BRAVO, rơi về tên ở `SysBranch`, cache và đọc đồng thời |
 | `backend/test/phase3.spec.ts`, `phase5.spec.ts`, `full-access.spec.ts` | Quản trị phân quyền có hiệu lực ngay, không tự đổi quyền mình, trần quyền, đổi tên và tắt ĐVCS, vai trò hệ thống: chi tiết ở [12-du-lieu-mau-va-kiem-thu.md](12-du-lieu-mau-va-kiem-thu.md) |
 | `frontend/src/test/admin.test.tsx` | Popup tích vai trò: lưu đúng danh sách; mục đã ngừng còn tích thì chưa cho lưu |

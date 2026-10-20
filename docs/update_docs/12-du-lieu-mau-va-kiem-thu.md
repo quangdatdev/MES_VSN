@@ -110,6 +110,7 @@ Ghi chú:
 - `admin.sync`: Xem là theo dõi, Sửa là bấm chạy đồng bộ.
 - `cutting.progress`: Sửa là nhập số cắt trong ngày, Xóa là Xóa số cắt của một kế hoạch (mẫu chỉ Toàn quyền có); không có Thêm: dòng do hệ thống chép từ kế hoạch xuất hàng (quyết định 13.5). Máy đã cài nhận Sửa, Xuất của Kế hoạch qua migration `MES_Core/0012_grant_cutting_progress.sql`.
 - `cutting.supply`: Thêm là tạo lệnh cấp mới khi lưu; Sửa là lưu số cấp của lệnh đã có, Xác nhận cấp, Hủy duyệt; Xóa là xóa lệnh Chưa cấp (quyết định 13.10). Máy đã cài nhận Thêm, Sửa, Xóa, Xuất của Kế hoạch qua migration `MES_Core/0013_grant_cutting_supply.sql`.
+- `sewing.plan`: Sửa là Cập nhật, Chốt, Hủy chốt; lập Kế hoạch may lần đầu cho một chuyền trong ngày cần thêm quyền Thêm (`backend/src/modules/sewing/sewing-plan.service.ts`); màn không có Xóa (dòng lấy từ Xếp chuyền).
 - `order.poallocation`: Sửa là đổi Nhà máy SX (không có Thêm, Xóa trên màn; dòng do bước làm mới theo OSM chép vào). Máy đã cài có sẵn quyền `order.poallocation:update` trong database nên seed không nạp lại ô này của ma trận: migration `MES_Core/0010_grant_poallocation_update.sql` cấp cho vai trò hệ thống `PLANNER`, `FULL_ACCESS` (nếu chưa có), ghi nhật ký `ROLE_PERMISSIONS`, tăng phiên bản quyền.
 - Ma trận chỉ nạp cho vai trò, quyền mới tạo; quản trị đổi ở màn Phân quyền thì seed chạy lại không ghi đè (trừ `--sync-matrix`, `reset:demo`).
 
@@ -143,6 +144,7 @@ Bảng nguồn (`SysResource.SourceTable`) và chiều phạm vi gắn cột (`S
 | `order.prep` | `SewingPrep` | `FACTORY` → `BranchCode`, `LINE` → `LineCode` |
 | `cutting.progress` | `CuttingPlan` | `FACTORY` → `BranchCode` |
 | `cutting.supply` | `CuttingSupply` | `FACTORY` → `BranchCode` |
+| `sewing.plan` | `SewingDayPlan` | `FACTORY` → `BranchCode`, `LINE` → `LineCode` |
 | `hr.orgchart` | `Department` | – |
 | `hr.employee` | `Employee` | – |
 
@@ -159,6 +161,7 @@ Cột đăng ký (`SysResourceField`, khai ở `resourceFields`; mã trùng khó
 | `order.prep` | `lineCode` Tổ SX, `planNo`, `customerName`, `styleCode`, `productName`, `styleType` Loại mã, `lineQty` SL của chuyền, `confirmedQty` Số lượng chốt UD, `priorityFactor` HS Ưu đãi VC, `startDate` Ngày vào chuyền, `steps` Các bước chuẩn bị (KH, TH), `statusCode` |
 | `cutting.progress` | `planNo` Số kế hoạch, `customerName`, `styleCode`, `productName`, `poBuyDate`, `shipDate`, `planQty` Số lượng KH, `dayQty` Trong ngày, `cutQty` Lũy kế cắt, `diffQty` +/-, `lastCutDate` Ngày cắt gần nhất, `statusCode` |
 | `cutting.supply` | `supplyNo` Số lệnh cấp, `supplyDate` Ngày cấp, `styleCode` Mã hàng, `creatorName` Người lập, `confirmerName` Người cấp, `note` Ghi chú, `lineCode` Chuyền sản xuất, `planQty` Số lượng kế hoạch, `syncQty` Số lượng đồng bộ, `suppliedQty` Số lượng đã cấp, `dayQty` Số lượng cấp trong ngày, `remainQty` Số lượng còn lại, `statusCode` Trạng thái |
+| `sewing.plan` | `lineCode` Tổ SX, `styleCode` Mã hàng, `poBuyDate` PO/Buy date, `cmPrice` Giá CM **(nhạy cảm)**, `startDate` Ngày vào chuyền, `endDate` Ngày kết thúc, `planQty` Tổng kế hoạch, `deliveredQty` Đã giao, `remainQty` Còn lại, `linemapQty` Kế hoạch theo linemap, `dayQty` Kế hoạch ngày xưởng giao, `planRevenue` Doanh số kế hoạch **(nhạy cảm)**, `startTime` Từ giờ, `endTime` Đến giờ |
 | `hr.employee` | `email`, `birthPlace` Nơi sinh, `hometown` Nguyên quán, `birthDate` Ngày sinh **(nhạy cảm)**, `idNumber` Số CMND/CCCD **(nhạy cảm)**, `contactPhone` Điện thoại liên lạc **(nhạy cảm)**, `contactPerson` Người liên hệ **(nhạy cảm)**, `currentAddress` Địa chỉ hiện tại **(nhạy cảm)** |
 
 `hr.employee` chỉ đăng ký thông tin cá nhân: mã, tên, phòng ban, chức danh, tình trạng là khung của màn, ẩn đi thì không lưu được hồ sơ.
@@ -173,6 +176,7 @@ Cột đăng ký (`SysResourceField`, khai ở `resourceFields`; mã trùng khó
 |---|---|---|---|
 | `DIRECTOR`, `ACCOUNTANT` | `order.allocation` | `unitPrice`, `amount`, `cmPrice` | Chỉ đọc |
 | `DIRECTOR`, `ACCOUNTANT` | `order.lineplan` | `cmPrice`, `revenue` | Chỉ đọc |
+| `DIRECTOR`, `PLANNER` | `sewing.plan` | `cmPrice`, `planRevenue` | Chỉ đọc (Giá CM nhập ở Thông tin đơn hàng) |
 | `PLANNER` | `order.allocation` | `unitPrice`, `amount` | Chỉ đọc |
 | `PLANNER` | `order.allocation` | `cmPrice` | Sửa được |
 | `PLANNER` | `order.lineplan` | `cmPrice`, `revenue` | Chỉ đọc |
@@ -181,8 +185,8 @@ Cột đăng ký (`SysResourceField`, khai ở `resourceFields`; mã trùng khó
 | `DIRECTOR` | `hr.employee` | 5 cột trên | Che |
 | `FULL_ACCESS` | mọi tài nguyên | mọi cột nhạy cảm | Sửa được |
 
-- `ADMIN`, `QC`, `ACCOUNTANT` (ở `hr.employee`) không khai: cột nhạy cảm Ẩn. Tài khoản `quantri` dùng để minh họa "quản trị chỉ xem, không thấy giá".
-- Chính sách tính theo tài nguyên: tên khách hàng có ở bốn màn Trưởng chuyền xem được nên phải che ở cả bốn.
+- `ADMIN`, `QC`, `ACCOUNTANT` (ở `hr.employee`) không khai: cột nhạy cảm Ẩn. `LINE_LEADER` ở `sewing.plan` không khai: Giá CM, Doanh số kế hoạch Ẩn. Tài khoản `quantri` dùng để minh họa "quản trị chỉ xem, không thấy giá".
+- Chính sách tính theo tài nguyên: màn nào có cùng dữ liệu thì phải khai ở màn đó. Seed che tên khách hàng với Trưởng chuyền ở bốn màn Xếp chuyền, Phân bổ màu cỡ, Cập nhật tỷ lệ cắt, Kế hoạch chuẩn bị SX. Đồng bộ tiến độ cắt (`cutting.progress`) cũng có cột `customerName` và Trưởng chuyền có quyền Xem, nhưng `roleFieldPolicies` không khai cột này nên ở màn đó Trưởng chuyền thấy rõ tên khách.
 - Kế hoạch không bị Che Doanh số vì thấy số lượng và giá CM nên tự tính ra được.
 
 ### Danh mục và ca làm việc
@@ -248,7 +252,7 @@ Lý do ngoại lệ, cột riêng mẫu ghi trong `seed-data.ts`. Tài khoản m
 
 ### Đơn hàng giả (`MES_Order`)
 
-`backend/scripts/seed-order.ts`. Còn sinh nhiều kế hoạch xuất hàng cho một đơn ở cùng ĐVCS và gắn mọi PO của đơn vào mỗi kế hoạch, như `sim:board`: khác luật phase 5.17 (mỗi ĐVCS một kế hoạch mỗi đơn, mỗi PO một kế hoạch, [Quyết định](13-quyet-dinh.md) 15.1, 15.2), câu hỏi Q40. Sinh xác định theo hạt giống (chạy lại trên database trống cho cùng kết quả), chỉ cho ĐVCS mẫu chưa có đơn hàng nào. Mốc tiến độ cố định là ngày demo 09/10/2026; bảng dàn chuyền bắt đầu quanh tuần 05/10/2026.
+`backend/scripts/seed-order.ts`. Script sinh nhiều kế hoạch xuất hàng cho một đơn ở cùng ĐVCS và gắn mọi PO của đơn vào mỗi kế hoạch, như `sim:board`: khác luật mỗi ĐVCS một kế hoạch mỗi đơn, mỗi PO một kế hoạch ([Quyết định](13-quyet-dinh.md) 15.1, 15.2); việc chờ: [Trạng thái](../current/STATUS.md). Sinh xác định theo hạt giống (chạy lại trên database trống cho cùng kết quả), chỉ cho ĐVCS mẫu chưa có đơn hàng nào. Mốc tiến độ cố định là ngày demo 09/10/2026; bảng dàn chuyền bắt đầu quanh tuần 05/10/2026.
 
 | | `A01` | `A02` | `A03` | Tổng |
 |---|---|---|---|---|
@@ -300,12 +304,12 @@ Khoảng 12 phút. Nói rõ ngay từ đầu: dữ liệu demo là dữ liệu g
 | 2. Dữ liệu dùng chung, dữ liệu theo ĐVCS (2 phút) | `giamdoc`, `A00` | Mở Quản trị đơn hàng › Thông tin đơn hàng, rồi Kế hoạch xuất hàng. Bấm ĐVCS trên thanh trên cùng, chọn Nhà máy 1, mở lại hai màn | Thông tin đơn hàng: đơn toàn công ty, cột Chi nhánh FOB, Nhà máy SX, đủ cột Đơn giá, Thành tiền, Giá CM; không có nút Thêm, Sửa, Xóa; có Xuất file. Ở `A01` vẫn đủ đơn (đơn hàng dùng chung, ADR 0013). Kế hoạch xuất hàng: ở `A00` có kế hoạch mọi ĐVCS, ở `A01` chỉ còn `KH-A01-…`. Lọc nằm ở máy chủ, người dùng không tự đổi ĐVCS trong yêu cầu gửi lên |
 | 3. Luồng Đơn hàng (3 phút) | `kehoach.a` (vào thẳng Nhà máy 1) | Thông tin đơn hàng: chọn một đơn `DH-A01-…`, bấm Sửa | Chip có biểu tượng khóa ghi số cột chỉ đọc; Đơn giá chỉ đọc, Giá CM sửa được. Đơn của chi nhánh khác: Sửa, Xóa bị khóa kèm lý do |
 | | | Kế hoạch xuất hàng › Thêm kế hoạch › Chọn mã hàng: chọn mã còn số lượng, tích PO, nhập PO/Buy date; nhập SL KHXH; lưu | Chỉ có đơn có Nhà máy SX thuộc ĐVCS đang làm (Nhà máy 1, 1B), kể cả vài đơn của chi nhánh `A02`. Lưới màu cỡ có Số lượng gốc, SL đã tạo KHXH, SL còn lại; nhập vượt còn lại bị chặn. Chọn một kế hoạch: khung PO của kế hoạch bên dưới ghi SL đã xác nhận, chưa xác nhận |
-| | | Xếp chuyền: mở kế hoạch vừa tạo, thêm dòng chuyền (chuyền, số lượng, năng suất TB, ngày vào chuyền), lưu. Chuyển sang Bảng dàn chuyền | Ngày kết thúc tự tính, bỏ Chủ nhật. Bảng dàn chuyền: mỗi chuyền một hàng, ô trống là chuyền rảnh |
+| | | Xếp chuyền: mở kế hoạch vừa tạo, thêm dòng chuyền (chuyền, số lượng, năng suất TB, ngày vào chuyền), lưu. Chuyển sang Bảng dàn chuyền | Ngày kết thúc tự tính theo Lịch làm việc của ĐVCS (ĐVCS chưa có lịch: nghỉ Chủ nhật; lịch mẫu thêm ngày lễ, Tết và ngày làm bù). Bảng dàn chuyền: mỗi chuyền một hàng, ô trống là chuyền rảnh |
 | 4. Trưởng chuyền (1 phút) | `truongchuyen.a`, điện thoại | Mở menu Quản trị đơn hàng, Phân bổ màu cỡ, Xếp chuyền | Menu chỉ có Cập nhật tỷ lệ cắt, Xếp chuyền, Phân bổ màu cỡ, Kế hoạch chuẩn bị SX. Phân bổ màu cỡ chỉ có kế hoạch có chuyền `A01-L03`, cột Chuyền may chỉ chuyền 3, cột Khách hàng hiện `***`; mở kế hoạch nhập được số lượng giao cho chuyền 3. Xếp chuyền không có cột Giá CM, Doanh số; bảng dàn chuyền chỉ có chuyền 3 |
 | 5. Đổi quyền có hiệu lực ngay (2 phút) | `admin`, máy demo, chọn Nhà máy 1 | Quản trị › Chính sách cột, Màn hình: Phân bổ màu cỡ; dòng Trưởng chuyền, cột Khách hàng: Che → Chỉ đọc; bấm Lưu 1 thay đổi | Điện thoại tải lại trang: tên khách hiện rõ, không cần đăng nhập lại. Đổi lại Che, lưu. Dòng Quản trị hệ thống, Toàn quyền bị khóa với lời nhắc "Bạn đang giữ vai trò này nên không tự sửa được": không ai tự nâng quyền cho mình |
 | 6. Ngoại lệ cho một người (1 phút) | `admin` | Quản trị › Người dùng, dòng `truongchuyen.b`, nút Phân quyền chi tiết; tab Ngoại lệ quyền, rồi tab Xem thử | Ngoại lệ Cho phép xem Kế hoạch xuất hàng, hết hạn 31/12/2026, có lý do. Xem thử: người này dùng được màn nào, phạm vi nào, cột nào ẩn hay che |
 | 7. Nhật ký (30 giây) | `admin` | Quản trị › Nhật ký hệ thống, bấm Xem ở một dòng | Có đăng nhập, lập kế hoạch, đổi chính sách cột vừa làm, kèm trước/sau. Nhật ký sửa đơn hàng không chứa giá |
-| 8. Kết (1 phút) | | | Đã có: khung, phân quyền 5 lớp, module Đơn hàng, Kế hoạch chuẩn bị SX, Nhân sự, đồng bộ BRAVO/OSM. Chưa có: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.4, việc chờ: [Trạng thái](../current/STATUS.md) |
+| 8. Kết (1 phút) | | | Đã có: khung, phân quyền 5 lớp, module Đơn hàng, Kế hoạch chuẩn bị SX, Đồng bộ tiến độ cắt, Xác nhận cấp BTP, Kế hoạch may, Nhân sự, đồng bộ BRAVO/OSM. Chưa có: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.4, việc chờ: [Trạng thái](../current/STATUS.md) |
 
 Sau buổi demo: `npm run reset:demo -- --yes`. Sự cố khi demo: [Vận hành › Xử lý sự cố](11-van-hanh.md).
 
@@ -453,9 +457,9 @@ npm test -w backend
 | `sewing-plan.spec.ts` | Có (`MES_Sewing`) | Kế hoạch may: dòng dàn chuyền theo ngày, đơn vị; Cập nhật, Đã giao, giao vượt, ngày đã qua, phiên bản; Chốt, Hủy chốt, bản chụp; Xếp chuyền không giảm, bỏ, đổi chuyền dòng đã có số; phân quyền, chính sách cột; sửa riêng Giá CM ở ĐVCS có kế hoạch, kế hoạch đổi giá theo; nhật ký ([May](07-may.md) phần Kế hoạch may, Test) |
 | `cutting-supply.spec.ts` | Có (`MES_Cutting`) | Xác nhận cấp BTP: `LineColorSizeFeed`, ô chọn, lưới theo Ngày cấp, gom lệnh, số lệnh, kiểm khi lưu, Xác nhận cấp, Hủy duyệt, xóa, chặn giảm Phân bổ màu cỡ, Xếp chuyền dưới số đã cấp, phân quyền, chính sách cột, xuất file ([Cắt](15-cat.md) phần Xác nhận cấp BTP, Test) |
 | `cutting-supply-grant-migration.spec.ts` | Có (rollback) | Thân migration `MES_Core/0013` như `cutting-grant-migration.spec.ts`: Kế hoạch đang có Xem nhận Thêm, Sửa, Xóa, Xuất |
-| `shipment-plan-pos.spec.ts` | Có | Khung PO của kế hoạch: SL đã xác nhận, chưa xác nhận, theo ĐVCS, quyền xem PO, chính sách cột, PO ngoài phạm vi |
+| `shipment-plan-pos.spec.ts` | Có | Khung PO của kế hoạch: SL đã xác nhận, chưa xác nhận, theo ĐVCS, quyền xem PO, chính sách cột, PO ngoài phạm vi; popup chọn PO chỉ có PO chưa nằm trong kế hoạch nào (cả khi Thêm và Chọn mã hàng lúc Sửa, quyết định 15.2); Ngày xuất bị Ẩn thì không xếp theo ngày xuất |
 | `bravo-import.db.spec.ts` | Có | Nạp tăng dần đơn hàng BRAVO vào `MES_Order` với nguồn giả: thêm, giữ phần người dùng sửa, đóng lệnh, PO tay, câu ghi kiểm lại, khóa chéo, Nhà máy SX theo OSM |
-| `simulate-board.db.spec.ts` | Có (rollback) | Phần ghi DB của dàn chuyền mô phỏng; chuyền đọc từ `MES_Hr` (bộ phận đang tích, chưa giải thể, đúng ĐVCS); mọi thay đổi trong transaction bị hủy; giữ kế hoạch có số cắt, kể cả `--all` (phase 5.14) |
+| `simulate-board.db.spec.ts` | Có (rollback) | Phần ghi DB của dàn chuyền mô phỏng; chuyền đọc từ `MES_Hr` (bộ phận đang tích, chưa giải thể, đúng ĐVCS); mọi thay đổi trong transaction bị hủy; giữ kế hoạch có số cắt, kể cả `--all` |
 | `sync.spec.ts` | Có (`MES_Sync`) | Quyền màn Đồng bộ, 18 nguồn BRAVO, `SYNC_NOT_READY`, thủ tục chép KEY/PARTITION trên bảng mẫu (xóa dòng, lỗi giữa chừng, khóa NULL, chặn xóa quá 20%), việc sau đồng bộ, lần chạy mồ côi, nhật ký |
 | `bravo-import.spec.ts` | Không | So dữ liệu BRAVO với `MES_Order` của bước nạp tăng dần (dấu nội dung, ghép PO, màu cỡ, không xóa) |
 | `bravo-import-service.spec.ts` | Không | Thử lại khi khóa chéo, xếp lần chạy sau, không ghi nhật ký khi không đổi |
@@ -467,6 +471,7 @@ npm test -w backend
 | `shipment-plan-lines-service.spec.ts` | Không | Màu cỡ của `GET /shipment-plans/:id` (khung Màu cỡ): mức cột suy ra, thiếu quyền xem PO |
 | `simulate-board.spec.ts` | Không | Xếp lịch dàn chuyền mô phỏng: không chồng lịch, ngày kết thúc, trạng thái, màu cỡ, cùng dữ liệu cho cùng kết quả |
 | `sync-gen.spec.ts` | Không | Thủ tục chép trong migration `MES_Sync` mới nhất khớp đầu ra hiện tại của `sync-gen.ts` |
+| `serve-web.spec.ts` | Không | Phục vụ giao diện đã build (`--serve-web`, `backend/src/serve-web.ts`): đường dẫn của ứng dụng một trang trả `index.html`, file code có thật trả đúng file, file code không còn trả 404 (không trả `index.html`), API không bị trả `index.html`, chưa build giao diện thì báo rõ |
 
 ### Frontend (Vitest)
 
@@ -476,6 +481,7 @@ npm test -w backend
 |---|---|
 | `login.test.tsx` | Form đăng nhập một bước: sai mật khẩu, chưa có ĐVCS, một ĐVCS vào thẳng, nhiều ĐVCS chọn ngay trên form, token tạm hết hạn, đăng nhập tài khoản khác, nhớ mật khẩu nhờ trình duyệt |
 | `session.test.ts` | Đăng xuất, ĐVCS bị gỡ (403 `BRANCH_NOT_ALLOWED`), làm mới token một lần cho nhiều request, đổi ĐVCS ở tab khác |
+| `chunk-reload.test.ts` | Tải lại trang khi thiếu file code của màn (tab mở từ bản build trước): nhận đúng lỗi tải file code; máy chủ trả lời thì tải lại một lần; vừa tải lại mà vẫn thiếu thì báo lỗi, quá 10 giây thì tải lại được; lỗi khác, máy chủ không trả lời, không dùng được `sessionStorage` thì báo lỗi gốc; mất mạng thì chờ có mạng |
 | `shell.test.tsx` | `Can` ẩn/hiện theo quyền, chuyển hướng theo trạng thái đăng nhập, 403/404 theo menu, đường dẫn cũ, trang giữ chỗ khóa ghi ở `A00` |
 | `branch-switcher.test.tsx` | Đổi ĐVCS trên thanh trên cùng: ở lại màn nếu có, hỏi khi còn thay đổi chưa lưu, máy chủ từ chối |
 | `branch-name.test.tsx` | Hiện tên chi nhánh thay mã |
@@ -485,6 +491,8 @@ npm test -w backend
 | `catalog-work-calendar.test.tsx` | Danh mục Lịch làm việc: đợt nghỉ, xóa, cấu hình tuần, popup đặt ngày, chỉ quyền xem |
 | `work-calendar.test.ts` | Hàm tính ngày ở giao diện ra đúng bộ ca chung với máy chủ |
 | `line-plan-schedule.test.tsx` | Chi tiết dàn chuyền: ngày tự tính theo lịch, báo dòng cần tính lại, nội dung gửi khi lưu, lưới chỉ xem |
+| `schedule-dates.test.ts` | Ngày dàn chuyền: điền theo công thức, sửa tay một ngày, tính lại khi đổi số lượng, năng suất, ngày bắt đầu, dán cả dòng, xóa ô thì lấy lại công thức; cột không được sửa giữ ngày đã lưu; mở popup chỉ điền ô trống; dòng ngoài phạm vi sửa không tính lại; Số ngày SX theo ngưỡng làm tròn của lịch |
+| `line-plan-rules.test.ts` | Xếp chuyền: bỏ dòng đã lưu thì hỏi lại (xem được Trạng thái: chỉ dòng Đã phân màu cỡ; cột Trạng thái bị Ẩn, Che: mọi dòng đã lưu sửa được; giữ đủ dòng thì không hỏi) |
 | `color-size.test.tsx` | Phân bổ màu cỡ: luật của popup (dòng lúc mở, dòng khóa, tổng theo màu cỡ và theo chuyền, chia theo SL chuyền, nhãn chuyền); dòng gom theo kế hoạch, khung theo chuyền, chia rồi lưu, cảnh báo vượt, người chỉ xem |
 | `cutting-progress-rules.test.ts` | Đồng bộ tiến độ cắt: dòng Tổng, +/- = Lũy kế − Kế hoạch, Lũy kế khi đang gõ, chỉ gửi ô đã sửa, dòng không sửa được, cột bị Che |
 | `cutting-supply-rules.test.ts` | Xác nhận cấp BTP: Còn lại khi gõ, chỉ gửi ô đã sửa, Còn lại âm, vượt Số lượng đồng bộ (không đếm trùng dòng trong lưới), dòng của lệnh đã xác nhận chỉ xem, thêm dòng bỏ dòng đã có |
@@ -500,9 +508,11 @@ npm test -w backend
 | `sheet-typing.test.tsx` | Đang gõ dở trong lưới thì rời màn phải hỏi |
 | `order.test.tsx` | Định dạng số, ngày khi cột bị che hoặc ẩn; bảng dàn chuyền không sập khi thiếu trường; kiểm lưới màu cỡ PO |
 | `cut-ratio-edit.test.tsx` | Cập nhật tỷ lệ cắt: hỏi khi đang sửa mà chọn PO khác; PO của đơn ĐVCS khác trong kế hoạch ở đây sửa được, xóa bị khóa |
-| `shipment-plan-pos.test.tsx` | Khung PO của kế hoạch: hướng dẫn, không có quyền, cột bị che, ẩn, lỗi tải, PO ngoài phạm vi |
+| `shipment-plan-pos.test.tsx` | Khung PO của kế hoạch: hướng dẫn, không có quyền, cột bị che, ẩn, lỗi tải, PO ngoài phạm vi; khung Màu cỡ của kế hoạch: số đã lưu kèm tổng, SL KHXH bị Ẩn, Che, không có quyền xem PO, mở Sửa thì tải lại kế hoạch, lỗi tải |
+| `shipment-plan-add-po.test.tsx` | Kế hoạch xuất hàng, thêm PO khi Sửa: Chọn mã hàng chỉ có PO chưa lập kế hoạch, Số lượng gốc cộng dồn, SL KHXH giữ nguyên, Lưu gửi PO thêm kèm lưới; bỏ PO vừa thêm thì về như cũ; không có quyền xem PO thì nút Chọn mã hàng khóa, không gọi API PO |
 | `po-allocation.test.tsx` | Màn Phân bổ PO: đủ cột, dòng nhập tay (vạch, huy hiệu, nhà máy theo OSM, không còn trong OSM), chưa đồng bộ OSM, cột bị ẩn hoặc che, sắp xếp mặc định; đổi Nhà máy SX (nút khóa khi chưa tích, xem trước, nhà máy gom theo ĐVCS, "Theo OSM", máy chủ từ chối và Thử lại, `A00`, cột Chỉ đọc); cảnh báo lần làm mới bằng chữ (số dòng OSM, mốc; dòng cũ trùng dòng mới; cách xử lý chỉ cho người chạy được đồng bộ) |
 | `sewing.test.tsx` | Kế hoạch chuẩn bị SX: tuần ISO, trạng thái, nháp ô TH, chế độ xem và nhập, bước bị che, số liệu đầu màn, danh mục bước |
+| `sewing-plan.test.tsx` | Kế hoạch may: luật tính (Đã giao, Còn lại, Doanh số = linemap × Giá CM, không giao vượt, dòng Tổng, ô giờ, ô Đơn vị theo sơ đồ tổ chức); màn hình (các cột, Cập nhật, Chốt, Hủy chốt, ngày đã qua chỉ xem, thiếu quyền Thêm, chỉ có quyền Xem, cột bị Ẩn); Thông tin đơn hàng sửa riêng Giá CM cho đơn của ĐVCS khác có kế hoạch ở đây |
 | `prep-steps-save.test.tsx` | Cấu hình chuẩn bị SX: gõ thêm trong lúc lưu không mất |
 | `hr.test.tsx` | Cây phòng ban, chức danh theo phòng ban, file mẫu nhập Excel, Sơ đồ tổ chức (kể cả ô "Xưởng sản xuất": khóa nói lý do, báo trước người được giao chuyền, đổi ĐVCS, khôi phục, đã lưu mà chưa cập nhật phân quyền; ĐVCS mặc định theo phòng ban cha: điền sẵn, đổi theo cha, chọn tay thì giữ, cha không có ĐVCS thì giữ giá trị đã lưu, ĐVCS đã tắt thì không lấy, chuyền thiếu quyền thì không đổi, báo phòng ban con giữ ĐVCS, cache bị xóa không mất form), Thông tin nhân sự, không mất form trên điện thoại |
 

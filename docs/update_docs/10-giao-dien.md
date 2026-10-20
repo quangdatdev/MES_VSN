@@ -1,7 +1,7 @@
 # Giao diện (frontend)
 
 Khung frontend và mọi phần dùng chung: công nghệ, cấu trúc `frontend/src`, khởi động, route, phiên đăng nhập phía trình duyệt, layout và menu động, đổi ĐVCS, phản chiếu quyền, gọi API, thành phần và tiện ích dùng chung, theme, quy tắc UI/UX, quy tắc hiệu năng, đo hiệu năng, test.
-Đọc trước khi dựng hoặc sửa bất kỳ màn hình nào. Nội dung nghiệp vụ của từng màn nằm ở tài liệu module (`05`–`09`); cơ chế quyền phía máy chủ ở [Phân quyền](04-phan-quyen.md).
+Đọc trước khi dựng hoặc sửa bất kỳ màn hình nào. Nội dung nghiệp vụ của từng màn nằm ở tài liệu module (`05`–`09`, `15`); cơ chế quyền phía máy chủ ở [Phân quyền](04-phan-quyen.md).
 
 ## 1. Công nghệ
 
@@ -23,9 +23,9 @@ Khung frontend và mọi phần dùng chung: công nghệ, cấu trúc `frontend
 | `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom` | `^5.0.3`, `^16.3.3`, `^7.0.1`, `^29.1.1` | Test |
 | `eslint`, `typescript-eslint`, `eslint-plugin-react-hooks` | `^10.12.0`, `^8.71.1`, `^7.1.1` | Lint |
 
-- **PWA:** chỉ có `frontend/public/manifest.webmanifest` (tên "MES Vietsun", `display: standalone`, màu `#2b2c2d`, một biểu tượng 192×192) và `<link rel="manifest">` trong `frontend/index.html`. Chưa có service worker, chưa chạy offline.
-- `frontend/index.html`: `lang="vi"`, `viewport-fit=cover` (chừa vạch Home của iPhone cho thanh menu ở đáy), `theme-color` `#2b2c2d`.
-- Frontend không dùng biến môi trường (`import.meta.env`). Gốc API cố định `/api/v1` (`frontend/src/lib/api.ts`).
+- **PWA:** chỉ có `frontend/public/manifest.webmanifest` (tên "MES Vietsun", tên ngắn "MES", `display: standalone`, `theme_color` và `background_color` `#ffffff`, `lang: vi`, một biểu tượng `icon-192.png` 192×192) và `<link rel="manifest">` trong `frontend/index.html`. Chưa có service worker, chưa chạy offline.
+- `frontend/index.html`: `lang="vi"`, `viewport-fit=cover` (chừa vạch Home của iPhone cho thanh menu ở đáy), hai thẻ `theme-color` theo `prefers-color-scheme` (`#ffffff` khi sáng, `#151c24` khi tối, cùng màu thanh trên `--app-topbar`), biểu tượng tab `/icon-192.png`, `<meta name="description">`.
+- Frontend không dùng biến môi trường (`import.meta.env`). Gốc API cố định `/api/v1` (`frontend/src/lib/api.ts`). Số phiên bản đưa vào lúc build bằng `define` của Vite (mục 2, Cấu hình).
 
 ## 2. Cấu trúc `frontend/src`
 
@@ -36,31 +36,36 @@ Khung frontend và mọi phần dùng chung: công nghệ, cấu trúc `frontend
 | `routes/` | `registry.tsx`: bảng đường dẫn → màn, nạp lười. `FallbackRoute.tsx`: quyết định mở màn, trang giữ chỗ, 403, 404 |
 | `shell/` | `AppLayout.tsx` (khung), `BranchSwitcher.tsx` (đổi ĐVCS), `guards.tsx`, `Can.tsx`, `permissions.ts` (`useCan`, `flattenLeaves`, `MODULE_PREFIXES`), `menuIcons.ts` |
 | `store/` | `session.ts` (store Zustand của phiên), `auth.ts` (đăng nhập, chọn/đổi ĐVCS, khôi phục phiên, đăng xuất) |
-| `lib/` | Gọi API, React Query, định dạng, tham số URL, hộp xác nhận, chặn rời màn… (mục 10) |
+| `lib/` | Gọi API, React Query, định dạng, tham số URL, hộp xác nhận, chặn rời màn, tự phục hồi khi thiếu file code của màn, tính ngày theo lịch làm việc… (mục 10) |
 | `components/` | Thành phần dùng chung (mục 9) |
 | `features/<nhóm>/` | Màn hình: `auth`, `home`, `errors`, `module` (trang giữ chỗ), `order`, `sewing`, `cutting`, `hr`, `admin` |
 | `theme/` | `theme.ts` (theme Mantine), `global.css` (token màu, CSS khung và thành phần) |
 | `test/` | Test Vitest và `setup.ts` |
 | `perf/` | Phép đo hiệu năng, chạy riêng |
-| `modules/` | Chỉ có `.gitkeep`, chưa dùng (màn hình nằm ở `features/`) |
+| `env.d.ts` | Khai kiểu hằng `__APP_VERSION__` (Vite thay lúc build, xem Cấu hình) |
+| `modules/` | Chỉ có `.gitkeep`, không dùng (màn hình nằm ở `features/`) |
 
-Quy ước trong `features/<nhóm>/`:
+Quy ước trong `features/<nhóm>/` (bố cục file chung: [Quy ước code](../CODE_CONVENTIONS.md) mục 2.2):
 - Mỗi màn một file `XxxPage.tsx` với `export default` (bảng nạp lười cần default export).
 - `api.ts`: kiểu dữ liệu API của nhóm; nhóm `hr` có thêm các hook `useQuery` và bảng khóa `HR_KEYS`. Nhóm có nhiều kiểu thì thêm `types.ts` (`admin`, `hr`).
-- `common.tsx`: phần dùng chung trong nhóm, ví dụ `features/order/common.tsx` (`usePagedList`, `OrderFilters`, `useCanWrite`, `useOriginLock`, `ExportButton`, `EmptyState`), `features/admin/common.tsx` (`FilterBar`, `IconAction`, `escapeToClose`, `LoadError`, `SkeletonRows`, `EmptyRow`), `features/hr/common.tsx` (`useStoredSize`, `Splitter`, `FieldCell`, `WorkshopBadge`: dấu bộ phận là chuyền may, chữ "Xưởng sản xuất" kèm biểu tượng kim chỉ như menu May, không chỉ bằng màu; giải thích bằng `title`, không dùng Tooltip vì lặp trên mọi dòng cây; bản `short` "Xưởng SX" cho dòng cây).
+- Luật tính thuần (không React) nằm ở file riêng để test không cần dựng màn: `features/order/cutRatioRules.ts`, `colorSizeRules.ts`, `linePlanRules.ts`, `scheduleDates.ts`; `features/cutting/cuttingProgressRules.ts`, `cuttingSupplyRules.ts`; `features/sewing/sewingPlanRules.ts`.
+- `common.tsx`: phần dùng chung trong nhóm, ví dụ `features/order/common.tsx` (`usePagedList`, `OrderFilters`, `useCanWrite`, `useOriginLock`, `useLines`, `loadError`, `StatusBadge`, `ExportButton`, `EmptyState`), `features/admin/common.tsx` (`FilterBar`, `IconAction`, `escapeToClose`, `LoadError`, `SkeletonRows`, `EmptyRow`), `features/hr/common.tsx` (`useStoredSize`, `Splitter`, `FieldCell`, `WorkshopBadge`: dấu bộ phận là chuyền may, chữ "Xưởng sản xuất" kèm biểu tượng kim chỉ như menu May, không chỉ bằng màu; giải thích bằng `title`, không dùng Tooltip vì lặp trên mọi dòng cây; bản `short` "Xưởng SX" cho dòng cây).
 - Kiểu dữ liệu API viết tay ở frontend (`lib/types.ts`, `features/*/api.ts`, `features/*/types.ts`); chưa có gói `shared` với backend.
-- Có import chéo giữa các nhóm: `features/admin/CatalogsPage.tsx` dùng `../hr/api`, `../hr/tree`, `../sewing/api`; `features/admin/PrepStepsPane.tsx` dùng `../sewing/api`. Lint frontend không có luật ranh giới import.
+- Có import chéo giữa các nhóm:
+  - `features/admin/CatalogsPage.tsx` dùng `../hr/api`, `../hr/tree`, `../sewing/api`; `features/admin/PrepStepsPane.tsx` dùng `../sewing/api`;
+  - màn Cắt (`features/cutting/CuttingProgressPage.tsx`, `CuttingSupplyPage.tsx`) và Kế hoạch may (`features/sewing/SewingPlanPage.tsx`) dùng `../order/common` (`usePagedList`, `useCanWrite`, `useLines`, `loadError`, `EmptyState`, `ExportButton`…); `CuttingSupplyPage.tsx` dùng thêm `../order/api` (`emptyFilter`, `OrderFilter`). `features/order/common.tsx`, `features/order/api.ts` vì vậy là thư viện dùng chung trên thực tế ([Kiến trúc](../ARCHITECTURE.md) mục 5.3, 10).
+- Lint frontend không có luật ranh giới import.
 
 ### Cấu hình
 
 | File | Nội dung chính |
 |---|---|
-| `frontend/vite.config.ts` | Dev cổng 5173, `host: true`, proxy `/api` → `http://localhost:3000` để frontend và API cùng origin (cookie refresh `SameSite=Strict` chạy được). Build tách hai chunk thư viện: `vendor-react` (react, react-dom, scheduler, react-router) và `vendor-query` (TanStack Query, zustand), để sửa code ứng dụng không làm đổi tên file thư viện đã lưu trong trình duyệt. Không gom JS của Mantine, không tách CSS của Mantine (mục 13). Phần `test`: `jsdom`, `setupFiles: ['./src/test/setup.ts']`, `testTimeout` 15 giây, `css: false` |
+| `frontend/vite.config.ts` | Dev cổng 5173, `host: true`, proxy `/api` → `http://localhost:3000` để frontend và API cùng origin (cookie refresh `SameSite=Strict` chạy được). `define: { __APP_VERSION__ }` lấy `version` của `frontend/package.json`, hiện ở chân màn đăng nhập ("Version …"); kiểu khai ở `src/env.d.ts`. Build tách hai chunk thư viện: `vendor-react` (react, react-dom, scheduler, react-router) và `vendor-query` (TanStack Query, zustand), để sửa code ứng dụng không làm đổi tên file thư viện đã lưu trong trình duyệt. Không gom JS của Mantine, không tách CSS của Mantine (mục 13). Phần `test`: `jsdom`, `setupFiles: ['./src/test/setup.ts']`, `testTimeout` 15 giây, `css: false` |
 | `frontend/vitest.perf.config.ts` | Kế thừa `vite.config.ts`; chỉ chạy `src/perf/**/*.perf.tsx`, tuần tự (`fileParallelism: false`), `testTimeout` 120 giây, không ẩn console |
 | `frontend/eslint.config.js` | `@eslint/js` và `typescript-eslint` bản recommended; `react-hooks/rules-of-hooks` (error), `react-hooks/exhaustive-deps` (warn), `@typescript-eslint/no-unused-vars` (error, bỏ qua tham số bắt đầu bằng `_`). Lệnh `lint` chạy `--max-warnings 0` nên cảnh báo cũng làm hỏng lint |
-| `frontend/tsconfig.json` | `strict`, `moduleResolution: bundler`, `jsx: react-jsx`, `noEmit`; `include` gồm `src` và `vite.config.ts` |
+| `frontend/tsconfig.json` | `strict`, `moduleResolution: bundler`, `jsx: react-jsx`, `noEmit`; `types` gồm `vite/client`, `vitest/globals`, `@testing-library/jest-dom`; `include` gồm `src` và `vite.config.ts` |
 
-Lệnh trong `frontend/package.json`: `dev` (Vite), `build` (`tsc --noEmit && vite build`, ra `frontend/dist`), `lint`, `test` (`vitest run`), `perf`. Từ thư mục gốc: `npm run dev:frontend`, `npm run lint`, `npm test`, `npm run build`. Cài đặt, chạy bản build qua backend: [Vận hành](11-van-hanh.md).
+Lệnh trong `frontend/package.json`: `dev` (Vite), `build` (`tsc --noEmit && vite build`, ra `frontend/dist`), `lint` (`eslint src --max-warnings 0`), `test` (`vitest run --passWithNoTests`), `perf`. Từ thư mục gốc: `npm run dev:frontend`, `npm run lint`, `npm test`, `npm run build`. Cài đặt, chạy bản build qua backend: [Vận hành](11-van-hanh.md).
 
 ## 3. Khởi động
 
@@ -98,8 +103,8 @@ Guard (`shell/guards.tsx`) đọc `status` của store phiên:
   - `loaders`: đường dẫn → `() => import('../features/...')`.
   - `pages`: bản `React.lazy` của từng loader, bọc `withChunkRecovery` (`lib/chunkReload.ts`). Không tải được file code của màn (tab mở từ trước khi triển khai bản mới, file cũ đã bị thay; nhận theo thông điệp lỗi tải module của Chrome, Edge, Firefox, Safari và lỗi tải CSS của Vite):
     - mất mạng (`navigator.onLine` là false): chờ sự kiện `online` rồi tải lại code của màn, màn hiện vòng chờ;
-    - `GET /api/v1/health` trả ok: tải lại trang một lần để nhận bản mới; không tải lại lần hai trong 10 giây (mốc ở `sessionStorage`, không đọc được thì cũng không tải lại);
-    - máy chủ không trả lời (đang dừng để migrate) hoặc lỗi khác (bug khi chạy code của màn): ném lỗi cho `PageErrorBoundary` như cũ. Nút "Thử lại" ở đó không tải lại được code (React.lazy nhớ lỗi, có từ trước), nút "Tải lại trang" thì được.
+    - `GET /api/v1/health` trả ok: tải lại trang một lần để nhận bản mới; không tải lại lần hai trong 10 giây (mốc ở `sessionStorage` khóa `mes.chunkReloadAt`, không đọc được thì cũng không tải lại);
+    - máy chủ không trả lời trong 5 giây (đang dừng để migrate) hoặc lỗi khác (bug khi chạy code của màn): ném lỗi cho `PageErrorBoundary`. Nút "Thử lại" ở đó không tải lại được code (`React.lazy` nhớ lỗi), nút "Tải lại trang" thì được.
     Phía máy chủ: [Vận hành › Cập nhật bản mới](11-van-hanh.md#cap-nhat-ban-moi-len-may-chu).
   - `preloadPage(path)`: gọi loader trước mà chưa vẽ, lỗi tải bị nuốt (để `React.lazy` báo khi màn thật sự mở; không tải lại trang khi chỉ rê chuột). Gọi lúc khởi động và khi rê chuột hoặc Tab tới nút nhóm ở thanh bên, tab menu con, ô màn hình ở Trang chủ.
 - `routes/FallbackRoute.tsx`, xét theo thứ tự:
@@ -133,15 +138,15 @@ Tên màn là tên menu do seed đặt (`backend/scripts/seed-data.ts`, mảng `
 | `/admin/permissions` | Phân quyền | `features/admin/PermissionsPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/field-policies` | Chính sách cột | `features/admin/FieldPoliciesPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/branches` | Đơn vị cơ sở | `features/admin/BranchesPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
-| `/admin/catalogs` | Danh mục hệ thống (khung Cấu hình chuẩn bị SX là `PrepStepsPane.tsx`) | `features/admin/CatalogsPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md), [May](07-may.md) |
+| `/admin/catalogs` | Danh mục hệ thống (khung Cấu hình chuẩn bị SX là `PrepStepsPane.tsx`, khung Lịch làm việc là `WorkCalendarPane.tsx`) | `features/admin/CatalogsPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md), [May](07-may.md) |
 | `/admin/audit` | Nhật ký hệ thống | `features/admin/AuditPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/sync` | Đồng bộ dữ liệu | `features/admin/SyncPage.tsx` | [Đồng bộ](09-dong-bo.md) |
 
-Các mục menu còn lại (Quản lý in thêu; Phân cụm trưởng, Bấm năng suất cụm, Biểu đồ cân bằng chuyền; nhóm chất lượng, hoàn thiện, Báo cáo quản trị) chưa có màn: mở ra `ModulePage`. Danh sách đầy đủ: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.2.
+Các mục menu còn lại chưa đăng ký trong `routes/registry.tsx`, mở ra `ModulePage`: `/cutting/embroidery` (Quản lý in thêu), `/sewing/cluster` (Phân cụm trưởng), `/sewing/output` (Bấm năng suất cụm), `/sewing/balance` (Biểu đồ cân bằng chuyền) và mọi mục của nhóm `qms` (Quản trị chất lượng), `finishing` (Quản trị hoàn thiện), `report` (Báo cáo quản trị). Danh sách đầy đủ: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.2.
 
 ### 4.4 Thêm một màn mới
 
-1. Máy chủ: tài nguyên, quyền `module.resource:action`, mục menu (đường dẫn, nhóm) trong DB, xem [Phân quyền](04-phan-quyen.md) và [Quản trị hệ thống](05-quan-tri-he-thong.md). Mã menu lá theo quy ước `menu.<mã tài nguyên>`.
+1. Máy chủ: tài nguyên, quyền `module.resource:action`, mục menu (đường dẫn, nhóm) trong DB, khai ở seed `backend/scripts/seed-data.ts` (mảng `groups`, `resources`), xem [Phân quyền](04-phan-quyen.md) và [Quản trị hệ thống](05-quan-tri-he-thong.md). Mã menu lá theo quy ước `menu.<mã tài nguyên>`.
 2. Tạo `features/<nhóm>/XxxPage.tsx` (default export), dựng bằng `WorkPage` + `DataGrid` hoặc `SheetGrid`.
 3. Thêm một dòng vào `loaders` của `routes/registry.tsx` với đúng đường dẫn menu.
 4. Module mới: thêm tiền tố vào `MODULE_PREFIXES` (`shell/permissions.ts`) để đường dẫn không được phép báo 403 thay vì 404. Nhóm menu có biểu tượng mới: thêm vào `shell/menuIcons.ts`.
@@ -176,7 +181,7 @@ Store Zustand `useSession`, chỉ nằm trong bộ nhớ (không lưu `localStor
 
 - Access token và token tạm chỉ ở store. Tải lại trang là mất; phiên khôi phục bằng cookie refresh.
 - Cookie refresh `mes_rt` do máy chủ đặt (`HttpOnly`, `SameSite=Strict`, path `/api/v1/auth`), JavaScript không đọc được. Mọi request gửi `credentials: 'include'`.
-- Mật khẩu không do ứng dụng lưu. Khi người dùng tích "Nhớ tài khoản và mật khẩu", màn đăng nhập xin trình duyệt lưu qua `navigator.credentials.store(new PasswordCredential(...))` (Chrome, Edge); trình duyệt khác tự hỏi theo cách riêng.
+- Mật khẩu không do ứng dụng lưu. Khi người dùng tích "Ghi nhớ đăng nhập", màn đăng nhập xin trình duyệt lưu qua `navigator.credentials.store(new PasswordCredential(...))` (Chrome, Edge); trình duyệt khác tự hỏi theo cách riêng.
 - `localStorage` chỉ giữ tiện ích của người xem. Mọi lần đọc, ghi bọc `try/catch`: chế độ riêng tư, bị chặn lưu trữ thì dùng giá trị mặc định.
 
 | Khóa | Nội dung | Nơi ghi |
@@ -198,13 +203,13 @@ Store Zustand `useSession`, chỉ nằm trong bộ nhớ (không lưu `localStor
 ### 5.4 Màn đăng nhập một form
 
 `features/auth/LoginPage.tsx`, không có trang chọn ĐVCS riêng.
-1. **Nhập tên, mật khẩu.** Tên đã nhớ thì điền sẵn, con trỏ vào thẳng ô mật khẩu. Lúc bấm gửi, form đọc lại giá trị đang nằm trong ô (`FormData`), vì mật khẩu trình duyệt tự điền có lúc chưa báo cho React.
+1. **Nhập tên, mật khẩu** (ô "Tài khoản", "Mật khẩu"). Tên đã nhớ thì điền sẵn, con trỏ vào thẳng ô mật khẩu. Lúc bấm gửi, form đọc lại giá trị đang nằm trong ô (`FormData`), vì mật khẩu trình duyệt tự điền có lúc chưa báo cho React. "Quên mật khẩu?" chỉ mở Popover hướng dẫn liên hệ quản trị viên (chưa có tự đặt lại mật khẩu).
 2. **Gửi.** `login()` gọi `POST /auth/login` (không gửi token, không tự làm mới) rồi ghi store: `status = 'preauth'`, token tạm, danh sách ĐVCS, tên, id.
-3. **Nhớ tài khoản.** Có tích: lưu tên vào `mes.username` và xin trình duyệt lưu mật khẩu. Bỏ tích: xóa tên đã nhớ; mật khẩu trình duyệt đã lưu trước đó vẫn còn.
+3. **Ghi nhớ đăng nhập.** Có tích: lưu tên vào `mes.username` và xin trình duyệt lưu mật khẩu. Bỏ tích: xóa tên đã nhớ; mật khẩu trình duyệt đã lưu trước đó vẫn còn.
 4. **Theo số ĐVCS được gán:**
    - 0: về `anonymous`, báo "Tài khoản chưa có đơn vị cơ sở".
    - 1: vào thẳng (`selectBranch`).
-   - Nhiều hơn 1: hai ô trên khóa lại (ô mật khẩu xóa giá trị, chỉ hiện dấu che, kèm dấu tích xanh), ô chọn "Đơn vị cơ sở" mở ra ngay dưới. Chọn sẵn ĐVCS lần trước của đúng người này nếu vẫn được vào. `A00` có biểu tượng con mắt và dòng "Xem mọi đơn vị, chỉ đọc". Ô có tìm kiếm khi trên 6 lựa chọn. Hai nút "Vào làm việc" và "Đăng nhập tài khoản khác" (gọi `logout()` để thu hồi cookie nếu máy chủ đã cấp).
+   - Nhiều hơn 1: hai ô trên khóa lại (ô Tài khoản kèm dấu tích xanh; ô mật khẩu xóa giá trị, chỉ hiện dấu che), ô chọn "Đơn vị cơ sở" mở ra ngay dưới. Chọn sẵn ĐVCS lần trước của đúng người này nếu vẫn được vào. `A00` có biểu tượng con mắt và dòng "Xem mọi đơn vị, chỉ đọc". Ô có tìm kiếm khi trên 6 lựa chọn. Hai nút "Vào làm việc" và "Đăng nhập tài khoản khác" (gọi `logout()` để thu hồi cookie nếu máy chủ đã cấp).
 5. **Lỗi:**
    - `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED` (kèm giờ mở khóa từ `details.until`), `VALIDATION_FAILED`, lỗi mạng: câu riêng. Mã khác: thông điệp máy chủ trả.
    - Lỗi 401 khi chọn ĐVCS (token tạm hết hạn, mật khẩu vừa đổi, tài khoản bị khóa): `endSession(...)` về bước mật khẩu, tên vẫn giữ trên form. `TOKEN_EXPIRED` báo "Phiên đăng nhập đã hết hạn", mã khác hiện câu của máy chủ.
@@ -236,15 +241,26 @@ Mọi response có header `X-Permission-Version`. `lib/api.ts` chuyển giá tr�
 
 ### 6.1 Bố cục (`shell/AppLayout.tsx`)
 
-- **Thanh bên** (`nav.rail`, rộng 224px, rút gọn còn 78px, nhớ ở `mes.nav.collapsed`): logo (về Trang chủ), một nút cho mỗi nhóm menu (mở màn đầu tiên của nhóm). Nhóm có biểu tượng `settings` (Quản trị) nằm cuối thanh, các nhóm nghiệp vụ ở trên.
-- **Thanh trên** (56px): nhãn "MES - VSN", nút ĐVCS (`BranchSwitcher`), ô "Tìm màn hình" mở Spotlight, nút sáng/tối, menu tài khoản (họ tên, vai trò, "Đổi đơn vị cơ sở", "Đăng xuất").
-- **Dải menu con** (`nav.tabbar`, 40px): tên nhóm đang mở và các màn lá của nhóm; đang ở Trang chủ hoặc trang không thuộc nhóm nào thì một tab "Trang chủ". Màn hẹp: dải cuộn ngang, tự đưa tab đang mở vào tầm nhìn.
-- **Vùng nội dung** `main#main` bọc `PageErrorBoundary`.
+Kích thước, màu theo `theme/global.css` (khối "Khung ứng dụng"); hướng thiết kế: [Quyết định](13-quyet-dinh.md) mục 12.3.
+
+- **Thanh trên** (`header.topbar`, cao 64px, chạy hết chiều ngang, nền sáng `--app-topbar`, viền dưới mảnh), từ trái sang:
+  - logo (`BrandMark` cao 50px, về Trang chủ) trong ô rộng 240px bằng thanh bên để logo thẳng cột với menu;
+  - nhãn "MES - VSN" (`.brand-chip`: viên cam, chữ đen, biểu tượng nhà máy);
+  - nút ĐVCS (`BranchSwitcher`, mục 6.4);
+  - ô tìm màn hình (chữ "Tìm màn hình theo tên, ví dụ: "Xếp chuyền"", phím `Ctrl K`) mở Spotlight;
+  - hai nút sáng, tối (chế độ đang dùng có nền cam nhạt, `aria-pressed`);
+  - menu tài khoản ("Xin chào" và họ tên; mở ra: họ tên, vai trò, "Đổi đơn vị cơ sở", "Đăng xuất").
+- **Thanh bên** (`nav.rail`, nằm dưới thanh trên, rộng 240px, rút gọn còn 78px, nhớ ở `mes.nav.collapsed`, nền xám than `--app-nav`): không có logo; một nút cho mỗi nhóm menu (mở màn đầu tiên của nhóm), mũi tên ">" chỉ để trang trí. Nhóm đang mở có nền `--app-subnav`, vạch cam bên trái, biểu tượng cam. Nhóm có biểu tượng `settings` (Quản trị) nằm cuối thanh, các nhóm nghiệp vụ ở trên. Nút tròn rút gọn, mở rộng nằm trên mép phải thanh bên; khi rút gọn chỉ còn biểu tượng, rê chuột hoặc Tab tới thì ô dài ra và tên hiện dưới biểu tượng.
+- **Dải menu con** (`nav.tabbar`, cao 48px, nền `--app-tabbar`): tên nhóm đang mở và các màn lá của nhóm; tab đang mở chữ cam đậm `--brand-ink` và vạch cam dưới. Đang ở Trang chủ hoặc trang không thuộc nhóm nào thì một tab "Trang chủ". Màn hẹp: dải cuộn ngang, tự đưa tab đang mở vào tầm nhìn.
+- **Vùng nội dung** `main#main` (`.app-main`): một thẻ trắng (`--app-surface`, viền, bo 12px) trên nền xám `--app-bg`, cuộn bên trong thẻ; bọc `PageErrorBoundary`.
 - **Bàn phím:** lối tắt "Bỏ qua tới nội dung chính" (ẩn tới khi Tab tới); Spotlight (`@mantine/spotlight`, phím `mod + K`) liệt kê Trang chủ và mọi màn lá, mô tả là tên nhóm.
 - **Tên tab trình duyệt:** "<tên màn> – MES Vietsun", "Trang chủ – MES Vietsun", màn đăng nhập "Đăng nhập – MES Vietsun".
-- **Điện thoại** (`global.css`):
-  - ≤767px: thanh bên thành thanh nút ở đáy màn hình (54px cộng vùng an toàn), ẩn logo, nhãn, nút rút gọn; ô tìm thành nút biểu tượng; thanh trên 52px; ô nhập và nút cao 40px.
-  - ≤400px: bỏ nhãn "MES - VSN" và dòng chữ phụ của nút ĐVCS, để nút tài khoản (có Đăng xuất) luôn nhìn thấy.
+- **Màn hẹp, điện thoại** (`global.css`):
+  - ≤1280px: ô logo co theo logo, không còn rộng bằng thanh bên;
+  - ≤1100px: nút tài khoản chỉ còn biểu tượng người dùng;
+  - ≤960px: ô tìm thành nút biểu tượng;
+  - ≤767px: thanh bên thành thanh nút ở đáy màn hình (54px cộng vùng an toàn), ẩn nhãn, mũi tên, nút rút gọn; thanh trên 52px, logo đầy đủ đổi sang hình mặt trời (cao 34px), ẩn vạch ngăn và biểu tượng của nhãn "MES - VSN"; chỉ còn nút chuyển sang chế độ màu kia; dải menu con 44px; vùng nội dung bỏ khung thẻ; ô nhập và nút cao 40px;
+  - ≤400px: bỏ nhãn "MES - VSN", dòng chữ phụ và biểu tượng của nút ĐVCS, để nút tài khoản (có Đăng xuất) luôn nhìn thấy.
 
 ### 6.2 Menu động
 
@@ -319,8 +335,11 @@ Frontend chỉ ẩn, hiện, khóa để người dùng thấy đúng những g�
   - `body`;
   - `token`: ghi đè token (token tạm khi chọn ĐVCS); `null` là không gửi;
   - `noRefresh`: không tự làm mới khi 401 (dùng cho login, logout, select-branch lúc `preauth`).
-- Kết quả: 204 trả `undefined`; còn lại đọc JSON. Lỗi đọc vỏ `{ error: { code, message, details }, traceId }` của máy chủ thành `ApiError(status, code, message, details)`; thiếu vỏ thì `code = 'ERROR'`, câu "Có lỗi xảy ra. Vui lòng thử lại.". Lỗi mạng là `TypeError` của `fetch`, không phải `ApiError`.
-- `download(path, fallbackName)`: tải file máy chủ sinh (CSV xuất theo chính sách cột), cùng cách xử lý phiên như `api()`; tên file lấy từ `Content-Disposition`.
+- Kết quả: 204 trả `undefined`; còn lại đọc chữ của body rồi `JSON.parse` (body rỗng là `null`).
+  - Lỗi đọc vỏ `{ error: { code, message, details }, traceId }` của máy chủ thành `ApiError(status, code, message, details)`. Body là JSON nhưng thiếu vỏ, hoặc body rỗng: `code = 'ERROR'`, câu "Có lỗi xảy ra. Vui lòng thử lại.".
+  - Body không phải JSON (ví dụ proxy trả trang HTML khi 502): `JSON.parse` ném `SyntaxError`, không phải `ApiError`, nên `toastError` báo "Không kết nối được máy chủ. Thử lại sau." dù máy chủ có trả lời. Đây là lỗi đã biết: [Trạng thái](../current/STATUS.md) mục 8.1.
+  - Lỗi mạng là `TypeError` của `fetch`, không phải `ApiError`.
+- `download(path, fallbackName)`: tải file máy chủ sinh (CSV xuất theo chính sách cột), cùng cách xử lý phiên như `api()`; tên file lấy từ `Content-Disposition`. Lỗi mà body không đọc được JSON thì `ApiError` mã `ERROR`, câu "Không tải được file. Thử lại sau.".
 - `api()` không nhận `AbortSignal`: lật trang nhanh thì request cũ vẫn chạy tới cuối.
 
 ### 8.2 Xử lý phiên trong mỗi request
@@ -346,17 +365,18 @@ Hàm nội bộ `sendAuthed` dùng chung cho `api()` và `download()`.
   - `toastOk(message, title = 'Đã lưu')`;
   - `toastWarn(message, title, sticky)`: màu cam, tự đóng sau 8 giây, `sticky` thì không tự đóng (dùng khi phần người dùng vừa nhập đã mất mà họ không bấm gì);
   - `toastError(e, title)`: màu đỏ, 10 giây. `ApiError` hiện thông điệp máy chủ, thêm cách xử lý cho `FIELD_READONLY`, `SCOPE_DENIED`; lỗi khác "Không kết nối được máy chủ. Thử lại sau.".
-- Lỗi tải của lưới: truyền chữ vào `error` và hàm vào `onRetry` của `DataGrid`. Helper theo nhóm: `loadError(e, fallback)` (`features/order/common.tsx`), `LoadError`, `loadErrorText` (`features/admin/common.tsx`, `features/hr/common.tsx`).
+- Lỗi tải của lưới: truyền chữ vào `error` và hàm vào `onRetry` của `DataGrid`. Helper theo nhóm: `loadError(e, fallback)` (`features/order/common.tsx`, màn Cắt, Kế hoạch may cũng dùng), `LoadError` (`features/admin/common.tsx`, `features/hr/common.tsx`), `loadErrorText` (`features/admin/common.tsx`).
 
 ### 8.4 React Query
 
 - Một `queryClient` (`lib/queryClient.ts`): `retry: false`, `refetchOnWindowFocus: false`, `staleTime` 15 giây. Xóa sạch (`clear()`) khi đăng xuất, kết thúc phiên, đổi ĐVCS, hoặc làm mới phiên ra ĐVCS khác: người sau, ĐVCS sau không thấy dữ liệu cũ.
-- Khóa truy vấn bắt đầu bằng tên nhóm: `['order', …]`, `['sewing', …]`, `['admin', …]`, `['hr', …]` (bảng `HR_KEYS` ở `features/hr/api.ts`), `['me', …]` (`['me', 'branches']`, `['me', 'branch-names']`), `['column-values', …]` (popup lọc).
+- Khóa truy vấn bắt đầu bằng tên nhóm: `['order', …]`, `['sewing', …]`, `['admin', …]`, `['hr', …]` (bảng `HR_KEYS` ở `features/hr/api.ts`), `['me', …]` (`['me', 'branches']`, `['me', 'branch-names']`, `['me', 'lines', branch]`), `['column-values', …]` (popup lọc).
   - Dữ liệu theo ĐVCS đưa mã ĐVCS vào khóa, ví dụ `usePagedList`: `['order', key, branch, page, sort, params]`.
   - Dữ liệu dùng chung toàn công ty (Nhân sự) không kèm ĐVCS.
 - Khóa dùng ở nhiều nhóm đặt ở `lib/queryKeys.ts`: `ORDER_OPTIONS_KEY = ['order-options']` (gợi ý của ô lọc Đơn hàng: khách hàng, season, loại, đơn vị, nhà máy SX). Khóa này không nằm dưới `['order']` để lưu kế hoạch, dàn chuyền, tỷ lệ cắt không làm mới nó; chỉ ghi đơn hàng và sửa danh mục mới làm mới. Khóa dùng chung khác: `PREP_STEPS_KEY` (`features/admin/PrepStepsPane.tsx`).
 - Lật trang, đổi lọc: `placeholderData: keepPreviousData`, lưới giữ dữ liệu cũ (mờ đi, có vạch chạy) thay vì nháy trống.
 - Sau khi lưu trong popup: đóng popup rồi mới làm mới, bằng `useAfterClose` (mục 10); chỉ làm mới khóa bị ảnh hưởng, không cả nhóm.
+- Các chỗ code còn lệch quy tắc khóa truy vấn ở mục này: [Trạng thái](../current/STATUS.md) mục 6 (N7).
 
 ## 9. Thành phần dùng chung (`components/`)
 
@@ -425,10 +445,10 @@ Hành vi quan trọng:
 - Xuất thêm: `Masked` (ô bị Che), `withFilterLabels(columns, labels)` (gắn chữ hiện cho giá trị trong popup lọc khi chữ đó tải sau, ví dụ tên chuyền).
 
 **100 dòng theo ngày tạo (ADR 0011).** `DataGrid` không tự tải dữ liệu; trang gửi `page`, `pageSize` 100 và `sort` mặc định `createdAt:desc`.
-- Màn Đơn hàng dùng `usePagedList(key, path, defaultSort = 'createdAt:desc', pageSize = 100)` (`features/order/common.tsx`): trang, sắp xếp, dải lọc, lọc theo cột trên URL; trả `query`, `grid` (props lọc theo cột cho `DataGrid`), `columnsOf(names, policy)` (tên các cột đang lọc cho dải lọc), `exportPath`, `error`.
+- Màn Đơn hàng và hai màn Cắt dùng `usePagedList(key, path, defaultSort = 'createdAt:desc', pageSize = 100)` (`features/order/common.tsx`): trang, sắp xếp, dải lọc, lọc theo cột trên URL; trả `query`, `grid` (props lọc theo cột cho `DataGrid`), `columnsOf(names, policy)` (tên các cột đang lọc cho dải lọc), `exportPath`, `error`.
 - Màn khác khai hằng `PAGE_SIZE = 100` (`CutRatioPage`, `PrepPlanPage`, `UsersPage`, `AuditPage`…) dùng chung cho truy vấn, `useClampPage` và `Pager`.
 - Lưới nghiệp vụ có cột "Ngày tạo" (`format: 'datetime'`, `sortKey` và `filterKey` là `createdAt`).
-- Ngoại lệ: Phân bổ PO (dữ liệu OSM không có ngày tạo), Kế hoạch chuẩn bị SX (thứ tự mặc định do máy chủ đặt), danh sách nhân viên (thẻ, 20 mỗi trang). Chi tiết ở tài liệu module.
+- Ngoại lệ: Phân bổ PO (dữ liệu OSM không có ngày tạo), Kế hoạch chuẩn bị SX (thứ tự mặc định do máy chủ đặt), danh sách nhân viên (thẻ, 20 mỗi trang), Kế hoạch may (lưới nhập `SheetGrid` theo một ngày, không phân trang). Chi tiết ở tài liệu module.
 
 ### 9.2 Lọc theo cột (`components/ColumnFilter.tsx`, `lib/columnFilter.ts`)
 
@@ -461,7 +481,7 @@ Lọc kiểu Excel trên giá trị của một cột, chạy trong DB (ADR 0011
 | `sheetNumber(key, title, opts)` | Số nguyên | Gõ hoặc dán "1.234", "1,234", "1 234", "1.234,00" đều là 1234 (`parseQty`); số âm, số lẻ, chữ thành ô trống. Chép ra số trơn. Ghi theo từng phím |
 | `sheetText(key, title, opts)` | Chữ | Dán nhiều dòng gộp thành một dòng |
 | `sheetDate(key, title, opts)` | Ngày | Lưu `YYYY-MM-DD`, hiện và gõ dd/mm/yyyy; nhận d/m/yyyy (dấu `/`, `-`, `.`), dd/mm (năm nay), yyyy-mm-dd (`parseSheetDate`). Chỉ ghi khi Enter, Tab hoặc rời ô; Esc là bỏ |
-| `sheetTime(key, title, opts)` | Giờ trong ngày | Lưu "HH:mm"; nhận "7:30", "07.30", "7h30", "7h", "730", "1710" (`parseTime`); chữ không đọc được giữ nguyên để màn tô đỏ, chặn lưu. Chỉ ghi khi Enter, Tab hoặc rời ô (phase 5.16, Kế hoạch may) |
+| `sheetTime(key, title, opts)` | Giờ trong ngày | Lưu "HH:mm"; nhận "7:30", "07.30", "7h30", "7h", "730", "1710" (`parseTime`); chữ không đọc được giữ nguyên để màn tô đỏ, chặn lưu. Chỉ ghi khi Enter, Tab hoặc rời ô. Dùng ở Kế hoạch may |
 | `sheetSelect(title, { options, get, set, unit, … }, opts)` | Chọn từ danh sách | Enter hoặc đúp chuột mở `TreeSelect`, gõ để lọc, Enter chọn kết quả đầu. Dán theo mã, theo nhãn hoặc theo đuôi mã ("L03" → "A01-L03"); không khớp thì giữ nguyên ô. Chép ra nhãn |
 | `sheetReadonly(title, render, copy, opts)` | Chỉ xem, tự tính | Tô xám, chép được, không dán vào được |
 
@@ -530,13 +550,19 @@ Lọc kiểu Excel trên giá trị của một cột, chạy trong DB (ADR 0011
   - `useBranchName()` trả hàm mã → tên, từ `GET /me/branch-names` (tên chi nhánh của danh mục BRAVO, chưa có thì tên ở Quản trị › Đơn vị cơ sở; `staleTime` 5 phút); chưa tải xong hoặc mã lạ thì trả mã;
   - `withBranchNames(columns, branchName)`: cột `branchCode` hiện tên (rê chuột thấy mã) cả trong ô và trong popup lọc, một truy vấn cho cả trang;
   - `BranchName` (component đứng riêng) hiện chưa màn nào dùng.
-- **`BrandMark`** (`components/BrandMark.tsx`): logo đầy đủ (`/logo-vs.png`) hoặc chỉ hình mặt trời (`/logo-vs-mark.png`), đặt trên nền trắng để chữ xám của logo đọc rõ cả ở chế độ tối.
+- **`BrandMark`** (`components/BrandMark.tsx`), ảnh ở `frontend/public`, đều nền trong suốt:
+  - `variant="full"` (mặc định), `tone="auto"` (mặc định): đặt cả `/logo-vs.png` (chữ xám) và `/logo-vs-dark.png` (chữ trắng), CSS (`.brand-logo-light`, `.brand-logo-dark`) chọn theo chế độ màu nên mở trang ở chế độ tối không nháy bản sáng; ảnh bị ẩn có `loading="lazy"` nên không tải;
+  - `tone="dark"`: luôn bản chữ trắng `/logo-vs-dark.png` (nền màn đăng nhập luôn tối);
+  - `variant="mark"`: chỉ hình mặt trời `/logo-vs-sun.png`;
+  - `height` (số px hoặc giá trị CSS, ví dụ `var(--login-logo-h)` để logo co theo khung hình), `className`.
+  - Dùng ở thanh trên (logo đầy đủ cao 50px; điện thoại hình mặt trời cao 34px) và màn đăng nhập (góc trái `tone="dark"`, trong thẻ đăng nhập).
 
 ## 10. Tiện ích (`lib/`)
 
 | File | Xuất | Dùng khi |
 |---|---|---|
 | `api.ts` | `api`, `download`, `ApiError`, `refreshSession`, `endSession`, `duringBranchSwitch`, `onPermissionVersionChange`, `onBranchChanged` | Gọi API (mục 8) |
+| `chunkReload.ts` | `withChunkRecovery`, `recoverFromChunkError`, `isChunkLoadError` | Tự phục hồi khi không tải được file code của màn (mục 4.2) |
 | `queryClient.ts` | `queryClient` | Bộ đệm truy vấn dùng chung |
 | `queryKeys.ts` | `ORDER_OPTIONS_KEY` | Khóa truy vấn dùng ở nhiều nhóm |
 | `types.ts` | `Branch`, `UserInfo`, `RoleInfo`, `MenuNode`, `LoginResponse`, `SelectBranchResponse`, `ProductionFactory`, `MeResponse`, `PermissionsResponse`, `Paged<T>`, `AccessLevel`, `FieldPoliciesResponse`, `LineInfo` | Kiểu dữ liệu dùng chung |
@@ -552,6 +578,7 @@ Lọc kiểu Excel trên giá trị của một cột, chạy trong DB (ADR 0011
 | `format.ts` | `fmtDate`, `fmtDateTime`, `fmtNum`, `fmtMoney`, `sumOf`, `parseDmy`, `today`, `addDays`, `qs` | Định dạng, đọc ngày, dựng query string |
 | `weeks.ts` | `mondayOf`, `sundayOf`, `isoWeekOf`, `weekMonday`, `weeksInYear` | Tuần ISO 8601 (bắt đầu thứ Hai, tuần 1 chứa thứ Năm đầu năm), tính theo UTC; dùng cho thanh tuần T1…T53 của Kế hoạch chuẩn bị SX |
 | `lines.ts` | `GroupedOption`, `lineOptions`, `lineNameLabel`, `ORPHAN_LINE_SUFFIX`, `LINE_NOT_FOUND`, `LINE_EMPTY` | Lựa chọn, nhãn chuyền may cho `TreeSelect` (mục 9.4) |
+| `workCalendar.ts` | `toCalendar`, `isOffDay`, `lineDates`, `offDaysBetween`, `datesOrderError`, `productionDaysOf`, `offsetsInOrder`, `WEEKDAYS`, `maskOf`, `isoWeekday`, `DATE_KEYS`, kiểu `WorkCalendar`, `WorkCalendarJson`, `CalendarDay`, `CalendarOffsets`, `LineDates` | Lịch làm việc theo ĐVCS: bản sao hàm tính ngày của máy chủ (`backend/src/platform/catalog/work-calendar.ts`), hai bản chạy chung bộ ca `backend/test/fixtures/work-calendar-cases.json`. Chi tiết dàn chuyền (`LinePlanPage.tsx`, `features/order/scheduleDates.ts`) tính trước ngày khi gõ; khung Lịch làm việc (`WorkCalendarPane.tsx`) dùng thứ trong tuần, số ngày SX. Khi lưu, máy chủ tính lại và kết quả của máy chủ là chuẩn |
 | `notify.ts` | `toastOk`, `toastWarn`, `toastError` | Thông báo (mục 8.3) |
 
 Chi tiết các tiện ích hay dùng:
@@ -576,7 +603,7 @@ Chi tiết các tiện ích hay dùng:
 | Lớp | Cách làm |
 |---|---|
 | Popup | Theme đặt `closeOnClickOutside: false` cho mọi `Modal`: bấm nhầm ra nền mờ không đóng. Hủy, dấu x, Esc đi qua `confirmDiscard` |
-| Rời màn | `useLeaveGuard(dirty)` (`lib/leaveGuard.ts`) đăng ký màn đang có thay đổi chưa lưu vào một tập toàn cục; còn nguồn nào thì gắn `beforeunload` (tải lại trang, đóng tab trình duyệt tự hỏi). `guardedLeave(leave)` gọi `confirmDiscard(còn nguồn, leave)`; khung dùng cho menu, tab, Spotlight, đổi ĐVCS, đăng xuất (mục 6.3). Cờ chỉ gỡ khi màn bị gỡ (cleanup của `useLeaveGuard`) |
+| Rời màn | `useLeaveGuard(dirty)` (`lib/leaveGuard.ts`) đăng ký màn đang có thay đổi chưa lưu vào một tập toàn cục; còn nguồn nào thì gắn `beforeunload` (tải lại trang, đóng tab trình duyệt tự hỏi). `guardedLeave(leave)` gọi `confirmDiscard(còn nguồn, leave)`; khung dùng cho menu, tab, Spotlight, đổi ĐVCS, đăng xuất (mục 6.3). Cờ gỡ khi `dirty` về `false` hoặc màn bị gỡ (cleanup của `useLeaveGuard`); `guardedLeave` không tự gỡ cờ |
 | Lưới nhập | Chữ gõ dở trong ô `SheetGrid` tính là chưa lưu (mục 9.3) |
 | Đổi ĐVCS ở tab khác | Màn không dựng lại; lệnh ghi bị chặn bằng `BRANCH_CHANGED` (mục 6.4) |
 | Giới hạn | Ứng dụng dùng `BrowserRouter` (không phải data router) nên không có `useBlocker`: nút Back của trình duyệt chưa chặn được |
@@ -585,36 +612,43 @@ Chi tiết các tiện ích hay dùng:
 
 ### 11.1 `theme/theme.ts`
 
-- **Màu** (ADR 0003): chủ đạo lấy từ logo Vietsun.
+- **Màu** (ADR 0003, [Quyết định](13-quyet-dinh.md) mục 12.2, 12.3): chủ đạo lấy từ logo Vietsun.
 
 | Thang Mantine | Màu chuẩn (shade 6) | Dùng cho |
 |---|---|---|
-| `brand` | `#f39830` (cam logo) | `primaryColor`; nút chính, vạch đánh dấu |
-| `charcoal` | `#4d4e4e` (shade 8 `#2b2c2d` là thanh bên, thanh trên) | Xám than của chữ logo |
-| `link` | `#007185` | Liên kết, ô tích, phân trang, trạng thái được chọn |
+| `brand` | `#f39830` (cam logo) | `primaryColor`; nút chính, vạch đánh dấu, ô tích, phân trang |
+| `charcoal` | `#4d4e4e` (shade 8 `#2b2c2d` trùng màu thanh bên `--app-nav`) | Xám than của chữ logo; badge vai trò, mã ĐVCS, loại phòng ban |
+| `link` | `#007185` | Màu phụ: liên kết (`Anchor`), hộp thông tin, badge trạng thái, nút phụ dạng `subtle` |
 | `teal`, `red`, `orange` | `#067d62`, `#b12704`, `#cc5500` | Thành công, lỗi, cảnh báo |
-| `gray`, `dark` | | Ghi đè thang mặc định cho chế độ sáng, tối |
+| `gray` | `#4b5563` | Xám trung tính, ghi đè thang mặc định: shade 1 `#f3f4f6` là nền trang, 6 là chữ phụ (`dimmed`), 9 `#111827` là chữ |
+| `dark` | | Ghi đè thang mặc định cho chế độ tối |
 
-- `primaryShade` `{ light: 6, dark: 5 }`, `autoContrast: true`, `luminanceThreshold: 0.35`, `black: '#0f1111'`.
-- **Chữ:** Source Sans 3 (thân, tiêu đề), JetBrains Mono (mã, số; class `.mono`). Riêng màn đăng nhập dùng Inter (quyết định 12.4). Cỡ `xs` 12px, `sm` 13px, `md` 14px, `lg` 16px, `xl` 18px; `h1` 21px, `h2` 18px, `h3` 16px, `h4` 14px, đậm 700.
-- **Bo góc:** mặc định `sm` (4px); `Paper`, `Modal`, `Menu`, `Button` `md` (8px); `Badge`, `Checkbox` `xs`.
+- `primaryShade` `{ light: 6, dark: 5 }`, `autoContrast: true`, `luminanceThreshold: 0.35`, `black: '#111827'`.
+- **Chữ:** Source Sans 3 (thân, tiêu đề), JetBrains Mono (mã, số; class `.mono`). Riêng màn đăng nhập dùng Inter (quyết định 12.4, đặt lại `--mantine-font-family` trên `.login-shell`). Cỡ `xs` 12px, `sm` 13px, `md` 14px, `lg` 16px, `xl` 18px; `h1` 24px, `h2` 18px, `h3` 16px, `h4` 14px, đậm 700.
+- **Bo góc:** thang `xs` 2px, `sm` 6px, `md` 8px, `lg` 12px, `xl` 16px; mặc định `sm` (6px); `Paper`, `Modal`, `Menu`, `Button` `md` (8px); `Badge`, `Checkbox` `xs` (2px). Bóng đổ `shadows` `xs`–`xl` theo xám `#111827`.
 - `cursorType: 'pointer'`, `respectReducedMotion: true` (bỏ hiệu ứng khi máy đặt giảm chuyển động).
 - **Mặc định thành phần:**
-  - `Button`: cỡ `sm`, nét chữ 400. Nút chính (filled, màu `brand`): nền cam `#f39830`, chữ đen `#0f1111` (chữ trắng trên cam chỉ đạt 2,3:1), di chuột `#e0851d`. Nút `variant="default"`: viền xám đậm, chữ đen; riêng `color="red"` giữ chữ đỏ;
+  - `Button`: cỡ `sm`, bo `md`, nét chữ 600. Nút chính (filled, màu `brand`): nền cam `#f39830`, chữ `#111827` (chữ trắng trên cam chỉ đạt 2,3:1), viền và màu di chuột `#e0851d`. Nút `variant="default"`: viền `--app-line-strong`, chữ `--app-ink`; riêng `color="red"` giữ chữ đỏ. Riêng nút chính màn đăng nhập: chữ trắng trên cam đậm `--login-cta` (`#d9730d`), đặt qua prop `vars` ở `LoginPage.tsx` (quyết định 12.4);
   - ô nhập cỡ `sm`; nút xóa giá trị của `Select`, `MultiSelect`, `DateInput`, `DateTimePicker`, nút hiện mật khẩu, nút đóng của `Modal`, `Drawer`, `Notification` có `aria-label` tiếng Việt;
-  - `Checkbox`, `Pagination` màu `link`; `Switch` màu `teal`;
-  - `Modal`: giữa màn, nền mờ 0,45, `closeOnClickOutside: false`;
-  - `Badge`: không viết hoa, đậm; `Tooltip` trễ 200 ms; `Anchor` màu `link.6`.
+  - `Checkbox` màu `brand`, bo `xs` (dấu tích tối nhờ `autoContrast`), `Pagination` màu `brand`; `Switch` màu `teal`;
+  - `Modal`: giữa màn, bo `md`, nền mờ 0,45, `closeOnClickOutside: false`;
+  - `Menu`: bo `md`, bóng `md`; `Badge`: bo `xs`, không viết hoa, đậm; `Tooltip` trễ 200 ms; `Anchor` màu `link.6`.
 - Chế độ sáng/tối: `defaultColorScheme="auto"` theo hệ điều hành; nút ở thanh trên đổi tay.
 
 ### 11.2 `theme/global.css`
 
-- **Token** trên `:root`: `--app-bg`, `--app-surface`, `--app-section`, `--app-row-hover`, `--app-line`, `--app-line-strong`, `--app-input-line`, `--app-ink`, `--app-ink-soft`, `--app-nav`, `--app-subnav`, `--app-nav-ink`, `--app-nav-ink-soft`, `--brand`, `--brand-hover`, `--brand-soft`, `--search-btn`, `--search-btn-hover`, `--link`, `--link-hover`, `--focus-glow`, `--success`, `--warning`, `--error`, `--field-required-bg`, `--field-required-line`, `--elev-1`, `--elev-2`. Chế độ tối định nghĩa lại dưới `:root[data-mantine-color-scheme='dark']`.
-- **Ghi đè Mantine:** ô nhập, nút cao 31px (điện thoại 40px); chữ badge, chữ lỗi, mô tả dưới ô tối thiểu 12px; viền ô nhập ở chế độ tối đạt 3:1; vòng focus xanh `--link` kèm quầng `--focus-glow` (class `.focus-ring` và các phần tử Mantine), trên nền xám than dùng viền trắng.
+- **Token** trên `:root`:
+  - nền, chữ, đường kẻ: `--app-bg` (nền trang), `--app-surface` (thẻ), `--app-section`, `--app-row-hover`, `--app-line`, `--app-line-strong`, `--app-input-line`, `--app-ink`, `--app-ink-soft`;
+  - khung: `--app-topbar`, `--app-topbar-ink` (thanh trên), `--app-tabbar` (dải menu con), `--app-nav`, `--app-subnav`, `--app-nav-ink`, `--app-nav-ink-soft` (thanh bên);
+  - màu: `--brand`, `--brand-hover`, `--brand-soft`, `--brand-ink` (chữ màu cam đậm, vì cam logo làm chữ trên nền trắng chỉ đạt 2,3:1), `--link`, `--link-hover`, `--focus-glow`, `--success`, `--warning`, `--error`, `--field-required-bg`, `--field-required-line`;
+  - bóng: `--elev-1`, `--elev-2`;
+  - chế độ tối định nghĩa lại dưới `:root[data-mantine-color-scheme='dark']`. Token riêng của từng khối khai cạnh khối đó (`--login-*` của màn đăng nhập, `--prep-*`, `--week-range-*` của Kế hoạch chuẩn bị SX, `--dsg-*` của lưới nhập).
+- **Ghi đè Mantine:** ô nhập, nút cao 31px (điện thoại 40px); chữ badge, chữ lỗi, mô tả dưới ô tối thiểu 12px; viền ô nhập và ô tích chưa tích dùng `--app-input-line` để đạt 3:1 ở cả hai chế độ (mặc định của Mantine thấp hơn); chữ gợi ý trong ô ở chế độ tối sáng hơn mặc định; vòng focus xanh `--link` kèm quầng `--focus-glow` (class `.focus-ring` và các phần tử Mantine), trên nền xám than của thanh bên dùng viền trắng.
 - **Quy ước ô nhập** (theo mô tả giao diện của BA): `.field-required` nền vàng là bắt buộc, `.field-readonly` nền xám là chỉ đọc, đỏ là sai.
-- **Các khối CSS lớn:** khung ứng dụng (thanh bên, thanh trên, dải menu con, bản điện thoại), đăng nhập (`.login-*`), bảng mật độ cao (`.table-frame`, `.dense-table`), trang làm việc (`.work-page`, `.work-head`, `.work-filters`, `.work-body`, `.split-pane`, `.split-rows`, `.split-stack`: hai khung chồng ở cột phải của Cập nhật tỷ lệ cắt, từ 1024px hàng có chiều cao tối thiểu 170/210px, lưới trong khung co và tự cuộn bên trong để khung trên không tràn đè tiêu đề khung dưới, lưới nhập giữ sàn 160px, khung lỗi nhập `.sheet-issues` không co, cao tối đa 96px; đang sửa màu cỡ thì khung dưới chiếm 3/5; hẹp hơn 1024px thì `.split-pane` cao theo nội dung, mỗi lưới 320px đến 70vh tự cuộn bên trong, vùng chính cuộn), lưới dùng chung (`.grid-*`), lưới nhập (`.sheet-*`, biến `--dsg-*`), ô chọn dạng cây (`.tree-pick*`), cùng CSS riêng của bảng dàn chuyền, Danh mục hệ thống, Kế hoạch chuẩn bị SX, Nhân sự.
-- **Mốc bề rộng:** 767px (điện thoại), 400px (điện thoại hẹp), 1023px (khung chia đôi chuyển một cột); `pointer: coarse` (tay kéo cột, dòng cây lớn hơn); `hover: none`.
-- **Màn đăng nhập co theo khung hình:** cỡ ở màn cao từ 940px đúng ảnh mẫu (`docs/screens/VIETSUN MES Login Portal.png`, 1672×941). Màn thấp hơn thu nhỏ liên tục theo biến `--login-fit` (0px khi cao từ 640px trở xuống, 1px khi cao từ 940px, tính theo `svh` để thanh địa chỉ ẩn hiện không làm thẻ đổi cỡ; mỗi cỡ viết `calc(cỡ gọn + chênh lệch × var(--login-fit))`), để thẻ nằm gọn trong laptop 1366×768 hay 1920×1080 phóng 125%. Logo, đồng hồ, chân trang đặt tuyệt đối ở các góc. Khẩu hiệu bên trái là giá trị cốt lõi (`CORE_VALUES` trong `LoginPage.tsx`, danh sách `.login-values`, chữ đầu `.login-values-initial` màu cam; quyết định 12.4); một cột thì nằm ngang, mặt trời thu nhỏ đẩy lên góc trên để không đè chữ. Các mốc khác: bề rộng 1280px (thẻ 440px, mặt trời nhỏ lại), 960px (một cột), 720px (ẩn đồng hồ, tránh đè mặt trời), 480px; chiều cao 640px (bỏ logo trong thẻ, dòng chân thẻ), 520px; một cột thấp hơn 760px, 680px (bỏ logo trong thẻ, rồi khẩu hiệu). Form dài thêm (đang chọn ĐVCS, khung báo lỗi `role="alert"`, lỗi dưới ô `aria-invalid`) thì bỏ logo trong thẻ và dòng chân thẻ; màn thấp hơn 640px bỏ thêm dòng tên hệ thống (`:has`, Firefox từ 121; trình duyệt cũ hơn chỉ không bỏ được, trang cuộn). Mốc chiều cao không kèm `min-width` vì màn phóng to có bề rộng lẻ (960,5px) sẽ lọt khe giữa hai mốc. Đã đo 5 trạng thái (ban đầu, bỏ trống ô, sai mật khẩu, chọn ĐVCS, chưa chọn ĐVCS): hai cột không cuộn từ chiều cao 585px trở lên, một cột không cuộn ở 360×640 trở lên (riêng 960×599 lố 11px khi chưa chọn ĐVCS); dưới 520px và điện thoại xoay ngang thì cuộn khi form dài thêm.
+- **Các khối CSS lớn:** khung ứng dụng (thanh bên, thanh trên, dải menu con, bản điện thoại), đăng nhập (`.login-*`), bảng mật độ cao (`.table-frame`, `.dense-table`), trang làm việc (`.work-page`, `.work-head`, `.work-filters`, `.work-body`, `.split-pane`, `.split-rows`, `.split-stack`: hai khung chồng ở cột phải của Cập nhật tỷ lệ cắt, từ 1024px hàng có chiều cao tối thiểu 170/210px, lưới trong khung co và tự cuộn bên trong để khung trên không tràn đè tiêu đề khung dưới, lưới nhập giữ sàn 160px, khung lỗi nhập `.sheet-issues` không co, cao tối đa 96px; đang sửa màu cỡ thì khung dưới chiếm 3/5; hẹp hơn 1024px thì `.split-pane` cao theo nội dung, mỗi lưới 320px đến 70vh tự cuộn bên trong, vùng chính cuộn; `.split-rows`: lưới chính trên, lưới chi tiết của dòng đang chọn dưới, như Kế hoạch xuất hàng › PO của kế hoạch), lưới dùng chung (`.grid-*`), lưới nhập (`.sheet-*`, biến `--dsg-*`), ô chọn dạng cây (`.tree-pick*`), cùng CSS riêng của bảng dàn chuyền, Danh mục hệ thống (gồm Lịch làm việc `.wcal-*`), Kế hoạch chuẩn bị SX, dòng Tổng của Đồng bộ tiến độ cắt (`.cut-total`), Xác nhận cấp BTP (`.supply-*`), Kế hoạch may (`.plan-*`), Nhân sự.
+- **Mốc bề rộng:** 1280px, 1100px, 960px (thanh trên bớt dần phần phụ, mục 6.1), 1023px (khung chia đôi chuyển một cột), 767px (điện thoại; vài chỗ viết `47.99em` để khớp `hiddenFrom="sm"` của Mantine, cùng mốc với `useMobile`), 400px (điện thoại hẹp); `pointer: coarse` (tay kéo cột, dòng cây lớn hơn); `hover: none`.
+- **Màn đăng nhập** (`.login-*`): nền luôn tối ở cả hai chế độ màu (ảnh `frontend/public/login-bg.webp` dưới lớp phủ xám than, mặt trời vẽ bằng CSS ở `.login-sun`), thẻ đăng nhập theo chế độ màu của ứng dụng; `.login-shell` đặt lại font Inter và khai màu nút chính `--login-cta`, `--login-cta-hover` (quyết định 12.4); chân trang có số phiên bản `__APP_VERSION__`.
+- **Màn đăng nhập co theo khung hình:** cỡ ở màn cao từ 940px đúng ảnh mẫu (`docs/screens/VIETSUN MES Login Portal.png`, 1672×941). Màn thấp hơn thu nhỏ liên tục theo biến `--login-fit` (0px khi cao từ 640px trở xuống, 1px khi cao từ 940px, tính theo `svh` để thanh địa chỉ ẩn hiện không làm thẻ đổi cỡ; mỗi cỡ viết `calc(cỡ gọn + chênh lệch × var(--login-fit))`), để thẻ nằm gọn trong laptop 1366×768 hay 1920×1080 phóng 125%. Logo, đồng hồ, chân trang đặt tuyệt đối ở các góc. Khẩu hiệu bên trái là giá trị cốt lõi (`CORE_VALUES` trong `LoginPage.tsx`, danh sách `.login-values`, chữ đầu `.login-values-initial` màu cam; quyết định 12.4); một cột thì nằm ngang, mặt trời thu nhỏ đẩy lên góc trên để không đè chữ. Các mốc khác: bề rộng 1280px (thẻ 440px, mặt trời nhỏ lại), 960px (một cột), 720px (ẩn đồng hồ, tránh đè mặt trời), 480px; chiều cao 640px (bỏ logo trong thẻ, dòng chân thẻ), 520px; một cột thấp hơn 760px, 680px (bỏ logo trong thẻ, rồi khẩu hiệu). Form dài thêm (đang chọn ĐVCS, khung báo lỗi `role="alert"`, lỗi dưới ô `aria-invalid`) thì bỏ logo trong thẻ và dòng chân thẻ; màn thấp hơn 640px bỏ thêm dòng tên hệ thống (`:has`, Firefox từ 121; trình duyệt cũ hơn chỉ không bỏ được, trang cuộn). Mốc chiều cao không kèm `min-width` vì màn phóng to có bề rộng lẻ (960,5px) sẽ lọt khe giữa hai mốc. Số đo trên trình duyệt với 5 trạng thái (ban đầu, bỏ trống ô, sai mật khẩu, chọn ĐVCS, chưa chọn ĐVCS; NEEDS VERIFICATION: không kiểm được từ code, cần đo lại trên trình duyệt): hai cột không cuộn từ chiều cao 585px trở lên, một cột không cuộn ở 360×640 trở lên (riêng 960×599 lố 11px khi chưa chọn ĐVCS); dưới 520px và điện thoại xoay ngang thì cuộn khi form dài thêm.
 - **Thứ tự nạp:** CSS của Mantine và `global.css` nạp ở `main.tsx` và gom một file khi build; `global.css` thắng nhờ đứng sau (mục 13). CSS của `react-datasheet-grid` được import trong `SheetGrid.tsx` nên đi theo code của màn có lưới nhập; ghi đè của nó trong `global.css` viết kèm `.sheet-wrap` (đặc hiệu cao hơn quy tắc của thư viện).
 
 ## 12. Quy tắc UI/UX
@@ -639,7 +673,7 @@ Chi tiết các tiện ích hay dùng:
 
 **C. Màu, tương phản**
 1. Chữ ≥ 4,5:1; viền ô nhập và vòng focus ≥ 3:1 ở cả chế độ sáng và tối.
-2. Cam `#F39830` chỉ làm nền hoặc vạch, không làm chữ trên nền trắng.
+2. Cam `#F39830` chỉ làm nền hoặc vạch, không làm chữ trên nền trắng; chữ màu cam dùng `--brand-ink`.
 3. Trạng thái không chỉ bằng màu: luôn kèm chữ hoặc biểu tượng.
 4. Màu trong code dùng biến (`--app-*`, `var(--mantine-color-<màu>-text)`); màu hex cứng phải khai thêm giá trị cho chế độ tối.
 
@@ -658,7 +692,7 @@ Chi tiết các tiện ích hay dùng:
 3. Thao tác nguy hiểm (xóa, khóa tài khoản, ngừng dùng, chép lại từ đầu) hỏi lại bằng `confirmAction`, nêu hậu quả.
 
 **F. Điều hướng, bàn phím**
-1. Trạng thái danh sách (bộ lọc, trang, sắp xếp, tab, dòng chọn) nằm trên URL qua `useUrlParams` (ghi `replace`), nên F5 và gửi link giữ ngữ cảnh. Màn Đơn hàng chỉ đọc bộ lọc từ URL lúc mở màn.
+1. Trạng thái danh sách (bộ lọc, trang, sắp xếp, tab, dòng chọn) nằm trên URL qua `useUrlParams` (ghi `replace`), nên F5 và gửi link giữ ngữ cảnh. Màn dùng `useUrlFilter`, `usePagedList` (Đơn hàng, Cắt) chỉ đọc bộ lọc từ URL lúc mở màn. Ngoại lệ hiện có: `features/sewing/SewingPlanPage.tsx` (ngày, đơn vị) và `features/admin/CatalogsPage.tsx` (danh mục đang chọn, tham số `c`) dùng thẳng `useSearchParams` của React Router, cũng ghi `replace`.
 2. Mọi điều khiển tới được bằng bàn phím; vòng focus nhìn rõ.
 3. Nút chỉ có biểu tượng có `aria-label` và Tooltip cùng chữ.
 4. Tên đọc của nút chứa chữ đang hiển thị (WCAG 2.5.3).
@@ -717,28 +751,16 @@ Vấn đề chính của frontend là vẽ lại thừa, không phải mạng ha
 ## 15. Test frontend
 
 - **Công cụ:** Vitest + Testing Library + `@testing-library/jest-dom`, môi trường jsdom (cấu hình ở phần `test` của `frontend/vite.config.ts`). Không cần database, không gọi API thật.
-- **Chạy:** `npm test -w frontend` (`vitest run`); một file: `npx vitest run src/test/<file>` trong thư mục `frontend`. `npm test` ở gốc chạy backend (cần database) rồi frontend; cách chạy chung và bộ database test: [Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md).
+- **Chạy:** `npm test -w frontend` (`vitest run`); một file: `npx vitest run src/test/<file>` trong thư mục `frontend`. `npm test` ở gốc chạy backend (cần database), frontend rồi `test:deploy`; cách chạy chung và bộ database test: [Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md).
 - **`src/test/setup.ts`:**
   - nạp matcher của jest-dom;
   - `afterEach(cleanup)`: không bật `globals` của Vitest nên Testing Library không tự dọn DOM; test import `describe`, `it`, `expect`, `vi` từ `vitest`;
   - `asyncUtilTimeout` 4 giây cho `findBy`, `waitFor` (chạy cả bộ song song thì màn có lưới lớn vẽ chậm);
   - giả `window.matchMedia`, `ResizeObserver`, `Element.prototype.scrollIntoView`, `document.fonts` (jsdom không có).
-- **Tổ chức:** mọi test nằm ở `frontend/src/test/`, tên `*.test.ts` hoặc `*.test.tsx`, mỗi file một chủ đề:
-
-| Chủ đề | File |
-|---|---|
-| Khung, guard, `Can`, 403/404, `A00` | `shell.test.tsx` |
-| Phiên: đăng xuất, ĐVCS bị gỡ, làm mới token | `session.test.ts` |
-| Màn đăng nhập | `login.test.tsx` |
-| Đổi ĐVCS ở thanh trên | `branch-switcher.test.tsx` |
-| Thành phần chung | `datagrid.test.tsx`, `column-filter.test.tsx`, `tree-select.test.tsx`, `sheet.test.ts`, `sheet-typing.test.tsx`, `sheet-filter.test.tsx`, `confirm.test.tsx`, `branch-name.test.tsx`, `render-cost.test.tsx` (chỉ vẽ lại dòng đổi, ô lọc không lọc ngay) |
-| Màn nghiệp vụ | `order.test.tsx`, `cut-ratio-edit.test.tsx`, `po-allocation.test.tsx`, `shipment-plan-pos.test.tsx`, `sewing.test.tsx`, `hr.test.tsx` |
-| Màn quản trị | `admin.test.tsx`, `admin-pages.test.tsx`, `user-access-scope.test.tsx`, `catalog-factories.test.tsx`, `prep-steps-save.test.tsx` |
-| Lỗi đã sửa ở phase hiệu năng | `phase-5-7.test.tsx` |
-
+- **Tổ chức:** mọi test nằm ở `frontend/src/test/` (thư mục phẳng, [Quy ước code](../CODE_CONVENTIONS.md) mục 8), tên `*.test.ts` hoặc `*.test.tsx`, mỗi file một chủ đề; luật tính thuần (`*Rules.ts`, `lib/workCalendar.ts`…) được kiểm bằng gọi hàm, không dựng màn (ví dụ `cutting-progress-rules.test.ts`, `work-calendar.test.ts`). Danh sách file và nội dung từng file: [Dữ liệu mẫu và kiểm thử › Frontend (Vitest)](12-du-lieu-mau-va-kiem-thu.md#frontend-vitest).
 - **Cách viết thường dùng:**
   - đặt phiên thẳng vào store: `useSession.getState().set({ status: 'ready', user, branch, permissions: new Set([...]), menu, fieldPolicies })`, và `reset('anonymous')` trong `beforeEach`;
   - bọc `MantineProvider theme={theme}` (thêm `env="test"` để tắt hiệu ứng), `MemoryRouter`, và khi cần `QueryClientProvider` (client mới, `retry: false`), `ModalsProvider`;
   - giả API bằng `vi.mock('../lib/api', ...)` thay `api` bằng `vi.fn()` rồi trả dữ liệu theo đường dẫn; test cách `lib/api.ts` xử lý phiên (`session.test.ts`) thì giả `fetch` bằng `vi.stubGlobal('fetch', ...)`;
-  - jsdom không đo được kích thước nên `SheetGrid` không vẽ lưới; test lưới nhập giả `useElementSize` của `@mantine/hooks` (`sheet-typing.test.tsx`, `sheet-filter.test.tsx`). Ô của thư viện vẫn không vẽ ở jsdom: hành vi trong ô kiểm bằng hàm thuần (`parseQty`, `parseSheetDate`, `blockedDeletes`) hoặc trên trình duyệt thật.
+  - jsdom không đo được kích thước nên `SheetGrid` không vẽ lưới; test lưới nhập giả `useElementSize` của `@mantine/hooks` (`sheet-typing.test.tsx`, `sheet-filter.test.tsx`, `sewing-plan.test.tsx`). Ô của thư viện vẫn không vẽ ở jsdom: hành vi trong ô kiểm bằng hàm thuần (`parseQty`, `parseSheetDate`, `blockedDeletes`) hoặc trên trình duyệt thật.
 - Test chỉ kiểm giao diện phản chiếu đúng. Việc cưỡng chế quyền và lọc `BranchCode` được test ở backend.

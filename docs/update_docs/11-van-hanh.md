@@ -46,7 +46,7 @@ Tài khoản trong `.env` không tạo được database thì nhờ quản trị
 | Biến | Bắt buộc | Mặc định | Tác dụng |
 |---|---|---|---|
 | `NODE_ENV` | Không | (trống) | `production`: bắt buộc `JWT_SECRET` ≥ 32 ký tự và `DEMO_PASSWORD` ≥ 8 ký tự; `COOKIE_SECURE` mặc định bật; `SEED_SAMPLE_DATA` mặc định `false`; `reset:demo`, `load:bravo`, `sim:board` từ chối chạy. Chỉ đặt trong `backend/.env`, không đặt thành biến môi trường của Windows (xem [Cài ứng dụng](#cai-ung-dung)) |
-| `DB_HOST` | Có | `localhost` | Máy SQL Server (tên máy hoặc IP, không kèm tên instance) |
+| `DB_HOST` | Không | `localhost` | Máy SQL Server (tên máy hoặc IP, không kèm tên instance) |
 | `DB_PORT` | Không | `1433` | Cổng TCP của SQL Server |
 | `DB_USER` | Có | (trống) | Tài khoản SQL |
 | `DB_PASSWORD` | Có | (trống) | Mật khẩu tài khoản SQL |
@@ -82,6 +82,8 @@ Tài khoản trong `.env` không tạo được database thì nhờ quản trị
 | `TRUST_PROXY` | Không | không tin | Chỉ đặt khi chạy sau reverse proxy: tên như `loopback` hoặc IP/subnet của proxy, cách nhau dấu phẩy. Giá trị được chuyển nguyên chuỗi cho Express (`trust proxy`), không dùng dạng số hop hay `true` |
 
 Bài test backend luôn đặt `BRAVO_ORDER_IMPORT=false`, `OSM_FACTORY_UPDATE=false` và `PO_ALLOCATION_REFRESH=false` (`backend/test/setup-env.ts`).
+
+Bảng trên theo `backend/src/config/env.ts`. `backend/.env.example` chưa có đủ các biến trong bảng: lỗi đã biết, task T11 ở [Trạng thái](../current/STATUS.md).
 
 ## Lệnh npm
 
@@ -215,15 +217,16 @@ Ba lệnh dưới **xóa hoặc ghi đè dữ liệu**, chỉ dành cho máy dem
    - ĐVCS mẫu và ĐVCS có trong danh mục chi nhánh BRAVO đã chép được bật lại; ĐVCS mẫu về tên mẫu, trừ mã có trong BRAVO (giữ tên BRAVO); ĐVCS khác bị tắt;
    - vai trò mẫu về tên, mô tả, bật lại; vai trò khác bị tắt; xóa gán quyền và chính sách cột của vai trò mẫu;
    - tài khoản mẫu: xóa phạm vi, ngoại lệ, cột riêng, vai trò, ĐVCS, Nhà máy SX đã gán; đặt lại họ tên, bật, mở khóa; tài khoản khác bị vô hiệu; thu hồi **mọi** phiên;
-   - Nhà máy SX mẫu về tên, ĐVCS; nhà máy tạo thêm bị ngừng (giữ nhà máy do đồng bộ OSM tự thêm); mục danh mục mẫu, ca mẫu về như seed, mục, ca tạo thêm bị ngừng.
-2. Xóa toàn bộ Kế hoạch chuẩn bị SX trong `MES_Sewing` (danh mục bước giữ nguyên).
+   - Nhà máy SX mẫu về tên, ĐVCS; nhà máy tạo thêm bị ngừng (giữ nhà máy do đồng bộ OSM tự thêm); mục danh mục mẫu, ca mẫu về như seed, mục, ca tạo thêm bị ngừng;
+   - xóa hết Lịch làm việc (`SysWorkCalendar`, `SysWorkCalendarDay`); seed ở bước 5 nạp lại lịch mẫu cho các ĐVCS mẫu.
+2. Xóa toàn bộ Kế hoạch chuẩn bị SX (`clearSewingPrep`, danh mục bước giữ nguyên) và Kế hoạch may (`clearSewingDayPlan`) trong `MES_Sewing`; xóa toàn bộ dữ liệu `MES_Cutting` (`clearCutting`, một transaction của `MES_Cutting`: số cắt, bản chép kế hoạch, lệnh cấp BTP cùng số cấp). Database chưa có, hoặc chưa có bảng Kế hoạch may, thì bỏ qua phần đó (`backend/scripts/sewing-data.ts`, `cutting-data.ts`).
 3. Xóa toàn bộ dữ liệu đơn hàng trong `MES_Order` (đơn, PO, màu cỡ, kế hoạch, dàn chuyền, phân màu cỡ), đặt lại bộ đếm Id. Hai bảng Phân bổ PO (`PoAllocation`, `PoAllocationRefresh`) giữ nguyên.
 4. Xóa loại phòng ban, phòng ban (kể cả xưởng, chuyền may), chức danh, nhân viên trong `MES_Hr`; seed ở bước 5 nạp lại, gồm xưởng, chuyền may mẫu.
 5. `runSeed({ resetPasswords: true, syncMatrix: true })`: nạp lại đủ dữ liệu mẫu, mật khẩu demo.
 6. `--bravo`: gọi `load:bravo` thay đơn hàng giả bằng đơn hàng BRAVO.
-7. Ghi `SysAuditLog` `DEMO_RESET`. Nhật ký cũ giữ nguyên. Không có transaction chung giữa các database: bước 1 xong trước rồi mới đụng `MES_Sewing`, `MES_Order`, `MES_Hr`.
+7. Ghi `SysAuditLog` `DEMO_RESET`. Nhật ký cũ giữ nguyên. Không có transaction chung giữa các database: bước 1 xong trước rồi mới đụng `MES_Sewing`, `MES_Cutting`, `MES_Order`, `MES_Hr` (theo thứ tự đó).
 
-Không xóa vật lý bản ghi `MES_Core` nào ngoài phép gán của tài khoản, vai trò mẫu.
+Ở `MES_Core`, chỉ xóa vật lý phép gán của tài khoản, vai trò mẫu và Lịch làm việc; bản ghi khác chỉ bị tắt hoặc đặt lại.
 
 <a id="loadbravo"></a>
 
@@ -233,7 +236,7 @@ Không xóa vật lý bản ghi `MES_Core` nào ngoài phép gán của tài kho
 
 - Cần `MES_Sync` đã đồng bộ các nguồn đơn hàng (`bravo.DM_SanPhamDonHang` có dữ liệu), không thì dừng và nhắc đồng bộ trước.
 - Chép thêm ĐVCS theo danh mục chi nhánh BRAVO trước khi nạp.
-- Lấy khóa nạp của backend (chờ lần nạp tăng dần đang chạy), xóa dữ liệu đơn hàng rồi nạp lại trong một transaction của `MES_Order` (mỗi câu tối đa 10 phút). Trong lúc đó xóa Kế hoạch chuẩn bị SX, Kế hoạch may (`clearSewingPrep`, `clearSewingDayPlan`) và dữ liệu Cắt (`clearCutting`) trên kết nối riêng của `MES_Sewing`, `MES_Cutting`: các bước này tự commit, không được hủy theo khi transaction đơn hàng lỗi (`backend/scripts/load-bravo-orders.ts`).
+- Lấy khóa nạp của backend (`MES_Order.BravoImport`: chờ lần nạp tăng dần đang chạy, tối đa 10 giây, hết giờ thì dừng), xóa dữ liệu đơn hàng rồi nạp lại trong một transaction của `MES_Order` (mỗi câu tối đa 10 phút). Sau khi lấy khóa, trước khi xóa dữ liệu đơn hàng, xóa Kế hoạch chuẩn bị SX, Kế hoạch may (`clearSewingPrep`, `clearSewingDayPlan`) và dữ liệu Cắt (`clearCutting`: số cắt, bản chép kế hoạch, lệnh cấp BTP) trên kết nối riêng của `MES_Sewing`, `MES_Cutting`: các bước này tự commit, không được hủy theo khi transaction đơn hàng lỗi (`backend/scripts/load-bravo-orders.ts`).
 - Nhà máy SX theo dữ liệu OSM đã chép; chưa có OSM thì tạm lấy Nhà máy SX cùng mã với chi nhánh nhận đơn (nếu đang dùng).
 - Mặc định sinh dàn chuyền mô phỏng (như `sim:board`, chuyền đọc từ `MES_Hr`); `--no-plans` bỏ phần này.
 - In bảng thống kê theo ĐVCS, ghi `SysAuditLog` `BRAVO_LOAD`, và nhắc: database giờ có dữ liệu thật, backend nghe mọi địa chỉ, tài khoản demo dùng chung `DEMO_PASSWORD`. Nên đặt `HOST=127.0.0.1` hoặc đổi `DEMO_PASSWORD` mạnh rồi `npm run seed -- --reset-passwords`.
@@ -247,8 +250,9 @@ Máy dùng thật không dùng lệnh này: backend tự nạp tăng dần (`BRA
 `backend/scripts/simulate-board.ts`. `npm run sim:board -- --yes [--all]`. Xếp lại dàn chuyền mô phỏng kín các chuyền quanh hôm nay (theo giờ máy), người lập "Lập tự động (mô phỏng)". Luật xếp: [Đơn hàng](06-don-hang.md).
 
 - Chuyền: bộ phận tích "Xưởng sản xuất", chưa giải thể, có ĐVCS, đọc từ `MES_Hr` (`readLines`, `backend/scripts/script-db.ts`). Chưa có `MES_Hr` hoặc chưa migrate thì không có chuyền nào, dàn chuyền để trống (cảnh báo, không dừng).
-- Xóa kế hoạch mô phỏng cũ cùng dàn chuyền, phân màu cỡ của chúng; giữ kế hoạch người dùng lập và kế hoạch mô phỏng người dùng đã sửa (ở Kế hoạch xuất hàng, Xếp chuyền, Phân bổ màu cỡ, hoặc đã nhập ngày ở Kế hoạch chuẩn bị SX).
-- `--all`: xóa cả các kế hoạch được giữ ở trên (kèm ngày chuẩn bị SX đã nhập).
+- Xóa kế hoạch mô phỏng cũ cùng PO, SL màu cỡ, dàn chuyền, phân màu cỡ của chúng; giữ kế hoạch người dùng lập và kế hoạch mô phỏng người dùng đã sửa (ở Kế hoạch xuất hàng, Xếp chuyền, Phân bổ màu cỡ, hoặc đã nhập ở Kế hoạch chuẩn bị SX).
+- `--all`: xóa cả các kế hoạch mô phỏng người dùng đã sửa (kèm ngày chuẩn bị SX đã nhập của các kế hoạch đó).
+- Luôn giữ, kể cả `--all`: kế hoạch đã có số cắt ở Đồng bộ tiến độ cắt (`plansWithCuts`), kế hoạch có mã hàng đã cấp BTP ở ĐVCS của nó (`plansWithSupply`), kế hoạch có dòng dàn chuyền đã có bản ghi ở Kế hoạch may (`dayPlanLines`). Các dữ liệu này đọc từ `MES_Cutting`, `MES_Sewing` trước transaction của `MES_Order` (`backend/scripts/cutting-data.ts`, `sewing-data.ts`).
 - Đơn hàng của kế hoạch bị xóa trở về trạng thái lúc nạp.
 - Một transaction trên `MES_Order` (vài chục giây; màn đơn hàng đang mở phải chờ); xong ghi `SysAuditLog` `BOARD_SIMULATE`.
 
@@ -317,6 +321,8 @@ npm run demo                     # build rồi chạy backend --serve-web ở c�
 ## Triển khai máy chủ Windows
 
 Phần này chỉ giữ các bước phụ thuộc code. Linked server, tài khoản đọc phía BRAVO/OSM và các lỗi riêng của nguồn: [Đồng bộ](09-dong-bo.md). Việc còn chờ trên máy chủ: [Trạng thái](../current/STATUS.md).
+
+`deploy/huong-dan.html` là bản hướng dẫn rút gọn cho người vận hành máy chủ. Quy trình triển khai chính thức là file này (mục này và [Cập nhật bản mới lên máy chủ](#cap-nhat-ban-moi-len-may-chu)): hai bản nói khác nhau thì theo file này. Điểm `huong-dan.html` có mà file này chưa kiểm: thư mục triển khai phải nằm trên ổ NTFS gắn trên chính máy chủ, không phải ổ mạng, vì script tạo junction (NEEDS VERIFICATION: `deploy/lib.cjs`, `fs.symlinkSync(…, 'junction')`).
 
 <a id="chuan-bi-sql-server"></a>
 
@@ -556,6 +562,7 @@ Màn mới: seed cấp quyền theo ma trận cho vai trò mẫu và Toàn quy�
 
 - `--rollback`: về bản **đã từng chạy được** (`.activated`) gần nhất trước bản đang chạy, bỏ qua bản build xong mà chưa chạy được; không migrate. Bản đích nhận `shared\.env` hiện hành (cấu hình đổi bằng `--sync-env` sau khi nó chạy vẫn giữ), được kiểm cấu hình như bước 5, rồi trỏ `current`, `pm2 reload`. Bản đang chạy có file migration mà bản đích không có thì cảnh báo và hỏi lại: không có migration lùi, bản trước có thể chạy sai với database hiện tại (cần thì phục hồi sao lưu). Chỉ quay được về bản còn giữ.
 - Đổi biến môi trường: sửa `F:\App\MES-run\shared\.env` rồi `--sync-env`: chép vào `backend\.env` của bản đang chạy, kiểm cấu hình như bước 5 (sai thì giữ cấu hình cũ, không khởi động lại), `pm2 reload`, kiểm sống như bước 9; không ổn định thì trả lại cấu hình cũ, `pm2 restart`, báo lỗi (`shared\.env` vẫn là bản mới: sửa lại). Không sửa `current\backend\.env` trực tiếp: lần triển khai sau chép đè từ `shared`.
+- `--sync-env` không chạy migrate. Đổi biến nguồn đồng bộ (`DB_TRUNGGIAN_*`, `DB_OSM_*`) thì synonym chỉ đổi theo sau khi migrate ([Migrate](#migrate), mục Synonym nguồn đồng bộ), nên chạy `node deploy\deploy.cjs --root F:\App\MES-run --no-pull` thay cho `--sync-env` (cùng commit đang chạy thì trả lời `y` khi script hỏi "Vẫn triển khai lại?"): script build lại bản đó, chạy `npm run migrate` rồi `pm2 reload` (`deploy/deploy.cjs`).
 
 ### Thứ tự bắt buộc với chuyền may
 

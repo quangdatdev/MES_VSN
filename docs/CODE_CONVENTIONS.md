@@ -149,7 +149,7 @@ Không rẽ nhánh theo mã ĐVCS, nhà máy cụ thể; khác biệt nằm tron
 ### 4.1 Route — CURRENT
 
 - Dạng `/api/v1/<khối>/<tài nguyên số nhiều, kebab-case>`; hành động phụ là đoạn con: `/:id/confirm`, `/values` (popup lọc), `/export` (xuất file).
-- **APPROVED (19/10/2026):** mọi `DELETE` trả **200 kèm `{ removed: true }`** (như `DELETE /cutting/supply/:id`, `DELETE /cutting/progress/:id/entries`). Hiện còn trả 204 (`@HttpCode(204)`): `DELETE /order/sales-orders/:id`, `/order/cut-ratio/pos/:id`, `/order/shipment-plans/:id`, `/admin/users/:id/overrides/:overrideId`, `/admin/users/:id/field-policies/:policyId`, `/admin/roles/:id`: đổi ở task T7 (sửa cả frontend nếu đang chờ body rỗng). `POST /auth/logout` không phải lệnh xóa dữ liệu, giữ 204.
+- **APPROVED (19/10/2026):** mọi `DELETE` trả **200 kèm `{ removed: true }`** (như `DELETE /cutting/supply/:id`). `DELETE /cutting/progress/:id/entries` (xóa số cắt, không xóa kế hoạch) hiện trả 200 kèm số đã xóa `{ removedDays, removedRows, planRemoved }` (`CuttingProgressService.removeEntries`); Tech Lead chốt 20/10/2026 đổi theo chuẩn (Q52). Hiện còn trả 204 (`@HttpCode(204)`): `DELETE /order/sales-orders/:id`, `/order/cut-ratio/pos/:id`, `/order/shipment-plans/:id`, `/admin/users/:id/overrides/:overrideId`, `/admin/users/:id/field-policies/:policyId`, `/admin/roles/:id`: đổi ở task T7 (sửa cả frontend nếu đang chờ body rỗng). `POST /auth/logout` không phải lệnh xóa dữ liệu, giữ 204.
 
 ### 4.2 DTO — CURRENT
 
