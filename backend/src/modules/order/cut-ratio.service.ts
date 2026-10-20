@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Errors } from '../../common/app.exception';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { AuditService } from '../../platform/audit/audit.service';
 import { inTransaction } from '../../platform/data/transaction';
@@ -238,6 +239,11 @@ export class CutRatioService {
    */
   async updateColorSizes(user: AuthUser, poId: number, dto: ColorSizeLinesDto) {
     const scope = scopeOf(user);
+    await this.pos.assertWritable(scope);
+    // FieldPolicyInterceptor chỉ chặn khi body có qty; `lines: []` (xóa hết màu cỡ, đưa Số lượng PO về 0) không có, nên kiểm ở
+    // đây, trước khi khóa PO (403 không cho dò Id PO), như lưu Phân bổ màu cỡ
+    const level = (await this.fields.levels(scope.access, RESOURCE)).levels.get('qty');
+    if (level && level !== 'EDITABLE') throw Errors.fieldReadonly(['qty'], ['Số lượng']);
     const lines = cleanLines(dto.lines);
     const { po, before } = await inTransaction(this.db, async (trx) => {
       await this.pos.lock(scope, poId, 'update', trx);

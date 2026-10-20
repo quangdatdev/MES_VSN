@@ -18,7 +18,9 @@ Kế hoạch phase mới ghi ở mục 1 theo khuôn ở [DEVELOPMENT_WORKFLOW](
 | Đưa `docs/` vào git làm mốc | Xong: commit `98d19db`, đã lên `origin/main` |
 | Giai đoạn 4: `AGENTS.md`, `CLAUDE.md`, 6 file ở `docs/`, file này; rút gọn `README.md`; sửa tài liệu module nói khác code | Xong, chưa commit |
 | T4: chuyển nội dung chỉ còn ở tài liệu cũ rồi xóa 59 file (`update_docs/01`, `02`, `03`, `14`, `docs/adr/*`, `docs/phases/*`, 11 file `thiet-ke`, `review/README.md`, `yeu-cau.md`, `bao-cao/*`) | Xong, chưa commit. Bảng "đã xóa → đọc ở đâu": [update_docs/README](../update_docs/README.md) |
-| Q49: dọn worktree, nhánh đã gộp | Xong: gỡ `MES-wt-511`, `MES-wt-512`; xóa 7 nhánh cục bộ đã gộp. **Giữ** `MES-wt-r4` và nhánh `fix-cut-ratio-qty` vì còn bản sửa lỗi HIGH chưa commit (task T12) |
+| Q49: dọn worktree, nhánh đã gộp | Xong: gỡ `MES-wt-511`, `MES-wt-512`; xóa 7 nhánh cục bộ đã gộp. `MES-wt-r4`, nhánh `fix-cut-ratio-qty` còn giữ tới khi commit T12 (bản sửa đã chép sang `main`); xong thì gỡ (worktree có thay đổi chưa commit trùng với `main`, phải `--force`) |
+| T12: sửa lỗi HIGH ở Cập nhật tỷ lệ cắt (`CutRatioService.updateColorSizes` kiểm mức cột `qty` trước khi đọc PO, kể cả `lines: []`) | Xong 20/10/2026 trên `main`, **chưa commit**. Lint, build backend qua; `phase5.spec.ts` 51/51 trên `MES_*_T514`; bài mới hỏng với code cũ. Review [t12-cap-nhat-ty-le-cat.md](../review/t12-cap-nhat-ty-le-cat.md): APPROVE WITH SUGGESTIONS, 3/4 LOW đã sửa, L3 hoãn (N10) |
+| Bộ database test trên máy chủ | Còn `MES_*_T514` (6 database) dùng cho các task sau; đã xóa `MES_*_T5R4`, `MES_*_Test` (20/10/2026, Tech Lead chọn) |
 | Giai đoạn 5: kiểm liên kết, tính nhất quán | Xong (kết quả trong báo cáo của phiên) |
 | T15: bổ sung tài liệu module còn thiếu so với code (`04`–`08`, `10`–`12`, `15`) | Xong 20/10/2026, chưa commit. Kết quả, điểm còn NEEDS VERIFICATION: mục 8.2 |
 
@@ -30,7 +32,6 @@ Tech Lead 19/10/2026: các việc sửa code làm **sau khi chốt tài liệu**
 
 | # | Việc | Ghi chú |
 |---|---|---|
-| T12 | Sửa lỗi HIGH ở Cập nhật tỷ lệ cắt (mục 8.1, dòng đầu) | Bản sửa chưa commit ở worktree `MES-wt-r4` (nhánh `fix-cut-ratio-qty`: `backend/src/modules/order/cut-ratio.service.ts`, `backend/test/phase5.spec.ts`). Người dùng sửa ở phiên sau. Xong thì gỡ worktree, xóa nhánh |
 | T13 | Test body vượt 512 KB trả 413 hay 500 | [DATA_FLOWS](../DATA_FLOWS.md) mục 8 |
 | T1 | Sửa comment trong code trỏ tới tài liệu đã xóa | ~250 chỗ "ADR 00xx", ~12 chỗ `docs/thiet-ke/*.md` (ví dụ `backend/src/common/app.exception.ts`), 4 chỗ `11-van-hanh.md`; 17 file trích "CLAUDE.md mục…" đang đúng số mục của `AGENTS.md`. Tạm thời tra bảng ở [update_docs/README](../update_docs/README.md) |
 | T2 | Dựng CI GitHub Actions | Các bước: [ENGINEERING_STANDARDS](../ENGINEERING_STANDARDS.md) mục 9; 2 bài `catalog.spec.ts` cần dữ liệu BRAVO |
@@ -172,6 +173,7 @@ Chuyển từ kế hoạch lộ trình sau demo (`git show 98d19db:docs/phases/p
 | N7 | Khóa truy vấn của `SewingPlanPage.tsx` thiếu mã ĐVCS; hai màn Cắt làm mới cả nhóm `['order']` | Trái [10](../update_docs/10-giao-dien.md) mục 8.4 |
 | N8 | 6 route `DELETE` trả 204 | T7 |
 | N9 | Mã lỗi tạo ngoài `Errors` | T10 |
+| N10 | Kiểm mức cột trong service lặp lại ở `ColorSizeService.save`, `CutRatioService.updateColorSizes`, tên cột viết cứng | PROPOSED: hàm dùng chung ở `FieldPolicyService` (đọc tên cột từ `SysResourceField`); sửa nền tảng nên cần review riêng |
 
 ## 7. Quyết định của đợt chuẩn hóa (Tech Lead, 19/10/2026): ghi ở đâu
 
@@ -200,11 +202,11 @@ Phát hiện khi rà code để viết tài liệu; chưa chạy thử từng tr
 
 | Mức | Vị trí | Vấn đề |
 |---|---|---|
-| Cao | `backend/src/modules/order/cut-ratio.service.ts` (`updateColorSizes`) | Người có `order.po:update` mà cột Số lượng Chỉ đọc/Ẩn/Che vẫn xóa được hết màu cỡ của PO bằng `lines: []`. Bản sửa chưa commit ở worktree `MES-wt-r4`: task T12 |
+| Cao | `backend/src/modules/order/line-plan.service.ts` (`saveLines`, `PUT /order/line-plans/:id/lines`) | Cùng loại lỗi T12: `ScheduleDto.lines` nhận mảng rỗng, body `{ lines: [] }` không có khóa `startDate` nên `FieldPolicyInterceptor` cho qua. Người có `order.lineplan:update` mà Ngày bắt đầu SX không Sửa được (giao diện đã khóa cả màn) vẫn xóa được dòng dàn chuyền chưa có số (chưa cấp BTP, chưa có Kế hoạch may, chưa may) cùng phần giao màu cỡ, kế hoạch về `PLANNED`. Hướng sửa: kiểm mức cột `startDate` sau `assertWritable`, trước khi đọc kế hoạch (như T12). Liên quan Q22. Có từ trước, review T12 phát hiện |
 | Cao | `backend/scripts/sync-gen.ts` (nhánh `FULL`) | Nguồn chép toàn bộ chỉ chặn khi view trả 0 dòng, không có chốt "xóa quá 20%" |
 | Cao | `backend/src/platform/data/base.repository.ts` (`listAll`) | Xuất file các lưới cắt im lặng ở 10.000 dòng (trừ Phân bổ PO báo 422) |
 | Cao | `backend/src/modules/order/shipment.service.ts` (`draft`) | Số lượng ở popup không đi qua chính sách cột của cột nguồn; `/draft`, `/candidates` chỉ đòi `order.shipment:view` (Q34) |
-| Trung bình | `backend/src/modules/order/cut-ratio.service.ts` (`setConfirmed`) | Xác nhận, hủy xác nhận PO đổi cột Trạng thái mà không xét mức cột: chờ quyết cưỡng chế hay coi là hành động nghiệp vụ |
+| Trung bình | `backend/src/modules/order/cut-ratio.service.ts` (`setConfirmed`) | Xác nhận, hủy xác nhận PO đổi cột Trạng thái mà không xét mức cột: chờ quyết cưỡng chế hay coi là hành động nghiệp vụ. Thêm: 409 "PO chưa có số lượng màu cỡ" cho người không xem được `qty` biết Số lượng PO có bằng 0; `confirmBlocked` ở `CutRatioPage.tsx` cũng không xét `statusCode` |
 | Trung bình | `backend/src/platform/admin/admin.dto.ts` | `fullName`, `description` dài hơn cột thì 500 thay vì 422 |
 | Trung bình | `backend/src/platform/auth/auth.controller.ts` (refresh) | Hai tab làm mới cùng lúc: bên thua xóa cookie |
 | Trung bình | `backend/src/platform/auth/auth.service.ts` | 423 với tài khoản có thật, 401 với tên không tồn tại: dò được tài khoản; chưa giới hạn tần suất |

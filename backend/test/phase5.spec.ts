@@ -898,6 +898,59 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
+    it('Cập nhật tỷ lệ cắt: cột Số lượng không Sửa được (theo vai trò hoặc theo người) thì không đổi được màu cỡ, kể cả `lines: []` (không có khóa qty để interceptor chặn) => 403', async () => {
+      const t = await tokenFor('kehoach.a', 'A01');
+      const url = `/api/v1/order/cut-ratio/pos/${fixture.poId}/color-sizes`;
+      const state = async () => {
+        const body = (await api().get(url).set(auth(t)).expect(200)).body;
+        return { qty: body.po.qty, lines: body.lines.map((l: any) => ({ colorName: l.colorName, sizeName: l.sizeName, qty: l.qty })) };
+      };
+      const before = await state();
+      expect(before.lines.length).toBeGreaterThan(0);
+      expect(before.qty).toBeGreaterThan(0);
+      const denied = async (token: string, lines: unknown[], poUrl = url) =>
+        expect((await api().put(poUrl).set(auth(token)).send({ lines }).expect(403)).body.error).toMatchObject({ code: 'FIELD_READONLY', details: { fields: ['qty'] } });
+      // Bài sau còn dùng PO này: hỏng giữa chừng (màu cỡ đã bị xóa) thì vẫn trả lại như cũ
+      try {
+        try {
+          for (const level of ['READONLY', 'MASKED', 'HIDDEN']) {
+            await setRolePolicy('PLANNER', 'order.po', 'qty', level);
+            await denied(t, []);
+          }
+          // Body có dòng: interceptor chặn vì có khóa qty
+          await setRolePolicy('PLANNER', 'order.po', 'qty', 'READONLY');
+          await denied(t, before.lines);
+          // Id PO không có: vẫn 403 FIELD_READONLY (không dò được Id PO khi không sửa được cột)
+          await denied(t, [], '/api/v1/order/cut-ratio/pos/999999999/color-sizes');
+        } finally {
+          await setRolePolicy('PLANNER', 'order.po', 'qty', null);
+        }
+
+        // Chính sách theo người (L5) thắng vai trò: Kế hoạch Sửa được nhưng riêng người này Chỉ đọc
+        const id = await tempUser('test.cutratioqty', ['PLANNER'], ['A01']);
+        const clearPolicies = async () => {
+          const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin)).expect(200)).body;
+          for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(204);
+        };
+        try {
+          await api().post(`/api/v1/admin/users/${id}/field-policies`).set(auth(admin))
+            .send({ resourceId: resId('order.po'), fieldCode: 'qty', accessLevel: 'READONLY', reason: 'Thử chính sách cột (test)' }).expect(200);
+          await denied(await tokenFor('test.cutratioqty', 'A01', TEST_PASSWORD), []);
+        } finally {
+          await clearPolicies();
+          await dropUser(id);
+        }
+
+        // Màu cỡ và Số lượng PO giữ nguyên (lỗi cũ: Số lượng PO về 0)
+        expect(await state()).toEqual(before);
+        // Cột Sửa được: bỏ hết màu cỡ vẫn là thao tác hợp lệ (Số lượng PO về 0)
+        expect((await api().put(url).set(auth(t)).send({ lines: [] }).expect(200)).body.po.qty).toBe(0);
+      } finally {
+        if (JSON.stringify(await state()) !== JSON.stringify(before)) await api().put(url).set(auth(t)).send({ lines: before.lines }).expect(200);
+      }
+      expect(await state()).toEqual(before);
+    });
+
     it('xuất file đi qua cùng chính sách cột (đọc, che, ẩn); trả cột nhạy cảm có ghi nhật ký đọc', async () => {
       const kh = await tokenFor('kehoach.a', 'A01');
       const csv = async () => {

@@ -224,7 +224,7 @@ Ba khung: Danh sách mã hàng → Danh sách PO của mã đã chọn → Chi t
 - **Danh sách PO:** Mã PO, PO#, Số lượng, Ngày đồng bộ, Ngày xuất hàng, Đích đến, Mã PKL, Số tờ khai, Trạng thái, Ngày tạo; mỗi dòng có `inPlan` (PO nằm trong kế hoạch xuất hàng nào đó, mọi ĐVCS).
 - **Chi tiết màu cỡ:** Màu SP, Cỡ sản phẩm, Số lượng, Trạng thái.
 - **Thao tác:**
-  - **Sửa tỷ lệ:** thay toàn bộ màu cỡ của PO (lưới kiểu bảng tính, dán ba cột Màu, Cỡ, Số lượng từ Excel), Số lượng PO tính lại bằng tổng. PO đã xác nhận phải Hủy xác nhận trước (409). Cần sửa được cột Số lượng.
+  - **Sửa tỷ lệ:** thay toàn bộ màu cỡ của PO (lưới kiểu bảng tính, dán ba cột Màu, Cỡ, Số lượng từ Excel), Số lượng PO tính lại bằng tổng. PO đã xác nhận phải Hủy xác nhận trước (409). Cần sửa được cột Số lượng (`qty`): máy chủ kiểm mức cột trước khi đọc PO (`CutRatioService.updateColorSizes`), nên cả lệnh bỏ hết màu cỡ (`lines: []`, body không có khóa `qty`) cũng nhận 403 `FIELD_READONLY` khi cột Chỉ đọc, Ẩn, Che.
   - **Xác nhận:** khóa tỷ lệ cho khâu cắt; PO chưa có số lượng (tổng 0) thì 409. **Hủy xác nhận** mở lại để sửa.
   - **Xóa PO:** PO đã xác nhận hoặc đã nằm trong kế hoạch xuất hàng (của bất kỳ ĐVCS nào) không xóa được (409; nút khóa sẵn theo `inPlan`).
   - **Thêm PO** (cần thêm quyền `order.allocation:view` để đọc khách hàng, mã hàng của đơn): PO#, Ngày xuất hàng (bắt buộc), Đích đến, Mã PKL, Số tờ khai, lưới màu cỡ (ít nhất một dòng). Chỉ thêm cho mã hàng đang có trên màn ở ĐVCS phiên (có PO trong kế hoạch của ĐVCS, hoặc PO tay ở đây), khác thì 422 "Lập kế hoạch xuất hàng trước". PO mới mang ĐVCS phiên, số `PO-<ĐVCS>-<Id>`, trạng thái Chưa xác nhận; khách hàng, mã hàng chụp từ đơn.
@@ -393,7 +393,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 | `GET /pos/values`, `GET /pos/export` | `order.po:view`, `order.po:export` | `salesOrderId?` + tham số chung | File `ty-le-cat-<ĐVCS>.csv` | |
 | `GET /pos/:id/color-sizes` | `order.po:view` | | `{ po, lines: [{ id, colorName, sizeName, qty }] }` | 404 |
 | `POST /pos` | `order.po:create` (và phạm vi xem `order.allocation`) | `{ salesOrderId, poNumber, shipDate, destination?, packingListCode?, customsDeclarationNo?, lines: [{ colorName, sizeName, qty }] (1–300) }` | PO vừa tạo (201) | 404 không xem được đơn; 422 mã hàng chưa có PO ở ĐVCS này, màu cỡ lặp; 409 đơn vừa bị xóa |
-| `PUT /pos/:id/color-sizes` | `order.po:update` | `{ lines: [{ colorName, sizeName, qty }] }` (0–300) | `{ po, lines }` | 404 (không ghi được PO); 409 PO đã xác nhận |
+| `PUT /pos/:id/color-sizes` | `order.po:update` | `{ lines: [{ colorName, sizeName, qty }] }` (0–300) | `{ po, lines }` | 403 `AGGREGATE_READ_ONLY` (`A00`); 403 `FIELD_READONLY` khi cột Số lượng không Sửa được, kể cả `lines: []` và Id không có (kiểm trước khi đọc PO); 404 (không ghi được PO); 409 PO đã xác nhận |
 | `POST /pos/:id/confirm` | `order.po:update` | | PO (200) | 409 đã xác nhận, tổng SL bằng 0 |
 | `POST /pos/:id/unconfirm` | `order.po:update` | | PO (200) | 409 chưa xác nhận |
 | `DELETE /pos/:id` | `order.po:delete` | | 204 | 409 đã xác nhận, đã nằm trong kế hoạch |
