@@ -1549,6 +1549,76 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
+    it('Xếp chuyền: cột Ngày bắt đầu SX không Sửa được (theo vai trò hoặc theo người) thì không đổi được dàn chuyền, kể cả `lines: []` (không có khóa startDate để interceptor chặn) => 403', async () => {
+      const t = await tokenFor('kehoach.a', 'A01');
+      const url = `/api/v1/order/line-plans/${fixture.planId}/lines`;
+      const linesOf = async () =>
+        (await api().get(`/api/v1/order/line-plans/${fixture.planId}`).set(auth(t)).expect(200)).body.lines.map((l: any) => ({ lineCode: l.lineCode, qty: l.qty, startDate: l.startDate }));
+      const line = { lineCode: 'A01-L12', qty: 100, avgOutput: 100, startDate: '2026-12-05' };
+      const denied = async (token: string, lines: unknown[], planUrl = url) =>
+        expect((await api().put(planUrl).set(auth(token)).send({ lines }).expect(403)).body.error).toMatchObject({ code: 'FIELD_READONLY', details: { fields: ['startDate'] } });
+      // Bài sau còn dùng kế hoạch này khi chưa xếp chuyền: hỏng giữa chừng thì vẫn bỏ dòng vừa xếp
+      try {
+        await api().put(url).set(auth(t)).send({ lines: [line] }).expect(200);
+        const before = await linesOf();
+        expect(before).toEqual([{ lineCode: 'A01-L12', qty: 100, startDate: '2026-12-05' }]);
+        try {
+          for (const level of ['READONLY', 'MASKED', 'HIDDEN']) {
+            await setRolePolicy('PLANNER', 'order.lineplan', 'startDate', level);
+            await denied(t, []);
+          }
+          // Body có dòng: interceptor chặn vì có khóa startDate
+          await setRolePolicy('PLANNER', 'order.lineplan', 'startDate', 'READONLY');
+          await denied(t, [line]);
+          // Id kế hoạch không có: vẫn 403 FIELD_READONLY (không dò được Id khi không sửa được cột)
+          await denied(t, [], '/api/v1/order/line-plans/999999999/lines');
+        } finally {
+          await setRolePolicy('PLANNER', 'order.lineplan', 'startDate', null);
+        }
+
+        // Chính sách theo người (L5) thắng vai trò: Kế hoạch Sửa được nhưng riêng người này Chỉ đọc
+        const id = await tempUser('test.lineplanstart', ['PLANNER'], ['A01']);
+        const clearPolicies = async () => {
+          const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin)).expect(200)).body;
+          for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(204);
+        };
+        try {
+          await api().post(`/api/v1/admin/users/${id}/field-policies`).set(auth(admin))
+            .send({ resourceId: resId('order.lineplan'), fieldCode: 'startDate', accessLevel: 'READONLY', reason: 'Thử chính sách cột (test)' }).expect(200);
+          await denied(await tokenFor('test.lineplanstart', 'A01', TEST_PASSWORD), []);
+        } finally {
+          await clearPolicies();
+          await dropUser(id);
+        }
+
+        // Dòng dàn chuyền giữ nguyên (lỗi cũ: bỏ hết dòng chưa có số)
+        expect(await linesOf()).toEqual(before);
+
+        // A00: chặn ghi (AGGREGATE_READ_ONLY) chạy trước kiểm cột
+        const a00 = await tempUser('test.lineplana00', ['PLANNER'], ['A00']);
+        try {
+          await setRolePolicy('PLANNER', 'order.lineplan', 'startDate', 'READONLY');
+          const ro = await api().put(url).set(auth(await tokenFor('test.lineplana00', 'A00', TEST_PASSWORD))).send({ lines: [] }).expect(403);
+          expect(ro.body.error.code).toBe('AGGREGATE_READ_ONLY');
+        } finally {
+          await setRolePolicy('PLANNER', 'order.lineplan', 'startDate', null);
+          await dropUser(a00);
+        }
+        expect(await linesOf()).toEqual(before);
+
+        // Chỉ cột Ngày kết thúc SX không Sửa được (Ngày bắt đầu SX Sửa được): bỏ hết dòng vẫn được như trước bản sửa
+        try {
+          await setRolePolicy('PLANNER', 'order.lineplan', 'endDate', 'READONLY');
+          expect((await api().put(url).set(auth(t)).send({ lines: [] }).expect(200)).body.statusCode).toBe('PLANNED');
+        } finally {
+          await setRolePolicy('PLANNER', 'order.lineplan', 'endDate', null);
+        }
+      } finally {
+        // Cột Sửa được: bỏ hết dòng là thao tác hợp lệ, trả kế hoạch về chưa xếp chuyền
+        expect((await api().put(url).set(auth(t)).send({ lines: [] }).expect(200)).body.statusCode).toBe('PLANNED');
+      }
+    });
+
     it('Xếp chuyền: người chỉ sửa được một chuyền (xem được mọi chuyền nhờ vai trò khác) không xếp vượt SL kế hoạch, không làm mất trạng thái', async () => {
       const t = await tokenFor('kehoach.a', 'A01');
       const plan = (await api().get(`/api/v1/order/line-plans?pageSize=200&style=${FIXTURE_STYLE}`).set(auth(t))).body.items.find((p: any) => p.id === fixture.planId && p.lineCount === 0);

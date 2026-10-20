@@ -206,6 +206,10 @@ export class LinePlanService {
   async saveLines(user: AuthUser, id: number, dto: ScheduleDto) {
     const scope = scopeOf(user);
     await this.plans.assertWritable(scope);
+    // FieldPolicyInterceptor chỉ chặn khi body có startDate (bắt buộc ở mỗi dòng); `lines: []` (bỏ hết dòng dàn chuyền) không có, nên
+    // kiểm ở đây, trước khi đọc kế hoạch (403 không cho dò Id kế hoạch), như Cập nhật tỷ lệ cắt, Phân bổ màu cỡ
+    const level = (await this.fields.levels(scope.access, RESOURCE)).levels.get('startDate');
+    if (level && level !== 'EDITABLE') throw Errors.fieldReadonly(['startDate'], ['Ngày bắt đầu SX']);
     // Lịch theo ĐVCS của chính kế hoạch (không theo ĐVCS phiên): đúng cả khi tài nguyên đổi cách lọc ĐVCS. ĐVCS của kế hoạch
     // không sửa được, đọc trước transaction không lệch với lần khóa bên dưới
     const calendar = await this.catalogs.workCalendar((await this.plans.getById(scope, id, 'update')).BranchCode);

@@ -18,13 +18,14 @@ Kế hoạch phase mới ghi ở mục 1 theo khuôn ở [DEVELOPMENT_WORKFLOW](
 | Đưa `docs/` vào git làm mốc | Xong: commit `98d19db`, đã lên `origin/main` |
 | Giai đoạn 4: `AGENTS.md`, `CLAUDE.md`, 6 file ở `docs/`, file này; rút gọn `README.md`; sửa tài liệu module nói khác code | Xong, chưa commit |
 | T4: chuyển nội dung chỉ còn ở tài liệu cũ rồi xóa 59 file (`update_docs/01`, `02`, `03`, `14`, `docs/adr/*`, `docs/phases/*`, 11 file `thiet-ke`, `review/README.md`, `yeu-cau.md`, `bao-cao/*`) | Xong, chưa commit. Bảng "đã xóa → đọc ở đâu": [update_docs/README](../update_docs/README.md) |
-| Q49: dọn worktree, nhánh đã gộp | Xong: gỡ `MES-wt-511`, `MES-wt-512`; xóa 7 nhánh cục bộ đã gộp. `MES-wt-r4`, nhánh `fix-cut-ratio-qty` còn giữ tới khi commit T12 (bản sửa đã chép sang `main`); xong thì gỡ (worktree có thay đổi chưa commit trùng với `main`, phải `--force`) |
-| T12: sửa lỗi HIGH ở Cập nhật tỷ lệ cắt (`CutRatioService.updateColorSizes` kiểm mức cột `qty` trước khi đọc PO, kể cả `lines: []`) | Xong 20/10/2026 trên `main`, **chưa commit**. Lint, build backend qua; `phase5.spec.ts` 51/51 trên `MES_*_T514`; bài mới hỏng với code cũ. Review [t12-cap-nhat-ty-le-cat.md](../review/t12-cap-nhat-ty-le-cat.md): APPROVE WITH SUGGESTIONS, 3/4 LOW đã sửa, L3 hoãn (N10) |
+| Q49: dọn worktree, nhánh đã gộp | Xong: gỡ `MES-wt-511`, `MES-wt-512`, `MES-wt-r4`; xóa 8 nhánh cục bộ đã gộp (gồm `fix-cut-ratio-qty`, gỡ sau khi T12 commit). Repo chỉ còn nhánh `main` |
+| T12: sửa lỗi HIGH ở Cập nhật tỷ lệ cắt (`CutRatioService.updateColorSizes` kiểm mức cột `qty` trước khi đọc PO, kể cả `lines: []`) | Xong, commit `33888e8`. Review [t12-cap-nhat-ty-le-cat.md](../review/t12-cap-nhat-ty-le-cat.md) |
+| T17: sửa lỗi HIGH cùng loại ở Xếp chuyền (`LinePlanService.saveLines` kiểm mức cột `startDate` trước khi đọc kế hoạch, kể cả `lines: []`), theo mẫu T12 | Xong 20/10/2026 trên `main`. Lint, build backend qua; `phase5.spec.ts` 52/52 trên `MES_*_T514`; bài mới hỏng với code cũ. Review [t17-xep-chuyen-ngay-bat-dau.md](../review/t17-xep-chuyen-ngay-bat-dau.md): APPROVE WITH SUGGESTIONS, 3/4 LOW đã sửa, L1 gộp vào N10. Một lần chạy chung `sewing-plan.spec.ts` + `cutting-supply.spec.ts` hỏng 4 bài, không lặp lại (3 lần sau 21/21): NEEDS VERIFICATION |
 | Bộ database test trên máy chủ | Còn `MES_*_T514` (6 database) dùng cho các task sau; đã xóa `MES_*_T5R4`, `MES_*_Test` (20/10/2026, Tech Lead chọn) |
 | Giai đoạn 5: kiểm liên kết, tính nhất quán | Xong (kết quả trong báo cáo của phiên) |
 | T15: bổ sung tài liệu module còn thiếu so với code (`04`–`08`, `10`–`12`, `15`) | Xong 20/10/2026, chưa commit. Kết quả, điểm còn NEEDS VERIFICATION: mục 8.2 |
 
-Làm trên `main` theo chỉ đạo 19/10/2026 ("theo dõi trên nhánh main trước"). Đợt này không sửa source code, database, CI/CD.
+Làm trên `main` theo chỉ đạo 19/10/2026 ("theo dõi trên nhánh main trước"). Mục đích đợt này: chốt, chuẩn hóa source và tài liệu, không xây tính năng mới (Tech Lead 20/10/2026). Sửa code chỉ gồm các lỗi lệch quy tắc đã duyệt (T12, T17); không đổi database thật, CI/CD.
 
 ### 1.2 Việc tiếp theo đã duyệt, chưa làm
 
@@ -108,7 +109,7 @@ Thêm việc mới cho máy chủ: ghi ở đây, kèm migration, có dừng b�
 | Q19 | Vai trò Nhân sự có sửa được Loại phòng ban không? |
 | Q20 | Lịch tự đồng bộ BRAVO, OSM? |
 | Q21 | Lập kế hoạch xuất hàng cần thêm quyền xem `order.po`: đúng ý? |
-| Q22 | Đặt cột "Ngày bắt đầu SX" Chỉ đọc là khóa cả Xếp chuyền: có chủ ý? |
+| Q22 | Đặt cột "Ngày bắt đầu SX" Chỉ đọc là khóa cả Xếp chuyền: có chủ ý? Từ T17 máy chủ cưỡng chế đủ điều này (cả `lines: []`). Nếu không chủ ý thì phải đổi cùng lúc 3 chỗ: kiểm ở `LinePlanService.saveLines`, `canEdit` ở `LinePlanPage.tsx`, `startDate` bắt buộc trong `ScheduleLineDto` |
 | Q23 | Dàn chuyền mô phỏng chọn đơn theo Chi nhánh FOB: cần sửa? |
 | Q24 | Mã hàng bị Ẩn/Che thì 4 ô số liệu của Chuẩn bị SX hiện "–": đồng ý? |
 | Q25 | Bảng ở các màn Quản trị chuyển sang `DataGrid`? |
@@ -173,7 +174,7 @@ Chuyển từ kế hoạch lộ trình sau demo (`git show 98d19db:docs/phases/p
 | N7 | Khóa truy vấn của `SewingPlanPage.tsx` thiếu mã ĐVCS; hai màn Cắt làm mới cả nhóm `['order']` | Trái [10](../update_docs/10-giao-dien.md) mục 8.4 |
 | N8 | 6 route `DELETE` trả 204 | T7 |
 | N9 | Mã lỗi tạo ngoài `Errors` | T10 |
-| N10 | Kiểm mức cột trong service lặp lại ở `ColorSizeService.save`, `CutRatioService.updateColorSizes`, tên cột viết cứng | PROPOSED: hàm dùng chung ở `FieldPolicyService` (đọc tên cột từ `SysResourceField`); sửa nền tảng nên cần review riêng |
+| N10 | Kiểm mức cột trong service lặp lại ở `PoAllocationService.setFactory`, `ColorSizeService.save`, `CutRatioService.updateColorSizes`, `LinePlanService.saveLines`, tên cột viết cứng | PROPOSED: hàm dùng chung ở `FieldPolicyService` (đọc tên cột từ `SysResourceField`, `levels()` đã trả `fields`); sửa nền tảng nên cần review riêng |
 
 ## 7. Quyết định của đợt chuẩn hóa (Tech Lead, 19/10/2026): ghi ở đâu
 
@@ -202,7 +203,6 @@ Phát hiện khi rà code để viết tài liệu; chưa chạy thử từng tr
 
 | Mức | Vị trí | Vấn đề |
 |---|---|---|
-| Cao | `backend/src/modules/order/line-plan.service.ts` (`saveLines`, `PUT /order/line-plans/:id/lines`) | Cùng loại lỗi T12: `ScheduleDto.lines` nhận mảng rỗng, body `{ lines: [] }` không có khóa `startDate` nên `FieldPolicyInterceptor` cho qua. Người có `order.lineplan:update` mà Ngày bắt đầu SX không Sửa được (giao diện đã khóa cả màn) vẫn xóa được dòng dàn chuyền chưa có số (chưa cấp BTP, chưa có Kế hoạch may, chưa may) cùng phần giao màu cỡ, kế hoạch về `PLANNED`. Hướng sửa: kiểm mức cột `startDate` sau `assertWritable`, trước khi đọc kế hoạch (như T12). Liên quan Q22. Có từ trước, review T12 phát hiện |
 | Cao | `backend/scripts/sync-gen.ts` (nhánh `FULL`) | Nguồn chép toàn bộ chỉ chặn khi view trả 0 dòng, không có chốt "xóa quá 20%" |
 | Cao | `backend/src/platform/data/base.repository.ts` (`listAll`) | Xuất file các lưới cắt im lặng ở 10.000 dòng (trừ Phân bổ PO báo 422) |
 | Cao | `backend/src/modules/order/shipment.service.ts` (`draft`) | Số lượng ở popup không đi qua chính sách cột của cột nguồn; `/draft`, `/candidates` chỉ đòi `order.shipment:view` (Q34) |
