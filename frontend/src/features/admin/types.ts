@@ -9,6 +9,20 @@ export interface AdminUser {
   roleIds: number[];
   branchIds: number[];
   defaultBranchId: number | null;
+  /** Nhân viên của tài khoản (phase 5.18) */
+  employeeId: number | null;
+  /** null khi chưa gắn, hoặc người thao tác không tra được danh bạ nhân viên */
+  employee: AdminEmployee | null;
+}
+
+/** Người trong danh bạ nhân viên (hr.directory) */
+export interface AdminEmployee {
+  id: number;
+  code: string;
+  fullName: string;
+  departmentCode: string | null;
+  departmentName: string | null;
+  isActive: boolean;
 }
 
 export interface AdminRole {

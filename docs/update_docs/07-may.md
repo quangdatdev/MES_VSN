@@ -1,6 +1,6 @@
 # Module May: Kế hoạch chuẩn bị SX, Kế hoạch may
 
-File này mô tả module May đang có trong code: màn Kế hoạch chuẩn bị SX (phần đầu), màn Kế hoạch may (phase 5.16, phần cuối file), danh mục Cấu hình chuẩn bị SX, cách dòng kế hoạch được chép từ dàn chuyền của module Đơn hàng, API `/sewing/*` và database `MES_Sewing`.
+File này mô tả module May đang có trong code: màn Kế hoạch chuẩn bị SX (phần đầu), màn Kế hoạch may (phase 5.16), màn Phân cụm trưởng (phase 5.18, phần cuối file), danh mục Cấu hình chuẩn bị SX, cách dòng kế hoạch được chép từ dàn chuyền của module Đơn hàng, API `/sewing/*` và database `MES_Sewing`.
 Đọc khi sửa màn này, sửa danh mục bước chuẩn bị, hoặc đổi cấu trúc dàn chuyền bên module Đơn hàng (vì module May chép từ đó).
 Luật chung của `BaseRepository`, chính sách cột: [Phân quyền](04-phan-quyen.md). `SheetGrid`, `DataGrid`, `TreeSelect`, lọc theo cột: [Giao diện](10-giao-dien.md). Dàn chuyền, Xếp chuyền: [Đơn hàng](06-don-hang.md).
 
@@ -12,7 +12,8 @@ Màn Kế hoạch chuẩn bị SX theo dõi các bước chuẩn bị sản xu�
 |---|---|---|---|---|
 | Kế hoạch chuẩn bị SX | `/order/prep` (nhóm menu Quản trị đơn hàng) | `order.prep:view`, `:update`, `:export` | `frontend/src/features/sewing/PrepPlanPage.tsx`, `PrepSummary.tsx`, `WeekStrip.tsx`, `api.ts` | `backend/src/modules/sewing/sewing.controller.ts` (`PrepController`), `prep.service.ts`, `sewing.repositories.ts` |
 | Cấu hình chuẩn bị SX (danh mục bước) | `/admin/catalogs?c=PREP_STEP` (Quản trị › Danh mục hệ thống) | `admin.catalog:view`, `:create`, `:update` | `frontend/src/features/admin/PrepStepsPane.tsx` (gắn trong `CatalogsPage.tsx`) | `sewing.controller.ts` (`PrepStepController`), `prep-step.service.ts` |
-| Kế hoạch may (mục Kế hoạch may ở cuối file) | `/sewing/plan` (nhóm Quản trị xưởng may) | `sewing.plan:view`, `:create`, `:update` | `frontend/src/features/sewing/SewingPlanPage.tsx`, `sewingPlanRules.ts`, `api.ts` | `sewing.controller.ts` (`SewingPlanController`), `sewing-plan.service.ts`, `sewing-plan.repositories.ts`, `sewing-plan.dto.ts` |
+| Kế hoạch may (mục Kế hoạch may) | `/sewing/plan` (nhóm Quản trị xưởng may) | `sewing.plan:view`, `:create`, `:update` | `frontend/src/features/sewing/SewingPlanPage.tsx`, `sewingPlanRules.ts`, `api.ts` | `sewing.controller.ts` (`SewingPlanController`), `sewing-plan.service.ts`, `sewing-plan.repositories.ts`, `sewing-plan.dto.ts` |
+| Phân cụm trưởng (mục Phân cụm trưởng ở cuối file) | `/sewing/cluster` (nhóm Quản trị xưởng may) | `sewing.cluster:view`, `:update` | `frontend/src/features/sewing/ClusterLeaderPage.tsx`, `clusterLeaderRules.ts`, `api.ts` | `sewing.controller.ts` (`ClusterLeaderController`), `cluster-leader.service.ts`, `cluster-leader.repositories.ts`, `cluster-leader.dto.ts` |
 
 **Màn thuộc nhóm Đơn hàng, code và dữ liệu thuộc module May** (ADR 0009 mục 6):
 - Menu nhóm theo tiền tố mã tài nguyên, nên tài nguyên là `order.prep` và đường dẫn `/order/prep`. Migration `backend/migrations/MES_Core/0004_move_prep_to_order.sql` đổi mã cũ `sewing.prep` sang `order.prep` tại chỗ (giữ Id, nên quyền và chính sách cột đã cấp không mất).
@@ -23,9 +24,9 @@ Màn Kế hoạch chuẩn bị SX theo dõi các bước chuẩn bị sản xu�
 
 | File | Vai trò |
 |---|---|
-| `backend/src/modules/sewing/sewing.module.ts` | Khai module: 3 controller (`PrepController`, `PrepStepController`, `SewingPlanController`); import `OrderModule` để dùng `ScheduleFeed` (đọc dàn chuyền) và `LineDayPlanGuards` (`SewingPlanService` đăng ký hàm tra số đã lập ở Kế hoạch may lúc khởi động) |
+| `backend/src/modules/sewing/sewing.module.ts` | Khai module: 4 controller (`PrepController`, `PrepStepController`, `SewingPlanController`, `ClusterLeaderController`); import `OrderModule` để dùng `ScheduleFeed` (đọc dàn chuyền) và `LineDayPlanGuards` (`SewingPlanService` đăng ký hàm tra số đã lập ở Kế hoạch may lúc khởi động) |
 | `backend/src/modules/sewing/sewing.db.ts` | Kết nối riêng tới `MES_Sewing` (tên lấy từ `DB_SEWING_NAME`, mặc định `MES_Sewing`) |
-| `backend/src/modules/sewing/sewing.types.ts` | Kiểu Kysely của 5 bảng (`PrepStep`, `SewingPrep`, `SewingPrepStep`, `SewingDayPlan`, `SewingDayPlanItem`) |
+| `backend/src/modules/sewing/sewing.types.ts` | Kiểu Kysely của 8 bảng (`PrepStep`, `SewingPrep`, `SewingPrepStep`, `SewingDayPlan`, `SewingDayPlanItem`, `SewingTeam`, `SewingTeamLeader`, `SewingTeamCluster`) |
 | `backend/src/modules/sewing/sewing.dto.ts` | DTO, bộ kiểm đầu vào, mã trạng thái `PREP_STATUSES` |
 | `backend/scripts/sewing-data.ts` | `hasSewingDb`, `clearSewingPrep`, `clearSewingDayPlan`, `dayPlanLines` cho các script `seed`, `reset:demo`, `load:bravo`, `sim:board` |
 | `frontend/src/routes/registry.tsx` | Đăng ký `/order/prep` → `features/sewing/PrepPlanPage`, `/sewing/plan` → `features/sewing/SewingPlanPage` |
@@ -482,3 +483,93 @@ Khóa ngầm (`softkeys.json`): `BranchCode` của hai bảng → `MES_Core.SysB
 - Cập nhật, Chốt, Hủy chốt chung quyền Sửa: chưa tách người chốt.
 - Hai database không có transaction chung: hai bên kiểm lại sau khi ghi, chờ nhau thì Xếp chuyền hết giờ chờ, trả 409 (quyết định 14.2).
 - Tổ SX bị Che với người xem: mã chuyền là `***` nên giao diện không gửi phiên bản (`versions`), máy chủ không phát hiện người khác vừa ghi cùng chuyền cùng ngày (người lưu sau thắng; chuyền đã chốt vẫn bị chặn); hộp Thêm dòng không chọn được chuyền (review 5.16 N1). Không Che Tổ SX với vai trò được Sửa Kế hoạch may.
+
+## Phân cụm trưởng (phase 5.18)
+
+Tổ trưởng chọn cụm trưởng cho từng cụm công đoạn của một mã hàng ở tổ mình. Đầu vào: Phân tổ trưởng, Cập nhật cụm, Phân cụm (của GSD); đầu ra: cụm trưởng của từng cụm, cho màn Nhập năng suất cụm sau này. Màn theo ảnh `docs/screens/phan-cum-truong.png` (bố cục theo ảnh, màu và chữ theo design system). Kế hoạch, các điểm người dùng chốt: [Trạng thái](../current/STATUS.md) mục 1.3. Quyết định: [Quyết định](13-quyet-dinh.md) mục 10.7, 17.
+
+| Màn | Đường dẫn | Quyền | Frontend | Backend |
+|---|---|---|---|---|
+| Phân cụm trưởng | `/sewing/cluster` (nhóm Quản trị xưởng may, menu đánh dấu điện thoại) | `sewing.cluster:view`, `:update` | `frontend/src/features/sewing/ClusterLeaderPage.tsx`, `clusterLeaderRules.ts`, `api.ts` | `sewing.controller.ts` (`ClusterLeaderController`), `cluster-leader.service.ts`, `cluster-leader.repositories.ts`, `cluster-leader.dto.ts` |
+
+**Dữ liệu GSD đang giả lập.** Tổ, tổ trưởng, cụm là bản chép dữ liệu GSD ở `MES_Sewing` (cột `SourceSystem`, `SourceKey`, `SourceSyncedAt`). Tới khi nối GSD, `npm run seed` (máy có dữ liệu mẫu) sinh dữ liệu giả lập `SourceSystem = 'DEMO'` (mục Dữ liệu mẫu dưới). Khi nối GSD: đồng bộ GSD vào `MES_Sync`, rồi bước chép của module May (qua `SourceFeedService`) ghi vào ba bảng này, cập nhật cột chép, giữ cột cụm trưởng; màn và luồng lưu không đổi. Phần nối chưa làm: đối chiếu mã tổ GSD với mã bộ phận MES, nhân viên GSD với `MES_Hr.Employee.Id`.
+
+### Ai thấy gì, ai lưu được
+
+| Người đăng nhập | Ô Chọn tổ | Lưu |
+|---|---|---|
+| Tài khoản gắn nhân viên (`SysUser.EmployeeId`) là tổ trưởng của ít nhất một tổ trong phạm vi xem | Chỉ các tổ người đó là tổ trưởng | Được, ở tổ của mình, khi có `sewing.cluster:update`, tổ trong phạm vi sửa, không ở `A00` |
+| Còn lại (chưa gắn nhân viên, không là tổ trưởng tổ nào; Giám đốc, Kế hoạch, Quản trị theo ma trận mẫu) | Mọi tổ trong phạm vi xem | Không; màn nêu lý do máy chủ trả (`readOnlyReason`) |
+
+- Phạm vi xem, sửa là phân quyền chung: ĐVCS của phiên (`A00`: mọi ĐVCS, chỉ đọc), phạm vi chuyền (`LINE → LineCode`). Tổ trưởng theo dữ liệu Phân tổ trưởng chỉ thu hẹp thêm, không mở rộng: tổ trưởng của tổ ngoài phạm vi chuyền thì không thấy tổ đó.
+- Tổ ngoài các tổ người đó thấy (đoán Id) trả 404 như không có.
+- Gắn, gỡ nhân viên cho tài khoản ở Quản trị › Người dùng ([Quản trị hệ thống](05-quan-tri-he-thong.md)); có hiệu lực ở lần gọi kế tiếp (không cache).
+
+### Màn hình
+
+- Dải trên theo ảnh: nhãn bên trái, ô chọn kéo hết bề ngang. **Chọn tổ**: tên tổ theo cây sơ đồ tổ chức (tên chuyền, `OrgService.lineNamer`; `A00` kèm tên ĐVCS); chỉ có một tổ thì chọn sẵn. **Chọn mã hàng**: mã hàng đã phân cụm cho tổ, nhãn "Mã hàng - Mô tả GSD" (ví dụ "AGFL-2906 - Phức tạp/S27"), bên phải số cụm đã phân / số cụm; tổ chỉ có một mã thì chọn sẵn. Dòng **Tổ trưởng** nêu tên, mã các tổ trưởng của tổ. Tổ, mã hàng ghi lên URL (`?line=<mã tổ>&style=<mã hàng>`); đổi khi còn người chọn chưa lưu thì hỏi lại.
+- Khung **Danh sách cụm** (kèm "Đã phân n/m cụm"): bảng STT · Tên cụm · Tên cụm trưởng, cụm theo thứ tự trên chuyền (`SortOrder`). Ô Tên cụm trưởng là ô chọn có tìm: gõ mã hoặc tên (không dấu) để tìm trên máy chủ, chỉ hỏi khi mở ô; người đang chọn luôn có trong danh sách; nhãn "Tên - Mã - Phòng ban" theo hồ sơ hiện tại (người đã nghỉ việc ghi kèm "(đã nghỉ việc)"); nút × bỏ cụm trưởng. Một người làm cụm trưởng nhiều cụm được.
+- Dòng vừa đổi chưa lưu tô nền cam nhạt. Nút **Lưu** dính đáy vùng cuộn (thấy được trên màn laptop), khóa kèm lý do khi chưa đổi gì hoặc chỉ xem; **Bỏ thay đổi** hỏi lại. Rời màn khi còn người chọn chưa lưu thì hỏi (`useLeaveGuard`).
+- Chỉ xem: cụm trưởng hiện dạng chữ, cụm chưa có hiện "Chưa phân", hộp thông tin nêu lý do. Không có quyền tra Danh bạ nhân viên mà sửa được: báo chỉ bỏ được cụm trưởng.
+- Cột Tên cụm trưởng bị Ẩn: bảng không có cột; bị Che: ô hiện `***`, không sửa.
+- Điện thoại: dải trên xếp dọc; mỗi cụm một khối (số, tên cụm, ô chọn rộng hết khung); nút Lưu dính đáy.
+
+### API `/sewing/cluster`
+
+`ClusterLeaderController`, `@FieldResource('sewing.cluster')`. Tiền tố `/api/v1`.
+
+| Phương thức, đường dẫn | Quyền | Nội dung |
+|---|---|---|
+| `GET /sewing/cluster/teams` | `view` | `{ linked, leader, items: [{ id, branchCode, lineCode, lineName, canEdit }] }`: `linked` tài khoản đã gắn nhân viên, `leader` là tổ trưởng ít nhất một tổ (khi đó `items` chỉ có tổ của mình) |
+| `GET /sewing/cluster/styles?teamId=` | `view` | `{ items: [{ styleCode, styleLabel, clusters, assigned }] }`; `assigned` null khi cột Tên cụm trưởng bị Ẩn, Che. Tổ ngoài các tổ người đó thấy: 404 |
+| `GET /sewing/cluster?teamId=&style=` | `view` | `{ team, teamLeaders: [{ id, code, fullName }], styleCode, styleLabel, canEdit, readOnlyReason, canSearch, items: [{ id, code, name, sortOrder, leaderEmployeeId, leaderCode, leaderName, leaderDepartment, leaderActive }] }`. Cột bị Ẩn, Che thì không có các khóa `leaderCode`, `leaderName`, `leaderDepartment`, `leaderActive`. Mã hàng chưa phân cụm cho tổ: 404 |
+| `GET /sewing/cluster/employees?teamId=&q=` | `update` | `{ canSearch, items: [{ id, code, fullName, departmentName }] }`: tối đa 30 nhân viên đang làm khớp mã, tên (không dấu), người của ĐVCS của tổ trước; trống thì danh sách đầu. Không có `hr.directory:view` thì `canSearch = false`, rỗng |
+| `PUT /sewing/cluster` | `update` | `{ teamId, style, items: [{ id, leaderEmployeeId, previous }] }` (1–200 cụm; `leaderEmployeeId`, `previous` bắt buộc có mặt, `null` là không có cụm trưởng); trả `{ saved }` số cụm thật sự đổi |
+
+**Cách lưu** (`ClusterLeaderService.save`), không ghi gì khi có lỗi:
+1. `A00`: 403 `AGGREGATE_READ_ONLY`. Gửi trùng cụm: 422. Tài khoản chưa gắn nhân viên: 403. Người lưu là tổ trưởng của tổ khác (không thấy tổ này): 404 như lúc đọc. Chọn người mà không có `hr.directory:view`: 403.
+2. Một transaction `MES_Sewing`: khóa dòng tổ (UPDLOCK) trong phạm vi sửa (ngoài phạm vi: 404), người lưu phải là tổ trưởng của tổ (không: 403 "Chỉ tổ trưởng của tổ này mới phân cụm trưởng được."), đọc cụm của đúng mã hàng đang lưu (`SewingTeamClusterRepository.ofStyle`). Khóa dòng tổ đủ cho hai lần lưu cùng tổ xếp hàng; không khóa mọi cụm của tổ (dữ liệu Phân cụm tích lũy theo mã hàng). Bước chép GSD sau này phải khóa dòng tổ trước khi ghi cụm (thứ tự tổ → cụm).
+3. Cụm không thuộc mã hàng của tổ: 404 kèm `details.ids`. Cụm trưởng đang lưu khác `previous` và khác người mới (người khác vừa đổi): 409 kèm `details.cells: [{ id, leaderEmployeeId }]`; màn tải lại, ô đó lấy người mới, giữ phần chọn của cụm khác.
+4. Người mới phải có trong danh bạ và đang làm việc: không thì 422 nêu tên cụm. Cụm gửi lên trùng người đang lưu thì bỏ qua.
+5. Ghi `LeaderEmployeeId` và mã chụp `LeaderEmployeeCode` qua `SewingTeamClusterRepository.updateRow`; sau khi commit ghi nhật ký mỗi cụm đổi một dòng `SysAuditLog` (`EntityType = 'SewingTeamCluster'`, `UPDATE`, mã tổ, mã hàng, mã cụm, người cũ, mới).
+
+### Phân quyền và chính sách cột
+
+- `sewing.cluster`: `BRANCH`, bảng nguồn `SewingTeam`, chiều `FACTORY → BranchCode`, `LINE → LineCode`; hai bảng con theo dòng tổ (`ChildRepository`). Không dùng Thêm, Xóa (tổ, cụm do hệ thống chép). Ma trận mẫu giữ như từ phase 4: Quản trị Xem; Giám đốc Xem, Xuất; Kế hoạch Xem; Trưởng chuyền Xem, Thêm, Sửa; Toàn quyền đủ.
+- Cột đăng ký: chỉ `leaderEmployeeId` (Tên cụm trưởng). Gửi khóa này khi cột không ở mức Sửa được: 403 `FIELD_READONLY`.
+- Ô Tên cụm trưởng tra nhân viên qua danh bạ nhân viên (`hr.directory`, [Nhân sự](08-nhan-su.md)), theo quyền của người hỏi.
+
+### Database (`MES_Sewing/0005_cluster_leader.sql`)
+
+| Bảng | Cột chính | Ràng buộc, chỉ mục |
+|---|---|---|
+| `SewingTeam` (tổ: một chuyền may) | `Id`, `LineCode VARCHAR(20)`, `SourceSystem VARCHAR(10)` (`DEMO`, `GSD`), `SourceKey NVARCHAR(100)`, `SourceSyncedAt`, `BranchCode` + bộ kiểm toán | `UNIQUE (Id, BranchCode)`, `UNIQUE (BranchCode, LineCode)`, `CK_SewingTeam_Source` |
+| `SewingTeamLeader` (tổ trưởng) | `Id`, `SewingTeamId`, `EmployeeId` (`MES_Hr.Employee.Id`), `SourceKey`, `SourceSyncedAt`, `BranchCode` + bộ kiểm toán | FK ghép tới tổ, xóa theo tổ; `UNIQUE (SewingTeamId, EmployeeId)`; `IX_SewingTeamLeader_Employee (EmployeeId) INCLUDE (SewingTeamId, BranchCode)`, `IX_SewingTeamLeader_Branch` |
+| `SewingTeamCluster` (cụm của mã hàng ở tổ, cùng cụm trưởng) | `Id`, `SewingTeamId`, `StyleCode NVARCHAR(120)`, `StyleLabel NVARCHAR(150)`, `Code NVARCHAR(50)`, `Name NVARCHAR(150)`, `SortOrder`, `SourceKey`, `SourceSyncedAt`, `LeaderEmployeeId`, `LeaderEmployeeCode VARCHAR(30)`, `BranchCode` + bộ kiểm toán | FK ghép tới tổ, xóa theo tổ; `UNIQUE (SewingTeamId, StyleCode, Code)`; `CK_SewingTeamCluster_Leader` (có người thì có mã chụp); `IX_SewingTeamCluster_Branch (BranchCode, SewingTeamId, StyleCode)`, `IX_SewingTeamCluster_Leader` (có lọc) |
+
+Khóa ngầm (`softkeys.json`): `BranchCode` của ba bảng → `MES_Core.SysBranch.Code`; `SewingTeam.LineCode` → `MES_Hr.Department.Code` (cùng ĐVCS); `SewingTeamLeader.EmployeeId`, `SewingTeamCluster.LeaderEmployeeId` (cho phép `NULL`) → `MES_Hr.Employee.Id`.
+
+### Dữ liệu mẫu và script
+
+- `npm run seed` bước 14 (`backend/scripts/cluster-data.ts`, `seedClusterDemo`; định nghĩa `clusterDemo` ở `seed-data.ts`), chỉ khi có dữ liệu mẫu, chỉ thêm phần còn thiếu (review 5.18 M2, M3):
+  - 21 nhân viên mẫu theo mã cố định (`NV2001`–`NV2003` tổ trưởng; `NV21xx` công nhân ở `A01-L01`..`L03`), chỉ khi bảng nhân viên chỉ có nhân viên do seed sinh (`NV1001`… của dữ liệu mẫu và các mã này); có người nhập thật thì không thêm, in cảnh báo;
+  - gắn `truongchuyen.a` (NV2001), `truongchuyen.b` (NV2002), `totruong.a` (NV2003) khi tài khoản chưa gắn ai, nhân viên chưa gắn tài khoản khác, và nhân viên vừa tạo ở lần chạy này, tài khoản vừa tạo, hoặc `--sync-matrix`: quản trị đã gỡ thì chạy lại không gắn lại;
+  - mỗi chuyền mẫu (mã khai ở `seed-data.ts`, không gồm chuyền người dùng thêm) đang dùng của ĐVCS mẫu chưa có tổ: tổ, tổ trưởng chỉ theo `clusterDemo.teamLeaders` (tổ khác không có tổ trưởng), 3 mã hàng (mã đã xếp vào chuyền ở Xếp chuyền, mới nhất trước; thiếu thì `<mã chuyền>-MH<n>`) × 8–10 cụm theo tên ảnh mẫu; tổ của tài khoản mẫu có sẵn cụm trưởng cho 3 cụm đầu của mã đầu.
+  - Máy chưa có `MES_Sewing/0005` hoặc `MES_Hr` thì bỏ qua kèm cảnh báo.
+- `npm run reset:demo -- --yes`: gỡ nhân viên khỏi mọi tài khoản, xóa toàn bộ tổ (tổ trưởng, cụm, cụm trưởng xóa theo) bằng `clearClusterData` trước khi xóa nhân sự (Id nhân viên đánh số lại); seed nạp lại bản mẫu. `load:bravo`, `sim:board` không đụng tới.
+- Máy chủ chạy `npm run migrate` không có dữ liệu mẫu: không có tổ nào, màn báo "chưa có tổ nào có dữ liệu Phân cụm" tới khi nối GSD.
+
+### Test
+
+| File | Nội dung chính |
+|---|---|
+| `backend/test/cluster-leader.spec.ts` | Tổ trưởng chỉ thấy tổ mình, giao phạm vi chuyền, đoán Id tổ khác 404 (đọc và lưu); người không phải tổ trưởng xem mọi tổ kèm lý do; mã hàng, thứ tự cụm, tổ trưởng; tìm nhân viên (chỉ người đang làm, không dấu, chỉ xem thì 403); lưu (Id, mã chụp, chỉ cụm đổi, nhật ký, bỏ cụm trưởng, gửi lại không đổi); 409, 422 (đã nghỉ, không có, gửi trùng, thiếu khóa), 404 cụm ngoài mã hàng, tổ; chặn không phải tổ trưởng, chưa gắn nhân viên, chỉ Xem, `A00`; gỡ nhân viên có hiệu lực ngay; chính sách cột Chỉ đọc, Ẩn, Che; không có quyền danh bạ; gắn nhân viên ở Quản trị › Người dùng (một nhân viên một tài khoản: 409); seed chạy lại không thêm gì, không gắn lại tài khoản đã gỡ |
+| `frontend/src/test/cluster-leader.test.tsx` | Luật (nhãn người, giữ phần chọn dở khi tải lại, bỏ khi người khác vừa đổi, thân lệnh, cột Che, sau khi lưu, bỏ thay đổi); màn (chọn sẵn tổ, bảng theo ảnh, chọn người rồi Lưu gửi đúng, chỉ xem nêu lý do, cột Ẩn, chưa chọn mã hàng); hộp thoại gắn nhân viên |
+
+### Giới hạn hiện tại
+
+- Dữ liệu tổ, tổ trưởng, cụm là giả lập; chưa nối GSD, chưa có bảng đối chiếu mã.
+- Mỗi cụm một cụm trưởng hiện tại, không có ngày hiệu lực; lịch sử xem ở Nhật ký hệ thống.
+- Menu hiện theo quyền `sewing.cluster:view`, không ẩn theo dữ liệu tổ trưởng.
+- Tổ trưởng vắng thì không ai phân cụm trưởng thay được (kể cả Toàn quyền); người vừa là tổ trưởng vừa có vai trò xem rộng chỉ thấy tổ mình: chờ người dùng chốt ([Trạng thái](../current/STATUS.md)).
+- Chưa có Xuất file.

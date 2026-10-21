@@ -87,7 +87,7 @@ Chi tiết từng thành phần: [10 Giao diện](update_docs/10-giao-dien.md).
 | `catalog` (toàn cục) | API `/admin/catalogs/*`: danh mục, Nhà máy SX, ca, Lịch làm việc | `CatalogLookupService`, `factory-list.ts`, `work-calendar.ts` |
 | `sync` | Đồng bộ BRAVO, OSM vào `MES_Sync`; API `/admin/sync/*` | Chỉ nền tảng dùng (module bị lint chặn) |
 | `feed` (toàn cục) | Cổng chỉ đọc dữ liệu đã chép cho module; đăng ký việc chạy sau đồng bộ | `SourceFeedService` |
-| `org` (toàn cục) | Chuyền may (nguồn do module đăng ký), tên người dùng | `OrgService`, `LineSource`, `UserDirectoryService` |
+| `org` (toàn cục) | Chuyền may, danh bạ nhân viên (nguồn do module đăng ký); tên, nhân viên của người dùng | `OrgService`, `LineSource`, `UserDirectoryService`, `EmployeeDirectoryService`, `EmployeeSource` |
 | `me` | API `/me/*`: thông tin, menu, quyền, chính sách cột của phiên | – |
 | `audit` (toàn cục) | Ghi `SysAuditLog` | `AuditService` |
 | `export` (toàn cục) | Xuất CSV theo chính sách cột | `ExportService` |
@@ -99,9 +99,9 @@ Chi tiết từng thành phần: [10 Giao diện](update_docs/10-giao-dien.md).
 | Module | Database | Controller | Xuất cho module khác | Tài liệu |
 |---|---|---|---|---|
 | `order` | `MES_Order` | `order.controller.ts` (`/order/*`, 48 route) | `ScheduleFeed`, `ShipmentPlanFeed`, `ShipmentPlanDeleteGuards`, `LineColorSizeFeed`, `LineSupplyGuards`, `LineDayPlanGuards` (`order.module.ts`) | [06](update_docs/06-don-hang.md) |
-| `sewing` | `MES_Sewing` | `sewing.controller.ts` (`/sewing/*`, 15 route) | – | [07](update_docs/07-may.md) |
+| `sewing` | `MES_Sewing` | `sewing.controller.ts` (`/sewing/*`, 20 route) | – | [07](update_docs/07-may.md) |
 | `cutting` | `MES_Cutting` | `cutting.controller.ts` (`/cutting/progress`, `/cutting/supply`, 17 route) | – | [15](update_docs/15-cat.md) |
-| `hr` | `MES_Hr` | `hr.controller.ts` (`/hr/*`, 20 route) | Không xuất; đăng ký `HrLineSource` vào `OrgService` | [08](update_docs/08-nhan-su.md) |
+| `hr` | `MES_Hr` | `hr.controller.ts` (`/hr/*`, 20 route) | Không xuất; đăng ký `HrLineSource` vào `OrgService`, `HrEmployeeSource` vào `EmployeeDirectoryService` | [08](update_docs/08-nhan-su.md) |
 
 Mỗi module theo khuôn: `<module>.module.ts`, `<module>.controller.ts`, `*.service.ts`, `<module>.repositories.ts`, `<module>.dto.ts`, `<module>.types.ts` (kiểu bảng), `<module>.db.ts` (kết nối riêng, tự đóng khi tắt ứng dụng), migration ở `backend/migrations/MES_<Module>/`. Số route đếm từ decorator trong controller (19/10/2026).
 
@@ -115,7 +115,7 @@ flowchart LR
   sewing --> platform
   cutting --> platform
   hr --> platform
-  hr -. đăng ký LineSource .-> platform
+  hr -. đăng ký LineSource, EmployeeSource .-> platform
   sewing -. đăng ký kiểm tra .-> order
   cutting -. đăng ký kiểm tra .-> order
 ```
@@ -125,6 +125,7 @@ Mũi tên liền là import; mũi tên chấm là **đăng ký ngược**: modul
 | Đăng ký ngược | Ai đăng ký | Vào đâu | Để làm gì |
 |---|---|---|---|
 | `LineSource` | `hr` (`HrLineSource.onModuleInit`) | `OrgService.registerSource` | Nền tảng đọc chuyền may mà không import module Nhân sự |
+| `EmployeeSource` | `hr` (`HrEmployeeSource.onModuleInit`) | `EmployeeDirectoryService.registerSource` | Module May (Tên cụm trưởng), Quản trị (gắn nhân viên cho tài khoản) tra danh bạ nhân viên theo quyền `hr.directory` của người hỏi (phase 5.18, [13](update_docs/13-quyet-dinh.md) mục 10.7) |
 | `ShipmentPlanDeleteGuards` | `cutting` (`CuttingProgressService.onModuleInit`) | `order` | Chặn xóa kế hoạch xuất hàng đã có số cắt |
 | `LineSupplyGuards` | `cutting` (`CuttingSupplyService.onModuleInit`) | `order` | Chặn giảm phần giao dưới số BTP đã cấp |
 | `LineDayPlanGuards` | `sewing` (`SewingPlanService`) | `order` | Chặn bỏ, đổi chuyền, giảm dòng dàn chuyền đã có Kế hoạch may |
@@ -139,7 +140,7 @@ Luật import cưỡng chế bằng `no-restricted-imports` ở `backend/eslint.
 | `src/modules/hr/**` | – | `order`, `sewing`, `cutting`, `platform/sync` |
 | `src/platform/**` | – | Mọi thứ trong `modules` |
 
-Module dùng thành phần công khai của nền tảng (đếm import trong `backend/src/modules`): `data/base.repository`, `auth/auth.types`, `audit/audit.service`, `data/transaction`, `catalog/catalog-lookup.service`, `permission/field-policy.service`, `data/column-filter`, `export/export.service`, `org/org.service`, `data/resource-registry`, `feed/source-feed.service`, `database/db`, `catalog/factory-list`, `auth/decorators`, `org/user-directory.service`, `permission/permission.service`, `permission/branch.service`, `catalog/work-calendar`, `org/line-source`. Không module nào import `platform/sync` hay đọc thẳng `CORE_DB`.
+Module dùng thành phần công khai của nền tảng (đếm import trong `backend/src/modules`): `data/base.repository`, `auth/auth.types`, `audit/audit.service`, `data/transaction`, `catalog/catalog-lookup.service`, `permission/field-policy.service`, `data/column-filter`, `export/export.service`, `org/org.service`, `org/employee-directory.service`, `org/employee-source`, `data/resource-registry`, `feed/source-feed.service`, `database/db`, `catalog/factory-list`, `auth/decorators`, `org/user-directory.service`, `permission/permission.service`, `permission/branch.service`, `catalog/work-calendar`, `org/line-source`. Không module nào import `platform/sync` hay đọc thẳng `CORE_DB`.
 
 Frontend không có luật import: `features/admin` import `features/hr`, `features/sewing`. Màn Cắt, May không còn import `features/order`: phần dùng chung nằm ở `components`, `lib`, `shell` (T9, 21/10/2026; xem mục 8).
 
@@ -201,7 +202,7 @@ Bảng của từng database: tài liệu module (04, 05 cho `MES_Core`; 06, 07,
 ### 6.2 Migration
 
 - File `backend/migrations/<Database>/NNNN_ten.sql`, chạy bằng `backend/scripts/migrate.ts` theo thứ tự tên; mỗi file một transaction, tách lô theo `GO`; tên file đã chạy ghi ở `dbo.__MigrationHistory` của database đó, không có checksum, không có migration lùi.
-- Danh sách file dưới đây (19/10/2026: `MES_Core` 14 file, `MES_Order` 9, `MES_Sewing` 4, `MES_Cutting` 3, `MES_Hr` 2, `MES_Sync` 7). Thêm migration thì thêm dòng vào bảng này; cột, bảng chi tiết ở tài liệu module.
+- Danh sách file dưới đây (21/10/2026: `MES_Core` 17 file, `MES_Order` 9, `MES_Sewing` 5, `MES_Cutting` 3, `MES_Hr` 2, `MES_Sync` 7). Thêm migration thì thêm dòng vào bảng này; cột, bảng chi tiết ở tài liệu module.
 
 | Database | File | Nội dung |
 |---|---|---|
@@ -220,6 +221,8 @@ Bảng của từng database: tài liệu module (04, 05 cho `MES_Core`; 06, 07,
 | | `0013_grant_cutting_supply` | Máy đã cài: cấp `cutting.supply` Thêm, Sửa, Xóa, Xuất cho vai trò hệ thống Kế hoạch khi vai trò còn quyền Xem (như `0012`); nhật ký `ROLE_PERMISSIONS`; tăng phiên bản quyền khi có cấp. Bảng nguồn `CuttingSupply` do seed đặt. Database chưa seed: không làm gì |
 | | `0014_work_calendar_rounding` | Cột `SysWorkCalendar.ProductionRoundUpFrom`: ngưỡng làm tròn Số ngày SX (5.12.3) |
 | | `0015_mask_cutting_progress_customer` | Máy đã cài: chính sách cột Che `customerName` của `cutting.progress` cho vai trò hệ thống Trưởng chuyền khi vai trò chưa có chính sách cho cột này (T16, Q51); nhật ký `ROLE_FIELD_POLICY`; tăng phiên bản quyền khi có thêm. Database chưa seed: không làm gì |
+| | `0016_user_employee` | Cột `SysUser.EmployeeId` (nhân viên của tài khoản, khóa ngầm tới `MES_Hr.Employee.Id`), chỉ mục có lọc (phase 5.18). Chạy được trước khi deploy |
+| | `0017_user_employee_unique` | Chỉ mục `SysUser.EmployeeId` thành duy nhất có lọc (`UX_SysUser_EmployeeId`): một nhân viên gắn tối đa một tài khoản (phase 5.18, review M4). Chạy được trước khi deploy |
 | `MES_Order` | `0001_order_init` | Bảng đơn hàng, PO, màu cỡ, kế hoạch xuất hàng, xếp chuyền; khóa ngoại ghép `(…, BranchCode)` |
 | | `0002_order_owner_index` | Chỉ mục `CreatedBy` cho phạm vi "do mình tạo" |
 | | `0003_order_bravo_source` | Nhận dữ liệu BRAVO: nới mã hàng, tên màu; khóa nguồn |
@@ -233,6 +236,7 @@ Bảng của từng database: tài liệu module (04, 05 cho `MES_Core`; 06, 07,
 | | `0002_sewing_prep_source` | Nhận diện dòng dàn chuyền nguồn chắc hơn; chỉ mục khóa ngầm |
 | | `0003_sewing_day_plan` | Kế hoạch may: `SewingDayPlan` (một chuyền, một ngày, trạng thái chốt; `LineCode NVARCHAR(20)`), `SewingDayPlanItem` (một dòng dàn chuyền trong ngày: số nhập và bản chụp từ Xếp chuyền; xóa theo cha) |
 | | `0004_sewing_day_plan_item_created_by` | Chỉ mục khóa ngầm `SewingDayPlanItem.CreatedBy` |
+| | `0005_cluster_leader` | Phân cụm trưởng (phase 5.18): `SewingTeam` (tổ, bản chép GSD), `SewingTeamLeader` (tổ trưởng), `SewingTeamCluster` (cụm của mã hàng ở tổ, cụm trưởng); cột nguồn `SourceSystem`, `SourceKey`, `SourceSyncedAt`; xóa theo tổ |
 | `MES_Cutting` | `0001_cutting_progress` | `CuttingPlan` (bản chép đầu kế hoạch; mất nguồn mà còn số cắt thì `ShipmentPlanId = NULL`, `SourceDeletedAt`), `CuttingPlanColorSize`, `CuttingPlanDaily` (một dòng mỗi kế hoạch, màu, cỡ, ngày; `Qty > 0`); khóa ngoại ghép `(CuttingPlanId, BranchCode)`: bảng màu cỡ chép xóa theo cha, bảng số cắt không (lỡ xóa kế hoạch còn số cắt thì database từ chối). Database phải cùng collation với `MES_Core`, `MES_Order` |
 | | `0002_cutting_supply` | `CuttingSupply` (lệnh cấp BTP, một lệnh mỗi ĐVCS, Ngày cấp, mã hàng; số lệnh theo ĐVCS và năm), `CuttingSupplyLine` (số cấp theo chuyền, màu, cỡ; `Qty > 0`; xóa theo lệnh) |
 | | `0003_cutting_supply_indexes` | Chỉ mục `CuttingSupply (CreatedBy)`, `(ConfirmedBy)` (có lọc NOT NULL), `CuttingPlan (BranchCode, StyleCode)` |
@@ -252,7 +256,7 @@ Bảng của từng database: tài liệu module (04, 05 cho `MES_Core`; 06, 07,
 ### 6.3 Quan hệ giữa các database
 
 - Khóa ngoại vật lý chỉ trong cùng database. Cột trỏ sang database khác là **khóa ngầm**, khai ở `backend/migrations/softkeys.json` (nguồn duy nhất của danh sách), có chỉ mục, kiểm bằng `npm run check:softkeys -w backend` (chỉ đọc, thoát mã 1 khi có bản ghi mồ côi).
-- Các loại khóa ngầm đang có: `BranchCode` của mọi bảng theo ĐVCS → `MES_Core.SysBranch.Code`; `CreatedBy`, `ModifiedBy`, `ConfirmedBy`, `LockedBy` → `MES_Core.SysUser.Id`; `LineCode` → `MES_Hr.Department.Code` (cùng ĐVCS); bản chép của module May, Cắt → `MES_Order.ShipmentPlan.Id`, `ShipmentPlanLine.Id` (cùng ĐVCS); `SalesOrder.ProductionFactoryCode` → `MES_Core.SysProductionFactory.Code` (danh sách mã).
+- Các loại khóa ngầm đang có: `BranchCode` của mọi bảng theo ĐVCS → `MES_Core.SysBranch.Code`; `CreatedBy`, `ModifiedBy`, `ConfirmedBy`, `LockedBy` → `MES_Core.SysUser.Id`; `LineCode` → `MES_Hr.Department.Code` (cùng ĐVCS); `EmployeeId`, `LeaderEmployeeId` → `MES_Hr.Employee.Id` (phase 5.18); bản chép của module May, Cắt → `MES_Order.ShipmentPlan.Id`, `ShipmentPlanLine.Id` (cùng ĐVCS); `SalesOrder.ProductionFactoryCode` → `MES_Core.SysProductionFactory.Code` (danh sách mã).
 - **Không có transaction chung giữa các database.** Cách code giữ nhất quán: [DATA_FLOWS.md](DATA_FLOWS.md) mục 4.
 
 ## 7. Ranh giới cần bảo vệ

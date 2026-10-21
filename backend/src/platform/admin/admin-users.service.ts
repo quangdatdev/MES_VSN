@@ -2,13 +2,19 @@ import { Inject, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { sql } from 'kysely';
 import { AppException, Errors } from '../../common/app.exception';
+import { sqlErrorNumbers } from '../../common/db-errors';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
+import { scopeOf } from '../data/base.repository';
 import { CORE_DB, type CoreDb } from '../database/database.module';
+import { EmployeeDirectoryService } from '../org/employee-directory.service';
+import type { EmployeeInfo } from '../org/employee-source';
 import { PermissionService } from '../permission/permission.service';
-import { PageQuery, ResetPasswordDto, UserBranchesDto, UserCreateDto, UserRolesDto, UserUpdateDto } from './admin.dto';
+import { EmployeeOptionsQuery, PageQuery, ResetPasswordDto, UserBranchesDto, UserCreateDto, UserEmployeeDto, UserRolesDto, UserUpdateDto } from './admin.dto';
 
 const like = (q: string) => `%${q.replace(/[%_[]/g, (c) => `[${c}]`)}%`;
+/** Trùng chỉ mục duy nhất UX_SysUser_EmployeeId: hai lần gắn cùng nhân viên chạy cùng lúc */
+const isDuplicate = (e: unknown) => sqlErrorNumbers(e).some((n) => n === 2601 || n === 2627);
 
 @Injectable()
 export class AdminUsersService {
@@ -16,6 +22,7 @@ export class AdminUsersService {
     @Inject(CORE_DB) private readonly db: CoreDb,
     private readonly audit: AuditService,
     private readonly permissions: PermissionService,
+    private readonly directory: EmployeeDirectoryService,
   ) {}
 
   private log(actor: AuthUser, id: number | string, action: string, oldValue?: unknown, newValue?: unknown) {
@@ -26,7 +33,7 @@ export class AdminUsersService {
     return this.audit.logStrict({ userId: actor.userId, username: actor.username, branchCode: actor.branchCode, entityType: 'SysUser', entityId: id, actionCode: action, oldValue, newValue }, trx);
   }
 
-  async list(q: PageQuery) {
+  async list(actor: AuthUser, q: PageQuery) {
     const base = () => {
       let qb = this.db.selectFrom('SysUser');
       if (q.q?.trim()) {
@@ -37,7 +44,7 @@ export class AdminUsersService {
     };
     const total = await base().select(sql<number>`COUNT(*)`.as('n')).executeTakeFirstOrThrow();
     const rows = await base()
-      .select(['Id', 'Username', 'FullName', 'Email', 'IsActive', 'LockedUntilAt', 'LastLoginAt'])
+      .select(['Id', 'Username', 'FullName', 'Email', 'IsActive', 'LockedUntilAt', 'LastLoginAt', 'EmployeeId'])
       // Tài khoản mới tạo lên đầu (100 dòng đầu, xem thêm thì sang trang), như các màn danh sách khác
       .orderBy('CreatedAt', 'desc')
       .orderBy('Id', 'desc')
@@ -47,6 +54,7 @@ export class AdminUsersService {
     const ids = rows.map((r) => r.Id);
     const roles = ids.length ? await this.db.selectFrom('SysUserRole').select(['UserId', 'RoleId']).where('UserId', 'in', ids).execute() : [];
     const branches = ids.length ? await this.db.selectFrom('SysUserBranch').select(['UserId', 'BranchId', 'IsDefault']).where('UserId', 'in', ids).execute() : [];
+    const people = await this.employees(actor, rows.map((r) => r.EmployeeId).filter((x): x is number => x != null));
     const now = Date.now();
     return {
       total: Number(total.n),
@@ -63,6 +71,9 @@ export class AdminUsersService {
         roleIds: roles.filter((x) => x.UserId === r.Id).map((x) => x.RoleId),
         branchIds: branches.filter((x) => x.UserId === r.Id).map((x) => x.BranchId),
         defaultBranchId: branches.find((x) => x.UserId === r.Id && x.IsDefault)?.BranchId ?? null,
+        // Nhân viên của tài khoản (phase 5.18); người thao tác không tra được danh bạ thì chỉ có Id
+        employeeId: r.EmployeeId,
+        employee: r.EmployeeId != null ? (people.get(r.EmployeeId) ?? null) : null,
       })),
     };
   }
@@ -224,6 +235,52 @@ export class AdminUsersService {
       );
     });
     this.permissions.clearCache();
+  }
+
+  /** Nhân viên đang làm khớp mã, tên (không dấu) để gắn cho tài khoản; người thao tác không có quyền tra danh bạ thì rỗng kèm cờ */
+  async employeeOptions(actor: AuthUser, q: EmployeeOptionsQuery) {
+    const scope = scopeOf(actor);
+    const canSearch = this.directory.canSearch(scope);
+    return { canSearch, items: canSearch ? await this.directory.search(scope, { q: q.q, limit: 20 }) : [] };
+  }
+
+  /**
+   * Gắn, đổi, gỡ nhân viên của tài khoản (phase 5.18, quyết định 10.3): nhân viên quyết định tổ người đó là tổ trưởng ở Phân cụm trưởng
+   * nên như gán vai trò, ĐVCS: không tự gắn cho mình, không quản lý được tài khoản có quyền quản trị mình không có. Chỉ gắn người đang
+   * làm việc; tra qua danh bạ nhân viên nên người thao tác cần quyền xem Danh bạ nhân viên. Một nhân viên một tài khoản (MES_Core/0017):
+   * nhân viên đang gắn với tài khoản khác thì 409 nêu tài khoản đó. Nhật ký USER_EMPLOYEE.
+   */
+  async setEmployee(actor: AuthUser, id: number, dto: UserEmployeeDto) {
+    if (id === actor.userId) throw Errors.selfElevation('Bạn không tự gắn nhân viên cho tài khoản của mình. Nhờ quản trị viên khác.');
+    const before = await this.db.selectFrom('SysUser').select('EmployeeId').where('Id', '=', id).executeTakeFirst();
+    if (!before) throw Errors.notFound('Không tìm thấy người dùng.');
+    await this.assertCanManage(actor, id);
+    if (before.EmployeeId === dto.employeeId) return;
+    let next: EmployeeInfo | null = null;
+    if (dto.employeeId != null) {
+      if (!this.directory.canSearch(scopeOf(actor))) throw new AppException('PERMISSION_DENIED', 'Gắn nhân viên cho tài khoản cần quyền xem Danh bạ nhân viên.', 403);
+      next = (await this.employees(actor, [dto.employeeId])).get(dto.employeeId) ?? null;
+      if (!next?.isActive) throw new AppException('VALIDATION_FAILED', 'Nhân viên không có hoặc đã nghỉ việc.', 422);
+      const holder = await this.db.selectFrom('SysUser').select('Username').where('EmployeeId', '=', dto.employeeId).where('Id', '<>', id).executeTakeFirst();
+      if (holder) throw Errors.conflict(`Nhân viên này đang gắn với tài khoản ${holder.Username}. Gỡ ở tài khoản đó trước rồi gắn lại.`);
+    }
+    const old = before.EmployeeId != null ? (await this.employees(actor, [before.EmployeeId])).get(before.EmployeeId) : undefined;
+    try {
+      await this.db.transaction().execute(async (trx) => {
+        await trx.updateTable('SysUser').set({ EmployeeId: dto.employeeId, ModifiedAt: new Date(), ModifiedBy: actor.userId }).where('Id', '=', id).execute();
+        await this.logStrict(trx, actor, id, 'USER_EMPLOYEE', { employeeId: before.EmployeeId, code: old?.code ?? null }, { employeeId: dto.employeeId, code: next?.code ?? null });
+      });
+    } catch (e) {
+      if (isDuplicate(e)) throw Errors.conflict('Nhân viên này vừa được gắn với tài khoản khác. Tải lại rồi kiểm tra.');
+      throw e;
+    }
+  }
+
+  /** Nhân viên theo Id qua danh bạ, theo quyền của người thao tác */
+  private async employees(actor: AuthUser, ids: number[]): Promise<Map<number, EmployeeInfo>> {
+    const scope = scopeOf(actor);
+    if (!ids.length || !this.directory.canSearch(scope)) return new Map();
+    return new Map((await this.directory.byIds(scope, ids)).map((e) => [e.id, e]));
   }
 
   /** Không quản lý được tài khoản đang giữ quyền quản trị mà mình không có (đặt lại mật khẩu, tắt, đổi vai trò...). */

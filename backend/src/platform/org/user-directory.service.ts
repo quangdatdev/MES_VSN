@@ -17,4 +17,14 @@ export class UserDirectoryService {
     this.cache.set(userId, { at: Date.now(), name });
     return name;
   }
+
+  /**
+   * Nhân viên (MES_Hr.Employee.Id) gắn với tài khoản (MES_Core/0016, phase 5.18); null khi chưa gắn hoặc tài khoản không còn hoạt động.
+   * Không cache: quản trị gỡ, đổi nhân viên của tài khoản thì lần hỏi sau thấy ngay (nhân viên quyết định tổ nào người đó được phân cụm
+   * trưởng).
+   */
+  async employeeIdOf(userId: number): Promise<number | null> {
+    const row = await this.db.selectFrom('SysUser').select('EmployeeId').where('Id', '=', userId).where('IsActive', '=', true).executeTakeFirst();
+    return row?.EmployeeId ?? null;
+  }
 }

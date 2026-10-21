@@ -91,7 +91,7 @@ Cơ chế chi tiết, bảng, API: [Phân quyền](04-phan-quyen.md).
 ### 3.3 `BaseRepository` là cổng duy nhất tới bảng nghiệp vụ
 - **Áp dụng:** mọi truy vấn dữ liệu nghiệp vụ đi qua lớp con của `BaseRepository`/`ChildRepository`; repository tự thêm điều kiện ĐVCS và phạm vi cho list, getById, create, update, delete, xuất file, popup giá trị. Tài nguyên phải khai báo trong `SysResource` (Resource Registry) đúng bảng nguồn và `ScopeType` (`BRANCH` hoặc `SHARED`); chưa khai báo thì `500 RESOURCE_NOT_REGISTERED`. Tài nguyên `BRANCH` luôn được coi là gắn chiều `FACTORY` qua `BranchCode`, dù quên khai báo.
 - **Lý do:** điều kiện phân quyền chỉ viết ở một chỗ; module không thể quên hay viết sai.
-- **Phải nhớ:** cấm SQL thô trong controller, service; module không tự viết điều kiện phân quyền. Bảng danh mục dùng chung không có cột ĐVCS (`PrepStep`, `DepartmentType`, `JobTitle`, danh mục ở `MES_Core`) không qua `BaseRepository`; quyền kiểm ở controller (sửa danh mục cần `admin.catalog:*`).
+- **Phải nhớ:** cấm SQL thô trong controller, service; module không tự viết điều kiện phân quyền. Luật nghiệp vụ theo dữ liệu chỉ thu hẹp thêm sau phân quyền, so trên dòng đã đọc qua repository (tổ trưởng ở Phân cụm trưởng, mục 17.2; ngày đã qua ở Kế hoạch may, mục 14.1) không tính là điều kiện phân quyền tự viết. Bảng danh mục dùng chung không có cột ĐVCS (`PrepStep`, `DepartmentType`, `JobTitle`, danh mục ở `MES_Core`) không qua `BaseRepository`; quyền kiểm ở controller (sửa danh mục cần `admin.catalog:*`).
 - **Nguồn:** ADR 0002; ADR 0005 mục L3. Code: `backend/src/platform/data/base.repository.ts`, `resource-registry.ts`.
 
 ### 3.4 Đơn vị tổng hợp `A00`
@@ -498,8 +498,8 @@ Màn hình, bảng, API: [Nhân sự](08-nhan-su.md).
 ### 10.3 Mã nhân viên sửa được, liên kết theo `Id`
 - **Áp dụng:** `Employee.Code` sửa được, chỉ cấm trùng; `Employee.Id` không đổi; mọi liên kết tới nhân viên đi theo `Id` (`Department.ManagerEmployeeId`, khóa ngầm `EmployeeId` từ module khác sau này). Đổi mã ghi nhật ký kèm mã cũ, mã mới.
 - **Lý do:** liên kết theo chuỗi mã thì đổi mã phải sửa dây chuyền nhiều bảng.
-- **Phải nhớ:** chưa nối tài khoản với nhân viên; khi làm thì thêm `SysUser.EmployeeId`, không nối theo mã.
-- **Nguồn:** ADR 0012 mục 4. Code: `backend/src/modules/hr/employee.service.ts`.
+- **Phải nhớ:** tài khoản nối với nhân viên bằng `SysUser.EmployeeId` (phase 5.18, `MES_Core/0016`), không nối theo mã; cột `SysUser.EmployeeCode` cũ không dùng. Gắn ở Quản trị › Người dùng, quyền `admin.permission:update`, không tự gắn cho mình (mục 17.2).
+- **Nguồn:** ADR 0012 mục 4; phase 5.18. Code: `backend/src/modules/hr/employee.service.ts`, `backend/src/platform/org/user-directory.service.ts`.
 
 ### 10.4 Dữ liệu nhân sự dùng chung toàn công ty
 - **Áp dụng:** `hr.orgchart`, `hr.employee` có `ScopeType = 'SHARED'`; đọc, ghi vẫn qua `BaseRepository`; ghi được ở `A00`.
@@ -517,6 +517,12 @@ Màn hình, bảng, API: [Nhân sự](08-nhan-su.md).
   - Nhập hàng loạt bằng cách dán từ Excel vào `SheetGrid` (không thêm thư viện đọc `.xlsx`); máy chủ kiểm và dò phòng ban, chức danh (xem trước), rồi ghi từng dòng độc lập. File mẫu là CSV.
   - Danh sách nhân viên là thẻ bên cạnh form, không có popup lọc theo cột (ngoại lệ mục 11.2); tìm, lọc chạy trong database, không phân biệt dấu, hoa thường, kể cả chữ "đ"; mới tạo lên trước, 20 thẻ mỗi trang.
 - **Nguồn:** ADR 0012 mục 7, 9, 10. Code: `employee.service.ts`, `employee-import.service.ts`, `hr.repositories.ts`.
+
+### 10.7 Danh bạ nhân viên cho ô chọn người ở màn khác (PROPOSED, chờ Tech Lead xác nhận)
+- **Áp dụng:** tài nguyên `hr.directory` "Danh bạ nhân viên" (`SHARED`, bảng nguồn `Employee` như `hr.employee`, không có màn, không có mục menu): Xem là được tra mã, họ tên, tình trạng, mã và tên phòng ban của nhân viên. Đọc qua `EmployeeDirectoryRepository` (`BaseRepository`). Module Nhân sự cài `EmployeeSource` và đăng ký `HrEmployeeSource` vào `EmployeeDirectoryService` của nền tảng (như `LineSource`, mục 6.7); module nghiệp vụ, phần quản trị hỏi `EmployeeDirectoryService`, truyền `Scope` của người hỏi. Ma trận mẫu: Quản trị, Giám đốc, Kế hoạch, Trưởng chuyền, Nhân sự Xem; Toàn quyền đủ.
+- **Lý do:** ô Tên cụm trưởng (mục 17) và ô gắn nhân viên cho tài khoản cần tra nhân viên, người dùng các màn đó không có `hr.employee` (cấp `hr.employee` thì lộ hồ sơ, menu Thông tin nhân sự). Đọc thẳng bảng như `HrLineSource` là nợ kỹ thuật (mục 16.3); tài nguyên riêng giữ mọi lần đọc qua `BaseRepository` và để quản trị cấp, thu quyền.
+- **Phải nhớ:** chỉ chọn các cột trên, không thêm cột hồ sơ vào danh bạ. Tài nguyên không có `path` trong `seed-data.ts` thì seed không tạo mục menu. Tự chọn trong phase 5.18 (STATUS mục 1.3, Q5): Tech Lead đổi được (ví dụ cấp `hr.employee` kèm chính sách cột).
+- **Nguồn:** phase 5.18 Q5. Code: `backend/src/modules/hr/hr.repositories.ts` (`EmployeeDirectoryRepository`), `hr-employee-source.ts`, `backend/src/platform/org/employee-directory.service.ts`, `employee-source.ts`.
 
 ## 11. Lưới dữ liệu
 
@@ -718,6 +724,31 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 - **Áp dụng:** `main` (bản chạy trên máy chủ), `develop` (tích hợp), `feature/<phase>-<tên>` từ `develop` gộp qua PR có CI và review, `hotfix/<tên>` từ `main` gộp về cả hai. CI viết theo cú pháp GitHub Actions ở `.github/workflows/` (chạy trên GitHub; Gitea Actions của máy chủ git nội bộ dùng lại được).
 - **Phải nhớ:** áp dụng từ 21/10/2026 (task T6): có `develop`; bảo vệ nhánh do Tech Lead bật trên GitHub. Bước kiểm của CI, quy định PR, kiểu gộp đã duyệt 19/10/2026 ([DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 4); CI dựng ở task T2 (21/10/2026, `.github/workflows/ci.yml`).
 - **Nguồn:** Tech Lead duyệt 19/10/2026.
+
+## 17. Phân cụm trưởng
+
+Màn hình, bảng, API: [May](07-may.md) mục Phân cụm trưởng.
+
+### 17.1 Dữ liệu GSD chép ở `MES_Sewing`, đang giả lập
+- **Áp dụng:** tổ (một chuyền may, `SewingTeam`, bảng nguồn của `sewing.cluster`, phạm vi `FACTORY → BranchCode`, `LINE → LineCode`), tổ trưởng (`SewingTeamLeader`, theo `Employee.Id`), cụm của mã hàng ở tổ (`SewingTeamCluster`, cùng cột cụm trưởng) là bản chép dữ liệu GSD ở `MES_Sewing`, có cột nguồn `SourceSystem` (`DEMO`, `GSD`), `SourceKey`, `SourceSyncedAt`. Tới khi nối GSD, seed sinh dữ liệu giả lập `DEMO` trên máy có dữ liệu mẫu. Khi nối: đồng bộ GSD vào `MES_Sync` (mục 8), module May chép vào ba bảng qua `SourceFeedService`, cập nhật cột chép, giữ cột cụm trưởng.
+- **Lý do:** người dùng chốt 21/10/2026 (phase 5.18 Q4): dựng màn và luồng lưu trước, GSD tích hợp sau mà không đổi màn. Một tài nguyên một bảng nguồn nên tổ là bảng cha, tổ trưởng và cụm là bảng con: mọi đọc ghi qua `BaseRepository`/`ChildRepository` (Q9).
+- **Phải nhớ:** nối GSD cần đối chiếu mã tổ GSD với mã bộ phận MES, nhân viên GSD với `Employee.Id`. Cụm bị bỏ ở nguồn thì mất cụm trưởng theo (như bản chép Kế hoạch chuẩn bị SX, mục 9.2). `BranchCode` của tổ không sửa: chuyền đổi ĐVCS thì lần chép sau tạo tổ ở ĐVCS mới.
+- **Nguồn:** phase 5.18 Q4, Q9. Code: migration `MES_Sewing/0005_cluster_leader.sql`, `backend/scripts/cluster-data.ts`.
+
+### 17.2 Tổ trưởng theo nhân viên của tài khoản
+- **Áp dụng:** màn biết người đăng nhập là tổ trưởng tổ nào qua `SysUser.EmployeeId` (mục 10.3) và dữ liệu Phân tổ trưởng. Là tổ trưởng của ít nhất một tổ trong phạm vi xem: chỉ thấy các tổ đó và lưu được ở đó. Không phải (chưa gắn nhân viên, không là tổ trưởng; Giám đốc, Kế hoạch, Quản trị): thấy mọi tổ trong phạm vi xem, chỉ đọc, màn nêu lý do. Phân quyền chung (quyền `sewing.cluster`, ĐVCS, phạm vi chuyền, `A00` chỉ đọc) luôn áp trước; tổ trưởng chỉ thu hẹp thêm, không mở rộng. Gắn nhân viên cho tài khoản cần `admin.permission:update`, không tự gắn cho mình, theo trần quyền quản trị, ghi nhật ký `USER_EMPLOYEE`; không tăng phiên bản quyền (nhân viên không nằm trong quyền đã cache, màn đọc lại mỗi request). Một nhân viên gắn tối đa một tài khoản (`MES_Core/0017`, review 5.18 M4; tự chọn Q12): hai tài khoản cùng nhân viên tổ trưởng thì nhật ký không biết người thật.
+- **Lý do:** yêu cầu "chỉ nhân viên được phân làm tổ trưởng mới thấy màn" và "tổ theo ID phòng + ID nhân viên ở Phân tổ trưởng"; người dùng chốt Q1 (nối tài khoản với nhân viên), Q2 (người khác xem mọi tổ, chỉ đọc) ngày 21/10/2026. Điều kiện tổ trưởng là luật nghiệp vụ trên dữ liệu (như "ngày đã qua chỉ xem" ở mục 14.1), cưỡng chế ở máy chủ, không thay cho phân quyền.
+- **Phải nhớ:** menu vẫn hiện theo `sewing.cluster:view` (muốn ẩn với vai trò khác thì thu quyền của vai trò đó). Tổ trưởng ở GSD mà không có phạm vi chuyền tương ứng ở MES thì không thấy tổ: cần quy trình gán phạm vi cho tổ trưởng. Chưa chốt (STATUS): tổ trưởng vắng thì không ai phân thay được, kể cả Toàn quyền; người vừa là tổ trưởng vừa có vai trò xem rộng chỉ thấy tổ mình. Lưu cũng trả 404 như lúc đọc khi người lưu là tổ trưởng tổ khác.
+- **Nguồn:** phase 5.18 Q1, Q2. Code: `backend/src/modules/sewing/cluster-leader.service.ts`, `backend/src/platform/admin/admin-users.service.ts` (`setEmployee`).
+
+### 17.3 Cụm trưởng lưu theo `Id`, chụp mã
+- **Áp dụng:** cụm trưởng lưu `LeaderEmployeeId` (`Employee.Id`) kèm `LeaderEmployeeCode` chụp lúc lưu; màn hiện "Tên - Mã - Phòng ban" theo hồ sơ hiện tại. Chỉ chọn nhân viên đang làm việc; người đang lưu mà đã nghỉ việc vẫn hiện (kèm "(đã nghỉ việc)") tới khi đổi. Một người làm cụm trưởng nhiều cụm được; để trống là chưa phân. Không có ngày hiệu lực: mỗi cụm một cụm trưởng hiện tại, lịch sử ở nhật ký. Lưu gửi kèm cụm trưởng lúc mở màn (`previous`): người khác vừa đổi thì 409, không ghi gì. Cột đăng ký chính sách cột chỉ `leaderEmployeeId`.
+- **Lý do:** yêu cầu "view tên lưu mã" khác mục 10.3 (liên kết theo `Id` vì mã nhân viên sửa được); người dùng chốt Q3 (lưu `Id`, chụp mã) ngày 21/10/2026. Q7, Q8, Q11 tự chọn.
+- **Nguồn:** phase 5.18 Q3, Q7, Q8, Q11. Code: `cluster-leader.service.ts` (`save`).
+
+### 17.4 Giao diện theo bố cục ảnh mẫu
+- **Áp dụng:** màn `/sewing/cluster` theo bố cục `docs/screens/phan-cum-truong.png` (nhãn bên trái, ô chọn kéo hết bề ngang; bảng STT, Tên cụm, Tên cụm trưởng; nút Lưu dưới bảng), màu và chữ theo design system (mục 12), không chép khung xanh đậm, tiêu đề đỏ của ảnh. Điện thoại: mỗi cụm một khối, nút Lưu dính đáy. Chữ nút "Lưu" theo ảnh (như "Cập nhật" của Kế hoạch may), khác quy tắc "Lưu thay đổi" ở [Giao diện](10-giao-dien.md) mục 12.A3.
+- **Nguồn:** phase 5.18 Q6 (tự chọn theo CLAUDE.md: hướng thiết kế đã chốt thắng gợi ý khác). Code: `frontend/src/features/sewing/ClusterLeaderPage.tsx`, khối `.cluster-*` ở `frontend/src/theme/global.css`.
 
 ## Bảng tra ADR
 
