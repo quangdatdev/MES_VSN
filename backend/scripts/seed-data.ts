@@ -403,6 +403,8 @@ export const roleFieldPolicies: { role: string; resource: string; field: string;
   // Chính sách cột tính theo tài nguyên: màn nào có cùng dữ liệu cũng phải khai báo, không thì lộ ở màn đó (review 5.1 lượt 2 N3)
   { role: 'LINE_LEADER', resource: 'order.po', field: 'customerName', level: 'MASKED' },
   { role: 'LINE_LEADER', resource: 'order.prep', field: 'customerName', level: 'MASKED' },
+  // Máy đã cài trước T16 nhận dòng này qua migration MES_Core/0015 (seed chỉ thêm chính sách mẫu cho vai trò, cột mới)
+  { role: 'LINE_LEADER', resource: 'cutting.progress', field: 'customerName', level: 'MASKED' },
   // Toàn quyền (ADR 0014): mọi cột nhạy cảm được xem, sửa (cột tính sẵn như Thành tiền, Doanh thu vẫn không nhập được)
   ...Object.entries(resourceFields).flatMap(([resource, fields]) =>
     fields.filter(([, , sensitive]) => sensitive === 'S').map(([field]) => ({ role: FULL_ACCESS_ROLE, resource, field, level: 'EDITABLE' as Level })),

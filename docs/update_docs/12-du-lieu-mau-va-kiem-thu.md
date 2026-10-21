@@ -180,13 +180,13 @@ Cột đăng ký (`SysResourceField`, khai ở `resourceFields`; mã trùng khó
 | `PLANNER` | `order.allocation` | `unitPrice`, `amount` | Chỉ đọc |
 | `PLANNER` | `order.allocation` | `cmPrice` | Sửa được |
 | `PLANNER` | `order.lineplan` | `cmPrice`, `revenue` | Chỉ đọc |
-| `LINE_LEADER` | `order.lineplan`, `order.colorsize`, `order.po`, `order.prep` | `customerName` | Che |
+| `LINE_LEADER` | `order.lineplan`, `order.colorsize`, `order.po`, `order.prep`, `cutting.progress` | `customerName` | Che |
 | `HR` | `hr.employee` | `birthDate`, `idNumber`, `contactPhone`, `contactPerson`, `currentAddress` | Sửa được |
 | `DIRECTOR` | `hr.employee` | 5 cột trên | Che |
 | `FULL_ACCESS` | mọi tài nguyên | mọi cột nhạy cảm | Sửa được |
 
 - `ADMIN`, `QC`, `ACCOUNTANT` (ở `hr.employee`) không khai: cột nhạy cảm Ẩn. `LINE_LEADER` ở `sewing.plan` không khai: Giá CM, Doanh số kế hoạch Ẩn. Tài khoản `quantri` dùng để minh họa "quản trị chỉ xem, không thấy giá".
-- Chính sách tính theo tài nguyên: màn nào có cùng dữ liệu thì phải khai ở màn đó. Seed che tên khách hàng với Trưởng chuyền ở bốn màn Xếp chuyền, Phân bổ màu cỡ, Cập nhật tỷ lệ cắt, Kế hoạch chuẩn bị SX. Đồng bộ tiến độ cắt (`cutting.progress`) cũng có cột `customerName` và Trưởng chuyền có quyền Xem, nhưng `roleFieldPolicies` không khai cột này nên ở màn đó Trưởng chuyền thấy rõ tên khách.
+- Chính sách tính theo tài nguyên: màn nào có cùng dữ liệu thì phải khai ở màn đó. Seed che tên khách hàng với Trưởng chuyền ở năm màn Xếp chuyền, Phân bổ màu cỡ, Cập nhật tỷ lệ cắt, Kế hoạch chuẩn bị SX, Đồng bộ tiến độ cắt. Máy đã cài trước T16 nhận dòng của Đồng bộ tiến độ cắt qua migration `MES_Core/0015` (seed chỉ thêm chính sách mẫu cho vai trò, cột mới).
 - Kế hoạch không bị Che Doanh số vì thấy số lượng và giá CM nên tự tính ra được.
 
 ### Danh mục và ca làm việc
@@ -457,6 +457,7 @@ npm test -w backend
 | `sewing-plan.spec.ts` | Có (`MES_Sewing`) | Kế hoạch may: dòng dàn chuyền theo ngày, đơn vị; Cập nhật, Đã giao, giao vượt, ngày đã qua, phiên bản; Chốt, Hủy chốt, bản chụp; Xếp chuyền không giảm, bỏ, đổi chuyền dòng đã có số; phân quyền, chính sách cột; sửa riêng Giá CM ở ĐVCS có kế hoạch, kế hoạch đổi giá theo; nhật ký ([May](07-may.md) phần Kế hoạch may, Test) |
 | `cutting-supply.spec.ts` | Có (`MES_Cutting`) | Xác nhận cấp BTP: `LineColorSizeFeed`, ô chọn, lưới theo Ngày cấp, gom lệnh, số lệnh, kiểm khi lưu, Xác nhận cấp, Hủy duyệt, xóa, chặn giảm Phân bổ màu cỡ, Xếp chuyền dưới số đã cấp, phân quyền, chính sách cột, xuất file ([Cắt](15-cat.md) phần Xác nhận cấp BTP, Test) |
 | `cutting-supply-grant-migration.spec.ts` | Có (rollback) | Thân migration `MES_Core/0013` như `cutting-grant-migration.spec.ts`: Kế hoạch đang có Xem nhận Thêm, Sửa, Xóa, Xuất |
+| `cutting-mask-migration.spec.ts` | Có (rollback) | Thân migration `MES_Core/0015`: Trưởng chuyền nhận mức Che cột Khách hàng ở Đồng bộ tiến độ cắt, vai trò khác không đổi, nhật ký `ROLE_FIELD_POLICY` như màn Vai trò, tăng phiên bản quyền, chạy lại không trùng; quản trị đã đặt mức khác thì giữ; vai trò không phải hệ thống thì không thêm |
 | `shipment-plan-pos.spec.ts` | Có | Khung PO của kế hoạch: SL đã xác nhận, chưa xác nhận, theo ĐVCS, quyền xem PO, chính sách cột, PO ngoài phạm vi; popup chọn PO chỉ có PO chưa nằm trong kế hoạch nào (cả khi Thêm và Chọn mã hàng lúc Sửa, quyết định 15.2); Ngày xuất bị Ẩn thì không xếp theo ngày xuất |
 | `bravo-import.db.spec.ts` | Có | Nạp tăng dần đơn hàng BRAVO vào `MES_Order` với nguồn giả: thêm, giữ phần người dùng sửa, đóng lệnh, PO tay, câu ghi kiểm lại, khóa chéo, Nhà máy SX theo OSM |
 | `simulate-board.db.spec.ts` | Có (rollback) | Phần ghi DB của dàn chuyền mô phỏng; chuyền đọc từ `MES_Hr` (bộ phận đang tích, chưa giải thể, đúng ĐVCS); mọi thay đổi trong transaction bị hủy; giữ kế hoạch có số cắt, kể cả `--all` |

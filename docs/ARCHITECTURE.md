@@ -219,6 +219,7 @@ Bảng của từng database: tài liệu module (04, 05 cho `MES_Core`; 06, 07,
 | | `0012_grant_cutting_progress` | Máy đã cài: cấp `cutting.progress` Sửa, Xuất cho vai trò hệ thống Kế hoạch khi vai trò còn quyền Xem (không cấp cho Toàn quyền: đã có từ seed); nhật ký `ROLE_PERMISSIONS` cùng dạng màn Vai trò; tăng phiên bản quyền khi có cấp. Bảng nguồn `CuttingPlan` do seed đặt. Database chưa seed: không làm gì |
 | | `0013_grant_cutting_supply` | Máy đã cài: cấp `cutting.supply` Thêm, Sửa, Xóa, Xuất cho vai trò hệ thống Kế hoạch khi vai trò còn quyền Xem (như `0012`); nhật ký `ROLE_PERMISSIONS`; tăng phiên bản quyền khi có cấp. Bảng nguồn `CuttingSupply` do seed đặt. Database chưa seed: không làm gì |
 | | `0014_work_calendar_rounding` | Cột `SysWorkCalendar.ProductionRoundUpFrom`: ngưỡng làm tròn Số ngày SX (5.12.3) |
+| | `0015_mask_cutting_progress_customer` | Máy đã cài: chính sách cột Che `customerName` của `cutting.progress` cho vai trò hệ thống Trưởng chuyền khi vai trò chưa có chính sách cho cột này (T16, Q51); nhật ký `ROLE_FIELD_POLICY`; tăng phiên bản quyền khi có thêm. Database chưa seed: không làm gì |
 | `MES_Order` | `0001_order_init` | Bảng đơn hàng, PO, màu cỡ, kế hoạch xuất hàng, xếp chuyền; khóa ngoại ghép `(…, BranchCode)` |
 | | `0002_order_owner_index` | Chỉ mục `CreatedBy` cho phạm vi "do mình tạo" |
 | | `0003_order_bravo_source` | Nhận dữ liệu BRAVO: nới mã hàng, tên màu; khóa nguồn |

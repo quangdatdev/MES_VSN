@@ -303,7 +303,7 @@ Mã hành động do phần quản trị ghi:
 | `SysShift` | `SHIFT_CREATE`, `SHIFT_UPDATE` |
 | `SysWorkCalendar` | `WORK_CALENDAR_UPDATE`, `WORK_CALENDAR_DAYS_SET`, `WORK_CALENDAR_DAYS_DELETE` |
 
-Migration cũng ghi một số mã trên: `MES_Core/0009` ghi `USER_ROLE_SCOPE`, `SCOPE_DIMENSION_UPDATE`, `ORG_UNIT_RETIRE` (người `system`); `MES_Core/0010`, `0012`, `0013` ghi `ROLE_PERMISSIONS` (người `migrate`).
+Migration cũng ghi một số mã trên: `MES_Core/0009` ghi `USER_ROLE_SCOPE`, `SCOPE_DIMENSION_UPDATE`, `ORG_UNIT_RETIRE` (người `system`); `MES_Core/0010`, `0012`, `0013` ghi `ROLE_PERMISSIONS`, `0015` ghi `ROLE_FIELD_POLICY` (người `migrate`).
 
 `ACTION_TEXT` có nhãn cho: mọi mã của bảng trên trừ `FACTORY_IMPORT`; mã đăng nhập `LOGIN`, `LOGIN_FAILED`, `SELECT_BRANCH`, `LOGOUT`; mã chung `CREATE`, `UPDATE`, `DELETE`; mã của Sơ đồ tổ chức `DISSOLVE`, `RESTORE`, `LINE_SET_CHANGE` ([08-nhan-su.md](08-nhan-su.md); ý nghĩa `LINE_SET_CHANGE`: [04-phan-quyen.md](04-phan-quyen.md)); mã của module Đơn hàng `CUT_RATIO_UPDATE`, `CUT_RATIO_CONFIRM`, `CUT_RATIO_UNCONFIRM`, `LINE_SCHEDULE`, `COLOR_SIZE_ALLOCATE`, `PO_ALLOCATION_FACTORY`, `PO_ALLOCATION_REFRESH`; `SYNC_START`; mã của script `SEED`, `DEMO_RESET`, `BRAVO_LOAD`.
 

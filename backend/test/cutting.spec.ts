@@ -156,6 +156,22 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
     expect(rowOf(agg, 'TEST-P514-B')).toMatchObject({ branchCode: 'A02', planQty: 50 });
   });
 
+  it('Trưởng chuyền thấy Khách hàng bị che như ở các màn Đơn hàng (Q51); không dò được tên khách qua tìm nhanh, lọc, popup', async () => {
+    const leader = await tokenFor('truongchuyen.a', 'A01');
+    const planner = await tokenFor('kehoach.a', 'A01');
+    expect(rowOf(await list(leader), 'TEST-P514-A')).toMatchObject({ customerName: '***', planQty: 600 });
+    expect((await api().get('/api/v1/cutting/progress/values?field=customerName').set(auth(leader)).expect(403)).body.error.code).toBe('FIELD_NOT_READABLE');
+    // Tìm nhanh không tìm trong cột bị Che: Kế hoạch tìm ra, Trưởng chuyền thì không
+    const kh = encodeURIComponent('KHÁCH TEST P514');
+    expect(rowOf(await list(planner, `&q=${kh}`), 'TEST-P514-A')).toBeTruthy();
+    expect(rowOf(await list(leader, `&q=${kh}`), 'TEST-P514-A')).toBeUndefined();
+    // Lọc theo khách (dải lọc, lọc theo cột) bị bỏ qua thay vì thu hẹp kết quả
+    expect(rowOf(await list(leader, '&customer=KHONG-CO-KHACH-NAY'), 'TEST-P514-A')).toBeTruthy();
+    const cf = encodeURIComponent(JSON.stringify({ customerName: { in: ['KHONG-CO-KHACH-NAY'] } }));
+    expect(rowOf(await list(leader, `&cf=${cf}`), 'TEST-P514-A')).toBeTruthy();
+    expect((await detail(leader, await copyId(fx.planA01))).customerName).toBe('***');
+  });
+
   it('popup: màu cỡ theo kế hoạch; ngày tương lai 422; kế hoạch ĐVCS khác 404', async () => {
     const planner = await tokenFor('kehoach.a', 'A01');
     const id = await copyId(fx.planA01);

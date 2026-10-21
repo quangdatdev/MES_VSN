@@ -15,7 +15,7 @@ Cột "Tự động" cho biết tiêu chuẩn có được công cụ kiểm kh�
 
 | Bộ test | Lệnh | Phạm vi | Ghi chú |
 |---|---|---|---|
-| Backend | `npm test -w backend` (`jest --runInBand`) | 37 file `backend/test/*.spec.ts` | Phần lớn dựng `AppModule` thật, gọi API bằng supertest **trên SQL Server thật** theo `backend/.env`; timeout 30 giây mỗi bài |
+| Backend | `npm test -w backend` (`jest --runInBand`) | 38 file `backend/test/*.spec.ts` | Phần lớn dựng `AppModule` thật, gọi API bằng supertest **trên SQL Server thật** theo `backend/.env`; timeout 30 giây mỗi bài |
 | Frontend | `npm test -w frontend` (`vitest run`) | 36 file `frontend/src/test/*.test.ts(x)` | jsdom, API giả trong từng file, không cần backend |
 | Triển khai | `npm run test:deploy` (`node --test deploy/deploy.test.cjs`) | Hàm thuần của `deploy/deploy.cjs` trên thư mục tạm | Không cần database, pm2 |
 | Hiệu năng | `npm run perf -w frontend` | `frontend/src/perf/*.perf.tsx` | Chỉ in số đo, không có ngưỡng, không nằm trong `npm test` |

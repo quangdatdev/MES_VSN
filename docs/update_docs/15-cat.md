@@ -91,6 +91,7 @@ CSV cùng bộ lọc, theo chính sách cột, tối đa 10.000 dòng: Số kế
 - Tài nguyên `cutting.progress`, `BRANCH`, bảng nguồn `CuttingPlan`, chiều `FACTORY → BranchCode` (không chiều Chuyền, Người tạo). Mọi truy vấn của người dùng qua `CuttingPlanRepository` (`BaseRepository`) và hai `ChildRepository`. `A00` chỉ đọc (`AGGREGATE_READ_ONLY`). Kế hoạch ĐVCS khác: 404.
 - Ma trận mẫu: Kế hoạch Xem, Sửa, Xuất; Quản trị, Trưởng chuyền Xem; Giám đốc Xem, Xuất; Toàn quyền đủ (gồm Xóa). Máy đã cài: migration `MES_Core/0012` (chỉ cấp cho Kế hoạch khi còn quyền Xem).
 - Cột đăng ký: `planNo`, `customerName`, `styleCode`, `productName`, `poBuyDate`, `shipDate`, `planQty`, `dayQty`, `cutQty`, `diffQty`, `lastCutDate`, `statusCode`. Body lưu dùng khóa `dayQty` nên chính sách "Trong ngày" được cưỡng chế khi ghi.
+- Chính sách cột mẫu: Trưởng chuyền Che `customerName` (Q51, như các màn Đơn hàng). Máy đã cài: migration `MES_Core/0015` (chỉ thêm khi vai trò hệ thống Trưởng chuyền chưa có chính sách cho cột này).
 - `planQty` hoặc `cutQty` bị Ẩn, Che thì +/- và Trạng thái (suy ra được hai cột đó) trả `***`, không lọc, không sắp xếp, không hỏi giá trị theo hai cột này (403 ở `/values`); riêng trạng thái Kế hoạch đã xóa vẫn hiện.
 
 ## API `/cutting/progress`
@@ -130,8 +131,9 @@ Khóa ngầm (`softkeys.json`): `BranchCode` của 3 bảng → `MES_Core.SysBra
 
 | File | Kiểm gì |
 |---|---|
-| `backend/test/cutting.spec.ts` | `ShipmentPlanFeed` (lọc ĐVCS, `A00`, dấu phiên bản); danh sách một dòng mỗi kế hoạch chưa xếp chuyền; popup, ngày tương lai, ĐVCS khác 404; lưu theo ngày, Lũy kế không đổi khi xem ngày khác, 0 là xóa, tên khác hoa thường, nhật ký; Lũy kế không vượt Kế hoạch (422 không ghi ô nào, kế hoạch giảm thì vẫn giảm số, tăng kế hoạch thì lưu ngay); kiểm đầu vào; phân quyền (`A00`, Giám đốc, Trưởng chuyền, Kế hoạch không Xóa); chính sách cột (+/-, Trạng thái che theo SL KH); màu cỡ bị bỏ; chặn xóa kế hoạch rồi Xóa số cắt; kế hoạch mất nguồn; LK cắt bên Kế hoạch xuất hàng sau lưu, Xóa số cắt và đối chiếu khi lệch; chép lại khi ĐVCS không còn kế hoạch; Trong ngày Chỉ đọc; xuất file |
+| `backend/test/cutting.spec.ts` | `ShipmentPlanFeed` (lọc ĐVCS, `A00`, dấu phiên bản); danh sách một dòng mỗi kế hoạch chưa xếp chuyền; popup, ngày tương lai, ĐVCS khác 404; lưu theo ngày, Lũy kế không đổi khi xem ngày khác, 0 là xóa, tên khác hoa thường, nhật ký; Lũy kế không vượt Kế hoạch (422 không ghi ô nào, kế hoạch giảm thì vẫn giảm số, tăng kế hoạch thì lưu ngay); kiểm đầu vào; phân quyền (`A00`, Giám đốc, Trưởng chuyền, Kế hoạch không Xóa); chính sách cột (+/-, Trạng thái che theo SL KH; Trưởng chuyền thấy Khách hàng bị che); màu cỡ bị bỏ; chặn xóa kế hoạch rồi Xóa số cắt; kế hoạch mất nguồn; LK cắt bên Kế hoạch xuất hàng sau lưu, Xóa số cắt và đối chiếu khi lệch; chép lại khi ĐVCS không còn kế hoạch; Trong ngày Chỉ đọc; xuất file |
 | `backend/test/cutting-grant-migration.spec.ts` | Migration `MES_Core/0012` |
+| `backend/test/cutting-mask-migration.spec.ts` | Migration `MES_Core/0015` |
 | `backend/test/simulate-board.db.spec.ts` | `sim:board` giữ kế hoạch có số cắt, kể cả `--all` |
 | `frontend/src/test/cutting-progress-rules.test.ts` | Dòng Tổng, +/-, Lũy kế khi gõ, chỉ gửi ô đã sửa, dòng không sửa được, cột bị Che, Lũy kế vượt Kế hoạch (tô đỏ, chặn tăng, cho giảm) |
 
