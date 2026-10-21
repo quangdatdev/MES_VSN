@@ -99,7 +99,7 @@ Sau khi sửa: lint, typecheck, test (số bài qua, bộ database test đã dù
 
 - Remote: `origin` (GitHub) là remote chính, máy chủ kéo code từ đây (Tech Lead xác nhận 19/10/2026); `githq5` là máy chủ Gitea nội bộ.
 - Đến 19/10/2026 code được commit thẳng lên `main`; nhánh theo phase (`phase-5-10`, `phase-5-11`…) đã gộp cục bộ vào `main`, không có PR, không có tag. Ngày 19/10/2026 Tech Lead yêu cầu **tạm theo dõi trên `main`** cho đợt chuẩn hóa tài liệu.
-- Chưa có CI, chưa có git hook; máy chủ triển khai từ commit đã push bằng `deploy/deploy.cjs`.
+- CI: `.github/workflows/ci.yml` (T2, 21/10/2026), các bước ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9; chưa có git hook; máy chủ triển khai từ commit đã push bằng `deploy/deploy.cjs`.
 
 ### 4.2 Mô hình nhánh — APPROVED (19/10/2026), áp dụng khi Tech Lead bảo bắt đầu
 
@@ -118,7 +118,7 @@ Không code trực tiếp trên `main` khi mô hình đã áp dụng.
 |---|---|
 | Gộp `feature/*` vào `develop` qua PR có CI và review | APPROVED (cùng mô hình nhánh) |
 | Điều kiện merge: Definition of Done ([ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 10), không còn `CRITICAL`/`HIGH` mở | CURRENT (áp cho mọi task) |
-| CI phải qua trước khi merge; các bước kiểm ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9 | APPROVED (CI chưa dựng: task T2) |
+| CI phải qua trước khi merge; các bước kiểm ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9 | APPROVED (workflow có từ T2; cưỡng chế khi bật bảo vệ nhánh, task T6) |
 | Mô tả PR ghi: task, phạm vi, migration (có/không, chạy được khi bản cũ còn chạy không), link báo cáo review, kết quả lint/typecheck/test/build, việc cần làm trên máy chủ | APPROVED |
 | Tech Lead duyệt mọi PR vào `develop`, `main` | APPROVED |
 | Bảo vệ nhánh `main`, `develop` trên GitHub: cấm push thẳng, cấm force push, bắt CI qua | APPROVED (chưa cấu hình: task T6) |

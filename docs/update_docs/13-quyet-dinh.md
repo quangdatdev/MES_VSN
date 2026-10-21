@@ -716,7 +716,7 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 
 ### 16.4 Mô hình nhánh và CI
 - **Áp dụng:** `main` (bản chạy trên máy chủ), `develop` (tích hợp), `feature/<phase>-<tên>` từ `develop` gộp qua PR có CI và review, `hotfix/<tên>` từ `main` gộp về cả hai. CI viết theo cú pháp GitHub Actions ở `.github/workflows/` (chạy trên GitHub; Gitea Actions của máy chủ git nội bộ dùng lại được).
-- **Phải nhớ:** áp dụng khi Tech Lead bảo bắt đầu; tới lúc đó làm trên `main`. Bước kiểm cụ thể của CI, quy định PR, kiểu gộp còn là đề xuất ([DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 4).
+- **Phải nhớ:** áp dụng khi Tech Lead bảo bắt đầu; tới lúc đó làm trên `main`. Bước kiểm của CI, quy định PR, kiểu gộp đã duyệt 19/10/2026 ([DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 4); CI dựng ở task T2 (21/10/2026, `.github/workflows/ci.yml`).
 - **Nguồn:** Tech Lead duyệt 19/10/2026.
 
 ## Bảng tra ADR

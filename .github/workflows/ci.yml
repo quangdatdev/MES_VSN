@@ -1,0 +1,85 @@
+# CI của MES (task T2): các bước ở docs/ENGINEERING_STANDARDS.md mục 9. PR chỉ được gộp khi cả hai job qua.
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# PR đẩy tiếp thì bỏ lần chạy cũ; push lên main, develop thì commit nào cũng có kết quả
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, kiểm kiểu, build, test frontend và triển khai
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Lockfile mang bản TypeScript lệch phạm vi khai báo (kể cả phạm vi peer, như typescript-eslint < 6.1.0) thì npm ls báo invalid
+      - run: npm ls typescript
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test -w frontend
+      - run: npm run test:deploy
+
+  backend-test:
+    name: Test backend trên SQL Server tạo mới
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: '1433'
+      DB_USER: sa
+      SEED_SAMPLE_DATA: 'true'
+      COOKIE_SECURE: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Database chỉ sống trong job: mật khẩu sinh mỗi lần chạy, không lưu ở repo hay secret
+      - name: Sinh mật khẩu dùng một lần
+        run: |
+          db_password="Ci$(openssl rand -hex 16)!"
+          demo_password="Demo$(openssl rand -hex 8)!"
+          echo "::add-mask::$db_password"
+          echo "::add-mask::$demo_password"
+          echo "DB_PASSWORD=$db_password" >> "$GITHUB_ENV"
+          echo "DEMO_PASSWORD=$demo_password" >> "$GITHUB_ENV"
+      # Cùng bản (2019) và collation mặc định (SQL_Latin1_General_CP1_CI_AS) với SQL Server của máy chủ lúc dựng CI (21/10/2026);
+      # giới hạn bộ nhớ để còn chỗ cho Jest, chỉ mở cổng trên localhost của runner
+      - name: Chạy SQL Server 2019
+        run: >-
+          docker run -d --name mssql -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=$DB_PASSWORD" -e MSSQL_MEMORY_LIMIT_MB=2048
+          -p 127.0.0.1:1433:1433 mcr.microsoft.com/mssql/server:2019-latest
+      # Mỗi lần thử có thể chờ kết nối tới 30 giây: giới hạn tổng 5 phút, container dừng thì báo ngay kèm lỗi của lần thử cuối
+      - name: Chờ SQL Server nhận kết nối
+        run: |
+          deadline=$((SECONDS + 300))
+          until out=$(npm run migrate -- --check 2>&1); do
+            if [ "$(docker inspect -f '{{.State.Running}}' mssql)" != "true" ] || [ $SECONDS -ge $deadline ]; then
+              echo "$out" | tail -n 30
+              docker logs mssql 2>&1 | tail -n 50
+              exit 1
+            fi
+            sleep 5
+          done
+      - run: npm run migrate
+      - run: npm run seed
+      - run: npm test -w backend

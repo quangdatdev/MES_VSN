@@ -26,10 +26,24 @@ describe('Phase 5.4: danh mục hệ thống', () => {
   let order: OrderDb;
   let admin: string;
   let planner: string;
-  /** MES_Sync đã có và đã đồng bộ danh mục: chưa có thì bỏ qua các kiểm tra danh mục BRAVO */
+  /** MES_Sync đã có và đọc được danh mục: chưa có thì bỏ qua các kiểm tra danh mục BRAVO */
   let externalReady = false;
+  /** Đã đồng bộ danh mục chi nhánh, danh mục cỡ BRAVO (bảng chép có dữ liệu): chưa thì bỏ qua bài cần dữ liệu đó */
+  let branchesCopied = false;
+  let sizesCopied = false;
   const api = () => request(app.getHttpServer());
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+  /** Số dòng của bảng chép chi nhánh, cỡ BRAVO: migration tạo bảng rỗng, chỉ có dữ liệu sau khi đồng bộ (database tạo mới ở CI thì chưa). Lỗi đọc thì để lỗi lộ ra, không coi là chưa đồng bộ */
+  async function bravoCopied() {
+    const sync = createDb<SyncDatabase>(env.db.syncName);
+    try {
+      const r = await sql<{ b: number; s: number }>`SELECT (SELECT COUNT(*) FROM bravo.DM_CHINHANH) AS b, (SELECT COUNT(*) FROM bravo.DM_Size) AS s`.execute(sync);
+      return { branches: r.rows[0].b > 0, sizes: r.rows[0].s > 5 };
+    } finally {
+      await sync.destroy();
+    }
+  }
 
   async function tokenFor(username: string, branchCode: string) {
     const l = await api().post('/api/v1/auth/login').send({ username, password: env.demoPassword });
@@ -144,7 +158,9 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     planner = await tokenFor('kehoach.a', 'A01');
     const o = (await api().get('/api/v1/admin/catalogs').set(auth(admin)).expect(200)).body;
     externalReady = !o.externalError && o.external.length > 0;
+    if (externalReady) ({ branches: branchesCopied, sizes: sizesCopied } = await bravoCopied());
     if (!externalReady) console.warn(`Bỏ qua kiểm tra danh mục BRAVO: ${o.externalError ?? 'MES_Sync chưa có danh mục'}`);
+    else if (!branchesCopied || !sizesCopied) console.warn(`Bỏ qua kiểm tra cần dữ liệu BRAVO đã chép: chưa đồng bộ ${[!branchesCopied && 'DM_CHINHANH', !sizesCopied && 'DM_Size'].filter(Boolean).join(', ')}`);
   });
 
   afterAll(async () => {
@@ -208,7 +224,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     expect(r.updated).toEqual([]);
     expect(r.skipped).toEqual(expect.arrayContaining(['A00', 'sai mã!', '(trống)']));
     expect((await core.selectFrom('SysBranch').select('Name').where('Code', '=', 'A00').executeTakeFirstOrThrow()).Name).not.toBe('Không được đè tổng hợp');
-    if (!externalReady) return;
+    if (!branchesCopied) return;
     // Có MES_Sync: lần đầu chép theo BRAVO, lần sau không còn gì để thêm hay đổi; mỗi ĐVCS chép về có nút gốc trong cây tổ chức
     await api().post('/api/v1/admin/branches/import').set(auth(planner)).expect(403);
     const first = (await api().post('/api/v1/admin/branches/import').set(auth(admin)).expect(200)).body;
@@ -465,7 +481,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
   });
 
   it('danh mục BRAVO chỉ xem: đọc theo trang, tìm theo cột chữ; tên danh mục lạ hoặc không phải danh mục => 404', async () => {
-    if (!externalReady) return;
+    if (!sizesCopied) return;
     const page = (await api().get('/api/v1/admin/catalogs/external/BRAVO.DM_Size/rows?pageSize=5').set(auth(admin)).expect(200)).body;
     expect(page.total).toBeGreaterThan(5);
     expect(page.rows).toHaveLength(5);
@@ -564,7 +580,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     const a01 = branchNames.find((b) => b.code === 'A01')!.name;
     expect(a01.trim()).not.toBe('');
     // Có MES_Sync: đúng tên chép từ BRAVO (chỉ đọc bảng chép)
-    if (externalReady) {
+    if (branchesCopied) {
       const sync = createDb<SyncDatabase>(env.db.syncName);
       try {
         const bravo = await sync.selectFrom('bravo.DM_CHINHANH').select('TenChiNhanh').where('BranchCode', '=', 'A01').executeTakeFirst();

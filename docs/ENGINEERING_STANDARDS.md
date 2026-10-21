@@ -7,7 +7,7 @@
 | Nguồn quy tắc | Luật phân quyền, an toàn AI ở [AGENTS.md](../AGENTS.md); quy trình review ở [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) |
 | Đối chiếu code | Commit `98d19db` trên `main` (19/10/2026) |
 
-Cột "Tự động" cho biết tiêu chuẩn có được công cụ kiểm không. Repo **chưa có CI và chưa có git hook**: mọi kiểm "tự động" chỉ chạy khi có người gọi lệnh (`npm run lint`, `npm run typecheck`, `npm test`, `npm run build`) hoặc lúc ứng dụng chạy.
+Cột "Tự động" cho biết tiêu chuẩn có được công cụ kiểm không. CI: `.github/workflows/ci.yml` (GitHub Actions, T2), chạy khi mở PR vào hoặc push lên `main`, `develop` trên `origin` (lần chạy đầu: NEEDS VERIFICATION); chưa có git hook. Trên máy dev, mọi kiểm "tự động" chỉ chạy khi có người gọi lệnh (`npm run lint`, `npm run typecheck`, `npm test`, `npm run build`) hoặc lúc ứng dụng chạy.
 
 ## 1. Testing
 
@@ -59,8 +59,9 @@ Lệnh mẫu PowerShell và lưu ý (synonym nguồn đồng bộ, `NODE_ENV=pro
 
 | Lỗ hổng | Bằng chứng | Trạng thái |
 |---|---|---|
-| Lỗi kiểu trong `backend/test`, `backend/scripts` không lệnh nào bắt | `backend/jest.config.js` đặt `diagnostics: false`; `tsconfig.build.json` chỉ build `src`; script chạy bằng `tsx`; lint không bật luật type-checked | Đã xử lý (T8, 21/10/2026): `npm run typecheck` chạy `tsc --noEmit -p backend/tsconfig.json` (gồm `src`, `scripts`, `test`); CI (T2, chưa dựng) sẽ chạy ở bước 4 (mục 9). Test vẫn chạy với `diagnostics: false` (nhanh hơn): lỗi kiểu ở phần có khai kiểu do `typecheck` bắt; chỗ dùng `any` (nhiều ở `res.body` của test, `as any` khi ghi bằng Kysely trong script) không được kiểm |
+| Lỗi kiểu trong `backend/test`, `backend/scripts` không lệnh nào bắt | `backend/jest.config.js` đặt `diagnostics: false`; `tsconfig.build.json` chỉ build `src`; script chạy bằng `tsx`; lint không bật luật type-checked | Đã xử lý (T8, 21/10/2026): `npm run typecheck` chạy `tsc --noEmit -p backend/tsconfig.json` (gồm `src`, `scripts`, `test`); CI (T2) chạy trong job `checks` (mục 9). Test vẫn chạy với `diagnostics: false` (nhanh hơn): lỗi kiểu ở phần có khai kiểu do `typecheck` bắt; chỗ dùng `any` (nhiều ở `res.body` của test, `as any` khi ghi bằng Kysely trong script) không được kiểm |
 | Test không có chốt chặn database | `backend/test/*` | Chờ quyết. CI dùng database tạo mới mỗi lần chạy nên không bị ảnh hưởng; chạy tay vẫn phải theo mục 1.3 |
+| CI không phủ phần cần dữ liệu ngoài: đồng bộ BRAVO, OSM (không có database trung gian), chép ĐVCS, danh mục BRAVO chỉ xem | `sync.spec.ts`, `catalog.spec.ts` bỏ qua có điều kiện: bài vẫn báo qua, chỉ có cảnh báo trong log | Ghi nhận (T2); chạy tay trên bộ database test có dữ liệu chép (`MES_*_T514`) |
 | Màn Cắt không có test vẽ màn, chỉ có test luật thuần | `frontend/src/test/cutting-*-rules.test.ts` | Ghi nhận |
 
 ## 2. Bảo mật
@@ -146,7 +147,7 @@ Cưỡng chế lúc chạy: `AuthGuard`, `PermissionGuard`, `FieldPolicyIntercep
 |---|---|---|
 | Cài theo `package-lock.json` (`npm ci` khi triển khai) | CURRENT | Có (`deploy.cjs`) |
 | Khóa phiên bản NestJS 11, Kysely 0.28; `react-datasheet-grid` ghim 4.11.6 | CURRENT ([AGENTS.md](../AGENTS.md) mục 3) | Không |
-| TypeScript 6.0.x | CURRENT (T3, 21/10/2026): `backend`, `frontend` khai `~6.0.3` (không tự lên 6.1: `typescript-eslint` 8 nhận `< 6.1.0`); `nest build`, `tsc` của frontend, `ts-jest` cùng dùng bản ở gốc `node_modules`. `@nestjs/cli` khai riêng `typescript` 5.9.3 nên npm giữ một bản 5.9.3 trong `node_modules/@nestjs/cli`; loader của `@nestjs/cli` ưu tiên `typescript` ở `node_modules` gốc trước bản lồng nên `nest build`, `nest start` luôn dùng 6.0.3 (bản lồng tự mất khi `@nestjs/cli` nâng; không dùng `overrides`) | Không (CI ở T2 sẽ kiểm `npm ls typescript` thoát 0) |
+| TypeScript 6.0.x | CURRENT (T3, 21/10/2026): `backend`, `frontend` khai `~6.0.3` (không tự lên 6.1: `typescript-eslint` 8 nhận `< 6.1.0`); `nest build`, `tsc` của frontend, `ts-jest` cùng dùng bản ở gốc `node_modules`. `@nestjs/cli` khai riêng `typescript` 5.9.3 nên npm giữ một bản 5.9.3 trong `node_modules/@nestjs/cli`; loader của `@nestjs/cli` ưu tiên `typescript` ở `node_modules` gốc trước bản lồng nên `nest build`, `nest start` luôn dùng 6.0.3 (bản lồng tự mất khi `@nestjs/cli` nâng; không dùng `overrides`) | CI (T2): `npm ls typescript` |
 | `npm audit` | Agent `code-reviewer` tự chạy khi review; không có lịch, không có ngưỡng | Không |
 | Gỡ gói không dùng (`mantine-datatable`) | Chưa làm (câu hỏi ở [STATUS](current/STATUS.md)) | – |
 
@@ -154,20 +155,16 @@ Cưỡng chế lúc chạy: `AuthGuard`, `PermissionGuard`, `FieldPolicyIntercep
 
 | Cổng | Lệnh | Hiện trạng |
 |---|---|---|
-| Lint | `npm run lint`: ESLint backend (`src`, `scripts`, `test`), frontend (`src`), `deploy`; `--max-warnings 0`; luật ranh giới module ở backend | Chạy tay |
+| Lint | `npm run lint`: ESLint backend (`src`, `scripts`, `test`), frontend (`src`), `deploy`; `--max-warnings 0`; luật ranh giới module ở backend | Chạy tay; CI (T2) |
 | Kiểm kiểu | `npm run typecheck`: `tsc --noEmit` backend (`src`, `scripts`, `test`); `npm run build`: `nest build` (backend `src`), `tsc --noEmit` + `vite build` (frontend, gồm `src/test`) | Chạy tay; `deploy.cjs` chạy build khi triển khai, không chạy `typecheck` |
-| Test | `npm test` | Chạy tay; `deploy.cjs` **không** chạy test, không chạy lint |
+| Test | `npm test` | Chạy tay; CI (T2); `deploy.cjs` **không** chạy test, không chạy lint |
 | Kiểm trước khi chuyển bản | `deploy.cjs`: `npm ci`, build, có `frontend/dist/index.html`, nạp `env.js` với `.env` mới, `migrate --check` khi có migration mới, chờ `/api/v1/health` | Tự động khi triển khai |
-| CI | – | **Chưa có** (task T2). APPROVED (19/10/2026): GitHub Actions ở `.github/workflows/`, chạy trên GitHub (`origin`); Gitea Actions của máy chủ git nội bộ dùng lại được khi bật runner |
+| CI | `.github/workflows/ci.yml` | CURRENT (T2, 21/10/2026): GitHub Actions trên `origin`, các bước dưới; Gitea Actions của máy chủ git nội bộ dùng lại được khi bật runner. Lần chạy đầu trên GitHub: NEEDS VERIFICATION (chờ push) |
 
-**Các bước CI — APPROVED (19/10/2026), chưa dựng:** chạy trên mỗi PR vào `develop`, `main`, theo thứ tự:
+**Các bước CI — CURRENT (T2, 21/10/2026):** chạy khi mở hoặc cập nhật PR vào `develop`, `main`, khi push lên hai nhánh này, và khi bấm chạy tay (`workflow_dispatch`). Hai job song song trên `ubuntu-24.04`, Node 22 (`actions/checkout@v5`, `actions/setup-node@v5`); PR đẩy tiếp thì hủy lần chạy cũ, push lên `main`, `develop` thì commit nào cũng chạy đủ:
 
-1. `npm ci`.
-2. `npm run lint`.
-3. `npm run build`.
-4. `npm run typecheck` (kiểm kiểu backend gồm `scripts`, `test`).
-5. `npm test -w frontend`, `npm run test:deploy`.
-6. Test backend trên SQL Server chạy trong container của job: database tạo mới mỗi lần chạy, `npm run migrate`, `npm run seed` với dữ liệu mẫu, rồi `npm test -w backend`. Không trỏ tới database nào ngoài container; `sync.spec.ts` tự bỏ qua bài cần database trung gian cùng máy; 2 bài của `catalog.spec.ts` (chép ĐVCS từ BRAVO, danh mục BRAVO chỉ xem) đòi bảng chép BRAVO có dữ liệu nên hỏng trên bộ database mới: task T2 phải xử lý (nạp dữ liệu giả vào bảng chép hoặc bỏ qua có điều kiện).
+1. Job `checks`: `npm ci`; `npm ls typescript` (bản TypeScript lệch phạm vi khai báo thì thoát mã khác 0); `npm run lint`; `npm run build`; `npm run typecheck` (kiểm kiểu backend gồm `scripts`, `test`); `npm test -w frontend`; `npm run test:deploy`.
+2. Job `backend-test`: SQL Server 2019 trong container của job (cùng bản, cùng collation mặc định `SQL_Latin1_General_CP1_CI_AS` với máy chủ), mật khẩu `sa` và `DEMO_PASSWORD` sinh ngẫu nhiên mỗi lần chạy (không lưu ở repo hay secret); giới hạn bộ nhớ 2 GB, cổng chỉ mở trên localhost của runner; chờ SQL Server nhận kết nối bằng `npm run migrate -- --check` tối đa 5 phút (container dừng thì báo ngay kèm lỗi); `npm run migrate`, `npm run seed` với dữ liệu mẫu (`SEED_SAMPLE_DATA=true`), rồi `npm test -w backend`. Không trỏ tới database nào ngoài container, không có database trung gian BRAVO, OSM: `sync.spec.ts` tự bỏ qua bài cần database trung gian; `catalog.spec.ts` bỏ qua bài cần danh mục chi nhánh, danh mục cỡ BRAVO khi bảng chép chưa có dữ liệu (in cảnh báo; lỗi đọc bảng thì báo hỏng, không bỏ qua). Đã chạy thử điều kiện này trên bộ database mới `MES_*_CI21` trên SQL Server test (21/10/2026; máy dev không có Docker): 37/38 bộ qua, chỉ 2 bài của `catalog.spec.ts` hỏng; sau khi sửa, `catalog.spec.ts` qua 16/16.
 
 PR chỉ được gộp khi mọi bước qua ([DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) mục 4.3). Không đặt ngưỡng coverage.
 

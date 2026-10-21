@@ -295,4 +295,4 @@ Quyết định đã ghi mà code chưa làm hoặc làm khác: bảng "Quyết 
 | A3 | Thư viện dùng chung của màn nghiệp vụ nằm trong `features/order` | Cắt, May phụ thuộc `features/order/common.tsx` | APPROVED (19/10/2026): chuyển phần dùng chung sang `components`/`lib`, task T9 |
 | A4 | Hạ tầng sự kiện giữa module, module báo cáo xuyên database (`MES_Report`) | Chưa có (13, "chưa khớp" #3, #4) | Chờ quyết |
 | A5 | TypeScript 6.0.3 | `backend`, `frontend` khai `~6.0.3`; `nest build`, `tsc`, `ts-jest` cùng dùng 6.0.3 | Xong (T3, 21/10/2026) |
-| A6 | CI | Chưa có pipeline | Đã duyệt dựng CI theo cú pháp GitHub Actions, chưa làm ([DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md)) |
+| A6 | CI | `.github/workflows/ci.yml` (GitHub Actions) | Workflow có (T2, 21/10/2026), các bước ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9; lần chạy đầu trên GitHub: NEEDS VERIFICATION |
