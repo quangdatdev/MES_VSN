@@ -28,7 +28,7 @@ Số mục 3–6 và số luật trong mục 4 được comment trong code tríc
 1. Modular Monolith: `backend/src/platform` (nền tảng) và `backend/src/modules/<module>` (`order`, `sewing`, `cutting`, `hr`), mỗi module `controller → service → repository`. Mỗi module nghiệp vụ một database: `MES_Core` (bảng `Sys*`), `MES_Order`, `MES_Sewing`, `MES_Cutting`, `MES_Hr`, `MES_Sync`.
 2. Module chỉ dùng API công khai của module khác, không import phần bên trong. Nền tảng không import module: module cấp dữ liệu cho nền tảng bằng cách đăng ký vào service của nền tảng (như `LineSource`). Luật lint ở `backend/eslint.config.mjs`; thêm module thì thêm khối luật.
 3. Hệ thống ngoài chỉ chạm ở lớp đồng bộ, chỉ đọc, chép vào `MES_Sync` khi quản trị bấm Đồng bộ. BRAVO: chỉ đọc view của database trung gian (`DB_TRUNGGIAN_NAME`), không đọc thẳng database BRAVO. Module nghiệp vụ đọc dữ liệu đã chép qua `SourceFeedService`, `CatalogLookupService`, không đọc `MES_Sync`.
-4. Khóa phiên bản: NestJS 11, Kysely 0.28 (CommonJS). Không nâng NestJS 12, Kysely 0.29 khi chưa chuyển cả dự án sang ESM. TypeScript: đã duyệt chuẩn hóa sang 6.0.3, làm ở task riêng ([STATUS](docs/current/STATUS.md)).
+4. Khóa phiên bản: NestJS 11, Kysely 0.28 (CommonJS). Không nâng NestJS 12, Kysely 0.29 khi chưa chuyển cả dự án sang ESM. TypeScript 6.0.x (`~6.0.3` ở `backend`, `frontend`): không lên 6.1 khi `typescript-eslint` chưa nhận (bản 8 hiện nhận `< 6.1.0`).
 5. Thay thư viện truy cập dữ liệu, thêm thư viện lớn, đổi một quyết định ở [13 Quyết định](docs/update_docs/13-quyet-dinh.md): phải có quyết định mới được duyệt trước khi viết code.
 
 Mô tả chi tiết và mức cưỡng chế: [ARCHITECTURE](docs/ARCHITECTURE.md) mục 4, 7.

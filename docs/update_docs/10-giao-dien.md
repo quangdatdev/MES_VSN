@@ -8,7 +8,7 @@ Khung frontend và mọi phần dùng chung: công nghệ, cấu trúc `frontend
 | Gói | Phiên bản (`frontend/package.json`) | Dùng để |
 |---|---|---|
 | `react`, `react-dom` | `^19.3.0` | Giao diện; `StrictMode` bật ở `main.tsx` |
-| `typescript` | `^5.9.3` | `strict: true` (`frontend/tsconfig.json`) |
+| `typescript` | `~6.0.3` | `strict: true` (`frontend/tsconfig.json`) |
 | `vite` + `@vitejs/plugin-react` | `^8.3.4` (Rolldown), `^6.1.2` | Dev server, build |
 | `@mantine/core`, `hooks`, `form`, `dates`, `modals`, `notifications`, `spotlight` | `^9.7.1` | Thành phần giao diện, form, popup, thông báo, tìm màn hình (Ctrl+K), ô ngày (ADR 0003) |
 | `@tabler/icons-react` | `^3.49.0` | Biểu tượng, import theo tên từng icon |

@@ -26,9 +26,9 @@ Mỗi quyết định gồm: nội dung đang áp dụng, lý do, điều phải
 - **Nguồn:** ADR 0001 mục 1; ADR 0003 (lint ranh giới); ADR 0007 mục Nơi lưu; ADR 0009 Hệ quả; ADR 0012. Code: `backend/eslint.config.mjs`, `backend/src/modules/order/schedule-feed.service.ts`, `backend/src/platform/feed/source-feed.service.ts`.
 
 ### 1.3 Công nghệ backend, phiên bản khóa
-- **Áp dụng:** Node.js 22, NestJS 11, TypeScript strict (CommonJS; chuẩn hóa sang 6.0.3, mục dưới), Kysely 0.28 với tedious cho SQL Server, `class-validator`/`class-transformer`, argon2id cho mật khẩu, `@nestjs/jwt` cho token.
+- **Áp dụng:** Node.js 22, NestJS 11, TypeScript 6.0.x strict (CommonJS), Kysely 0.28 với tedious cho SQL Server, `class-validator`/`class-transformer`, argon2id cho mật khẩu, `@nestjs/jwt` cho token.
 - **Lý do:** Kysely là query builder có kiểu, cho chèn điều kiện phân quyền ở một chỗ (`BaseRepository`) mà vẫn viết T-SQL khi cần; ORM nặng khó bảo đảm mọi truy vấn đi qua một cổng. NestJS 12 và Kysely 0.29 chỉ hỗ trợ ESM.
-- **Phải nhớ:** không nâng NestJS 12, Kysely 0.29 khi chưa chuyển cả dự án sang ESM; TypeScript: Tech Lead duyệt 19/10/2026 chuẩn hóa sang 6.0.3 (thay quy tắc cũ "giữ 5.9 vì ts-jest"); Tech Lead xác nhận `ts-jest` đang chạy với 6.0.3. Việc nâng `backend`, `frontend` (đang khai `^5.9.3`) làm ở task riêng ([Trạng thái](../current/STATUS.md), task T3). Thay thư viện truy cập dữ liệu là viết lại `BaseRepository`: phải có quyết định mới trước khi viết code.
+- **Phải nhớ:** không nâng NestJS 12, Kysely 0.29 khi chưa chuyển cả dự án sang ESM; TypeScript: Tech Lead duyệt 19/10/2026 chuẩn hóa sang 6.0.3 (thay quy tắc cũ "giữ 5.9 vì ts-jest"); đã nâng `backend`, `frontend` lên `~6.0.3` ở task T3 (21/10/2026), không lên 6.1 khi `typescript-eslint` chưa nhận. Thay thư viện truy cập dữ liệu là viết lại `BaseRepository`: phải có quyết định mới trước khi viết code.
 - **Nguồn:** ADR 0003 bảng công nghệ, mục "Cập nhật khi dựng Phase 1–2". Code: `backend/package.json`.
 
 ### 1.4 Migration là file `.sql` có số thứ tự, người chạy

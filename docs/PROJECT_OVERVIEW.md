@@ -124,14 +124,14 @@ Trang chủ `/` và `/login` nằm ngoài menu. Đường dẫn cũ `/sewing/pre
 
 ## 4. Công nghệ
 
-Phiên bản đọc từ `node_modules/*/package.json` đang cài (19/10/2026).
+Phiên bản đọc từ `node_modules/*/package.json` đang cài (19/10/2026; TypeScript 21/10/2026).
 
 | Phần | Công nghệ | Phiên bản cài | Ghi chú |
 |---|---|---|---|
 | Runtime | Node.js | 22 (máy chủ chạy Node 22, Tech Lead xác nhận 19/10/2026) | Repo không ghim phiên bản (không có `engines`, `.nvmrc`) |
 | Backend | NestJS | 11.2.7 | CommonJS; không nâng NestJS 12 khi chưa chuyển dự án sang ESM |
 | Truy cập DB | Kysely + tedious + tarn | 0.28.17, 20.3.3, 3.1.2 | `MssqlDialect`; không nâng Kysely 0.29 (chỉ ESM) |
-| Ngôn ngữ | TypeScript strict | 5.9.3 ở `backend`, `frontend` (`nest build`, `tsc`); 6.0.3 ở `node_modules` gốc, `ts-jest` chạy bản này | Đã duyệt chuẩn hóa sang 6.0.3, task T3 ([STATUS](current/STATUS.md)) |
+| Ngôn ngữ | TypeScript strict | 6.0.3 (`~6.0.3` ở `backend`, `frontend`) | Chuẩn hóa ở T3 (21/10/2026) |
 | Xác thực | `@nestjs/jwt`, argon2, cookie-parser, helmet | | |
 | Kiểm dữ liệu vào | class-validator, class-transformer | | `ValidationPipe` toàn cục |
 | Database | SQL Server 2019/2022 | | Đăng nhập tài khoản SQL; mức tương thích 130+ |

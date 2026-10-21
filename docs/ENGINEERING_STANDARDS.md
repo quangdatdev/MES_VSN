@@ -146,7 +146,7 @@ Cưỡng chế lúc chạy: `AuthGuard`, `PermissionGuard`, `FieldPolicyIntercep
 |---|---|---|
 | Cài theo `package-lock.json` (`npm ci` khi triển khai) | CURRENT | Có (`deploy.cjs`) |
 | Khóa phiên bản NestJS 11, Kysely 0.28; `react-datasheet-grid` ghim 4.11.6 | CURRENT ([AGENTS.md](../AGENTS.md) mục 3) | Không |
-| TypeScript 6.0.3 | APPROVED (19/10/2026). Tech Lead xác nhận `ts-jest` đang chạy với 6.0.3 (gói ở gốc `node_modules`); `backend`, `frontend` vẫn khai `^5.9.3` và `nest build`, `tsc` của frontend dùng 5.9.3. Thống nhất ở task T3 | – |
+| TypeScript 6.0.x | CURRENT (T3, 21/10/2026): `backend`, `frontend` khai `~6.0.3` (không tự lên 6.1: `typescript-eslint` 8 nhận `< 6.1.0`); `nest build`, `tsc` của frontend, `ts-jest` cùng dùng bản ở gốc `node_modules`. `@nestjs/cli` khai riêng `typescript` 5.9.3 nên npm giữ một bản 5.9.3 trong `node_modules/@nestjs/cli`; loader của `@nestjs/cli` ưu tiên `typescript` ở `node_modules` gốc trước bản lồng nên `nest build`, `nest start` luôn dùng 6.0.3 (bản lồng tự mất khi `@nestjs/cli` nâng; không dùng `overrides`) | Không (CI ở T2 sẽ kiểm `npm ls typescript` thoát 0) |
 | `npm audit` | Agent `code-reviewer` tự chạy khi review; không có lịch, không có ngưỡng | Không |
 | Gỡ gói không dùng (`mantine-datatable`) | Chưa làm (câu hỏi ở [STATUS](current/STATUS.md)) | – |
 
