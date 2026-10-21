@@ -108,14 +108,6 @@ export interface PoAllocationFactoryResult {
   dryRun: boolean;
 }
 
-/** Nhà máy SX (ô chọn chỉ cho nhà máy đang dùng; nhà máy đã ngừng để hiện tên ở đơn hàng cũ), gom theo đơn vị cơ sở */
-export interface FactoryOption {
-  code: string;
-  name: string;
-  isActive: boolean;
-  branchCode: string | null;
-}
-
 export interface ShipmentPlan {
   id: number;
   planNo: string;
@@ -384,23 +376,3 @@ export interface AllocationDetail extends Allocation {
   colorSizes: AllocationCell[];
   rows: AllocationRow[];
 }
-
-/** Bộ lọc chung của các lưới theo mô tả giao diện. */
-export interface OrderFilter {
-  shipFrom: string;
-  shipTo: string;
-  customer: string;
-  style: string;
-  season: string;
-  status: string;
-  line: string;
-  /** Tìm nhanh (số chứng từ, PO/Buy date...) */
-  q: string;
-  /** Ngày tạo phiếu từ, đến; Số lệnh cấp; Người lập (màn Xác nhận cấp BTP, phase 5.15). Màn khác để trống: không gửi lên máy chủ */
-  createdFrom: string;
-  createdTo: string;
-  supplyNo: string;
-  creator: string;
-}
-
-export const emptyFilter: OrderFilter = { shipFrom: '', shipTo: '', customer: '', style: '', season: '', status: '', line: '', q: '', createdFrom: '', createdTo: '', supplyNo: '', creator: '' };

@@ -28,3 +28,6 @@ export function ActionButton({ blockedReason, onClick, ...rest }: Props) {
     </Tooltip>
   );
 }
+
+/** Lý do nút thao tác theo dòng bị khóa khi chưa chọn dòng nào */
+export const PICK_ROW = 'Chọn một dòng trong lưới trước';

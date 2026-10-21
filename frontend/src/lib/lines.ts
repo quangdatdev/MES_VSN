@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
+import { useSession } from '../store/session';
+import { api } from './api';
 import type { LineInfo } from './types';
 
 /** Một lựa chọn của ô chọn (TreeSelect, cột chọn của SheetGrid) */
@@ -58,4 +61,16 @@ export function lineNameLabel(lines: LineInfo[]): (l: LineInfo) => string {
   const count = new Map<string, number>();
   for (const l of lines) count.set(l.name, (count.get(l.name) ?? 0) + 1);
   return (l) => ((count.get(l.name) ?? 0) > 1 ? `${l.name} (${l.code})` : l.name);
+}
+
+const NO_LINES: LineInfo[] = [];
+
+export function useLinesState() {
+  const branch = useSession((s) => s.branch?.code);
+  const q = useQuery({ queryKey: ['me', 'lines', branch], queryFn: () => api<LineInfo[]>('/me/lines'), staleTime: 60_000 });
+  return { lines: q.data ?? NO_LINES, loaded: q.isSuccess };
+}
+
+export function useLines() {
+  return useLinesState().lines;
 }

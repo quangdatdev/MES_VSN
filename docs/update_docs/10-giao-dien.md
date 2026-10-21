@@ -34,7 +34,7 @@ Khung frontend và mọi phần dùng chung: công nghệ, cấu trúc `frontend
 | `main.tsx` | Nạp CSS theo thứ tự, tải trước code của màn theo URL, dựng `App` |
 | `App.tsx` | Provider và cây route gốc |
 | `routes/` | `registry.tsx`: bảng đường dẫn → màn, nạp lười. `FallbackRoute.tsx`: quyết định mở màn, trang giữ chỗ, 403, 404 |
-| `shell/` | `AppLayout.tsx` (khung), `BranchSwitcher.tsx` (đổi ĐVCS), `guards.tsx`, `Can.tsx`, `permissions.ts` (`useCan`, `flattenLeaves`, `MODULE_PREFIXES`), `menuIcons.ts` |
+| `shell/` | `AppLayout.tsx` (khung), `BranchSwitcher.tsx` (đổi ĐVCS), `guards.tsx`, `Can.tsx`, `permissions.ts` (`useCan`, `useCanWrite`, `flattenLeaves`, `MODULE_PREFIXES`), `menuIcons.ts` |
 | `store/` | `session.ts` (store Zustand của phiên), `auth.ts` (đăng nhập, chọn/đổi ĐVCS, khôi phục phiên, đăng xuất) |
 | `lib/` | Gọi API, React Query, định dạng, tham số URL, hộp xác nhận, chặn rời màn, tự phục hồi khi thiếu file code của màn, tính ngày theo lịch làm việc… (mục 10) |
 | `components/` | Thành phần dùng chung (mục 9) |
@@ -49,11 +49,11 @@ Quy ước trong `features/<nhóm>/` (bố cục file chung: [Quy ước code](.
 - Mỗi màn một file `XxxPage.tsx` với `export default` (bảng nạp lười cần default export).
 - `api.ts`: kiểu dữ liệu API của nhóm; nhóm `hr` có thêm các hook `useQuery` và bảng khóa `HR_KEYS`. Nhóm có nhiều kiểu thì thêm `types.ts` (`admin`, `hr`).
 - Luật tính thuần (không React) nằm ở file riêng để test không cần dựng màn: `features/order/cutRatioRules.ts`, `colorSizeRules.ts`, `linePlanRules.ts`, `scheduleDates.ts`; `features/cutting/cuttingProgressRules.ts`, `cuttingSupplyRules.ts`; `features/sewing/sewingPlanRules.ts`.
-- `common.tsx`: phần dùng chung trong nhóm, ví dụ `features/order/common.tsx` (`usePagedList`, `OrderFilters`, `useCanWrite`, `useOriginLock`, `useLines`, `loadError`, `StatusBadge`, `ExportButton`, `EmptyState`), `features/admin/common.tsx` (`FilterBar`, `IconAction`, `escapeToClose`, `LoadError`, `SkeletonRows`, `EmptyRow`), `features/hr/common.tsx` (`useStoredSize`, `Splitter`, `FieldCell`, `WorkshopBadge`: dấu bộ phận là chuyền may, chữ "Xưởng sản xuất" kèm biểu tượng kim chỉ như menu May, không chỉ bằng màu; giải thích bằng `title`, không dùng Tooltip vì lặp trên mọi dòng cây; bản `short` "Xưởng SX" cho dòng cây).
+- `common.tsx`: phần dùng chung trong nhóm, ví dụ `features/order/common.tsx` (bảng trạng thái, `IssueList`, `useOriginLock`), `features/admin/common.tsx` (`FilterBar`, `IconAction`, `escapeToClose`, `LoadError`, `SkeletonRows`, `EmptyRow`), `features/hr/common.tsx` (`useStoredSize`, `Splitter`, `FieldCell`, `WorkshopBadge`: dấu bộ phận là chuyền may, chữ "Xưởng sản xuất" kèm biểu tượng kim chỉ như menu May, không chỉ bằng màu; giải thích bằng `title`, không dùng Tooltip vì lặp trên mọi dòng cây; bản `short` "Xưởng SX" cho dòng cây).
 - Kiểu dữ liệu API viết tay ở frontend (`lib/types.ts`, `features/*/api.ts`, `features/*/types.ts`); chưa có gói `shared` với backend.
 - Có import chéo giữa các nhóm:
   - `features/admin/CatalogsPage.tsx` dùng `../hr/api`, `../hr/tree`, `../sewing/api`; `features/admin/PrepStepsPane.tsx` dùng `../sewing/api`;
-  - màn Cắt (`features/cutting/CuttingProgressPage.tsx`, `CuttingSupplyPage.tsx`) và Kế hoạch may (`features/sewing/SewingPlanPage.tsx`) dùng `../order/common` (`usePagedList`, `useCanWrite`, `useLines`, `loadError`, `EmptyState`, `ExportButton`…); `CuttingSupplyPage.tsx` dùng thêm `../order/api` (`emptyFilter`, `OrderFilter`). `features/order/common.tsx`, `features/order/api.ts` vì vậy là thư viện dùng chung trên thực tế ([Kiến trúc](../ARCHITECTURE.md) mục 5.3, 10).
+- phần dùng chung của các màn danh sách đặt ở `components/StatusBadge.tsx`, `EmptyState.tsx`, `ExportButton.tsx`, `OrderFilters.tsx`; `lib/pagedList.ts` (`usePagedList`, `OrderFilter`, `emptyFilter`), `lib/orderOptions.ts` (`useCustomers`), `lib/lines.ts` (`useLines`, `useLinesState`), `lib/notify.ts` (`loadError`), `lib/fieldPolicy.ts` (`readable`); `useCanWrite` ở `shell/permissions.ts`, `PICK_ROW` ở `components/ActionButton.tsx` (T9, 21/10/2026): màn Cắt, May không import `features/order` (Q46, T9).
 - Lint frontend không có luật ranh giới import.
 
 ### Cấu hình
@@ -313,7 +313,7 @@ Frontend chỉ ẩn, hiện, khóa để người dùng thấy đúng những g�
 |---|---|---|
 | `useCan(code)` | `shell/permissions.ts` | Kiểm một quyền `module.resource:action` có trong `permissions` của phiên |
 | `<Can permission fallback>` | `shell/Can.tsx` | Bọc phần giao diện chỉ hiện khi có quyền |
-| `useCanWrite(code)` | `features/order/common.tsx` | Có quyền và phiên không phải `A00` (tổng hợp chỉ đọc) |
+| `useCanWrite(code)` | `shell/permissions.ts` | Có quyền và phiên không phải `A00` (tổng hợp chỉ đọc) |
 | `useOriginLock(what)` | `features/order/common.tsx` | Đơn hàng, PO dùng chung toàn công ty nhưng chỉ ghi ở ĐVCS nguồn: trả lý do khóa nút ghi khi dòng thuộc ĐVCS khác (ADR 0013) |
 | `useFieldPolicy(resource)` | `lib/fieldPolicy.ts` | Mức từng cột của tài nguyên: `level(f)`, `visible(f)`, `editable(f)`, danh sách `hidden`, `masked`, `readonly`. Cột không khai báo là `EDITABLE` |
 | `MASK` (`'***'`), kiểu `Masked<T>`, `LEVEL_LABEL` | `lib/fieldPolicy.ts` | Giá trị bị Che do máy chủ trả; nhãn tiếng Việt của bốn mức |
@@ -365,7 +365,7 @@ Hàm nội bộ `sendAuthed` dùng chung cho `api()` và `download()`.
   - `toastOk(message, title = 'Đã lưu')`;
   - `toastWarn(message, title, sticky)`: màu cam, tự đóng sau 8 giây, `sticky` thì không tự đóng (dùng khi phần người dùng vừa nhập đã mất mà họ không bấm gì);
   - `toastError(e, title)`: màu đỏ, 10 giây. `ApiError` hiện thông điệp máy chủ, thêm cách xử lý cho `FIELD_READONLY`, `SCOPE_DENIED`; lỗi khác "Không kết nối được máy chủ. Thử lại sau.".
-- Lỗi tải của lưới: truyền chữ vào `error` và hàm vào `onRetry` của `DataGrid`. Helper theo nhóm: `loadError(e, fallback)` (`features/order/common.tsx`, màn Cắt, Kế hoạch may cũng dùng), `LoadError` (`features/admin/common.tsx`, `features/hr/common.tsx`), `loadErrorText` (`features/admin/common.tsx`).
+- Lỗi tải của lưới: truyền chữ vào `error` và hàm vào `onRetry` của `DataGrid`. Helper: `loadError(e, fallback)` (`lib/notify.ts`, màn Đơn hàng, Cắt, May dùng), `LoadError` (`features/admin/common.tsx`, `features/hr/common.tsx`), `loadErrorText` (`features/admin/common.tsx`).
 
 ### 8.4 React Query
 
@@ -391,10 +391,14 @@ Hàm nội bộ `sendAuthed` dùng chung cho `api()` và `download()`.
 | `WorkPage` | Khung màn nghiệp vụ |
 | `PageHeader`, `PageTitle` | Tiêu đề màn quản trị; tiêu đề có chú thích |
 | `Pager` | Chân bảng, phân trang |
-| `ActionButton` | Nút có thể bị khóa kèm lý do |
+| `ActionButton`, `PICK_ROW` | Nút có thể bị khóa kèm lý do; `PICK_ROW` là lý do chung "chưa chọn dòng" |
 | `PolicyHint` | Báo cột bị giới hạn theo chính sách cột |
 | `useBranchName`, `withBranchNames`, `BranchName` | Hiện tên chi nhánh thay mã ĐVCS |
 | `BrandMark` | Logo Vietsun |
+| `StatusBadge`, `statusOptions`, `StatusMap` | Nhãn trạng thái theo bảng mã → chữ, màu; lựa chọn của ô lọc Trạng thái |
+| `EmptyState` | Câu báo lưới rỗng: đang lọc thì kèm nút Xóa lọc |
+| `ExportButton` | Nút Xuất file, chỉ hiện khi có quyền `:export` |
+| `OrderFilters` | Dải lọc chung của màn danh sách Đơn hàng, Cắt (ngày xuất hàng, khách, mã hàng, Season, Trạng thái, Chuyền); không có ô lọc cho cột bị Ẩn, Che |
 
 ### 9.1 `DataGrid` – lưới xem
 
@@ -445,7 +449,7 @@ Hành vi quan trọng:
 - Xuất thêm: `Masked` (ô bị Che), `withFilterLabels(columns, labels)` (gắn chữ hiện cho giá trị trong popup lọc khi chữ đó tải sau, ví dụ tên chuyền).
 
 **100 dòng theo ngày tạo (ADR 0011).** `DataGrid` không tự tải dữ liệu; trang gửi `page`, `pageSize` 100 và `sort` mặc định `createdAt:desc`.
-- Màn Đơn hàng và hai màn Cắt dùng `usePagedList(key, path, defaultSort = 'createdAt:desc', pageSize = 100)` (`features/order/common.tsx`): trang, sắp xếp, dải lọc, lọc theo cột trên URL; trả `query`, `grid` (props lọc theo cột cho `DataGrid`), `columnsOf(names, policy)` (tên các cột đang lọc cho dải lọc), `exportPath`, `error`.
+- Màn Đơn hàng và hai màn Cắt dùng `usePagedList(key, path, defaultSort = 'createdAt:desc', pageSize = 100)` (`lib/pagedList.ts`): trang, sắp xếp, dải lọc, lọc theo cột trên URL; trả `query`, `grid` (props lọc theo cột cho `DataGrid`), `columnsOf(names, policy)` (tên các cột đang lọc cho dải lọc), `exportPath`, `error`.
 - Màn khác khai hằng `PAGE_SIZE = 100` (`CutRatioPage`, `PrepPlanPage`, `UsersPage`, `AuditPage`…) dùng chung cho truy vấn, `useClampPage` và `Pager`.
 - Lưới nghiệp vụ có cột "Ngày tạo" (`format: 'datetime'`, `sortKey` và `filterKey` là `createdAt`).
 - Ngoại lệ: Phân bổ PO (dữ liệu OSM không có ngày tạo), Kế hoạch chuẩn bị SX (thứ tự mặc định do máy chủ đặt), danh sách nhân viên (thẻ, 20 mỗi trang), Kế hoạch may (lưới nhập `SheetGrid` theo một ngày, không phân trang). Chi tiết ở tài liệu module.
@@ -567,19 +571,21 @@ Lọc kiểu Excel trên giá trị của một cột, chạy trong DB (ADR 0011
 | `queryKeys.ts` | `ORDER_OPTIONS_KEY` | Khóa truy vấn dùng ở nhiều nhóm |
 | `types.ts` | `Branch`, `UserInfo`, `RoleInfo`, `MenuNode`, `LoginResponse`, `SelectBranchResponse`, `ProductionFactory`, `MeResponse`, `PermissionsResponse`, `Paged<T>`, `AccessLevel`, `FieldPoliciesResponse`, `LineInfo` | Kiểu dữ liệu dùng chung |
 | `branches.ts` | `useBranchChoices(enabled)` | ĐVCS tài khoản được chọn (`GET /me/branches`), kể cả `A00` nếu được gán. Đây là ĐVCS được gán, không phải ĐVCS xem được: ô lọc theo ĐVCS lấy giá trị từ dữ liệu (`/values?field=branchCode`) |
-| `fieldPolicy.ts` | `useFieldPolicy`, `MASK`, `Masked<T>`, `LEVEL_LABEL`, `FieldPolicy`, `onlyEditable` | Phản chiếu chính sách cột (mục 7) |
+| `fieldPolicy.ts` | `useFieldPolicy`, `MASK`, `Masked<T>`, `LEVEL_LABEL`, `FieldPolicy`, `onlyEditable`, `readable` | Phản chiếu chính sách cột (mục 7) |
 | `columnFilter.ts` | `useColumnFilters`, `valuesLoader`, `parseColumnFilters`, `serializeColumnFilters`, `filterUrlLength`, `MAX_FILTER_VALUES`, `MAX_FILTER_URL`, kiểu `ColumnFilter(s)`, `FilterValue`, `LoadValues`, `ValuesPage` | Lọc theo cột (mục 9.2) |
 | `confirm.tsx` | `confirmAction`, `confirmDiscard` | Hộp xác nhận (mục 10.1) |
 | `leaveGuard.ts` | `useLeaveGuard`, `guardedLeave` | Chặn rời màn khi chưa lưu (mục 10.2) |
 | `afterClose.ts` | `useAfterClose(fn)` | Làm mới dữ liệu sau khi popup đã đóng hẳn |
 | `useUrlParams.ts` | `useUrlParams`, `pageOf`, `useClampPage`, `UrlPatch` | Trạng thái màn trên URL |
 | `useStable.ts` | `useStableByKey(value, key)` | Giữ nguyên tham chiếu khi nội dung không đổi |
+| `pagedList.ts` | `usePagedList`, `useUrlFilter`, `filterParams`, `OrderFilter`, `emptyFilter` | Danh sách có phân trang, sắp xếp, dải lọc, lọc theo cột trên URL (màn Đơn hàng, Cắt) |
+| `orderOptions.ts` | `useCustomers`, `FactoryOption` | Gợi ý khách hàng, Season, loại đơn, đơn vị, Nhà máy SX cho ô lọc, ô nhập (`GET /order/sales-orders/options`, cần `order.allocation:view`) |
 | `useMobile.ts` | `useMobile()` | Màn hình dưới 768px (`max-width: 47.99em`, cùng mốc với CSS): popup lớn `fullScreen` |
 | `format.ts` | `fmtDate`, `fmtDateTime`, `fmtNum`, `fmtMoney`, `sumOf`, `parseDmy`, `today`, `addDays`, `qs` | Định dạng, đọc ngày, dựng query string |
 | `weeks.ts` | `mondayOf`, `sundayOf`, `isoWeekOf`, `weekMonday`, `weeksInYear` | Tuần ISO 8601 (bắt đầu thứ Hai, tuần 1 chứa thứ Năm đầu năm), tính theo UTC; dùng cho thanh tuần T1…T53 của Kế hoạch chuẩn bị SX |
-| `lines.ts` | `GroupedOption`, `lineOptions`, `lineNameLabel`, `ORPHAN_LINE_SUFFIX`, `LINE_NOT_FOUND`, `LINE_EMPTY` | Lựa chọn, nhãn chuyền may cho `TreeSelect` (mục 9.4) |
+| `lines.ts` | `GroupedOption`, `lineOptions`, `lineNameLabel`, `ORPHAN_LINE_SUFFIX`, `LINE_NOT_FOUND`, `LINE_EMPTY`, `useLines`, `useLinesState` | Lựa chọn, nhãn chuyền may cho `TreeSelect` (mục 9.4) |
 | `workCalendar.ts` | `toCalendar`, `isOffDay`, `lineDates`, `offDaysBetween`, `datesOrderError`, `productionDaysOf`, `offsetsInOrder`, `WEEKDAYS`, `maskOf`, `isoWeekday`, `DATE_KEYS`, kiểu `WorkCalendar`, `WorkCalendarJson`, `CalendarDay`, `CalendarOffsets`, `LineDates` | Lịch làm việc theo ĐVCS: bản sao hàm tính ngày của máy chủ (`backend/src/platform/catalog/work-calendar.ts`), hai bản chạy chung bộ ca `backend/test/fixtures/work-calendar-cases.json`. Chi tiết dàn chuyền (`LinePlanPage.tsx`, `features/order/scheduleDates.ts`) tính trước ngày khi gõ; khung Lịch làm việc (`WorkCalendarPane.tsx`) dùng thứ trong tuần, số ngày SX. Khi lưu, máy chủ tính lại và kết quả của máy chủ là chuẩn |
-| `notify.ts` | `toastOk`, `toastWarn`, `toastError` | Thông báo (mục 8.3) |
+| `notify.ts` | `toastOk`, `toastWarn`, `toastError`, `loadError` | Thông báo (mục 8.3) |
 
 Chi tiết các tiện ích hay dùng:
 - **`useUrlParams()`** trả `[params, patch]`. `patch({ k: v })` ghi kiểu `replace` (không làm đầy lịch sử trình duyệt mỗi lần gõ lọc); giá trị rỗng, `null` thì bỏ khỏi URL; đọc qua ref nên hai lần ghi liền nhau không đè mất nhau. `pageOf(params, key = 'page')`: số trang 1…1.000.000, giá trị lạ về 1. `useClampPage(data, page, pageSize, goTo)`: trang trên URL vượt trang cuối (link cũ, vừa xóa dòng cuối) thì về trang cuối thay vì báo bảng rỗng.
@@ -687,7 +693,7 @@ Chi tiết các tiện ích hay dùng:
 7. Form Nhân sự đặt chú thích của ô trong tooltip (`FieldCell`, `features/hr/common.tsx`) để các ô cùng hàng thẳng nhau. Ngoại lệ: ô tích có lý do khóa quan trọng (ô "Xưởng sản xuất" ở Sơ đồ tổ chức) không qua `FieldCell`, hiện mô tả và lý do khóa ngay dưới ô (kèm biểu tượng khóa) để đọc được ngay, kể cả trên điện thoại.
 
 **E. Trạng thái**
-1. Mỗi vùng dữ liệu có đủ: đang tải (Skeleton hoặc Loader, không hiện "0 dòng", không nháy trống, không nhảy bố cục), lỗi kèm "Thử lại", rỗng (phân biệt "không khớp bộ lọc" kèm "Xóa lọc" với "chưa có gì" kèm gợi ý bước tiếp; `EmptyState` ở `features/order/common.tsx`), có dữ liệu (đổi trang, lọc giữ dữ liệu cũ kèm dấu hiệu đang tải).
+1. Mỗi vùng dữ liệu có đủ: đang tải (Skeleton hoặc Loader, không hiện "0 dòng", không nháy trống, không nhảy bố cục), lỗi kèm "Thử lại", rỗng (phân biệt "không khớp bộ lọc" kèm "Xóa lọc" với "chưa có gì" kèm gợi ý bước tiếp; `EmptyState` ở `components/EmptyState.tsx`), có dữ liệu (đổi trang, lọc giữ dữ liệu cũ kèm dấu hiệu đang tải).
 2. Thông báo thành công nêu đối tượng ("Đã xóa đơn hàng SO-…"); thông báo lỗi giữ lâu hơn.
 3. Thao tác nguy hiểm (xóa, khóa tài khoản, ngừng dùng, chép lại từ đầu) hỏi lại bằng `confirmAction`, nêu hậu quả.
 
@@ -720,7 +726,7 @@ Chi tiết các tiện ích hay dùng:
 
 Vấn đề chính của frontend là vẽ lại thừa, không phải mạng hay kích thước gói. Các quy tắc dưới đây đã áp cho mọi màn hiện có; màn mới phải giữ.
 
-1. **Ô lọc, ô tìm giữ chữ đang gõ cục bộ.** Dùng `DebouncedTextInput`, `DebouncedAutocomplete` (mục 9.5); không đặt chữ đang gõ ở state của cả màn. Ô lọc đọc state của màn, không đọc thẳng URL (URL đổi trong `startTransition` nên giá trị về chậm một nhịp). Ví dụ: `useUrlFilter` trong `features/order/common.tsx` giữ bộ lọc ở state, mỗi lần đổi ghi URL và về trang 1 trong cùng một lần ghi.
+1. **Ô lọc, ô tìm giữ chữ đang gõ cục bộ.** Dùng `DebouncedTextInput`, `DebouncedAutocomplete` (mục 9.5); không đặt chữ đang gõ ở state của cả màn. Ô lọc đọc state của màn, không đọc thẳng URL (URL đổi trong `startTransition` nên giá trị về chậm một nhịp). Ví dụ: `useUrlFilter` trong `lib/pagedList.ts` giữ bộ lọc ở state, mỗi lần đổi ghi URL và về trang 1 trong cùng một lần ghi.
 2. **`columns` ổn định.** Khai báo ở cấp module hoặc `useMemo`; mảng rỗng khi chưa có dữ liệu dùng hằng cấp module (`NO_LINES`, `NO_POS`, `NO_DEPTS`…), không viết `?? []` tại chỗ. Cột có `render` đọc dữ liệu ngoài dòng (tên chi nhánh, tên chuyền, chính sách cột) thì đưa dữ liệu đó vào phụ thuộc của `columns`, nếu không ô sẽ hiện giá trị cũ (dòng của `DataGrid` memo). Cột Chi nhánh dùng `withBranchNames`.
 3. **Memo theo dòng.** `DataGrid` đã memo từng dòng và đọc hàm của trang qua ref. Bảng, ma trận lớn tự dựng thì tách dòng hoặc ô thành component `memo` nhận prop kiểu nguyên thủy, hàm đổi ô ổn định (`useCallback` với hàm cập nhật state). Ví dụ: `PolicyCell` (`features/admin/FieldPoliciesPage.tsx`), `ResourceRow`, `Tick` (`PermissionsPage.tsx`), `UserRow` (`UsersPage.tsx`), `BoardRow`, `LineBoard` (`features/order/LineBoard.tsx`), `WeekStrip`, `PrepSummary`, `DeptRow`, `Card`.
 4. **Hàm lấy giá trị lọc ổn định.** `loadValues` dựng bằng `useMemo` theo object bộ lọc đã qua `useStableByKey`, để nút lọc (memo) không vẽ lại.

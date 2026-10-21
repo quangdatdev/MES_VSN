@@ -141,7 +141,7 @@ Luật import cưỡng chế bằng `no-restricted-imports` ở `backend/eslint.
 
 Module dùng thành phần công khai của nền tảng (đếm import trong `backend/src/modules`): `data/base.repository`, `auth/auth.types`, `audit/audit.service`, `data/transaction`, `catalog/catalog-lookup.service`, `permission/field-policy.service`, `data/column-filter`, `export/export.service`, `org/org.service`, `data/resource-registry`, `feed/source-feed.service`, `database/db`, `catalog/factory-list`, `auth/decorators`, `org/user-directory.service`, `permission/permission.service`, `permission/branch.service`, `catalog/work-calendar`, `org/line-source`. Không module nào import `platform/sync` hay đọc thẳng `CORE_DB`.
 
-Frontend không có luật import: `features/admin` import `features/hr`, `features/sewing`; `features/cutting`, `features/sewing` import `features/order/common.tsx`, `features/order/api.ts` (xem mục 8).
+Frontend không có luật import: `features/admin` import `features/hr`, `features/sewing`. Màn Cắt, May không còn import `features/order`: phần dùng chung nằm ở `components`, `lib`, `shell` (T9, 21/10/2026; xem mục 8).
 
 ## 5. Thành phần dùng chung và contract
 
@@ -179,7 +179,7 @@ Danh sách endpoint theo khối: tài liệu module (`/auth` ở [04](update_doc
 | `DataGrid`, `SheetGrid` | Lưới xem (lọc theo cột, chính sách cột); lưới nhập kiểu bảng tính | `components/DataGrid.tsx`, `components/SheetGrid.tsx` |
 | `useCan`, `<Can>`, `useFieldPolicy` | Ẩn/hiện theo quyền, cột | `shell/permissions.ts`, `shell/Can.tsx`, `lib/fieldPolicy.ts` |
 | `toastError`, `toastOk`, `confirmAction` | Thông báo, hộp xác nhận | `lib/notify.ts`, `lib/confirm.tsx` |
-| `features/order/common.tsx`, `features/order/api.ts` | Đang được màn Cắt, May dùng làm thư viện chung (`useCanWrite`, `usePagedList`, `useLines`…) | APPROVED (19/10/2026): chuyển phần dùng chung sang `components`/`lib` (task T9, mục 10 A3) |
+| Phần dùng chung của các màn danh sách | `components/StatusBadge.tsx`, `EmptyState.tsx`, `ExportButton.tsx`, `OrderFilters.tsx`; `lib/pagedList.ts` (`usePagedList`, `OrderFilter`, `emptyFilter`), `lib/orderOptions.ts` (`useCustomers`), `lib/lines.ts` (`useLines`, `useLinesState`), `lib/notify.ts` (`loadError`), `lib/fieldPolicy.ts` (`readable`); `useCanWrite` ở `shell/permissions.ts`, `PICK_ROW` ở `components/ActionButton.tsx` | CURRENT (T9, 21/10/2026). `features/order/common.tsx` chỉ còn phần riêng của Đơn hàng (bảng trạng thái, `IssueList`, `useOriginLock`) |
 
 ## 6. Database
 
@@ -276,7 +276,7 @@ Quy tắc bắt buộc ở [AGENTS.md](../AGENTS.md) mục 3–6. Bảng dưới
 - Vite chạy cổng 5173 khi phát triển, chuyển `/api` sang `http://localhost:3000` để cookie refresh (`SameSite=Strict`) cùng origin (`frontend/vite.config.ts`).
 - Không có biến môi trường frontend; phiên bản ứng dụng đưa vào bằng `define: __APP_VERSION__` (`vite.config.ts`, `env.d.ts`).
 - Giao diện chỉ ẩn/hiện; mọi kiểm soát quyền nằm ở backend.
-- `features/order/common.tsx`, `features/order/api.ts` đang là thư viện dùng chung trên thực tế cho màn Cắt, May.
+- Phần dùng chung của các màn danh sách (dải lọc, danh sách phân trang, nút Xuất file…) nằm ở `components`, `lib` (T9, 21/10/2026), không nằm trong một nhóm màn.
 
 ## 9. Triển khai
 
@@ -292,7 +292,7 @@ Quyết định đã ghi mà code chưa làm hoặc làm khác: bảng "Quyết 
 |---|---|---|---|
 | A1 | Repository không kế thừa `BaseRepository` trong module: `HrCatalogRepository`, `PrepStepRepository`, `ShipmentPlanPriceRepository`, `ShipmentPlanFeedRepository`, `LineColorSizeFeedRepository`, `BravoOrderImportRepository`, `PoAllocationRefreshRepository`; `HrLineSource` đọc thẳng bảng `Department`. Service nền tảng (`admin`, `auth`, `catalog`, `me`, `permission`) truy vấn thẳng `MES_Core`, có chỗ dùng SQL thô | Tech Lead chốt 19/10/2026: **nợ kỹ thuật**, không phải quy tắc được phép | Nợ kỹ thuật |
 | A2 | Ranh giới import ở frontend | Không có luật; có import chéo giữa `features/*` | PROPOSED (câu Q29 ở STATUS) |
-| A3 | Thư viện dùng chung của màn nghiệp vụ nằm trong `features/order` | Cắt, May phụ thuộc `features/order/common.tsx` | APPROVED (19/10/2026): chuyển phần dùng chung sang `components`/`lib`, task T9 |
+| A3 | Thư viện dùng chung của màn nghiệp vụ nằm trong `features/order` | Đã chuyển sang `components`, `lib` | Xong (T9, 21/10/2026) |
 | A4 | Hạ tầng sự kiện giữa module, module báo cáo xuyên database (`MES_Report`) | Chưa có (13, "chưa khớp" #3, #4) | Chờ quyết |
 | A5 | TypeScript 6.0.3 | `backend`, `frontend` khai `~6.0.3`; `nest build`, `tsc`, `ts-jest` cùng dùng 6.0.3 | Xong (T3, 21/10/2026) |
 | A6 | CI | `.github/workflows/ci.yml` (GitHub Actions) | Workflow có (T2, 21/10/2026), các bước ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9; lần chạy đầu trên GitHub: NEEDS VERIFICATION |

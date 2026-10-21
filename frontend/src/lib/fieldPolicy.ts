@@ -42,3 +42,6 @@ export function useFieldPolicy(resource: string): FieldPolicy {
 export function onlyEditable<T extends Record<string, unknown>>(policy: FieldPolicy, body: T): Partial<T> {
   return Object.fromEntries(Object.entries(body).filter(([k]) => policy.editable(k))) as Partial<T>;
 }
+
+/** Cột xem được nguyên giá trị (không Ẩn, không Che) thì mới lọc được theo nó. */
+export const readable = (policy: FieldPolicy | undefined, field: string) => !policy || (policy.level(field) !== 'HIDDEN' && policy.level(field) !== 'MASKED');

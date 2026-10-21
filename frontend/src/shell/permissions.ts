@@ -1,3 +1,4 @@
+// `lib`, `components` import file này (useCan, useCanWrite): chỉ được phụ thuộc `store/session` và kiểu ở `lib/types`, không thì sinh vòng import
 import { useSession } from '../store/session';
 import type { MenuNode } from '../lib/types';
 
@@ -18,3 +19,10 @@ export function flattenLeaves(menu: MenuNode[]): Leaf[] {
 }
 
 export const MODULE_PREFIXES = ['/order', '/cutting', '/sewing', '/finishing', '/qms', '/hr', '/report', '/admin'];
+
+/** Thao tác ghi chỉ có ở ĐVCS cụ thể (A00 chỉ đọc); vẫn để backend cưỡng chế. */
+export function useCanWrite(permission: string) {
+  const can = useCan(permission);
+  const aggregate = useSession((s) => !!s.branch?.isAggregate);
+  return can && !aggregate;
+}

@@ -122,7 +122,7 @@ Luật ghi rút ra từ các khai báo trên:
 
 Thành phần dùng chung của giao diện (lưới `DataGrid`, lưới nhập `SheetGrid`, lọc theo cột, phân trang 100 dòng theo ngày tạo, bộ lọc trên URL, hỏi lại khi rời màn có dữ liệu chưa lưu) mô tả ở [Giao diện](10-giao-dien.md). Mọi lưới danh sách mặc định 100 dòng mới tạo lên đầu, lọc và sắp xếp chạy trong database (ADR 0011). Nút ghi ẩn ở `A00` (`useCanWrite`), máy chủ vẫn chặn.
 
-Dải lọc chung (`OrderFilters` trong `frontend/src/features/order/common.tsx`): Ngày xuất hàng từ–đến, Khách hàng, Mã hàng, ô tìm nhanh (tùy màn), Season, Trạng thái, Chuyền (tùy màn). Ô lọc theo cột bị Ẩn, Che không hiện (máy chủ cũng bỏ tham số đó).
+Dải lọc chung (`OrderFilters`, `frontend/src/components/OrderFilters.tsx`): Ngày xuất hàng từ–đến, Khách hàng, Mã hàng, ô tìm nhanh (tùy màn), Season, Trạng thái, Chuyền (tùy màn). Ô lọc theo cột bị Ẩn, Che không hiện (máy chủ cũng bỏ tham số đó).
 
 ### 4.1 Thông tin đơn hàng (`order.allocation`)
 

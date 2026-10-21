@@ -140,7 +140,7 @@ Không rẽ nhánh theo mã ĐVCS, nhà máy cụ thể; khác biệt nằm tron
 | Quy ước | Trạng thái | Tham chiếu |
 |---|---|---|
 | Lưới xem dùng `DataGrid`, lưới nhập dùng `SheetGrid` | CURRENT | `frontend/src/components/DataGrid.tsx`, `SheetGrid.tsx`; [13](update_docs/13-quyet-dinh.md) mục 11.1 |
-| Ẩn/hiện theo quyền bằng `useCan`, `<Can>`, `useFieldPolicy`; chặn ghi ở `A00` bằng `useCanWrite` | CURRENT; ba màn tự đọc `branch.isAggregate` (`PrepPlanPage.tsx`, `SewingPlanPage.tsx`, `CuttingProgressPage.tsx`) | `shell/permissions.ts`, `shell/Can.tsx`, `lib/fieldPolicy.ts`, `features/order/common.tsx` |
+| Ẩn/hiện theo quyền bằng `useCan`, `<Can>`, `useFieldPolicy`; chặn ghi ở `A00` bằng `useCanWrite` | CURRENT; ba màn tự đọc `branch.isAggregate` (`PrepPlanPage.tsx`, `SewingPlanPage.tsx`, `CuttingProgressPage.tsx`) | `shell/permissions.ts` (`useCan`, `useCanWrite`), `shell/Can.tsx`, `lib/fieldPolicy.ts` |
 | Token chỉ trong bộ nhớ, không `localStorage`/`sessionStorage` | CURRENT | `store/session.ts` |
 | Khóa truy vấn TanStack Query của dữ liệu theo ĐVCS có mã ĐVCS; chỉ làm mới khóa bị ảnh hưởng | CURRENT ở phần lớn màn; lệch ở `SewingPlanPage.tsx` (khóa thiếu ĐVCS) và hai màn Cắt (làm mới cả nhóm `['order']`) | [10 Giao diện](update_docs/10-giao-dien.md) mục 8.4 |
 | Quy tắc UI/UX (một nút chính, nút khóa nói lý do, cỡ chữ, tương phản, màn 360px…) và quy tắc hiệu năng (`columns` ổn định, không Tooltip trong ô lặp, không tách CSS Mantine…) | CURRENT, kiểm bằng review, không có công cụ | [10 Giao diện](update_docs/10-giao-dien.md) mục 12, 13 |
@@ -250,7 +250,7 @@ Hiện trạng lệch: 7 repository trong module không kế thừa `BaseReposit
 |---|---|
 | Dùng service nền tảng thay vì tự làm: `ExportService` (xuất file), `AuditService` (nhật ký), `CatalogLookupService` (tên, danh mục BRAVO), `OrgService` (chuyền), `FieldPolicyService` (chính sách cột) | CURRENT |
 | Dùng thành phần ở `frontend/src/components`, tiện ích ở `frontend/src/lib` trước khi viết mới | CURRENT |
-| `features/order/common.tsx`, `features/order/api.ts` đang được màn Cắt, May dùng làm thư viện chung | CURRENT (lệch). APPROVED (19/10/2026): chuyển phần dùng chung sang `components`/`lib`, task T9 |
+| Phần dùng chung của các màn danh sách Đơn hàng, Cắt, May (dải lọc, danh sách phân trang, Xuất file, quyền ghi…) ở `components`, `lib`, `shell`, không trong `features/order` (Q46) | CURRENT (T9, 21/10/2026). Luật ranh giới import chung cho frontend chưa có: `features/admin` còn import `features/hr`, `features/sewing` (A2, Q29) |
 | Không dùng `mantine-datatable` (có trong `package.json`, không file nào import) | CURRENT |
 | Luật tính thuần của màn đặt ở `features/<khối>/<tên>Rules.ts`, test không cần vẽ màn | CURRENT |
 

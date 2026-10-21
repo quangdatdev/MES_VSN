@@ -21,3 +21,6 @@ export function toastError(e: unknown, title = 'Chưa thực hiện được') {
   const message = e instanceof ApiError ? [e.message, HINT[e.code]].filter(Boolean).join(' ') : 'Không kết nối được máy chủ. Thử lại sau.';
   notifications.show({ color: 'red', title, message, autoClose: 10000 });
 }
+
+/** Thông báo lỗi tải của một truy vấn: máy chủ nói rõ thì dùng câu đó, không thì câu dự phòng. */
+export const loadError = (e: unknown, fallback: string) => (e ? (e instanceof ApiError ? e.message : fallback) : null);
