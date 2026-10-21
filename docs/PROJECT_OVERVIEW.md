@@ -197,7 +197,7 @@ npm run dev:backend      # http://localhost:3000/api/v1
 npm run dev:frontend     # http://localhost:5173 (proxy /api sang cổng 3000)
 ```
 
-3. Kiểm tra: `npm run lint`, `npm test`, `npm run build`. **`npm test` ghi dữ liệu vào database trong `.env`**: chạy trên bộ database test riêng theo [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md).
+3. Kiểm tra: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. **`npm test` ghi dữ liệu vào database trong `.env`**: chạy trên bộ database test riêng theo [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md).
 
 Tài khoản demo (do `seed-data.ts` tạo): `admin`, `quantri`, `giamdoc`, `kehoach.a`, `truongchuyen.a`, `truongchuyen.b`, `ketoan`, `nhansu`; mật khẩu là `DEMO_PASSWORD`. Vai trò, phạm vi từng tài khoản: [12 Dữ liệu mẫu và kiểm thử](update_docs/12-du-lieu-mau-va-kiem-thu.md).
 

@@ -88,7 +88,7 @@ Ngoại lệ không tự mở rộng sang database khác. Tech Lead rút lại t
 
 ## 8. Lệnh đã xác minh
 
-Có trong `package.json` (gốc, `backend`, `frontend`) ngày 19/10/2026. Chạy ở thư mục gốc; cần Node.js 22, SQL Server 2019/2022.
+Có trong `package.json` (gốc, `backend`, `frontend`) ngày 19/10/2026 (`typecheck` thêm 21/10/2026). Chạy ở thư mục gốc; cần Node.js 22, SQL Server 2019/2022.
 
 ```
 npm install                          # cài backend + frontend
@@ -99,6 +99,7 @@ npm run seed                         # máy demo: dữ liệu mẫu (-- --sync-m
 npm run dev:backend                  # http://localhost:3000/api/v1
 npm run dev:frontend                 # http://localhost:5173 (proxy /api sang backend)
 npm run lint                         # backend, frontend, deploy; --max-warnings 0
+npm run typecheck                    # kiểm kiểu backend src, scripts, test (tsc --noEmit)
 npm test                             # backend (Jest, ghi database trong .env), frontend (Vitest), deploy
 npm run build                        # backend rồi frontend (frontend gồm tsc --noEmit)
 npm run check:softkeys -w backend    # kiểm bản ghi mồ côi giữa các database (chỉ đọc)

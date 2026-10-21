@@ -96,6 +96,7 @@ Bảng trên theo `backend/src/config/env.ts`; `backend/.env.example` có đủ 
 | `npm run dev:frontend` | Vite dev server cổng 5173, chuyển `/api` sang `http://localhost:3000` |
 | `npm run build` | Build backend (`backend/dist`) rồi frontend (`frontend/dist`) |
 | `npm run lint` | ESLint backend (`src`, `scripts`, `test`), frontend (`src`) rồi script triển khai (`deploy`, cấu hình `deploy/eslint.config.mjs`), không chấp nhận cảnh báo. Có luật ranh giới module ([Kiến trúc](../ARCHITECTURE.md) mục 4) |
+| `npm run typecheck` | Kiểm kiểu backend (`tsc --noEmit -p backend/tsconfig.json`: `src`, `scripts`, `test`). Build backend chỉ kiểm `backend/src`; kiểm kiểu frontend (gồm `src/test`) nằm trong `npm run build` |
 | `npm test` | Test backend (Jest), frontend (Vitest) rồi `test:deploy`; phần trước lỗi thì dừng |
 | `npm run test:deploy` | `node --test deploy/deploy.test.cjs`: hàm thuần của script triển khai (junction, dọn bản cũ, chọn bản quay về, đọc `.env`) trên thư mục tạm; không cần database, pm2 |
 | `npm run migrate` | Migrate mọi database rồi nạp dữ liệu hệ thống ([Migrate](#migrate)) |
@@ -118,6 +119,7 @@ Gọi bằng `npm run <lệnh> -w backend` ở gốc, hoặc `npm run <lệnh>` 
 | `start:dev` | `nest start --watch` |
 | `start:demo` | `node dist/main.js --serve-web`: API và giao diện đã build cùng một cổng |
 | `lint` | `eslint src scripts test --max-warnings 0` |
+| `typecheck` | `tsc --noEmit -p tsconfig.json`: kiểm kiểu `src`, `scripts`, `test` (Jest chạy với `diagnostics: false`, script chạy bằng `tsx`: cả hai không kiểm kiểu) |
 | `test` | `jest --runInBand` (chạy tuần tự, trên database thật) |
 | `migrate`, `seed`, `reset:demo`, `load:bravo`, `sim:board` | Script trong `backend/scripts`, chạy bằng `tsx` (không cần build) |
 | `check:softkeys` | Kiểm bản ghi mồ côi theo khóa ngầm ([Script kiểm tra](#script-kiem-tra-va-cong-cu)) |
@@ -478,7 +480,7 @@ Máy mới hoàn toàn: cài Node.js 22, Git, `npm install -g pm2@7.0.4`; chuẩ
 
 #### B. Sửa code (không thêm file migration)
 
-1. Máy dev: `npm run lint`, test liên quan, `npm run build` qua; commit, push.
+1. Máy dev: `npm run lint`, `npm run typecheck`, test liên quan, `npm run build` qua; commit, push.
 2. Máy chủ: `cd F:\App\MES_VSN`, `node deploy\deploy.cjs --root F:\App\MES-run`. Script không hỏi gì: pull, build (web chạy bình thường), migrate (chỉ nạp dữ liệu hệ thống: quyền, menu cho màn mới), `pm2 reload`. Web không gián đoạn.
 3. Kiểm dòng cuối "Đang chạy: <commit> <tiêu đề>", mở màn có thay đổi. Người dùng tải lại trang (F5) để nhận giao diện mới.
 4. Thông báo khác:

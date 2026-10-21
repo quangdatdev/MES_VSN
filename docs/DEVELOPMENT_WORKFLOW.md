@@ -62,7 +62,7 @@ Agent `code-reviewer` (`.claude/agents/code-reviewer.md`). Checklist kỹ thuậ
 1. Lập danh sách file (`git status`, `git diff --name-only`). Một lượt không quá 100 file; chia theo task.
 2. Gọi agent kèm danh sách file, checklist, các mục liên quan ở [13](update_docs/13-quyet-dinh.md), yêu cầu **chỉ đọc, không sửa file** (agent đang khai cả `Write`, `Edit`), trả kết quả theo mức.
 3. Phiên chính kiểm chứng từng phát hiện (đọc code, chạy test) trước khi sửa; phát hiện sai ghi "Không phải lỗi" kèm lý do.
-4. Sửa xong chạy lại lint, test; phát hiện `CRITICAL`, `HIGH` thì thêm test chứng minh đã sửa khi làm được.
+4. Sửa xong chạy lại lint, typecheck, test; phát hiện `CRITICAL`, `HIGH` thì thêm test chứng minh đã sửa khi làm được.
 5. Ghi báo cáo vào `docs/review/phase-<số>.md`, mỗi lần review một mục "Lượt"; tóm tắt cho Tech Lead (số phát hiện theo mức, đã xử lý, phần hoãn).
 
 ### 3.3 Mức và cổng chặn
@@ -90,7 +90,7 @@ Phiên chính đã kiểm chứng: <phát hiện nào đúng, nào không>.
 |---|---|---|---|---|---|
 | H1 | HIGH | backend/src/...:42 | ... | Đã sửa, thêm test ... | Đóng |
 
-Sau khi sửa: lint, test (số bài qua, bộ database test đã dùng), build.
+Sau khi sửa: lint, typecheck, test (số bài qua, bộ database test đã dùng), build.
 ```
 
 ## 4. Nhánh, Develop, Pull Request, merge
@@ -119,7 +119,7 @@ Không code trực tiếp trên `main` khi mô hình đã áp dụng.
 | Gộp `feature/*` vào `develop` qua PR có CI và review | APPROVED (cùng mô hình nhánh) |
 | Điều kiện merge: Definition of Done ([ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 10), không còn `CRITICAL`/`HIGH` mở | CURRENT (áp cho mọi task) |
 | CI phải qua trước khi merge; các bước kiểm ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9 | APPROVED (CI chưa dựng: task T2) |
-| Mô tả PR ghi: task, phạm vi, migration (có/không, chạy được khi bản cũ còn chạy không), link báo cáo review, kết quả lint/test/build, việc cần làm trên máy chủ | APPROVED |
+| Mô tả PR ghi: task, phạm vi, migration (có/không, chạy được khi bản cũ còn chạy không), link báo cáo review, kết quả lint/typecheck/test/build, việc cần làm trên máy chủ | APPROVED |
 | Tech Lead duyệt mọi PR vào `develop`, `main` | APPROVED |
 | Bảo vệ nhánh `main`, `develop` trên GitHub: cấm push thẳng, cấm force push, bắt CI qua | APPROVED (chưa cấu hình: task T6) |
 | Kiểu gộp: `feature/*` → `develop` bằng **squash** (một commit mỗi task); `develop` → `main` và `hotfix/*` bằng **merge commit** | APPROVED |
@@ -138,7 +138,7 @@ Không code trực tiếp trên `main` khi mô hình đã áp dụng.
 | Quy định | Trạng thái |
 |---|---|
 | Không `git checkout`, `git reset`, `git stash` hay ghi đè thay đổi chưa commit mà mình không tạo | CURRENT ([AGENTS.md](../AGENTS.md) mục 7) |
-| Xung đột khi gộp: người làm task tự giải quyết trên nhánh của mình, chạy lại lint, test, build; không bỏ phần của người khác khi chưa hỏi | APPROVED |
+| Xung đột khi gộp: người làm task tự giải quyết trên nhánh của mình, chạy lại lint, typecheck, test, build; không bỏ phần của người khác khi chưa hỏi | APPROVED |
 | Không `push --force` lên `main`, `develop` | APPROVED |
 | Hai task cùng lấy một số migration: task gộp sau đổi sang số kế tiếp trước khi gộp | APPROVED |
 

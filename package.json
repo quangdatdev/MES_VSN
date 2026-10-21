@@ -10,6 +10,7 @@
     "dev:frontend": "npm run dev -w frontend",
     "build": "npm run build -w backend && npm run build -w frontend",
     "lint": "npm run lint -w backend && npm run lint -w frontend && eslint deploy --max-warnings 0",
+    "typecheck": "npm run typecheck -w backend",
     "test": "npm test -w backend && npm test -w frontend && npm run test:deploy",
     "test:deploy": "node --test deploy/deploy.test.cjs",
     "migrate": "npm run migrate -w backend --",

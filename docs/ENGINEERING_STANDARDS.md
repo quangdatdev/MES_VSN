@@ -7,7 +7,7 @@
 | Nguồn quy tắc | Luật phân quyền, an toàn AI ở [AGENTS.md](../AGENTS.md); quy trình review ở [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) |
 | Đối chiếu code | Commit `98d19db` trên `main` (19/10/2026) |
 
-Cột "Tự động" cho biết tiêu chuẩn có được công cụ kiểm không. Repo **chưa có CI và chưa có git hook**: mọi kiểm "tự động" chỉ chạy khi có người gọi lệnh (`npm run lint`, `npm test`, `npm run build`) hoặc lúc ứng dụng chạy.
+Cột "Tự động" cho biết tiêu chuẩn có được công cụ kiểm không. Repo **chưa có CI và chưa có git hook**: mọi kiểm "tự động" chỉ chạy khi có người gọi lệnh (`npm run lint`, `npm run typecheck`, `npm test`, `npm run build`) hoặc lúc ứng dụng chạy.
 
 ## 1. Testing
 
@@ -59,7 +59,7 @@ Lệnh mẫu PowerShell và lưu ý (synonym nguồn đồng bộ, `NODE_ENV=pro
 
 | Lỗ hổng | Bằng chứng | Trạng thái |
 |---|---|---|
-| Lỗi kiểu trong `backend/test`, `backend/scripts` không lệnh nào bắt | `backend/jest.config.js` đặt `diagnostics: false`; `tsconfig.build.json` chỉ build `src`; script chạy bằng `tsx`; lint không bật luật type-checked | APPROVED (19/10/2026): thêm bước kiểm kiểu cho `backend/scripts`, `backend/test` (`tsc --noEmit`), chạy cả trong CI. Chưa làm: task T8 ([STATUS](current/STATUS.md)) |
+| Lỗi kiểu trong `backend/test`, `backend/scripts` không lệnh nào bắt | `backend/jest.config.js` đặt `diagnostics: false`; `tsconfig.build.json` chỉ build `src`; script chạy bằng `tsx`; lint không bật luật type-checked | Đã xử lý (T8, 21/10/2026): `npm run typecheck` chạy `tsc --noEmit -p backend/tsconfig.json` (gồm `src`, `scripts`, `test`); CI (T2, chưa dựng) sẽ chạy ở bước 4 (mục 9). Test vẫn chạy với `diagnostics: false` (nhanh hơn): lỗi kiểu ở phần có khai kiểu do `typecheck` bắt; chỗ dùng `any` (nhiều ở `res.body` của test, `as any` khi ghi bằng Kysely trong script) không được kiểm |
 | Test không có chốt chặn database | `backend/test/*` | Chờ quyết. CI dùng database tạo mới mỗi lần chạy nên không bị ảnh hưởng; chạy tay vẫn phải theo mục 1.3 |
 | Màn Cắt không có test vẽ màn, chỉ có test luật thuần | `frontend/src/test/cutting-*-rules.test.ts` | Ghi nhận |
 
@@ -155,7 +155,7 @@ Cưỡng chế lúc chạy: `AuthGuard`, `PermissionGuard`, `FieldPolicyIntercep
 | Cổng | Lệnh | Hiện trạng |
 |---|---|---|
 | Lint | `npm run lint`: ESLint backend (`src`, `scripts`, `test`), frontend (`src`), `deploy`; `--max-warnings 0`; luật ranh giới module ở backend | Chạy tay |
-| Kiểm kiểu | `npm run build`: `nest build` (backend `src`), `tsc --noEmit` + `vite build` (frontend) | Chạy tay; `deploy.cjs` chạy build khi triển khai |
+| Kiểm kiểu | `npm run typecheck`: `tsc --noEmit` backend (`src`, `scripts`, `test`); `npm run build`: `nest build` (backend `src`), `tsc --noEmit` + `vite build` (frontend, gồm `src/test`) | Chạy tay; `deploy.cjs` chạy build khi triển khai, không chạy `typecheck` |
 | Test | `npm test` | Chạy tay; `deploy.cjs` **không** chạy test, không chạy lint |
 | Kiểm trước khi chuyển bản | `deploy.cjs`: `npm ci`, build, có `frontend/dist/index.html`, nạp `env.js` với `.env` mới, `migrate --check` khi có migration mới, chờ `/api/v1/health` | Tự động khi triển khai |
 | CI | – | **Chưa có** (task T2). APPROVED (19/10/2026): GitHub Actions ở `.github/workflows/`, chạy trên GitHub (`origin`); Gitea Actions của máy chủ git nội bộ dùng lại được khi bật runner |
@@ -165,7 +165,7 @@ Cưỡng chế lúc chạy: `AuthGuard`, `PermissionGuard`, `FieldPolicyIntercep
 1. `npm ci`.
 2. `npm run lint`.
 3. `npm run build`.
-4. Kiểm kiểu `backend/scripts`, `backend/test` (bước mới, task T8).
+4. `npm run typecheck` (kiểm kiểu backend gồm `scripts`, `test`).
 5. `npm test -w frontend`, `npm run test:deploy`.
 6. Test backend trên SQL Server chạy trong container của job: database tạo mới mỗi lần chạy, `npm run migrate`, `npm run seed` với dữ liệu mẫu, rồi `npm test -w backend`. Không trỏ tới database nào ngoài container; `sync.spec.ts` tự bỏ qua bài cần database trung gian cùng máy; 2 bài của `catalog.spec.ts` (chép ĐVCS từ BRAVO, danh mục BRAVO chỉ xem) đòi bảng chép BRAVO có dữ liệu nên hỏng trên bộ database mới: task T2 phải xử lý (nạp dữ liệu giả vào bảng chép hoặc bỏ qua có điều kiện).
 
@@ -177,7 +177,7 @@ Một task chỉ xong khi đủ các mục dưới. Cột "Kiểm bằng" nói r
 
 | # | Điều kiện | Kiểm bằng |
 |---|---|---|
-| 1 | `npm run lint`, `npm run build` qua | Lệnh (chạy tay) |
+| 1 | `npm run lint`, `npm run typecheck`, `npm run build` qua | Lệnh (chạy tay) |
 | 2 | Test liên quan qua, nhất là test phân quyền và lọc `BranchCode`; luật phân quyền mới có bài test mới; test backend chạy trên bộ database test riêng | Lệnh (chạy tay) |
 | 3 | Đúng [AGENTS.md](../AGENTS.md) mục 4–6: không SQL thô ngoài repository, không `BranchCode` từ client, endpoint có khai báo quyền, tài nguyên mới đã khai ở seed | Lint (ranh giới), lúc chạy (khai báo quyền), review |
 | 4 | Migration (nếu có): file đã tạo, đã review; đã chạy trên database được phép hoặc đã ghi vào [STATUS](current/STATUS.md) mục việc chờ máy chủ; có khóa ngầm mới thì `check:softkeys` qua | Lệnh, review |
