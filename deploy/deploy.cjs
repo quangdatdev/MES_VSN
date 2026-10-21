@@ -256,7 +256,10 @@ async function deploy(o, L, releaseLock) {
 
   step('Lấy mã nguồn');
   if (o.pull) {
-    exec('git', ['-C', REPO, 'pull', '--ff-only']);
+    // Không dùng `git pull`: tiến trình pull còn giữ file pack trong lúc `git merge` con chạy gc tự động, Windows không cho
+    // xóa pack cũ nên git hỏi "Unlink of file ... Should I try again?" mãi. Lệnh riêng thì mỗi lệnh tự nhả pack trước gc
+    exec('git', ['-C', REPO, 'fetch']);
+    exec('git', ['-C', REPO, 'merge', '--ff-only', '@{upstream}']);
     if (readSelf() !== SELF && !process.env.MES_DEPLOY_RERUN) {
       console.log('Script triển khai vừa đổi theo mã nguồn mới: chạy lại bằng bản mới.');
       releaseLock();
