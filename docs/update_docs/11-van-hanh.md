@@ -194,7 +194,7 @@ Seed cần `DEMO_PASSWORD` (≥ 8 ký tự khi `production`).
 ### Chạy lại an toàn: chỉ thêm phần thiếu
 
 - **Theo code, luôn đồng bộ** (ghi đè mỗi lần chạy, chỉ với bản ghi hệ thống `IsSystem = 1`): tên, bảng nguồn, phạm vi dữ liệu (`ScopeType`), thứ tự của tài nguyên; tên quyền; tên, thứ tự nhóm menu; tên, đường dẫn, thứ tự mục menu; tên, cờ nhạy cảm, thứ tự cột đăng ký; liên kết chiều phạm vi của tài nguyên (thêm, sửa, gỡ đúng như khai báo). Đổi `ScopeType` thì in cảnh báo và ghi vào nhật ký.
-- **Chỉ thêm khi còn thiếu, không ghi đè thay đổi ở màn hình**: ĐVCS, vai trò, quyền, menu, đơn vị tổ chức, danh mục, mục danh mục, ca làm việc, Nhà máy SX mẫu, bước chuẩn bị SX, loại phòng ban, phòng ban, chức danh; nhân viên giả chỉ khi bảng `Employee` còn trống; đơn hàng giả chỉ cho ĐVCS chưa có đơn hàng nào.
+- **Chỉ thêm khi còn thiếu, không ghi đè thay đổi ở màn hình**: ĐVCS, vai trò, quyền, menu, đơn vị tổ chức, danh mục, mục danh mục, ca làm việc, Nhà máy SX mẫu, bước chuẩn bị SX, loại phòng ban, phòng ban, chức danh; nhân viên giả chỉ khi bảng `Employee` còn trống; đơn hàng giả chỉ cho ĐVCS chưa có đơn hàng nào; Phân cụm trưởng giả lập (phase 5.18): nhân viên mẫu theo mã (chỉ khi bảng nhân viên toàn dữ liệu do seed sinh), tổ cho chuyền mẫu chưa có tổ, tài khoản mẫu chỉ gắn nhân viên khi nhân viên hoặc tài khoản vừa tạo, hoặc `--sync-matrix` ([May](07-may.md) mục Phân cụm trưởng).
 - **Không cấp lại quyền đã thu hồi** (trừ khi `--sync-matrix`):
   - ma trận quyền chỉ gán cho vai trò hoặc quyền vừa tạo trong lần chạy này;
   - chính sách cột mẫu chỉ cho vai trò hoặc cột vừa tạo;
@@ -218,12 +218,12 @@ Ba lệnh dưới **xóa hoặc ghi đè dữ liệu**, chỉ dành cho máy dem
 1. `MES_Core`, trong một transaction:
    - ĐVCS mẫu và ĐVCS có trong danh mục chi nhánh BRAVO đã chép được bật lại; ĐVCS mẫu về tên mẫu, trừ mã có trong BRAVO (giữ tên BRAVO); ĐVCS khác bị tắt;
    - vai trò mẫu về tên, mô tả, bật lại; vai trò khác bị tắt; xóa gán quyền và chính sách cột của vai trò mẫu;
-   - tài khoản mẫu: xóa phạm vi, ngoại lệ, cột riêng, vai trò, ĐVCS, Nhà máy SX đã gán; đặt lại họ tên, bật, mở khóa; tài khoản khác bị vô hiệu; thu hồi **mọi** phiên;
+   - tài khoản mẫu: xóa phạm vi, ngoại lệ, cột riêng, vai trò, ĐVCS, Nhà máy SX đã gán; đặt lại họ tên, bật, mở khóa; tài khoản khác bị vô hiệu; gỡ nhân viên khỏi **mọi** tài khoản (`SysUser.EmployeeId`, vì nhân viên bị xóa ở bước 4); thu hồi **mọi** phiên;
    - Nhà máy SX mẫu về tên, ĐVCS; nhà máy tạo thêm bị ngừng (giữ nhà máy do đồng bộ OSM tự thêm); mục danh mục mẫu, ca mẫu về như seed, mục, ca tạo thêm bị ngừng;
    - xóa hết Lịch làm việc (`SysWorkCalendar`, `SysWorkCalendarDay`); seed ở bước 5 nạp lại lịch mẫu cho các ĐVCS mẫu.
 2. Xóa toàn bộ Kế hoạch chuẩn bị SX (`clearSewingPrep`, danh mục bước giữ nguyên) và Kế hoạch may (`clearSewingDayPlan`) trong `MES_Sewing`; xóa toàn bộ dữ liệu `MES_Cutting` (`clearCutting`, một transaction của `MES_Cutting`: số cắt, bản chép kế hoạch, lệnh cấp BTP cùng số cấp). Database chưa có, hoặc chưa có bảng Kế hoạch may, thì bỏ qua phần đó (`backend/scripts/sewing-data.ts`, `cutting-data.ts`).
 3. Xóa toàn bộ dữ liệu đơn hàng trong `MES_Order` (đơn, PO, màu cỡ, kế hoạch, dàn chuyền, phân màu cỡ), đặt lại bộ đếm Id. Hai bảng Phân bổ PO (`PoAllocation`, `PoAllocationRefresh`) giữ nguyên.
-4. Xóa loại phòng ban, phòng ban (kể cả xưởng, chuyền may), chức danh, nhân viên trong `MES_Hr`; seed ở bước 5 nạp lại, gồm xưởng, chuyền may mẫu.
+4. Xóa toàn bộ tổ, tổ trưởng, cụm, cụm trưởng của Phân cụm trưởng trong `MES_Sewing` (`clearClusterData`, `backend/scripts/cluster-data.ts`; chưa có bảng thì bỏ qua); rồi xóa loại phòng ban, phòng ban (kể cả xưởng, chuyền may), chức danh, nhân viên trong `MES_Hr`; seed ở bước 5 nạp lại, gồm xưởng, chuyền may mẫu, Phân cụm trưởng mẫu và gắn lại tài khoản mẫu với nhân viên.
 5. `runSeed({ resetPasswords: true, syncMatrix: true })`: nạp lại đủ dữ liệu mẫu, mật khẩu demo.
 6. `--bravo`: gọi `load:bravo` thay đơn hàng giả bằng đơn hàng BRAVO.
 7. Ghi `SysAuditLog` `DEMO_RESET`. Nhật ký cũ giữ nguyên. Không có transaction chung giữa các database: bước 1 xong trước rồi mới đụng `MES_Sewing`, `MES_Cutting`, `MES_Order`, `MES_Hr` (theo thứ tự đó).

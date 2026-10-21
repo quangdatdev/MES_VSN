@@ -1,6 +1,8 @@
 import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { CurrentUser, FieldResource, RequirePermission } from '../../platform/auth/decorators';
+import { ClusterDetailQuery, ClusterEmployeeQuery, ClusterLeaderSaveDto, ClusterTeamQuery } from './cluster-leader.dto';
+import { ClusterLeaderService } from './cluster-leader.service';
 import { PrepStepService } from './prep-step.service';
 import { PrepService } from './prep.service';
 import { SewingPlanLockDto, SewingPlanOptionsQuery, SewingPlanQuery, SewingPlanSaveDto } from './sewing-plan.dto';
@@ -66,6 +68,34 @@ export class SewingPlanController {
 
   @Post('unlock') @HttpCode(200) @RequirePermission('sewing.plan:update')
   unlock(@CurrentUser() u: AuthUser, @Body() dto: SewingPlanLockDto) { return this.service.unlock(u, dto); }
+}
+
+/**
+ * Phân cụm trưởng (tài nguyên sewing.cluster, phase 5.18): tổ trưởng chọn cụm trưởng cho từng cụm của mã hàng ở tổ mình. Sửa là lưu cụm
+ * trưởng; điều kiện người lưu là tổ trưởng của tổ do service kiểm.
+ */
+@Controller('sewing/cluster')
+@FieldResource('sewing.cluster')
+export class ClusterLeaderController {
+  constructor(private readonly service: ClusterLeaderService) {}
+
+  // Ô Chọn tổ
+  @Get('teams') @RequirePermission('sewing.cluster:view')
+  teams(@CurrentUser() u: AuthUser) { return this.service.teamList(u); }
+
+  // Ô Chọn mã hàng: mã hàng đã phân cụm cho tổ
+  @Get('styles') @RequirePermission('sewing.cluster:view')
+  styles(@CurrentUser() u: AuthUser, @Query() q: ClusterTeamQuery) { return this.service.styles(u, q); }
+
+  // Ô Tên cụm trưởng: chỉ cần khi sửa
+  @Get('employees') @RequirePermission('sewing.cluster:update')
+  employees(@CurrentUser() u: AuthUser, @Query() q: ClusterEmployeeQuery) { return this.service.employees(u, q); }
+
+  @Get() @RequirePermission('sewing.cluster:view')
+  detail(@CurrentUser() u: AuthUser, @Query() q: ClusterDetailQuery) { return this.service.detail(u, q); }
+
+  @Put() @RequirePermission('sewing.cluster:update')
+  save(@CurrentUser() u: AuthUser, @Body() dto: ClusterLeaderSaveDto) { return this.service.save(u, dto); }
 }
 
 /** Danh mục "Cấu hình chuẩn bị SX" ở Quản trị › Danh mục hệ thống: cùng quyền với các danh mục khác (admin.catalog). */

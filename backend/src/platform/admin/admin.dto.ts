@@ -45,6 +45,16 @@ export class UserUpdateDto {
   @Optional() @IsBoolean() unlock?: boolean;
 }
 
+/** Ô tìm nhân viên khi gắn nhân viên cho tài khoản */
+export class EmployeeOptionsQuery {
+  @IsOptional() @IsString() @MaxLength(60) q?: string;
+}
+
+/** Nhân viên của tài khoản (phase 5.18, quyết định 10.3): bắt buộc có mặt, null là gỡ */
+export class UserEmployeeDto {
+  @ValidateIf((_o, v) => v !== null) @Type(() => Number) @IsInt({ message: 'Nhân viên không hợp lệ.' }) @Min(1) employeeId!: number | null;
+}
+
 export class ResetPasswordDto {
   @IsString() @MinLength(8, { message: 'Mật khẩu tối thiểu 8 ký tự.' }) @MaxLength(100) newPassword!: string;
 }

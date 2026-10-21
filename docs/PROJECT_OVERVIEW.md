@@ -37,13 +37,13 @@ MES (Manufacturing Execution System) cho Vietsun, công ty may mặc có nhiều
 
 ### 2.2 Menu và màn hình
 
-Menu lấy từ database theo quyền (`SysMenu`, `SysResource`, do `backend/scripts/seed-data.ts` tạo). Màn thật đăng ký ở `frontend/src/routes/registry.tsx` (20 đường dẫn). Đường dẫn có trong menu mà chưa có màn thì hiện trang giữ chỗ (`frontend/src/features/module/ModulePage.tsx`).
+Menu lấy từ database theo quyền (`SysMenu`, `SysResource`, do `backend/scripts/seed-data.ts` tạo). Màn thật đăng ký ở `frontend/src/routes/registry.tsx` (21 đường dẫn). Đường dẫn có trong menu mà chưa có màn thì hiện trang giữ chỗ (`frontend/src/features/module/ModulePage.tsx`).
 
 | Nhóm menu | Màn thật | Trang giữ chỗ |
 |---|---|---|
 | Quản trị đơn hàng | `/order/info`, `/order/po-allocation`, `/order/shipment`, `/order/cut-ratio`, `/order/line-plan`, `/order/color-size`, `/order/prep` | – |
 | Quản trị nhà cắt | `/cutting/progress`, `/cutting/supply` | `/cutting/embroidery` |
-| Quản trị xưởng may | `/sewing/plan` | `/sewing/cluster`, `/sewing/output`, `/sewing/balance` |
+| Quản trị xưởng may | `/sewing/plan`, `/sewing/cluster` (Phân cụm trưởng; dữ liệu GSD đang giả lập) | `/sewing/output`, `/sewing/balance` |
 | Quản trị chất lượng | – | `/qms/defect`, `/qms/endline`, `/qms/report` |
 | Quản trị hoàn thiện | – | `/finishing/plan`, `/finishing/folding`, `/finishing/packing` |
 | Quản trị nhân sự | `/hr/org-chart`, `/hr/employees` | – |
@@ -66,7 +66,7 @@ Trang chủ `/` và `/login` nằm ngoài menu. Đường dẫn cũ `/sewing/pre
 
 Đã kiểm bằng tìm trong `backend/src`, `frontend/src` và các `package.json`:
 
-- Màn thật của QMS, Hoàn thiện, Báo cáo, Quản lý in thêu, Phân cụm trưởng, Bấm năng suất cụm, Biểu đồ cân bằng chuyền.
+- Màn thật của QMS, Hoàn thiện, Báo cáo, Quản lý in thêu, Bấm năng suất cụm, Biểu đồ cân bằng chuyền. Phân cụm trưởng có màn (phase 5.18) nhưng tổ, tổ trưởng, cụm là dữ liệu giả lập tới khi nối GSD.
 - WebSocket, hàng đợi ngoài, lịch tự chạy đồng bộ (`@nestjs/schedule`, cron): không có.
 - Kết nối GSD; SSO/AD; ủy quyền tạm thời; luồng phê duyệt.
 - Giới hạn tần suất đăng nhập, phát hiện dùng lại refresh token, hạn tuyệt đối của phiên.

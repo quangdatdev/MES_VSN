@@ -27,6 +27,8 @@ export interface SysUserTable extends Audit {
   FullName: string;
   Email: string | null;
   EmployeeCode: string | null;
+  /** Nhân viên (MES_Hr.Employee.Id, khóa ngầm) của tài khoản, MES_Core/0016 (phase 5.18) */
+  EmployeeId: ColumnType<number | null, number | null | undefined, number | null>;
   FailedLoginCount: number;
   LockedUntilAt: Date | null;
   LastLoginAt: Date | null;

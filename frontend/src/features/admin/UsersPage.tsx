@@ -1,7 +1,7 @@
 import { Badge, Button, Checkbox, Divider, Group, Modal, PasswordInput, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAdjustmentsHorizontal, IconBuildingFactory2, IconCircleCheck, IconKey, IconLockOpen, IconPencil, IconPlus, IconSearch, IconUserShield } from '@tabler/icons-react';
+import { IconAdjustmentsHorizontal, IconBuildingFactory2, IconCircleCheck, IconId, IconKey, IconLockOpen, IconPencil, IconPlus, IconSearch, IconUserShield } from '@tabler/icons-react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { ActionButton } from '../../components/ActionButton';
@@ -21,11 +21,13 @@ import { pageOf, useClampPage, useUrlParams } from '../../lib/useUrlParams';
 import type { AdminBranch, AdminRole, AdminUser } from './types';
 import { UserAccessDrawer } from './UserAccessDrawer';
 import { UserBranchesDialog } from './UserBranchesDialog';
+import { employeeText, UserEmployeeDialog } from './UserEmployeeDialog';
 
-type Dialog = { kind: 'create' } | { kind: 'edit' | 'roles' | 'branches' | 'password' | 'access'; user: AdminUser } | null;
+type Dialog = { kind: 'create' } | { kind: 'edit' | 'roles' | 'branches' | 'employee' | 'password' | 'access'; user: AdminUser } | null;
 
 const SELF_ROLES = 'Bạn không tự gán vai trò cho chính mình. Nhờ quản trị viên khác.';
 const SELF_BRANCHES = 'Bạn không tự gán đơn vị cơ sở cho chính mình. Nhờ quản trị viên khác.';
+const SELF_EMPLOYEE = 'Bạn không tự gắn nhân viên cho tài khoản của mình. Nhờ quản trị viên khác.';
 const SELF_PASSWORD = 'Không tự đặt lại mật khẩu của chính mình ở màn quản trị. Nhờ quản trị viên khác.';
 /** Cỡ trang dùng chung cho truy vấn, kéo về trang cuối và chân bảng */
 const PAGE_SIZE = 100;
@@ -45,7 +47,17 @@ const UserRow = memo(function UserRow({ u, self, canEdit, canGrant, roleName, br
   return (
     <tr onClick={() => onDialog({ kind: 'access', user: u })} style={{ cursor: 'pointer' }}>
       <td className="mono" style={{ fontWeight: 600 }}>{u.username}</td>
-      <td>{u.fullName}{self && <Badge ml={6} size="xs" variant="light">Bạn</Badge>}</td>
+      <td>
+        {u.fullName}
+        {self && <Badge ml={6} size="xs" variant="light">Bạn</Badge>}
+        {/* Nhân viên của tài khoản (phase 5.18): Phân cụm trưởng dựa vào đây để biết người này là tổ trưởng tổ nào */}
+        {u.employeeId != null && (
+          <Text size="xs" c="dimmed">
+            Nhân viên: {u.employee ? employeeText(u.employee) : `#${u.employeeId}`}
+            {u.employee && !u.employee.isActive ? ' (đã nghỉ việc)' : ''}
+          </Text>
+        )}
+      </td>
       <td>{u.roleIds.length ? u.roleIds.map((r) => <Badge key={r} mr={4} size="sm" variant="light" color="gray">{roleName(r)}</Badge>) : <Text c="dimmed" size="sm">Chưa gán</Text>}</td>
       <td>{u.branchIds.length ? u.branchIds.map((b) => <Badge key={b} mr={4} size="sm" variant="outline" color="charcoal" className="mono">{branchCode(b)}</Badge>) : <Text c="dimmed" size="sm">Chưa gán</Text>}</td>
       <td>
@@ -64,6 +76,7 @@ const UserRow = memo(function UserRow({ u, self, canEdit, canGrant, roleName, br
           {canEdit && <IconAction label="Sửa thông tin" icon={<IconPencil size={16} />} onClick={() => onDialog({ kind: 'edit', user: u })} />}
           {canGrant && <IconAction label="Gán vai trò" blockedReason={self ? SELF_ROLES : null} icon={<IconUserShield size={16} />} onClick={() => onDialog({ kind: 'roles', user: u })} />}
           {canGrant && <IconAction label="Gán đơn vị cơ sở" blockedReason={self ? SELF_BRANCHES : null} icon={<IconBuildingFactory2 size={16} />} onClick={() => onDialog({ kind: 'branches', user: u })} />}
+          {canGrant && <IconAction label="Gắn nhân viên" blockedReason={self ? SELF_EMPLOYEE : null} icon={<IconId size={16} />} onClick={() => onDialog({ kind: 'employee', user: u })} />}
           {canEdit && <IconAction label="Đặt lại mật khẩu" blockedReason={self ? SELF_PASSWORD : null} icon={<IconKey size={16} />} onClick={() => onDialog({ kind: 'password', user: u })} />}
         </Group>
       </td>
@@ -134,7 +147,7 @@ export default function UsersPage() {
       <div className="table-frame">
         <table className="dense-table">
           <thead>
-            <tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Đơn vị cơ sở</th><th>Trạng thái</th><th style={{ width: 190 }}>Thao tác</th></tr>
+            <tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Đơn vị cơ sở</th><th>Trạng thái</th><th style={{ width: 220 }}>Thao tác</th></tr>
           </thead>
           <tbody>
             {users.isPending && <SkeletonRows cols={6} />}
@@ -174,6 +187,7 @@ export default function UsersPage() {
           }}
         />
       )}
+      {dialog?.kind === 'employee' && <UserEmployeeDialog user={dialog.user} onClose={() => setDialog(null)} onDone={refresh} />}
       {dialog?.kind === 'branches' && (
         <UserBranchesDialog
           user={dialog.user}
