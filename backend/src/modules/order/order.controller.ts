@@ -12,6 +12,7 @@ import {
   CutRatioStyleQuery,
   CutRatioStyleValuesQuery,
   DraftQuery,
+  LineSyncQuery,
   OrderListQuery,
   OrderValuesQuery,
   PoAllocationFactoryDto,
@@ -232,6 +233,13 @@ export class ColorSizeController {
 
   @Get('export') @RequirePermission('order.colorsize:export')
   export(@CurrentUser() u: AuthUser, @Query() q: OrderListQuery) { return this.service.export(u, q); }
+
+  // Hệ thống khác lấy dòng dàn chuyền Đã phân màu cỡ đổi trong khoảng ngày: dữ liệu ra khỏi MES nên cần quyền xuất như xuất file
+  @Get('sync') @RequirePermission('order.colorsize:export')
+  sync(@CurrentUser() u: AuthUser, @Query() q: LineSyncQuery) { return this.service.sync(u, q); }
+
+  @Get('sync/ids') @RequirePermission('order.colorsize:export')
+  syncIds(@CurrentUser() u: AuthUser) { return this.service.syncIds(u); }
 
   @Get(':id') @RequirePermission('order.colorsize:view')
   get(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.get(u, pid); }

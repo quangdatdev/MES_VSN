@@ -21,6 +21,7 @@ Kế hoạch phase mới ghi ở mục 1 theo khuôn ở [DEVELOPMENT_WORKFLOW](
 | Q49: dọn worktree, nhánh đã gộp | Xong: gỡ `MES-wt-511`, `MES-wt-512`, `MES-wt-r4`; xóa 8 nhánh cục bộ đã gộp (gồm `fix-cut-ratio-qty`, gỡ sau khi T12 commit). Repo chỉ còn nhánh `main` |
 | T12: sửa lỗi HIGH ở Cập nhật tỷ lệ cắt (`CutRatioService.updateColorSizes` kiểm mức cột `qty` trước khi đọc PO, kể cả `lines: []`) | Xong, commit `33888e8`. Review [t12-cap-nhat-ty-le-cat.md](../review/t12-cap-nhat-ty-le-cat.md) |
 | T17: sửa lỗi HIGH cùng loại ở Xếp chuyền (`LinePlanService.saveLines` kiểm mức cột `startDate` trước khi đọc kế hoạch, kể cả `lines: []`), theo mẫu T12 | Xong 20/10/2026 trên `main`. Lint, build backend qua; `phase5.spec.ts` 52/52 trên `MES_*_T514`; bài mới hỏng với code cũ. Review [t17-xep-chuyen-ngay-bat-dau.md](../review/t17-xep-chuyen-ngay-bat-dau.md): APPROVE WITH SUGGESTIONS, 3/4 LOW đã sửa, L1 gộp vào N10. Một lần chạy chung `sewing-plan.spec.ts` + `cutting-supply.spec.ts` hỏng 4 bài, không lặp lại (3 lần sau 21/21): NEEDS VERIFICATION |
+| T18: API đồng bộ dòng dàn chuyền Đã phân màu cỡ cho hệ thống khác, `GET /api/v1/order/color-size/sync?from=&to=` (người dùng yêu cầu gấp 20/10/2026, thay cho view ở `DB_TRUNGGIAN`, Q53) | Xong 20/10/2026 trên `main`, chưa commit. Review [t18-api-dong-bo-dan-chuyen.md](../review/t18-api-dong-bo-dan-chuyen.md): REQUEST CHANGES (1 HIGH, 6 MEDIUM, 7 LOW), đã sửa H1, M3, M4, M5, L1, L6; M1, M6 người dùng chốt 21/10 (Q53); M2, L5 vào nợ N11. Lint, build backend qua; `phase5.spec.ts` 57/57 trên `MES_*_T514` (5 bài mới); cả bộ backend 427 qua, 2 bỏ qua (chạy trước lượt sửa theo review). Tài liệu: [06](../update_docs/06-don-hang.md) bảng API Phân bổ màu cỡ, [13](../update_docs/13-quyet-dinh.md) mục 8.6, hướng dẫn cho Dev bên gọi [docs/tich-hop/api-dong-bo-dan-chuyen.md](../tich-hop/api-dong-bo-dan-chuyen.md) (21/10) |
 | Bộ database test trên máy chủ | Còn `MES_*_T514` (6 database) dùng cho các task sau; đã xóa `MES_*_T5R4`, `MES_*_Test` (20/10/2026, Tech Lead chọn) |
 | Giai đoạn 5: kiểm liên kết, tính nhất quán | Xong (kết quả trong báo cáo của phiên) |
 | T15: bổ sung tài liệu module còn thiếu so với code (`04`–`08`, `10`–`12`, `15`) | Xong 20/10/2026, chưa commit. Kết quả, điểm còn NEEDS VERIFICATION: mục 8.2 |
@@ -85,6 +86,8 @@ Tech Lead xác nhận 19/10/2026: máy chủ chạy bản mới nhất kéo từ
 
 - Cờ `BRAVO_ORDER_IMPORT` trên máy chủ chỉ bật, tắt khi Tech Lead bảo ([AGENTS.md](../../AGENTS.md) mục 7).
 - Dàn chuyền lưu trước 5.12.1 giữ ngày theo cách tính cũ tới khi người dùng bấm "Tính lại theo công thức" rồi Lưu.
+- 20/10/2026, người dùng yêu cầu: đã tạo database `DB_TRUNGGIAN` (mặc định của máy, chủ sở hữu là tài khoản ứng dụng) và view `dbo.vMES_XepChuyen_DaPhanMauCo` trên SQL Server 10.0.0.216 (`VSC-DC03\MES_VSN`). Ngoài migration, `npm run migrate` không biết tới. Khác với database trung gian BRAVO (`DB_TRUNGGIAN_NAME` = `BRAVO_TRE`, máy 10.0.0.225). Cùng ngày người dùng chuyển sang API (T18). Người dùng 21/10/2026: **để yên** database, view này; mục tiêu sau là linked server, đang gặp sự cố (Q53).
+- T18 (API đồng bộ dàn chuyền) khi triển khai: không có migration, seed. Người dùng 21/10/2026: không tạo vai trò riêng; bên gọi dùng một tài khoản MES có vai trò sẵn có với `order.colorsize:view` và `order.colorsize:export` (thiếu `:view` thì mất mọi quyền khác của tài nguyên, bị 403), ví dụ Giám đốc (chỉ xem, xuất); gán ĐVCS `A00` (đọc mọi ĐVCS theo phạm vi phép gán) hoặc từng ĐVCS. Chạy HTTP (người dùng chấp nhận). Gửi cho Dev bên gọi: [docs/tich-hop/api-dong-bo-dan-chuyen.md](../tich-hop/api-dong-bo-dan-chuyen.md), kèm địa chỉ máy chủ và tài khoản.
 
 Thêm việc mới cho máy chủ: ghi ở đây, kèm migration, có dừng bản cũ khi migrate không, việc nhập liệu sau triển khai.
 
@@ -92,7 +95,7 @@ Thêm việc mới cho máy chủ: ghi ở đây, kèm migration, có dừng b�
 
 ### 4.1 Chờ Tech Lead, người dùng
 
-Đã trả lời: Q2, Q4, Q5, Q42–Q50 (19/10/2026), Q51, Q52 (20/10/2026) (mục 7).
+Đã trả lời: Q2, Q4, Q5, Q42–Q50 (19/10/2026), Q51, Q52 (20/10/2026), Q53 (21/10/2026) (mục 7).
 
 | # | Câu hỏi |
 |---|---|
@@ -175,6 +178,7 @@ Chuyển từ kế hoạch lộ trình sau demo (`git show 98d19db:docs/phases/p
 | N8 | 6 route `DELETE` trả 204 | T7 |
 | N9 | Mã lỗi tạo ngoài `Errors` | T10 |
 | N10 | Kiểm mức cột trong service lặp lại ở `PoAllocationService.setFactory`, `ColorSizeService.save`, `CutRatioService.updateColorSizes`, `LinePlanService.saveLines`, tên cột viết cứng | PROPOSED: hàm dùng chung ở `FieldPolicyService` (đọc tên cột từ `SysResourceField`, `levels()` đã trả `fields`); sửa nền tảng nên cần review riêng |
+| N11 | API đồng bộ `GET /order/color-size/sync` (T18): không phân trang (quá 10.000 dòng thì 422, review M2); quét toàn bảng `ShipmentPlanLine` mỗi lần gọi, chưa có chỉ mục theo lúc đổi (L5); dòng bị xóa chỉ biết qua `/sync/ids` | PROPOSED: phân trang theo `(changedAt, Id)`; chỉ mục `ModifiedAt`, `CreatedAt` (migration); bảng ghi dòng xóa nếu bên nhận cần báo tức thì |
 
 ## 7. Quyết định của đợt chuẩn hóa (Tech Lead, 19/10/2026): ghi ở đâu
 
@@ -192,6 +196,7 @@ Chuyển từ kế hoạch lộ trình sau demo (`git show 98d19db:docs/phases/p
 | Máy chủ Node 22, đã làm hết việc chờ; 5.14 Approved | Mục 2, 3 |
 | Body > 512 KB: ghi lại, test sau khi xong tài liệu | T13 |
 | Q51: che tên khách cho Trưởng chuyền ở Đồng bộ tiến độ cắt; Q52: `DELETE /cutting/progress/:id/entries` đổi theo chuẩn Q42 (20/10/2026) | T16; [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) mục 4.1, T7 |
+| Q53 (người dùng 21/10/2026): dữ liệu đẩy ra hệ thống khác qua API của MES (về sau còn nhiều trường hợp); tài khoản MES với vai trò sẵn có, không tạo vai trò riêng; chạy HTTP; để yên `DB_TRUNGGIAN` cho hướng linked server | [13](../update_docs/13-quyet-dinh.md) mục 8.6; mục 3; T18; N11 |
 | Xóa tài liệu cũ (T4); dọn worktree, nhánh (Q49); xóa nhánh `feature/docs-chuan-hoa` trên `origin` (Q50) | Mục 1.1, 2 |
 | Quyền đọc thẳng BRAVO chỉ theo dõi; chừa `docs/nguon/ba/`; không xử lý thông tin nhạy cảm trong tài liệu (IP là máy test nội bộ) | Mục 4.3; `docs/nguon/ba/README.md` |
 

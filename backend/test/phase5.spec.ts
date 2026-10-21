@@ -1765,6 +1765,152 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       // PO tạo thêm nằm trong đơn hàng của test, afterAll xóa cùng fixture
     });
   });
+
+  // Đặt cuối file: kế hoạch riêng có mốc giờ lùi về trước, không đổi dữ liệu các bài ở trên dùng; afterAll xóa cùng fixture
+  describe('Đồng bộ dòng dàn chuyền Đã phân màu cỡ – GET /order/color-size/sync', () => {
+    const SYNC_PLAN = 'TEST-P5-SYNC';
+    const sync = (t: string, q: string) => api().get(`/api/v1/order/color-size/sync?${q}`).set(auth(t));
+    const mine = (body: any) => (body.items as any[]).filter((i) => i.planNo === SYNC_PLAN);
+    const iso = (d: Date, minutes = 0) => new Date(d.getTime() + minutes * 60_000).toISOString();
+    let order: OrderDb;
+    let planId = 0;
+    let allocatedId = 0;
+    let plannedId = 0;
+    const ours = (ids: number[]) => ids.filter((i) => i === allocatedId || i === plannedId);
+    // Lúc tạo dòng, lúc sửa kế hoạch cha: theo giờ SQL Server, lùi đủ xa khỏi phút gần nhất mà API chưa trả; tròn giây vì tham số
+    // ngày giờ gửi xuống dạng datetime (làm tròn 1/300 giây)
+    let created: Date;
+    let modified: Date;
+    const whole = () => `from=${iso(created, -1)}&to=${iso(modified, 1)}`;
+
+    beforeAll(async () => {
+      order = app.get<OrderDb>(ORDER_DB);
+      const now = (await sql<{ Now: Date }>`SELECT SYSUTCDATETIME() AS Now`.execute(order)).rows[0].Now;
+      created = new Date(Math.floor(now.getTime() / 1000) * 1000 - 30 * 60_000);
+      modified = new Date(created.getTime() + 20 * 60_000);
+      const own = { BranchCode: 'A01', CreatedBy: await userId('kehoach.a'), CreatedAt: created };
+      const id = async (table: string, values: object) => ((await order.insertInto(table as any).values(values as any).output('inserted.Id' as any).executeTakeFirstOrThrow()) as { Id: number }).Id;
+      planId = await id('ShipmentPlan', { CustomerName: 'KHÁCH TEST P5', StyleCode: FIXTURE_STYLE, PlanNo: SYNC_PLAN, SalesOrderId: fixture.orderId, ProductName: 'Áo test', PoBuyDate: 'TEST-P5 / SYNC', PlanQty: 600, CmPrice: 2.5, ShipDate: '2027-06-30', PlannerName: 'Test', StatusCode: 'SCHEDULED', ...own });
+      await order.insertInto('ShipmentPlanColorSize').values(grid((c, s, i) => ({ ShipmentPlanId: planId, ColorName: c, SizeName: s, OriginalQty: 500, PlanQty: 100, SortOrder: i, ...own })) as any).execute();
+      const dates = { AvgOutput: 100, StartDate: '2026-11-02', ProductionDays: 3, OffDays: 0, EndDate: '2026-11-04', OutStartDate: '2026-11-05', OutEndDate: '2026-11-07' };
+      allocatedId = await id('ShipmentPlanLine', { ShipmentPlanId: planId, LineCode: 'A01-L03', Qty: 300, StatusCode: 'ALLOCATED', SortOrder: 0, ...dates, ...own });
+      await order.insertInto('ShipmentPlanLineColorSize').values(grid((c, s, i) => ({ ShipmentPlanLineId: allocatedId, ColorName: c, SizeName: s, PlanQty: 100, AssignedQty: 40, SortOrder: i, ...own })) as any).execute();
+      plannedId = await id('ShipmentPlanLine', { ShipmentPlanId: planId, LineCode: 'A01-L05', Qty: 300, StatusCode: 'PLANNED', SortOrder: 1, ...dates, ...own });
+    });
+
+    it('Trả dòng Đã phân màu cỡ đổi trong [from, to), mỗi chuyền một dòng; dòng khác trạng thái chỉ có Id ở removedIds; ngoài khoảng không có; nhận ngày, ngày giờ có múi giờ', async () => {
+      const t = await tokenFor('kehoach.a', 'A01');
+      const r = (await sync(t, `from=${iso(created, -1)}&to=${iso(created, 1)}`).expect(200)).body;
+      expect(r).toMatchObject({ from: iso(created, -1), to: iso(created, 1) });
+      expect(r.total).toBe(r.items.length);
+      expect(ours(r.removedIds)).toEqual([plannedId]);
+      expect(mine(r)).toEqual([
+        expect.objectContaining({
+          id: allocatedId,
+          planId,
+          planNo: SYNC_PLAN,
+          branchCode: 'A01',
+          customerName: 'KHÁCH TEST P5',
+          styleCode: FIXTURE_STYLE,
+          poBuyDate: 'TEST-P5 / SYNC',
+          lineCode: 'A01-L03',
+          lineName: expect.any(String),
+          qty: 300,
+          assignedQty: 240,
+          startDate: '2026-11-02',
+          endDate: '2026-11-04',
+          outStartDate: '2026-11-05',
+          outEndDate: '2026-11-07',
+          changedAt: created.toISOString(),
+        }),
+      ]);
+      // from tính, to không tính; khoảng không chứa lúc đổi thì không có
+      expect(mine((await sync(t, `from=${iso(created)}&to=${iso(created, 1)}`).expect(200)).body)).toHaveLength(1);
+      expect(mine((await sync(t, `from=${iso(created, -1)}&to=${iso(created)}`).expect(200)).body)).toEqual([]);
+      expect(mine((await sync(t, `from=${iso(created, 1)}&to=${iso(created, 2)}`).expect(200)).body)).toEqual([]);
+      // Ngày là ngày giờ Việt Nam, to là hết ngày đó; ngày giờ +07:00 (dấu + phải mã hóa trong URL)
+      const vnDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(created);
+      expect(mine((await sync(t, `from=${vnDay}&to=${vnDay}`).expect(200)).body)).toHaveLength(1);
+      const vn = (d: Date) => `${new Date(d.getTime() + 7 * 3_600_000).toISOString().slice(0, 19)}+07:00`;
+      expect(mine((await sync(t, `from=${encodeURIComponent(vn(created))}&to=${encodeURIComponent(vn(new Date(created.getTime() + 1000)))}`).expect(200)).body)).toHaveLength(1);
+    });
+
+    it('Sửa kế hoạch cha tính là dòng đổi; to mặc định là lúc gọi trừ 1 phút; from chưa tới mốc đó trả rỗng, to giữ bằng from', async () => {
+      const t = await tokenFor('kehoach.a', 'A01');
+      await order.updateTable('ShipmentPlan').set({ ModifiedAt: modified } as any).where('Id', '=', planId).execute();
+      expect(mine((await sync(t, `from=${iso(created, -1)}&to=${iso(created, 1)}`).expect(200)).body)).toEqual([]);
+      const r = (await sync(t, `from=${iso(modified, -1)}`).expect(200)).body;
+      expect(mine(r).map((i) => i.changedAt)).toEqual([modified.toISOString()]);
+      // Mốc chưa trả tròn giây: bên gọi cắt chuỗi tới giây cũng không lặp, không sót
+      expect(Math.abs(new Date(r.to).getTime() - (Date.now() - 60_000))).toBeLessThan(15_000);
+      expect(new Date(r.to).getUTCMilliseconds()).toBe(0);
+      // to xin muộn hơn mốc chưa trả cũng bị kéo về mốc đó
+      expect(new Date((await sync(t, `from=${iso(modified, -1)}&to=2099-01-01`).expect(200)).body.to).getTime()).toBeLessThan(Date.now() - 45_000);
+      const later = new Date(Date.now() + 60_000).toISOString();
+      expect((await sync(t, `from=${later}`).expect(200)).body).toEqual({ from: later, to: later, total: 0, items: [], removedIds: [] });
+      // Năm trước 1753 (driver gửi tham số dạng datetime) không làm lỗi 500: from kéo lên mốc sàn. 0001-01-01 bị lớp kiểm ngày từ chối
+      const all = (await sync(t, `from=1752-12-31&to=${iso(modified, 1)}`).expect(200)).body;
+      expect(all.from).toBe('2000-01-01T00:00:00.000Z');
+      expect(mine(all)).toHaveLength(1);
+      await sync(t, 'from=0001-01-01').expect(422);
+    });
+
+    it('Phạm vi: cần quyền xuất; ĐVCS khác không thấy; A00 đọc theo phạm vi của phép gán; cột Che, Ẩn áp như màn, ngày ra chuyền theo Ngày kết thúc', async () => {
+      await sync(await tokenFor('truongchuyen.a', 'A01'), whole()).expect(403);
+      expect(mine((await sync(await tokenFor('ketoan', 'A00'), whole()).expect(200)).body)).toHaveLength(1);
+      const otherId = await tempUser('test.p5sync', ['PLANNER'], ['A02']);
+      try {
+        expect(mine((await sync(await tokenFor('test.p5sync', 'A02', TEST_PASSWORD), whole()).expect(200)).body)).toEqual([]);
+      } finally {
+        await dropUser(otherId);
+      }
+      await setRolePolicy('PLANNER', 'order.colorsize', 'customerName', 'MASKED');
+      await setRolePolicy('PLANNER', 'order.colorsize', 'lineCode', 'MASKED');
+      await setRolePolicy('PLANNER', 'order.colorsize', 'endDate', 'HIDDEN');
+      try {
+        const [row] = mine((await sync(await tokenFor('kehoach.a', 'A01'), whole()).expect(200)).body);
+        expect(row).toMatchObject({ customerName: '***', lineCode: '***', startDate: '2026-11-02' });
+        // Tên chuyền suy ra được mã; ngày ra chuyền tính từ Ngày kết thúc
+        for (const k of ['lineName', 'endDate', 'outStartDate', 'outEndDate']) expect(row).not.toHaveProperty(k);
+      } finally {
+        await setRolePolicy('PLANNER', 'order.colorsize', 'customerName', null);
+        await setRolePolicy('PLANNER', 'order.colorsize', 'lineCode', null);
+        await setRolePolicy('PLANNER', 'order.colorsize', 'endDate', null);
+      }
+    });
+
+    it('Bỏ hết phần giao ở Phân bổ màu cỡ: dòng ra removedIds, rời danh sách Id; /sync/ids cần quyền xuất, theo ĐVCS', async () => {
+      const t = await tokenFor('kehoach.a', 'A01');
+      expect(ours((await api().get('/api/v1/order/color-size/sync/ids').set(auth(t)).expect(200)).body.ids)).toEqual([allocatedId]);
+      await api().get('/api/v1/order/color-size/sync/ids').set(auth(await tokenFor('truongchuyen.a', 'A01'))).expect(403);
+      const otherId = await tempUser('test.p5sync', ['PLANNER'], ['A02']);
+      try {
+        expect(ours((await api().get('/api/v1/order/color-size/sync/ids').set(auth(await tokenFor('test.p5sync', 'A02', TEST_PASSWORD))).expect(200)).body.ids)).toEqual([]);
+      } finally {
+        await dropUser(otherId);
+      }
+
+      // Lưu thật ở màn: dòng về Chưa phân màu cỡ, ghi ModifiedAt; lùi mốc về trước phút gần nhất mà API chưa trả
+      await api().put(`/api/v1/order/color-size/${planId}`).set(auth(t)).send({ rows: [] }).expect(200);
+      expect((await order.selectFrom('ShipmentPlanLine').select('StatusCode').where('Id', '=', allocatedId).executeTakeFirstOrThrow()).StatusCode).toBe('PLANNED');
+      const unallocated = new Date(modified.getTime() + 5 * 60_000);
+      await order.updateTable('ShipmentPlanLine').set({ ModifiedAt: unallocated } as any).where('Id', '=', allocatedId).execute();
+      const r = (await sync(t, `from=${iso(unallocated, -1)}&to=${iso(unallocated, 1)}`).expect(200)).body;
+      expect(mine(r)).toEqual([]);
+      expect(ours(r.removedIds)).toEqual([allocatedId]);
+      expect(ours((await api().get('/api/v1/order/color-size/sync/ids').set(auth(t)).expect(200)).body.ids)).toEqual([]);
+    });
+
+    it('Tham số sai => 422: thiếu from, ngày không có thật, ngày giờ không múi giờ, to không sau from', async () => {
+      const t = await tokenFor('kehoach.a', 'A01');
+      await sync(t, '').expect(422);
+      await sync(t, 'from=2026-02-30').expect(422);
+      await sync(t, 'from=2026-10-20T08:00:00').expect(422);
+      await sync(t, 'from=2026-10-20&to=abc').expect(422);
+      await sync(t, `from=${iso(created)}&to=${iso(created)}`).expect(422);
+      await sync(t, `from=${iso(created)}&to=${iso(created, -1)}`).expect(422);
+    });
+  });
 });
 
 /** Dòng dàn chuyền gửi lên: chỉ các trường của DTO. */

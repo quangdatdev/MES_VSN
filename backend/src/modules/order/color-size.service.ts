@@ -11,7 +11,7 @@ import { OrgService } from '../../platform/org/org.service';
 import { FieldPolicyService } from '../../platform/permission/field-policy.service';
 import { LineSupplyGuards } from './line-supply-guard';
 import { ORDER_DB } from './order.db';
-import { AllocationDto, OrderListQuery, OrderValuesQuery } from './order.dto';
+import { AllocationDto, LineSyncQuery, OrderListQuery, OrderValuesQuery } from './order.dto';
 import {
   ALLOCATION_FILTER,
   hasLines,
@@ -31,6 +31,25 @@ const DEFAULT_SORT = 'createdAt:desc';
 /** Số kế hoạch tối đa một lần xuất file: quá thì báo lọc bớt, không cắt im lặng */
 const EXPORT_MAX = 10_000;
 const STATUS_LABEL: Record<AllocationStatus, string> = { PLANNED: 'Chưa phân màu cỡ', PARTIAL: 'Phân một phần', FULL: 'Đã phân đủ' };
+/** Số dòng dàn chuyền tối đa một lần đồng bộ: quá thì báo thu hẹp khoảng ngày, không cắt im lặng */
+const SYNC_MAX = 10_000;
+/**
+ * Đồng bộ chưa trả dòng đổi trong phút gần nhất: ModifiedAt ghi trước khi transaction commit, giờ máy ứng dụng (ModifiedAt) và SQL
+ * Server (CreatedAt) có thể lệch nhau. Lần sau lấy từ mốc `to` đã trả nên dòng đó không bị sót.
+ */
+const SYNC_SETTLE_MS = 60_000;
+/**
+ * Mốc sàn của `from`: tham số ngày giờ gửi xuống SQL Server dạng datetime, năm trước 1753 làm driver lỗi (500). Bên gọi hay gửi ngày
+ * nhỏ nhất của ngôn ngữ (0001-01-01) khi lấy toàn bộ; MES không có dữ liệu trước mốc này
+ */
+const SYNC_FLOOR = new Date('2000-01-01T00:00:00Z');
+
+/** Ngày YYYY-MM-DD là 0 giờ ngày đó giờ Việt Nam; `end`: ngày là hết ngày đó (0 giờ hôm sau). Ngày giờ có múi giờ giữ nguyên */
+const syncInstant = (v: string, end = false) => {
+  if (v.length > 10) return new Date(v);
+  const start = new Date(`${v}T00:00:00+07:00`);
+  return end ? new Date(start.getTime() + 86_400_000) : start;
+};
 
 /**
  * Một dòng của danh sách: một kế hoạch có dòng dàn chuyền trong phạm vi xem (phase 5.13). Khóa trùng mã cột đăng ký của
@@ -302,6 +321,61 @@ export class ColorSizeService {
     });
     await this.audit.log({ userId: user.userId, username: user.username, branchCode: user.branchCode, entityType: 'ShipmentPlan', entityId: planId, actionCode: 'COLOR_SIZE_ALLOCATE', oldValue: log.before, newValue: log.after, ip: user.ip });
     return this.get(user, planId);
+  }
+
+  /**
+   * Dòng dàn chuyền Đã phân màu cỡ (ALLOCATED) thêm, sửa trong [from, to) cho hệ thống khác đồng bộ, mỗi dòng một chuyền của một kế
+   * hoạch; `removedIds`: dòng đổi trong khoảng mà không ở trạng thái đó (bỏ hết phần giao, dòng mới chưa phân), bên nhận xóa nếu đang
+   * giữ. `to` mặc định và tối đa là thời điểm gọi trừ SYNC_SETTLE_MS, tròn giây; bên gọi lấy lần sau từ `to` của kết quả. Dòng bị xóa
+   * không còn dấu vết: đối chiếu bằng syncIds. Khóa trùng mã cột đăng ký của order.colorsize để interceptor áp chính sách cột (`qty` là
+   * SL đã xếp của chuyền, như popup); ngày ra chuyền tính từ ngày kết thúc nên theo mức của cột đó.
+   */
+  async sync(user: AuthUser, query: LineSyncQuery) {
+    const scope = scopeOf(user);
+    const parsed = syncInstant(query.from);
+    const from = parsed < SYNC_FLOOR ? SYNC_FLOOR : parsed;
+    const asked = query.to ? syncInstant(query.to, true) : null;
+    if (asked && asked <= from) throw invalid('Ngày đến phải sau ngày lấy.');
+    const settled = new Date(Math.floor((Date.now() - SYNC_SETTLE_MS) / 1000) * 1000);
+    const to = asked && asked < settled ? asked : settled;
+    if (to <= from) return { from, to: from, total: 0, items: [], removedIds: [] };
+    const rows = await this.lines.changedLines(scope, { from, to, limit: SYNC_MAX });
+    if (rows.length > SYNC_MAX) throw invalid(`Quá ${SYNC_MAX.toLocaleString('vi-VN')} dòng dàn chuyền một lần. Thu hẹp khoảng ngày rồi lấy lại.`);
+    const [name, policy] = await Promise.all([this.lineNames(user), this.fields.levels(scope.access, RESOURCE)]);
+    const endLevel = policy.levels.get('endDate');
+    const allocated = rows.filter((r) => r.StatusCode === 'ALLOCATED');
+    return {
+      from,
+      to,
+      total: allocated.length,
+      items: allocated.map((r) =>
+        withDerived(
+          {
+            id: r.Id,
+            planId: r.ShipmentPlanId,
+            planNo: r.PlanNo,
+            branchCode: r.BranchCode,
+            customerName: r.CustomerName,
+            styleCode: r.StyleCode,
+            poBuyDate: r.PoBuyDate,
+            lineCode: r.LineCode,
+            lineName: name(r.LineCode) ?? undefined,
+            qty: r.Qty,
+            assignedQty: Number(r.AssignedQty),
+            startDate: day(r.StartDate),
+            endDate: day(r.EndDate),
+            changedAt: r.ChangedAt,
+          },
+          { outStartDate: derived(day(r.OutStartDate), endLevel), outEndDate: derived(day(r.OutEndDate), endLevel) },
+        ),
+      ),
+      removedIds: rows.filter((r) => r.StatusCode !== 'ALLOCATED').map((r) => r.Id),
+    };
+  }
+
+  /** Id mọi dòng dàn chuyền Đã phân màu cỡ trong phạm vi xuất, để bên đồng bộ bỏ dòng đã bị xóa ở Xếp chuyền, Kế hoạch xuất hàng */
+  async syncIds(user: AuthUser) {
+    return { ids: await this.lines.allocatedIds(scopeOf(user)) };
   }
 
   async export(user: AuthUser, query: OrderListQuery) {

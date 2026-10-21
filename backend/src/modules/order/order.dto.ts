@@ -265,6 +265,16 @@ export class BoardQuery {
   @IsOptional() @IsString() @MaxLength(100) customer?: string;
 }
 
+// Ngày (giờ Việt Nam) hoặc ngày giờ có múi giờ: ngày giờ không múi giờ không rõ là giờ máy nào nên từ chối
+const SYNC_TIME = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2}))?$/;
+const SyncTime = () => Matches(SYNC_TIME, { message: 'Ngày dạng YYYY-MM-DD hoặc ngày giờ ISO 8601 có múi giờ (ví dụ 2026-10-20T08:00:00+07:00).' });
+
+/** Đồng bộ dòng dàn chuyền đã phân màu cỡ cho hệ thống khác: dòng thay đổi trong [from, to) */
+export class LineSyncQuery {
+  @IsISO8601({ strict: true }) @SyncTime() from!: string;
+  @IsOptional() @IsISO8601({ strict: true }) @SyncTime() to?: string;
+}
+
 // ---------- Phân bổ màu cỡ ----------
 
 /**

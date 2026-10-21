@@ -59,6 +59,7 @@ Trang chủ `/` và `/login` nằm ngoài menu. Đường dẫn cũ `/sewing/pre
 | BRAVO (ERP) | Nguồn đơn hàng, PO, màu cỡ, danh mục | Chỉ đọc view của database trung gian (`DB_TRUNGGIAN_NAME`), không đọc thẳng database BRAVO. Chép vào `MES_Sync` khi quản trị bấm Đồng bộ |
 | OSM | Nhà máy SX của đơn hàng (`vOSMDataFty`), phân bổ PO theo nhà máy (`v_OSMData`) | Chỉ đọc view, chép vào `MES_Sync` (schema `osm`) |
 | GSD | Quy trình, cụm công đoạn, sơ đồ chuyền | Chưa kết nối |
+| Hệ thống khác lấy dữ liệu MES | Dòng dàn chuyền đã phân màu cỡ (`GET /api/v1/order/color-size/sync`) | Gọi API của MES bằng tài khoản MES ([13](update_docs/13-quyet-dinh.md) mục 8.6, hướng dẫn ở `docs/tich-hop/`) |
 | Hệ thống nhân sự có sẵn của công ty | Không dùng: MES tự quản dữ liệu nhân sự trong `MES_Hr` ([13](update_docs/13-quyet-dinh.md) mục 10.1) | – |
 
 ### 2.4 Chưa có

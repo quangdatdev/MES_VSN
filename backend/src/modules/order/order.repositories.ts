@@ -739,6 +739,32 @@ export function hasLines(codes: string[], mode: 'in' | 'notIn' = 'in'): Where {
 const MAX_PAGE_SIZE = 200;
 const MAX_VALUES = 1000;
 
+/**
+ * Lúc dòng dàn chuyền (bí danh l, kế hoạch p) đổi theo dữ liệu đồng bộ: thêm, sửa dòng (lưu Xếp chuyền, lưu phần giao ở Phân bổ màu
+ * cỡ đều ghi ModifiedAt của dòng), sửa kế hoạch cha (khách hàng, mã hàng, PO/Buy date). Dòng bị xóa không còn để báo.
+ */
+const lineChangedAt = sql<Date>`(SELECT MAX(t.v) FROM (VALUES (l.CreatedAt), (l.ModifiedAt), (p.ModifiedAt)) t(v))`;
+
+/** Một dòng dàn chuyền của LineAllocationRepository.changedLines */
+export interface LineSyncRow {
+  Id: number;
+  ShipmentPlanId: number;
+  StatusCode: string;
+  PlanNo: string;
+  BranchCode: string;
+  CustomerName: string;
+  StyleCode: string;
+  PoBuyDate: string;
+  LineCode: string;
+  Qty: number;
+  StartDate: Date;
+  EndDate: Date;
+  OutStartDate: Date | null;
+  OutEndDate: Date | null;
+  AssignedQty: number;
+  ChangedAt: Date;
+}
+
 @Injectable()
 export class LineAllocationRepository extends BaseRepository<PlanLineRow> {
   protected readonly table = 'ShipmentPlanLine';
@@ -873,6 +899,47 @@ export class LineAllocationRepository extends BaseRepository<PlanLineRow> {
     let qb = await this.branchOnly(assignedByColorSizeQuery(db, planId), scope, 'l');
     if (lineIds.length) qb = qb.where('l.Id', 'not in', lineIds);
     return (await qb.execute()) as AssignedByColorSize[];
+  }
+
+  /**
+   * Dòng dàn chuyền thay đổi trong [from, to) ở mọi trạng thái (bên gọi tách dòng Đã phân màu cỡ và dòng đã rời trạng thái đó), cho
+   * hệ thống khác đồng bộ; phạm vi của quyền xuất (dữ liệu ra khỏi MES như xuất file). Lấy tối đa `limit` + 1 dòng để bên gọi biết là vượt.
+   */
+  async changedLines(scope: Scope, opts: { from: Date; to: Date; limit: number }): Promise<LineSyncRow[]> {
+    const lines = await this.scoped(this.db.selectFrom('ShipmentPlanLine as l'), scope, 'export', 'l');
+    return (await lines
+      .innerJoin('ShipmentPlan as p', 'p.Id', 'l.ShipmentPlanId')
+      .select([
+        'l.Id',
+        'l.ShipmentPlanId',
+        'l.StatusCode',
+        'p.PlanNo',
+        'p.BranchCode',
+        'p.CustomerName',
+        'p.StyleCode',
+        'p.PoBuyDate',
+        'l.LineCode',
+        'l.Qty',
+        'l.StartDate',
+        'l.EndDate',
+        'l.OutStartDate',
+        'l.OutEndDate',
+        sql<number>`(SELECT COALESCE(SUM(a.AssignedQty), 0) FROM dbo.ShipmentPlanLineColorSize a WHERE a.ShipmentPlanLineId = l.Id)`.as('AssignedQty'),
+        lineChangedAt.as('ChangedAt'),
+      ])
+      .where(lineChangedAt, '>=', opts.from)
+      .where(lineChangedAt, '<', opts.to)
+      .orderBy(lineChangedAt)
+      .orderBy('l.Id')
+      .offset(0)
+      .fetch(opts.limit + 1)
+      .execute()) as LineSyncRow[];
+  }
+
+  /** Id mọi dòng dàn chuyền Đã phân màu cỡ trong phạm vi xuất: bên đồng bộ đối chiếu để bỏ dòng đã bị xóa (xóa không còn dấu vết) */
+  async allocatedIds(scope: Scope): Promise<number[]> {
+    const qb = await this.scoped(this.db.selectFrom('ShipmentPlanLine as l').select('l.Id').where('l.StatusCode', '=', 'ALLOCATED'), scope, 'export', 'l');
+    return (await qb.orderBy('l.Id').execute()).map((r: { Id: number }) => r.Id);
   }
 }
 

@@ -31,6 +31,7 @@ Tên file giữ số thứ tự cũ vì code đang trỏ tới một số file (
 | `docs/nguon/yeu-cau/mau-mo-ta-yeu-cau.html` | Mẫu mô tả yêu cầu cho BA |
 | `docs/nguon/ba/` | File đầu vào của BA, Tech Lead đưa dần vào |
 | `docs/screens/*` | Ảnh mẫu giao diện người dùng gửi |
+| `docs/tich-hop/*` | Hướng dẫn gọi API của MES cho lập trình viên hệ thống khác (chiều ra, [13](13-quyet-dinh.md) mục 8.6): `api-dong-bo-dan-chuyen.md` |
 | `docs/DOCS_STANDARDIZATION_PLAN.md` | Kế hoạch chuẩn hóa tài liệu |
 
 ## Tài liệu đã xóa (19/10/2026)
