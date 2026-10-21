@@ -143,7 +143,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
       await api().get(`/api/v1/order/shipment-plans/${fx.planId}`).set(auth(planner)).expect(200);
       expect((await api().get(`/api/v1/order/shipment-plans/${fx.planId}/pos`).set(auth(planner)).expect(403)).body.error.code).toBe('PERMISSION_DENIED');
     } finally {
-      await api().delete(`/api/v1/admin/users/${kh}/overrides/${ov.id}`).set(auth(admin)).expect(204);
+      await api().delete(`/api/v1/admin/users/${kh}/overrides/${ov.id}`).set(auth(admin)).expect(200);
     }
     await posOf(planner);
   });
@@ -187,7 +187,7 @@ describe('Kế hoạch xuất hàng: PO của kế hoạch', () => {
     try {
       await api().get(`/api/v1/order/shipment-plans/${fx.planId}/candidate-pos`).set(auth(planner)).expect(403);
     } finally {
-      await api().delete(`/api/v1/admin/users/${kh}/overrides/${ov.id}`).set(auth(admin)).expect(204);
+      await api().delete(`/api/v1/admin/users/${kh}/overrides/${ov.id}`).set(auth(admin)).expect(200);
     }
   });
 

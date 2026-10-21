@@ -88,7 +88,7 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
         .send(newOrder('T-3', { branchCode: 'A02' }))
         .expect(201);
       expect(c.body.branchCode).toBe('A01');
-      await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(204);
+      expect((await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(200)).body).toEqual({ removed: true });
     });
 
     it('4. đơn hàng dùng chung (ADR 0013): tạo mới mang ĐVCS của phiên làm Chi nhánh FOB, ĐVCS khác cũng thấy', async () => {
@@ -106,7 +106,7 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
         expect((await listPo(a01, 'pageSize=1')).body.total).toBe((await listPo(a02, 'pageSize=1')).body.total);
         await api().put(`${ORDERS}/${c.body.id}`).set(auth(planner)).send({ qty: 30, statusCode: 'PLANNING' }).expect(200);
       } finally {
-        await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(204);
+        await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(200);
       }
     });
 
@@ -124,7 +124,7 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
         // Lưu chữ hoa, bỏ khoảng trắng đầu cuối như mã hàng nhập tay trước đây
         expect(c.body.styleCode).toBe('ÁO SƠ MI (TEST) 2/3');
       } finally {
-        await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(204);
+        await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(200);
       }
     });
   });

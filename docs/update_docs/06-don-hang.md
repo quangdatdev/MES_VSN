@@ -339,7 +339,7 @@ Cách module áp:
 
 ## 6. API `/order/*`
 
-Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở cột "Quyền" (nhiều quyền thì cần đủ tất cả). Lỗi kiểm dữ liệu vào: 422 `VALIDATION_FAILED`. Dòng không có, của ĐVCS khác, ngoài phạm vi: 404 `NOT_FOUND`. Ghi ở `A00`: 403 `AGGREGATE_READ_ONLY`. Khóa chéo: 409 `CONFLICT`. Mã lỗi chung ở [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2. Các `DELETE` của module hiện trả 204 không có body (`@HttpCode(204)` ở `order.controller.ts`); quy ước đã duyệt là 200 kèm `{ removed: true }`: [Quy ước code](../CODE_CONVENTIONS.md) mục 4.1.
+Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở cột "Quyền" (nhiều quyền thì cần đủ tất cả). Lỗi kiểm dữ liệu vào: 422 `VALIDATION_FAILED`. Dòng không có, của ĐVCS khác, ngoài phạm vi: 404 `NOT_FOUND`. Ghi ở `A00`: 403 `AGGREGATE_READ_ONLY`. Khóa chéo: 409 `CONFLICT`. Mã lỗi chung ở [Luồng dữ liệu](../DATA_FLOWS.md) mục 2, 4.2. Các `DELETE` trả 200 `{ removed: true }`: [Quy ước code](../CODE_CONVENTIONS.md) mục 4.1.
 
 **Tham số danh sách chung** (`OrderListQuery`): `page` (mặc định 1), `pageSize` (mặc định 100, tối đa 200), `q` (tìm nhanh, ≤60), `sort` (`trường:asc|desc`, theo danh sách trắng của màn; mặc định `createdAt:desc`), `shipFrom`, `shipTo` (`YYYY-MM-DD`), `customer` (chứa), `style` (chứa), `season` (bằng, chỉ đơn hàng), `status` (bằng), `line` (kế hoạch có chuyền đó, chỉ Phân bổ màu cỡ), `cf` (lọc theo cột, JSON, xem [Giao diện](10-giao-dien.md)). Kết quả `{ items, total, page, pageSize }`. Endpoint `/values` nhận thêm `field` (trường của danh sách trắng) và `search`, trả `{ values, truncated }` (tối đa 500 giá trị). Endpoint `/export` trả CSV UTF-8 có BOM, cùng bộ lọc, qua cùng chính sách cột, tối đa 10.000 dòng (riêng Phân bổ PO: 50.000; Phân bổ PO, Phân bổ màu cỡ quá giới hạn thì 422, các màn khác cắt ở giới hạn).
 
@@ -355,7 +355,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 | `POST /` | `order.allocation:create` | `{ customerName, styleCode, productName, qty, shipDate, season?, orderType?, staffName?, unitName?, unitPrice?, cmPrice?, statusCode?, productionFactoryCode? }` | Đơn vừa tạo (201) | 422 nhà máy SX lạ, đã ngừng |
 | `PUT /:id` | `order.allocation:update` | Các trường như POST, chỉ gửi trường đổi | Đơn sau khi sửa | 404 (ĐVCS khác); 409 đổi Nhà máy SX theo OSM; 422 nhà máy lạ |
 | `PUT /:id/cm-price` | `order.allocation:update` | `{ cmPrice: number \| null }` (bắt buộc gửi khóa) | Đơn sau khi sửa, kèm `cmPriceEditable` | 404 (ĐVCS không phải nguồn, không có kế hoạch của đơn); 403 `AGGREGATE_READ_ONLY`, `FIELD_READONLY`; 422 |
-| `DELETE /:id` | `order.allocation:delete` | | 204 | 404; 409 đơn đã có PO, kế hoạch |
+| `DELETE /:id` | `order.allocation:delete` | | `{ removed: true }` | 404; 409 đơn đã có PO, kế hoạch |
 
 ### Phân bổ PO – `/order/po-allocations`
 
@@ -381,7 +381,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 | `GET /:id/pos` | `order.shipment:view` **và** `order.po:view` | | `{ items: [{ id, poCode, poNumber, destination, shipDate, qty, statusCode, confirmedAt, confirmedQty, unconfirmedQty }], hiddenCount }` | 403 thiếu `order.po:view`; 404 kế hoạch không xem được |
 | `POST /` | `order.shipment:create` | `{ salesOrderId, poIds (1–100), poBuyDate (1–40 ký tự), shipDate?, lines: [{ colorName, sizeName, planQty }] (1–300) }` | Kế hoạch vừa tạo (201) | 404 đơn không có nhà máy SX của ĐVCS; 409 đơn đã có kế hoạch ở ĐVCS phiên, PO đã nằm trong kế hoạch; 422 đơn Hoàn thành/Hủy, vượt SL còn lại (`details`), màu cỡ lặp, lạ, tất cả bằng 0 |
 | `PUT /:id` | `order.shipment:update` | `{ poBuyDate?, shipDate?, lines?, addPoIds? (1–100, cần `lines`), basePoIds? }` | Kế hoạch sau khi sửa | 409 SL dưới SL đã xếp chuyền; 409 SL KHXH của màu cỡ dưới phần đã giao ở Phân bổ màu cỡ, bỏ màu cỡ đã giao (`details`); 409 PO thêm đã nằm trong kế hoạch, `basePoIds` khác PO đang lưu; 422 như POST, `addPoIds` thiếu `lines`, quá 100 PO, đơn không còn lập kế hoạch được |
-| `DELETE /:id` | `order.shipment:delete` | | 204 | 409 đã xếp chuyền; 409 đã có số cắt ở Đồng bộ tiến độ cắt; 409 chưa kiểm được dữ liệu phụ thuộc (module Cắt không phản hồi) |
+| `DELETE /:id` | `order.shipment:delete` | | `{ removed: true }` | 409 đã xếp chuyền; 409 đã có số cắt ở Đồng bộ tiến độ cắt; 409 chưa kiểm được dữ liệu phụ thuộc (module Cắt không phản hồi) |
 
 ### Cập nhật tỷ lệ cắt – `/order/cut-ratio`
 
@@ -396,7 +396,7 @@ Tiền tố `/api/v1`. Mọi endpoint cần đăng nhập và quyền ghi ở c�
 | `PUT /pos/:id/color-sizes` | `order.po:update` | `{ lines: [{ colorName, sizeName, qty }] }` (0–300) | `{ po, lines }` | 403 `AGGREGATE_READ_ONLY` (`A00`); 403 `FIELD_READONLY` khi cột Số lượng không Sửa được, kể cả `lines: []` và Id không có (kiểm trước khi đọc PO); 404 (không ghi được PO); 409 PO đã xác nhận |
 | `POST /pos/:id/confirm` | `order.po:update` | | PO (200) | 409 đã xác nhận, tổng SL bằng 0 |
 | `POST /pos/:id/unconfirm` | `order.po:update` | | PO (200) | 409 chưa xác nhận |
-| `DELETE /pos/:id` | `order.po:delete` | | 204 | 409 đã xác nhận, đã nằm trong kế hoạch |
+| `DELETE /pos/:id` | `order.po:delete` | | `{ removed: true }` | 409 đã xác nhận, đã nằm trong kế hoạch |
 
 ### Xếp chuyền – `/order/line-plans`
 

@@ -631,7 +631,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     if (!calendarYearOk(from) || !calendarYearOk(to) || from > to) throw invalid('Khoảng ngày không hợp lệ.');
     if (daySpan(from, to) > MAX_DELETE_RANGE_DAYS) throw invalid(`Mỗi lần xóa tối đa ${MAX_DELETE_RANGE_DAYS} ngày.`);
     const cal = await this.db.selectFrom('SysWorkCalendar').select('Id').where('BranchCode', '=', code).executeTakeFirst();
-    if (!cal) return { deleted: 0 };
+    if (!cal) return { removed: true, deleted: 0 };
     const deleted = await this.db.transaction().execute(async (trx) => {
       const old = await this.daysIn(trx, cal.Id, from, to);
       if (!old.length) return 0;
@@ -640,7 +640,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
       return old.length;
     });
     if (deleted) this.lookup.invalidateWorkCalendars();
-    return { deleted };
+    return { removed: true, deleted };
   }
 
   // ---------------- Danh mục chép từ BRAVO (chỉ xem) ----------------

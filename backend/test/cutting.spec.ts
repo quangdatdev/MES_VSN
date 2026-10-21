@@ -378,13 +378,15 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
     const d = await detail(admin, id);
     expect(d.canDelete).toBe(true);
     const removed = (await api().delete(`/api/v1/cutting/progress/${id}/entries`).set(auth(admin)).expect(200)).body;
-    expect(removed).toMatchObject({ removedDays: 1, planRemoved: false });
+    expect(removed).toMatchObject({ removed: true, removedDays: 1, planRemoved: false });
+    // Bấm lại khi đã hết số (lưới chưa tải lại): không lỗi, trả số 0, không ghi thêm nhật ký
+    expect((await api().delete(`/api/v1/cutting/progress/${id}/entries`).set(auth(admin)).expect(200)).body).toEqual({ removed: true, removedDays: 0, removedRows: 0, planRemoved: false });
     expect(await cutting.selectFrom('CuttingPlanDaily').select('Id').where('CuttingPlanId', '=', id).execute()).toHaveLength(0);
     expect(await planCutQty(fx.planA01)).toBe(0);
     const log = await core.selectFrom('SysAuditLog').select('ActionCode').where('EntityType', '=', 'CuttingPlan').where('EntityId', '=', String(id)).orderBy('Id', 'desc').executeTakeFirstOrThrow();
     expect(log.ActionCode).toBe('DELETE_ENTRIES');
 
-    await api().delete(`/api/v1/order/shipment-plans/${fx.planA01}`).set(auth(admin)).expect(204);
+    await api().delete(`/api/v1/order/shipment-plans/${fx.planA01}`).set(auth(admin)).expect(200);
     // Lần mở màn sau: kế hoạch không còn, bản chép chưa có số cắt thì bị xóa
     expect(rowOf(await list(admin), 'TEST-P514-A')).toBeUndefined();
     expect(await cutting.selectFrom('CuttingPlan').select('Id').where('Id', '=', id).executeTakeFirst()).toBeUndefined();
@@ -413,7 +415,7 @@ describe('Phase 5.14: Đồng bộ tiến độ cắt', () => {
     await save(admin, id, TODAY, [{ colorName: 'GREEN', sizeName: 'M', dayQty: 31 }]).expect(409);
 
     const removed = (await api().delete(`/api/v1/cutting/progress/${id}/entries`).set(auth(admin)).expect(200)).body;
-    expect(removed).toMatchObject({ planRemoved: true });
+    expect(removed).toMatchObject({ removed: true, planRemoved: true });
     expect(rowOf(await list(admin), 'TEST-P514-C')).toBeUndefined();
   });
 

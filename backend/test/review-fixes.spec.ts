@@ -168,7 +168,7 @@ describe('Review Phase 1–4: phiên đăng nhập, khóa tài khoản, tự nâ
     it('không tự bật lại vai trò mình đang giữ sau khi bị người khác tắt', async () => {
       const roleId = await createRole('RV_EXTRA', ['report.revenue:view']);
       await createUser('rv.admin2', ['ADMIN', 'RV_EXTRA']);
-      await api().delete(`/api/v1/admin/roles/${roleId}`).set(auth(admin)).expect(204);
+      expect((await api().delete(`/api/v1/admin/roles/${roleId}`).set(auth(admin)).expect(200)).body).toEqual({ removed: true });
 
       const { token } = await session('rv.admin2');
       const r = await api().put(`/api/v1/admin/roles/${roleId}`).set(auth(token)).send({ isActive: true }).expect(403);

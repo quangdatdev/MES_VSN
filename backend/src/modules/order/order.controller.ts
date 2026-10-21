@@ -67,8 +67,8 @@ export class SalesOrderController {
   @Put(':id/cm-price') @RequirePermission('order.allocation:update')
   updateCmPrice(@CurrentUser() u: AuthUser, @id() oid: number, @Body() dto: SalesOrderCmPriceDto) { return this.service.updateCmPrice(u, oid, dto); }
 
-  @Delete(':id') @HttpCode(204) @RequirePermission('order.allocation:delete')
-  async remove(@CurrentUser() u: AuthUser, @id() oid: number) { await this.service.remove(u, oid); }
+  @Delete(':id') @RequirePermission('order.allocation:delete')
+  async remove(@CurrentUser() u: AuthUser, @id() oid: number) { await this.service.remove(u, oid); return { removed: true }; }
 }
 
 /**
@@ -133,8 +133,8 @@ export class CutRatioController {
   @Post('pos/:id/unconfirm') @HttpCode(200) @RequirePermission('order.po:update')
   unconfirm(@CurrentUser() u: AuthUser, @id() pid: number) { return this.service.setConfirmed(u, pid, false); }
 
-  @Delete('pos/:id') @HttpCode(204) @RequirePermission('order.po:delete')
-  async remove(@CurrentUser() u: AuthUser, @id() pid: number) { await this.service.remove(u, pid); }
+  @Delete('pos/:id') @RequirePermission('order.po:delete')
+  async remove(@CurrentUser() u: AuthUser, @id() pid: number) { await this.service.remove(u, pid); return { removed: true }; }
 }
 
 /** Kế hoạch xuất hàng (tài nguyên order.shipment). */
@@ -185,8 +185,8 @@ export class ShipmentController {
   @Put(':id') @RequirePermission('order.shipment:update')
   update(@CurrentUser() u: AuthUser, @id() pid: number, @Body() dto: ShipmentPlanUpdateDto) { return this.service.update(u, pid, dto); }
 
-  @Delete(':id') @HttpCode(204) @RequirePermission('order.shipment:delete')
-  async remove(@CurrentUser() u: AuthUser, @id() pid: number) { await this.service.remove(u, pid); }
+  @Delete(':id') @RequirePermission('order.shipment:delete')
+  async remove(@CurrentUser() u: AuthUser, @id() pid: number) { await this.service.remove(u, pid); return { removed: true }; }
 }
 
 /** Xếp chuyền (tài nguyên order.lineplan): danh sách kế hoạch, chi tiết dàn chuyền, bảng dàn chuyền. */

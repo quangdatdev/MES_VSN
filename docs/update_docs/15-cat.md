@@ -103,7 +103,7 @@ CSV cùng bộ lọc, theo chính sách cột, tối đa 10.000 dòng: Số kế
 | `GET /cutting/progress/export` | `export` | CSV |
 | `GET /cutting/progress/:id?date=YYYY-MM-DD` | `view` | Popup: đầu kế hoạch, `branchName`, `date`, `today`, `entryDays`, `canEdit`, `canDelete`, `items[]` (`colorName`, `sizeName`, `inPlan`, `planQty`, `dayQty`, `cutQty`, `diffQty`). Ngày sau hôm nay: 422 |
 | `PUT /cutting/progress/:id` | `update` | `{ date, items: [{ colorName, sizeName, dayQty }] }`; trả như `GET :id` của ngày đó. 422: ngày sau hôm nay, số âm, số lẻ, màu cỡ ngoài kế hoạch, gửi trùng. 409: kế hoạch đã xóa |
-| `DELETE /cutting/progress/:id/entries` | `delete` | Xóa số cắt mọi ngày của kế hoạch (kế hoạch đã mất nguồn thì xóa cả bản chép); trả 200 `{ removedDays, removedRows, planRemoved }` (body khác `{ removed: true }` của quy ước ở [Quy ước code](../CODE_CONVENTIONS.md) mục 4.1). Không còn số nào mà kế hoạch còn nguồn: trả số 0, `planRemoved: false`, không ghi nhật ký. 404 kế hoạch ĐVCS khác; 403 `AGGREGATE_READ_ONLY` ở `A00` |
+| `DELETE /cutting/progress/:id/entries` | `delete` | Xóa số cắt mọi ngày của kế hoạch (kế hoạch đã mất nguồn thì xóa cả bản chép); trả 200 `{ removed: true, removedDays, removedRows, planRemoved }` ([Quy ước code](../CODE_CONVENTIONS.md) mục 4.1: thêm số liệu màn cần, màn đóng khung khi `planRemoved`). Không còn số nào mà kế hoạch còn nguồn: trả số 0, `planRemoved: false`, không ghi nhật ký. 404 kế hoạch ĐVCS khác; 403 `AGGREGATE_READ_ONLY` ở `A00` |
 
 ## Database `MES_Cutting`
 

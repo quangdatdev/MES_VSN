@@ -74,14 +74,14 @@ export class AdminController {
   @Post('users/:id/overrides') @HttpCode(200) @RequirePermission('admin.permission:update')
   async upsertOverride(@CurrentUser() a: AuthUser, @id() uid: number, @Body() dto: OverrideDto) { await this.grants.upsertOverride(a, uid, dto); return { ok: true }; }
 
-  @Delete('users/:id/overrides/:overrideId') @HttpCode(204) @RequirePermission('admin.permission:update')
-  async removeOverride(@CurrentUser() a: AuthUser, @id() uid: number, @Param('overrideId', ParseIntPipe) oid: number) { await this.grants.removeOverride(a, uid, oid); }
+  @Delete('users/:id/overrides/:overrideId') @RequirePermission('admin.permission:update')
+  async removeOverride(@CurrentUser() a: AuthUser, @id() uid: number, @Param('overrideId', ParseIntPipe) oid: number) { await this.grants.removeOverride(a, uid, oid); return { removed: true }; }
 
   @Post('users/:id/field-policies') @HttpCode(200) @RequirePermission('admin.fieldpolicy:update')
   async upsertUserField(@CurrentUser() a: AuthUser, @id() uid: number, @Body() dto: UserFieldPolicyDto) { await this.grants.upsertUserFieldPolicy(a, uid, dto); return { ok: true }; }
 
-  @Delete('users/:id/field-policies/:policyId') @HttpCode(204) @RequirePermission('admin.fieldpolicy:update')
-  async removeUserField(@CurrentUser() a: AuthUser, @id() uid: number, @Param('policyId', ParseIntPipe) pid: number) { await this.grants.removeUserFieldPolicy(a, uid, pid); }
+  @Delete('users/:id/field-policies/:policyId') @RequirePermission('admin.fieldpolicy:update')
+  async removeUserField(@CurrentUser() a: AuthUser, @id() uid: number, @Param('policyId', ParseIntPipe) pid: number) { await this.grants.removeUserFieldPolicy(a, uid, pid); return { removed: true }; }
 
   // ---- Danh mục phạm vi, cột ----
   @Get('scope-catalog') @RequirePermission('admin.user:view')
@@ -106,8 +106,8 @@ export class AdminController {
   @Put('roles/:id') @RequirePermission('admin.role:update')
   async updateRole(@CurrentUser() a: AuthUser, @id() rid: number, @Body() dto: RoleUpdateDto) { await this.access.updateRole(a, rid, dto); return { ok: true }; }
 
-  @Delete('roles/:id') @HttpCode(204) @RequirePermission('admin.role:delete')
-  async deleteRole(@CurrentUser() a: AuthUser, @id() rid: number) { await this.access.deleteRole(a, rid); }
+  @Delete('roles/:id') @RequirePermission('admin.role:delete')
+  async deleteRole(@CurrentUser() a: AuthUser, @id() rid: number) { await this.access.deleteRole(a, rid); return { removed: true }; }
 
   @Get('roles/:id/permissions') @RequirePermission('admin.permission:view')
   async rolePermissions(@id() rid: number) { return { permissionIds: await this.access.getRolePermissions(rid) }; }

@@ -348,7 +348,7 @@ describe('Phase 5.15: Xác nhận cấp BTP', () => {
     expect(await supplyOf(YESTERDAY)).toBeUndefined();
     await save(planner, YESTERDAY, [cell(L3, 'RED', 'S', 5)]).expect(200);
     const again = (await supplyOf(YESTERDAY))!;
-    await api().delete(`/api/v1/cutting/supply/${again.Id}`).set(auth(planner)).expect(200);
+    expect((await api().delete(`/api/v1/cutting/supply/${again.Id}`).set(auth(planner)).expect(200)).body).toEqual({ removed: true });
     expect(await supplyOf(YESTERDAY)).toBeUndefined();
     expect(await cutting.selectFrom('CuttingSupplyLine').select('Id').where('CuttingSupplyId', '=', again.Id).executeTakeFirst()).toBeUndefined();
   });

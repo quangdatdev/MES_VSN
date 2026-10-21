@@ -79,7 +79,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
   }
   async function dropUser(id: number) {
     const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin))).body;
-    for (const o of access.overrides) await api().delete(`/api/v1/admin/users/${id}/overrides/${o.id}`).set(auth(admin)).expect(204);
+    for (const o of access.overrides) await api().delete(`/api/v1/admin/users/${id}/overrides/${o.id}`).set(auth(admin)).expect(200);
     await api().put(`/api/v1/admin/users/${id}/roles`).set(auth(admin)).send({ roleIds: [] }).expect(200);
     await api().put(`/api/v1/admin/users/${id}`).set(auth(admin)).send({ isActive: false }).expect(200);
   }
@@ -354,7 +354,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         api().post(`/api/v1/admin/users/${id}/field-policies`).set(auth(admin)).send({ resourceId: resId('order.colorsize'), fieldCode, accessLevel, reason: 'Thử chính sách cột (test)' }).expect(200);
       const clearPolicies = async () => {
         const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin)).expect(200)).body;
-        for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(204);
+        for (const p of access.fieldPolicies) expect((await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(200)).body).toEqual({ removed: true });
       };
       try {
         await clearPolicies();
@@ -498,7 +498,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         const after = (await api().get('/api/v1/order/sales-orders?pageSize=200').set(auth(t))).body;
         expect(after.total).toBe(before.total + 1);
         await api().put(`/api/v1/order/sales-orders/${mine.body.id}`).set(auth(t)).send({ qty: 6 }).expect(200);
-        await api().delete(`/api/v1/order/sales-orders/${mine.body.id}`).set(auth(t)).expect(204);
+        await api().delete(`/api/v1/order/sales-orders/${mine.body.id}`).set(auth(t)).expect(200);
       } finally {
         await dropUser(id);
       }
@@ -518,7 +518,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         try {
           expect(await valuesOf(t, 'OWN CF')).toEqual(['Khách OWN CF']);
         } finally {
-          await api().delete(`/api/v1/order/sales-orders/${mine.body.id}`).set(auth(t)).expect(204);
+          await api().delete(`/api/v1/order/sales-orders/${mine.body.id}`).set(auth(t)).expect(200);
         }
       } finally {
         await dropUser(id);
@@ -746,7 +746,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         const menu = (await api().get('/api/v1/me/menu').set(auth(t))).body as any[];
         expect(menu.find((g) => g.code === 'menu.order').children.map((c: any) => c.code)).not.toContain('menu.order.allocation');
       } finally {
-        await api().delete(`/api/v1/admin/users/${kh}/overrides/${ov.id}`).set(auth(admin)).expect(204);
+        expect((await api().delete(`/api/v1/admin/users/${kh}/overrides/${ov.id}`).set(auth(admin)).expect(200)).body).toEqual({ removed: true });
       }
       await api().get('/api/v1/order/sales-orders').set(auth(t)).expect(200);
       const audit = (await api().get('/api/v1/admin/audit?entityType=SysUserPermissionOverride&pageSize=5').set(auth(admin))).body.items;
@@ -769,7 +769,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       try {
         expect(await perms(t)).not.toContain('order.shipment:view');
       } finally {
-        await api().delete(`/api/v1/admin/users/${a}/overrides/${ov.id}`).set(auth(admin)).expect(204);
+        await api().delete(`/api/v1/admin/users/${a}/overrides/${ov.id}`).set(auth(admin)).expect(200);
       }
     });
 
@@ -797,7 +797,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         const r2 = await api().get('/api/v1/order/shipment-plans').set(auth(t)).expect(200);
         expect(r2.headers['x-permission-version']).not.toBe(r1.headers['x-permission-version']);
       } finally {
-        await api().delete(`/api/v1/admin/users/${a}/overrides/${ov.id}`).set(auth(admin)).expect(204);
+        await api().delete(`/api/v1/admin/users/${a}/overrides/${ov.id}`).set(auth(admin)).expect(200);
       }
     });
 
@@ -930,7 +930,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         const id = await tempUser('test.cutratioqty', ['PLANNER'], ['A01']);
         const clearPolicies = async () => {
           const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin)).expect(200)).body;
-          for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(204);
+          for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(200);
         };
         try {
           await api().post(`/api/v1/admin/users/${id}/field-policies`).set(auth(admin))
@@ -1203,10 +1203,10 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
             expect(a01).not.toContain(added.id);
             await api().put(`/api/v1/order/cut-ratio/pos/${added.id}/color-sizes`).set(auth(kh)).send({ lines: [{ colorName: 'Đỏ', sizeName: 'M', qty: 5 }] }).expect(404);
           } finally {
-            await api().delete(`/api/v1/order/cut-ratio/pos/${added.id}`).set(auth(t)).expect(204);
+            expect((await api().delete(`/api/v1/order/cut-ratio/pos/${added.id}`).set(auth(t)).expect(200)).body).toEqual({ removed: true });
           }
         } finally {
-          await api().delete(`/api/v1/order/shipment-plans/${created.id}`).set(auth(t)).expect(204);
+          expect((await api().delete(`/api/v1/order/shipment-plans/${created.id}`).set(auth(t)).expect(200)).body).toEqual({ removed: true });
         }
         // Bỏ kế hoạch: A02 không còn thấy, không sửa được PO của đơn A01
         expect((await api().get(`/api/v1/order/cut-ratio/styles?style=${FIXTURE_STYLE}`).set(auth(t)).expect(200)).body.items).toEqual([]);
@@ -1299,7 +1299,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
           const b = await tokenFor('truongchuyen.b', 'A01');
           await api().post('/api/v1/order/shipment-plans').set(auth(b)).send(body(1)).expect(403);
         } finally {
-          await api().delete(`/api/v1/order/shipment-plans/${created.body.id}`).set(auth(t)).expect(204);
+          await api().delete(`/api/v1/order/shipment-plans/${created.body.id}`).set(auth(t)).expect(200);
         }
       } finally {
         await dropUser(id);
@@ -1318,7 +1318,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
           expect(ok).toHaveLength(1);
           expect(results.find((r) => r.status !== 201)!.status).toBe(409);
         } finally {
-          for (const r of ok) await api().delete(`/api/v1/order/shipment-plans/${r.body.id}`).set(auth(t)).expect(204);
+          for (const r of ok) await api().delete(`/api/v1/order/shipment-plans/${r.body.id}`).set(auth(t)).expect(200);
         }
       } finally {
         await dropUser(id);
@@ -1404,7 +1404,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         const holders = await db.selectFrom('ShipmentPlanPo').select('ShipmentPlanId').where('SalesOrderPoId', '=', fixture.confirmedPoId).execute();
         expect(holders).toHaveLength(1);
       } finally {
-        for (const planId of created) await api().delete(`/api/v1/order/shipment-plans/${planId}`).set(auth(a02)).expect(204);
+        for (const planId of created) await api().delete(`/api/v1/order/shipment-plans/${planId}`).set(auth(a02)).expect(200);
         await db.deleteFrom('ShipmentPlanPo').where('ShipmentPlanId', '=', fixture.planId).where('SalesOrderPoId', '=', fixture.confirmedPoId).execute();
         await db.deleteFrom('ShipmentPlanColorSize').where('ShipmentPlanId', '=', fixture.planId).where('ColorName', '=', 'Xanh').execute();
         await dropUser(id);
@@ -1580,7 +1580,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
         const id = await tempUser('test.lineplanstart', ['PLANNER'], ['A01']);
         const clearPolicies = async () => {
           const access = (await api().get(`/api/v1/admin/users/${id}/access`).set(auth(admin)).expect(200)).body;
-          for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(204);
+          for (const p of access.fieldPolicies) await api().delete(`/api/v1/admin/users/${id}/field-policies/${p.id}`).set(auth(admin)).expect(200);
         };
         try {
           await api().post(`/api/v1/admin/users/${id}/field-policies`).set(auth(admin))

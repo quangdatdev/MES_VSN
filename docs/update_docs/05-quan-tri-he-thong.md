@@ -337,9 +337,9 @@ Cột "Lỗi đặc thù" chỉ ghi lỗi riêng của endpoint; mọi endpoint 
 | `GET /admin/users/:id/effective?branchCode=` | `admin.user:view` | | `{ user: { id, fullName, isActive }, branch: { code, name, isAggregate, allowed }, roles, screens: [{ code, name, actions, scope: [chuỗi mô tả] }], fieldLevels: { <tài nguyên>: { <cột>: mức } } }` | 404 người dùng; 404 ĐVCS không có hoặc đã ngừng |
 | `PUT /admin/users/:id/roles/:roleId/scope` | `admin.permission:update` | `{ scopes: [{ dimension, mode, orgUnitId?, value? }] }` (tối đa 200; rỗng là không giới hạn thêm) | `{ ok }` | 403 chính mình, trần quyền; 404 chưa gán vai trò; 422 tổ hợp sai (xem dưới) |
 | `POST /admin/users/:id/overrides` | `admin.permission:update` | `{ permissionId, effect: ALLOW\|DENY, validFromAt?, validToAt?, reason }` (lý do 3–255) | `200 { ok }`; đã có ngoại lệ cho quyền đó thì sửa | 403 chính mình, trần quyền (cả quyền `admin.*` của ngoại lệ); 422 quyền không có hoặc đã tắt, ngày bắt đầu không trước ngày kết thúc |
-| `DELETE /admin/users/:id/overrides/:overrideId` | `admin.permission:update` | | `204` | 403; 404 ngoại lệ không thuộc người này |
+| `DELETE /admin/users/:id/overrides/:overrideId` | `admin.permission:update` | | `{ removed: true }` | 403; 404 ngoại lệ không thuộc người này |
 | `POST /admin/users/:id/field-policies` | `admin.fieldpolicy:update` | `{ resourceId, fieldCode, accessLevel, validFromAt?, validToAt?, reason }` | `200 { ok }`; đã có thì sửa | 403 chính mình, trần quyền; 422 cột không có trong danh bạ, khoảng ngày sai |
-| `DELETE /admin/users/:id/field-policies/:policyId` | `admin.fieldpolicy:update` | | `204` | 403; 404 |
+| `DELETE /admin/users/:id/field-policies/:policyId` | `admin.fieldpolicy:update` | | `{ removed: true }` | 403; 404 |
 | `GET /admin/scope-catalog` | `admin.user:view` | | `{ dimensions: [{ id, code, name, description, orgType }], orgUnits: [{ id, code, name, orgType, parentId, branchCode, path, isActive }] (chỉ nút `FACTORY`, kể cả đã ngừng), lines: [{ code, name, branchCode, isActive, workshopCode, workshopName }] (chuyền may của mọi ĐVCS, kể cả chuyền đã giải thể (`isActive = false`); bộ phận bỏ tích không còn là chuyền; `workshopCode`, `workshopName` là bộ phận cha) }` | 500 khi nguồn chuyền lỗi |
 
 Trong `access`, dòng chiều `LINE` có `valueName` (tên chuyền, kể cả chuyền đã giải thể; `null` khi mã không là chuyền nào: bộ phận đã bỏ tích, chuyền cũ, `~mã`) và `valueActive` (còn là chuyền đang dùng không); chiều khác hai trường này là `null`.
@@ -353,7 +353,7 @@ Tổ hợp phạm vi hợp lệ (`AdminGrantsService.setAssignmentScope`, ADR 00
 | `GET /admin/roles` | `admin.role:view` | | `[{ id, code, name, description, isActive, isSystem, permissionCount, userCount }]` | |
 | `POST /admin/roles` | `admin.role:create` | `{ code, name, description? }` | `201 { id }` | 409 trùng mã |
 | `PUT /admin/roles/:id` | `admin.role:update` | `{ code? (phải trùng mã cũ), name?, description?, isActive? }` | `{ ok }` | 404; 422 `CODE_IMMUTABLE`; 409 tắt vai trò hệ thống; 403 đổi trạng thái vai trò mình giữ, trần quyền |
-| `DELETE /admin/roles/:id` | `admin.role:delete` | | `204` (đặt `IsActive = 0`) | 404; 409 vai trò hệ thống; 403 vai trò mình giữ, trần quyền |
+| `DELETE /admin/roles/:id` | `admin.role:delete` | | `{ removed: true }` (đặt `IsActive = 0`) | 404; 409 vai trò hệ thống; 403 vai trò mình giữ, trần quyền |
 | `GET /admin/roles/:id/permissions` | `admin.permission:view` | | `{ permissionIds }` | 404 |
 | `PUT /admin/roles/:id/permissions` | `admin.permission:update` | `{ permissionIds }` (toàn bộ, tối đa 2.000) | `{ added, removed }` | 404; 403 vai trò mình giữ, trần quyền; 422 quyền không có hoặc đã tắt |
 | `GET /admin/permissions` | `admin.permission:view` | | `{ actions: [view, create, update, delete, export], modules: [{ code, name, resources: [{ id, code, name, scopeType, permissions: [{ id, code, action }] }] }] }` | |
@@ -392,7 +392,7 @@ Không có route `/catalog/*` riêng: danh mục nằm dưới `/admin/catalogs`
 | `PUT /admin/catalogs/work-calendars/:branchCode` | `admin.catalog:update` | `{ weeklyOffDays: [1–7] (tối đa 6), outStartOffsetDays, outEndOffsetDays, warehouseStartOffsetDays, warehouseEndOffsetDays (0–60), productionRoundUpFrom? (0,01–1, tối đa 2 chữ số lẻ; không gửi thì giữ số đang có) }` | `{ ok }`; chưa có lịch thì tạo | 404 ĐVCS không có; 422 tổng hợp, đang ngừng, nghỉ cả tuần, số ngày sai thứ tự; 409 hai người cùng tạo |
 | `GET /admin/catalogs/work-calendars/:branchCode/days?year` | `admin.catalog:view` | | `[{ id, date, dayType, name }]` của năm | 404; 422 tổng hợp |
 | `POST /admin/catalogs/work-calendars/days` | `admin.catalog:update` | `{ branchCodes: [mã] (1–50), from, to, dayType: OFF \| WORK, name? }` | `201 { count }` | 422 ngày không có thật, khoảng ngược, quá 62 ngày, ĐVCS tổng hợp hoặc đang ngừng; 404 ĐVCS không có; 409 người khác vừa sửa cùng lịch |
-| `DELETE /admin/catalogs/work-calendars/:branchCode/days?from&to` | `admin.catalog:update` | | `{ deleted }` | 404; 422 tổng hợp, khoảng sai, ngoài năm 2000–2100, quá 366 ngày |
+| `DELETE /admin/catalogs/work-calendars/:branchCode/days?from&to` | `admin.catalog:update` | | `{ removed: true, deleted }` (số ngày đã xóa, 0 khi không có) | 404; 422 tổng hợp, khoảng sai, ngoài năm 2000–2100, quá 366 ngày |
 | `GET /admin/catalogs/external/:code/rows?page&pageSize&q` | `admin.catalog:view` | | `{ total, page, pageSize, columns: [{ name, type, key }], rows: [[giá trị]] }` | 404 mã lạ, không phải nguồn `CATALOG`; 503 `SYNC_NOT_READY` |
 
 Endpoint của module khác dùng quyền danh mục: `GET/POST/PUT /sewing/prep-steps` ([07-may.md](07-may.md)), `GET/POST /hr/department-types`, `PUT /hr/department-types/:id` ([08-nhan-su.md](08-nhan-su.md)). Đồng bộ: `GET /admin/sync/sources`, `GET /admin/sync/runs`, `POST /admin/sync/start` ([09-dong-bo.md](09-dong-bo.md)).

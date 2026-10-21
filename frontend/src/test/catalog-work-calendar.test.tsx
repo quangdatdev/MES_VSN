@@ -57,7 +57,7 @@ function mockApi() {
     const method = opts?.method ?? 'GET';
     if (method !== 'GET') {
       calls.push({ path, method, body: opts?.body });
-      return method === 'DELETE' ? { deleted: 9 } : { count: 1 };
+      return method === 'DELETE' ? { removed: true, deleted: 9 } : { count: 1 };
     }
     if (path === '/admin/catalogs') return overview;
     if (path === '/admin/catalogs/work-calendars') return calendars;

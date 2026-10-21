@@ -115,7 +115,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     const done = async () => {
       // Ngoại lệ theo người (nếu bài thử có cấp) gỡ trước, để lần chạy sau tài khoản bắt đầu sạch
       const access = (await api().get(`/api/v1/admin/users/${uid}/access`).set(auth(admin)).expect(200)).body;
-      for (const o of access.overrides) await api().delete(`/api/v1/admin/users/${uid}/overrides/${o.id}`).set(auth(admin)).expect(204);
+      for (const o of access.overrides) await api().delete(`/api/v1/admin/users/${uid}/overrides/${o.id}`).set(auth(admin)).expect(200);
       await api().put(`/api/v1/admin/users/${uid}/roles`).set(auth(admin)).send({ roleIds: [] }).expect(200);
       await api().put(`/api/v1/admin/users/${uid}`).set(auth(admin)).send({ isActive: false }).expect(200);
     };
@@ -403,8 +403,10 @@ describe('Phase 5.4: danh mục hệ thống', () => {
       const a02 = (await api().get('/api/v1/admin/catalogs/work-calendars/A02/days?year=2031').set(auth(admin)).expect(200)).body;
       expect(inRange(a02).map(([d, type]) => `${d}${type}`)).toEqual(['22OFF', '23OFF', '24OFF', '25OFF', '26OFF', '27OFF', '28OFF']);
       // Xóa theo khoảng chỉ ở A02; A01 giữ nguyên
-      expect((await api().delete('/api/v1/admin/catalogs/work-calendars/A02/days?from=2031-01-22&to=2031-01-28').set(auth(admin)).expect(200)).body).toEqual({ deleted: 7 });
+      expect((await api().delete('/api/v1/admin/catalogs/work-calendars/A02/days?from=2031-01-22&to=2031-01-28').set(auth(admin)).expect(200)).body).toEqual({ removed: true, deleted: 7 });
       expect(inRange((await api().get('/api/v1/admin/catalogs/work-calendars/A02/days?year=2031').set(auth(admin))).body)).toEqual([]);
+      // Xóa lại khoảng đã trống: không lỗi, số ngày đã xóa là 0
+      expect((await api().delete('/api/v1/admin/catalogs/work-calendars/A02/days?from=2031-01-22&to=2031-01-28').set(auth(admin)).expect(200)).body).toEqual({ removed: true, deleted: 0 });
       expect(inRange((await api().get('/api/v1/admin/catalogs/work-calendars/A01/days?year=2031').set(auth(admin))).body)).toHaveLength(7);
 
       // Cấu hình A03: nghỉ thứ Bảy, Chủ nhật; số ngày cộng thêm riêng

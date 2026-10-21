@@ -72,7 +72,7 @@ describe('Vai trò Toàn quyền (ADR 0014)', () => {
       expect((await api().post('/api/v1/order/sales-orders').set(auth(a00)).send(body).expect(403)).body.error.code).toBe('AGGREGATE_READ_ONLY');
       expect((await api().put(`/api/v1/order/sales-orders/${so.id}`).set(auth(a00)).send({ qty: 11 }).expect(403)).body.error.code).toBe('AGGREGATE_READ_ONLY');
     } finally {
-      await api().delete(`/api/v1/order/sales-orders/${so.id}`).set(auth(admin)).expect(204);
+      await api().delete(`/api/v1/order/sales-orders/${so.id}`).set(auth(admin)).expect(200);
     }
   });
 

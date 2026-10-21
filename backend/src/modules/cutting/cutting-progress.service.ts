@@ -449,7 +449,7 @@ export class CuttingProgressService implements OnModuleInit {
         planRemoved,
       };
     });
-    if (!res) return { removedDays: 0, removedRows: 0, planRemoved: false };
+    if (!res) return { removed: true, removedDays: 0, removedRows: 0, planRemoved: false };
     if (!res.planRemoved) await this.pushAfterWrite(scope, id);
     await this.audit.log({
       userId: user.userId,
@@ -462,7 +462,7 @@ export class CuttingProgressService implements OnModuleInit {
       newValue: { planRemoved: res.planRemoved },
       ip: user.ip,
     });
-    return { removedDays: res.removedDays, removedRows: res.removedRows, planRemoved: res.planRemoved };
+    return { removed: true, removedDays: res.removedDays, removedRows: res.removedRows, planRemoved: res.planRemoved };
   }
 
   async export(user: AuthUser, q: CuttingListQuery) {
