@@ -694,10 +694,11 @@ Dạng body lỗi: [Kiến trúc](../ARCHITECTURE.md) mục 5.1. Bảng dưới 
 | 403 | `SELF_ELEVATION_FORBIDDEN` | Tự đổi quyền của mình, hoặc vượt trần quyền quản trị |
 | 404 | `NOT_FOUND` | Không có, thuộc ĐVCS khác, hoặc ngoài phạm vi (không phân biệt); lệnh lưu nhiều dòng kèm `details.ids` là các dòng đó (Kế hoạch chuẩn bị SX, Kế hoạch may). Đường dẫn API không có: "Không tìm thấy đường dẫn." |
 | 409 | `CONFLICT` | Deadlock SQL Server (`AllExceptionsFilter`, "Thử lại sau vài giây"); luật nghiệp vụ chặn, dữ liệu vừa được người khác lưu, trùng mã, chờ khóa ứng dụng quá lâu (thông điệp nói cách xử lý) |
+| 413 | `PAYLOAD_TOO_LARGE` | Body vượt giới hạn của bộ đọc (JSON 512 KB ở `app.factory.ts`; urlencoded 100 KB, mặc định của Nest, frontend không dùng): `AllExceptionsFilter` đổi lỗi của body-parser sang mã này, thông điệp ghi mức tối đa, `details.limitBytes`; máy chủ ghi cảnh báo kèm `traceId` |
 | 422 | `CODE_IMMUTABLE` | Sửa mã (vai trò, ĐVCS…) sau khi tạo |
 | 422 | `VALIDATION_FAILED` | DTO sai (`ValidationPipe`, `details` là `[{ field, messages }]`); kiểm đầu vào ở service (`details` tùy màn) |
 | 429 | `TOO_MANY_REQUESTS` | `AllExceptionsFilter` đổi mọi `HttpException` 429 sang mã này; backend hiện không có giới hạn tần suất nào phát ra 429 (mục 2.8) |
-| 500 | `INTERNAL_ERROR` | Lỗi không lường trước (không phải `HttpException`, không phải deadlock); máy chủ ghi log kèm `traceId` |
+| 500 | `INTERNAL_ERROR` | Lỗi không lường trước (không phải `HttpException`, không phải deadlock, không phải body vượt giới hạn); máy chủ ghi log kèm `traceId` |
 | 500 | `RESOURCE_NOT_REGISTERED` | Repository chạy trên tài nguyên chưa khai báo hoặc sai bảng nguồn (lỗi lập trình, không phải lỗi người dùng) |
 | 500 | `LINE_SCOPE_UPDATE_FAILED` | Bộ phận chuyền may đã lưu ở `MES_Hr` nhưng sau 3 lần vẫn chưa ghi được nhật ký `LINE_SET_CHANGE` và tăng phiên bản quyền; `details.department` là bộ phận đã lưu (màn hình hiện đúng dữ liệu; `null` khi đọc lại cũng lỗi), `details.departmentId` là Id. Máy chủ ghi log đủ để dựng lại nhật ký (mục 7.6). Tạo ở `PermissionService.recordLineSetChange` |
 | 503 | `SYNC_NOT_READY` | API màn Đồng bộ dữ liệu (`SyncService`, `backend/src/platform/sync/sync.service.ts`) khi chưa có `MES_Sync`, tài khoản ứng dụng chưa được cấp quyền vào, hoặc chưa chạy migration ([Đồng bộ](09-dong-bo.md)) |
@@ -716,7 +717,7 @@ Tiền tố `/api/v1`. `backend/src/platform/auth/auth.controller.ts`. API `/me/
 | `POST /auth/refresh` | `@Public`; cookie `mes_rt` | không | 200 như `select-branch`, cùng ĐVCS của phiên, cookie mới | 401 `UNAUTHENTICATED` (không cookie, phiên thu hồi, hết hạn, tài khoản tắt, thua khi hai request cùng xoay), 403 `BRANCH_NOT_ALLOWED`. Lỗi dưới 500 xóa cookie | không |
 | `POST /auth/logout` | `@Public`; cookie `mes_rt` | không | 204, xóa cookie, thu hồi phiên của cookie | không | `LOGOUT` |
 
-`expiresIn` là số giây sống của access token (`JWT_ACCESS_TTL`). Body JSON của mọi route tối đa 512 KB (`app.factory.ts`).
+`expiresIn` là số giây sống của access token (`JWT_ACCESS_TTL`). Body JSON của mọi route tối đa 512 KB (`app.factory.ts`); vượt thì 413 `PAYLOAD_TOO_LARGE`.
 
 <a id="frontend"></a>
 ## 15. Frontend phản chiếu quyền

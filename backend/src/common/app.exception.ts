@@ -27,6 +27,13 @@ export const Errors = {
     new AppException('AGGREGATE_READ_ONLY', 'Chế độ xem tổng hợp chỉ đọc. Hãy chọn một đơn vị cơ sở cụ thể để thêm hoặc sửa dữ liệu.', 403),
   selfElevation: (msg = 'Bạn không được tự thay đổi quyền của chính mình.') => new AppException('SELF_ELEVATION_FORBIDDEN', msg, 403),
   conflict: (msg: string) => new AppException('CONFLICT', msg, 409),
+  payloadTooLarge: (limitBytes?: number) =>
+    new AppException(
+      'PAYLOAD_TOO_LARGE',
+      `Dữ liệu gửi lên quá lớn${limitBytes ? ` (tối đa ${Math.round(limitBytes / 1024)} KB)` : ''}. Hãy chia nhỏ rồi lưu lại.`,
+      413,
+      limitBytes ? { limitBytes } : null,
+    ),
   codeImmutable: () => new AppException('CODE_IMMUTABLE', 'Mã không được sửa sau khi đã tạo. Chỉ sửa được tên.', 422),
   scopeDenied: () =>
     new AppException('SCOPE_DENIED', 'Dữ liệu này nằm ngoài phạm vi bạn được giao (chuyền, đơn vị cơ sở, nhà máy SX hoặc người tạo).', 403),

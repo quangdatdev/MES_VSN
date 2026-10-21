@@ -74,6 +74,18 @@ describe('Xác thực, chọn nhà máy, phân quyền (cần MES_Core đã migr
     expect(r.body.error.code).toBe('VALIDATION_FAILED');
   });
 
+  it('body JSON vượt 512 KB => 413 PAYLOAD_TOO_LARGE theo khuôn lỗi chung, không phải 500', async () => {
+    const r = await api()
+      .post('/api/v1/auth/login')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ username: 'kehoach.a', password: 'x'.repeat(600 * 1024) }))
+      .expect(413);
+    expect(r.body.error.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(r.body.error.message).toMatch(/512 KB/);
+    expect(r.body.error.details).toEqual({ limitBytes: 512 * 1024 });
+    expect(r.body.traceId).toBeTruthy();
+  });
+
   it('login đúng trả token tạm và danh sách nhà máy được phép', async () => {
     const r = await login('kehoach.a').expect(200);
     expect(r.body.preAuthToken).toBeTruthy();

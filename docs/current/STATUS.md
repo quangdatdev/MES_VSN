@@ -4,7 +4,7 @@
 |---|---|
 | Mục đích | Nơi duy nhất ghi trạng thái: việc đang làm và kế hoạch phase, trạng thái phase, việc chờ trên máy chủ, câu hỏi mở, nợ kỹ thuật, lỗi đã biết. Đọc đầu mỗi phiên để không làm lại việc đã làm; cập nhật trước khi commit |
 | Đối tượng | Mọi phiên làm việc (người, AI), Tech Lead |
-| Ảnh chụp | 19/10/2026. Bản trạng thái cũ (`docs/update_docs/02-trang-thai.md`, có chi tiết từng câu hỏi trước 19/10) đã xóa: `git show 98d19db:docs/update_docs/02-trang-thai.md` |
+| Ảnh chụp | 21/10/2026. Bản trạng thái cũ (`docs/update_docs/02-trang-thai.md`, có chi tiết từng câu hỏi trước 19/10) đã xóa: `git show 98d19db:docs/update_docs/02-trang-thai.md` |
 
 Kế hoạch phase mới ghi ở mục 1 theo khuôn ở [DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md) mục 2.1.
 
@@ -16,26 +16,26 @@ Kế hoạch phase mới ghi ở mục 1 theo khuôn ở [DEVELOPMENT_WORKFLOW](
 |---|---|
 | Giai đoạn 1–3: kiểm kê, khảo sát code, bản đồ hợp nhất | Xong; Tech Lead duyệt các quyết định ở mục 7 |
 | Đưa `docs/` vào git làm mốc | Xong: commit `98d19db`, đã lên `origin/main` |
-| Giai đoạn 4: `AGENTS.md`, `CLAUDE.md`, 6 file ở `docs/`, file này; rút gọn `README.md`; sửa tài liệu module nói khác code | Xong, chưa commit |
-| T4: chuyển nội dung chỉ còn ở tài liệu cũ rồi xóa 59 file (`update_docs/01`, `02`, `03`, `14`, `docs/adr/*`, `docs/phases/*`, 11 file `thiet-ke`, `review/README.md`, `yeu-cau.md`, `bao-cao/*`) | Xong, chưa commit. Bảng "đã xóa → đọc ở đâu": [update_docs/README](../update_docs/README.md) |
+| Giai đoạn 4: `AGENTS.md`, `CLAUDE.md`, 6 file ở `docs/`, file này; rút gọn `README.md`; sửa tài liệu module nói khác code | Xong, commit `2f3648a` |
+| T4: chuyển nội dung chỉ còn ở tài liệu cũ rồi xóa 59 file (`update_docs/01`, `02`, `03`, `14`, `docs/adr/*`, `docs/phases/*`, 11 file `thiet-ke`, `review/README.md`, `yeu-cau.md`, `bao-cao/*`) | Xong, commit `2f3648a`. Bảng "đã xóa → đọc ở đâu": [update_docs/README](../update_docs/README.md) |
 | Q49: dọn worktree, nhánh đã gộp | Xong: gỡ `MES-wt-511`, `MES-wt-512`, `MES-wt-r4`; xóa 8 nhánh cục bộ đã gộp (gồm `fix-cut-ratio-qty`, gỡ sau khi T12 commit). Repo chỉ còn nhánh `main` |
 | T12: sửa lỗi HIGH ở Cập nhật tỷ lệ cắt (`CutRatioService.updateColorSizes` kiểm mức cột `qty` trước khi đọc PO, kể cả `lines: []`) | Xong, commit `33888e8`. Review [t12-cap-nhat-ty-le-cat.md](../review/t12-cap-nhat-ty-le-cat.md) |
-| T17: sửa lỗi HIGH cùng loại ở Xếp chuyền (`LinePlanService.saveLines` kiểm mức cột `startDate` trước khi đọc kế hoạch, kể cả `lines: []`), theo mẫu T12 | Xong 20/10/2026 trên `main`. Lint, build backend qua; `phase5.spec.ts` 52/52 trên `MES_*_T514`; bài mới hỏng với code cũ. Review [t17-xep-chuyen-ngay-bat-dau.md](../review/t17-xep-chuyen-ngay-bat-dau.md): APPROVE WITH SUGGESTIONS, 3/4 LOW đã sửa, L1 gộp vào N10. Một lần chạy chung `sewing-plan.spec.ts` + `cutting-supply.spec.ts` hỏng 4 bài, không lặp lại (3 lần sau 21/21): NEEDS VERIFICATION |
-| T18: API đồng bộ dòng dàn chuyền Đã phân màu cỡ cho hệ thống khác, `GET /api/v1/order/color-size/sync?from=&to=` (người dùng yêu cầu gấp 20/10/2026, thay cho view ở `DB_TRUNGGIAN`, Q53) | Xong 20/10/2026 trên `main`, chưa commit. Review [t18-api-dong-bo-dan-chuyen.md](../review/t18-api-dong-bo-dan-chuyen.md): REQUEST CHANGES (1 HIGH, 6 MEDIUM, 7 LOW), đã sửa H1, M3, M4, M5, L1, L6; M1, M6 người dùng chốt 21/10 (Q53); M2, L5 vào nợ N11. Lint, build backend qua; `phase5.spec.ts` 57/57 trên `MES_*_T514` (5 bài mới); cả bộ backend 427 qua, 2 bỏ qua (chạy trước lượt sửa theo review). Tài liệu: [06](../update_docs/06-don-hang.md) bảng API Phân bổ màu cỡ, [13](../update_docs/13-quyet-dinh.md) mục 8.6, hướng dẫn cho Dev bên gọi [docs/tich-hop/api-dong-bo-dan-chuyen.md](../tich-hop/api-dong-bo-dan-chuyen.md) (21/10) |
-| T19: sửa lỗi triển khai treo ở câu hỏi `Unlink of file '.git/objects/pack/...' failed. Should I try again? (y/n)` (máy chủ, 21/10/2026). Nguyên nhân: tiến trình `git pull` còn giữ file pack trong lúc gc tự động của `git merge` con xóa pack cũ; Windows không cho xóa, trả lời `y` không bao giờ qua. Đã tái hiện trên máy dev (Git 2.51.0.windows.1): `git pull` để lại 2 pack cũ, `git fetch` + `git merge` riêng thì không. Máy chủ chưa xác minh có chương trình khác (VS Code, TortoiseGit) cùng giữ file: NEEDS VERIFICATION | Đã sửa 21/10/2026 trên `main`, chưa commit: `deploy/deploy.cjs` thay `git pull --ff-only` bằng `git fetch` rồi `git merge --ff-only @{upstream}`; thêm dòng xử lý sự cố ở `deploy/huong-dan.html`; [11](../update_docs/11-van-hanh.md) bước 2. Lint `deploy`, `test:deploy` 13/13 qua. Máy chủ chỉ dùng cách mới từ lần triển khai sau khi bản sửa lên `origin` |
+| T17: sửa lỗi HIGH cùng loại ở Xếp chuyền (`LinePlanService.saveLines` kiểm mức cột `startDate` trước khi đọc kế hoạch, kể cả `lines: []`), theo mẫu T12 | Xong, commit `ba752c3`. Review [t17-xep-chuyen-ngay-bat-dau.md](../review/t17-xep-chuyen-ngay-bat-dau.md): APPROVE WITH SUGGESTIONS, 3/4 LOW đã sửa, L1 gộp vào N10. Một lần chạy chung `sewing-plan.spec.ts` + `cutting-supply.spec.ts` hỏng 4 bài, không lặp lại (3 lần sau 21/21): NEEDS VERIFICATION |
+| T18: API đồng bộ dòng dàn chuyền Đã phân màu cỡ cho hệ thống khác, `GET /api/v1/order/color-size/sync?from=&to=` (người dùng yêu cầu gấp 20/10/2026, thay cho view ở `DB_TRUNGGIAN`, Q53) | Xong, commit `f7f34e0`. Review [t18-api-dong-bo-dan-chuyen.md](../review/t18-api-dong-bo-dan-chuyen.md): REQUEST CHANGES (1 HIGH, 6 MEDIUM, 7 LOW), đã sửa H1, M3, M4, M5, L1, L6; M1, M6 người dùng chốt 21/10 (Q53); M2, L5 vào nợ N11. Lint, build backend qua; `phase5.spec.ts` 57/57 trên `MES_*_T514` (5 bài mới); cả bộ backend 427 qua, 2 bỏ qua (chạy trước lượt sửa theo review). Tài liệu: [06](../update_docs/06-don-hang.md) bảng API Phân bổ màu cỡ, [13](../update_docs/13-quyet-dinh.md) mục 8.6, hướng dẫn cho Dev bên gọi [docs/tich-hop/api-dong-bo-dan-chuyen.md](../tich-hop/api-dong-bo-dan-chuyen.md) (21/10) |
+| T19: sửa lỗi triển khai treo ở câu hỏi `Unlink of file '.git/objects/pack/...' failed. Should I try again? (y/n)` (máy chủ, 21/10/2026). Nguyên nhân: tiến trình `git pull` còn giữ file pack trong lúc gc tự động của `git merge` con xóa pack cũ; Windows không cho xóa, trả lời `y` không bao giờ qua. Đã tái hiện trên máy dev (Git 2.51.0.windows.1): `git pull` để lại 2 pack cũ, `git fetch` + `git merge` riêng thì không. Máy chủ chưa xác minh có chương trình khác (VS Code, TortoiseGit) cùng giữ file: NEEDS VERIFICATION | Đã sửa, commit `5f54917`: `deploy/deploy.cjs` thay `git pull --ff-only` bằng `git fetch` rồi `git merge --ff-only @{upstream}`; thêm dòng xử lý sự cố ở `deploy/huong-dan.html`; [11](../update_docs/11-van-hanh.md) bước 2. Lint `deploy`, `test:deploy` 13/13 qua. Máy chủ chỉ dùng cách mới từ lần triển khai sau khi bản sửa lên `origin` (đã lên `origin` 21/10/2026) |
+| T13: kiểm body vượt 512 KB | Xong 21/10/2026. Bài mới ở `auth.spec.ts` chứng minh trước đây trả 500 `INTERNAL_ERROR`; sửa `AllExceptionsFilter` đổi lỗi `entity.too.large` của body-parser (JSON 512 KB, urlencoded 100 KB) thành 413 `PAYLOAD_TOO_LARGE` (`Errors.payloadTooLarge`, `details.limitBytes`), ghi cảnh báo vào log. Lint, build backend qua; `auth.spec.ts` 17/17 trên `MES_*_T514`. Review [t13-body-vuot-gioi-han.md](../review/t13-body-vuot-gioi-han.md): APPROVE WITH SUGGESTIONS, 7 LOW (6 đã xử lý, L4 không sửa). Tài liệu: [04](../update_docs/04-phan-quyen.md) mục 13, 14; [DATA_FLOWS](../DATA_FLOWS.md) mục 2, 8; [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) mục 5; [12](../update_docs/12-du-lieu-mau-va-kiem-thu.md) |
 | Bộ database test trên máy chủ | Còn `MES_*_T514` (6 database) dùng cho các task sau; đã xóa `MES_*_T5R4`, `MES_*_Test` (20/10/2026, Tech Lead chọn) |
 | Giai đoạn 5: kiểm liên kết, tính nhất quán | Xong (kết quả trong báo cáo của phiên) |
-| T15: bổ sung tài liệu module còn thiếu so với code (`04`–`08`, `10`–`12`, `15`) | Xong 20/10/2026, chưa commit. Kết quả, điểm còn NEEDS VERIFICATION: mục 8.2 |
+| T15: bổ sung tài liệu module còn thiếu so với code (`04`–`08`, `10`–`12`, `15`) | Xong, commit `672f0a3`. Kết quả, điểm còn NEEDS VERIFICATION: mục 8.2 |
 
-Làm trên `main` theo chỉ đạo 19/10/2026 ("theo dõi trên nhánh main trước"). Mục đích đợt này: chốt, chuẩn hóa source và tài liệu, không xây tính năng mới (Tech Lead 20/10/2026). Sửa code chỉ gồm các lỗi lệch quy tắc đã duyệt (T12, T17); không đổi database thật, CI/CD.
+Làm trên `main` theo chỉ đạo 19/10/2026 ("theo dõi trên nhánh main trước"). Mục đích đợt này: chốt, chuẩn hóa source và tài liệu, không xây tính năng mới (Tech Lead 20/10/2026). Sửa code gồm các lỗi lệch quy tắc đã duyệt (T12, T17), lỗi triển khai (T19) và API người dùng yêu cầu gấp (T18, Q53); không đổi database thật, CI/CD.
 
 ### 1.2 Việc tiếp theo đã duyệt, chưa làm
 
-Tech Lead 19/10/2026: các việc sửa code làm **sau khi chốt tài liệu**, mỗi việc một task.
+Tech Lead 19/10/2026: các việc sửa code làm **sau khi chốt tài liệu**, mỗi việc một task. Tech Lead 21/10/2026: làm tiếp T1–T16 trên `main` ở thư mục MES (không có phiên khác cùng sửa); mỗi task xong (lint, build, test, review) thì một commit riêng, chưa push; T6 làm cuối, sau khi CI (T2) chạy được trên GitHub, hỏi trước mỗi lần push hay đổi cài đặt GitHub; **bỏ T5** (giữ tên tài liệu module hiện tại). Thứ tự làm: T13, T11, T10, T7, T16, T8, T3, T1, T9, T14, T2, T6.
 
 | # | Việc | Ghi chú |
 |---|---|---|
-| T13 | Test body vượt 512 KB trả 413 hay 500 | [DATA_FLOWS](../DATA_FLOWS.md) mục 8 |
 | T1 | Sửa comment trong code trỏ tới tài liệu đã xóa | ~250 chỗ "ADR 00xx", ~12 chỗ `docs/thiet-ke/*.md` (ví dụ `backend/src/common/app.exception.ts`), 4 chỗ `11-van-hanh.md`; 17 file trích "CLAUDE.md mục…" đang đúng số mục của `AGENTS.md`. Tạm thời tra bảng ở [update_docs/README](../update_docs/README.md) |
 | T2 | Dựng CI GitHub Actions | Các bước: [ENGINEERING_STANDARDS](../ENGINEERING_STANDARDS.md) mục 9; 2 bài `catalog.spec.ts` cần dữ liệu BRAVO |
 | T3 | Thống nhất TypeScript 6.0.3 | `ts-jest` đã chạy 6.0.3 (Tech Lead xác nhận); `backend`, `frontend` còn khai `^5.9.3` |
@@ -47,11 +47,11 @@ Tech Lead 19/10/2026: các việc sửa code làm **sau khi chốt tài liệu**
 | T10 | Gom `FIELD_NOT_READABLE`, `LINE_SCOPE_UPDATE_FAILED` vào `Errors` | [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) mục 5 |
 | T11 | Bổ sung 8 biến vào `backend/.env.example` | [ENGINEERING_STANDARDS](../ENGINEERING_STANDARDS.md) mục 2 |
 | T14 | `SheetGrid` dùng bản động `DynamicDataSheetGrid` | Kế hoạch cũ chờ duyệt (bản gốc: `git show 98d19db:docs/phases/sheetgrid-ban-dong.md`). Task: (1) chạy thử từng màn dùng `SheetGrid`, ghi lỗi thật; (2) đổi sang `DynamicDataSheetGrid`, giữ `useMemo` cho `columns` và các hàm truyền vào, đo số lần vẽ không tệ hơn (`render-cost.test.tsx`); (3) bỏ các cách tránh không còn cần (`ref` đọc lỗi ở Phân màu cỡ, cột dựng theo `sig` ở Tỷ lệ cắt); (4) sửa [10](../update_docs/10-giao-dien.md) mục 9.3, review. Rủi ro: màn dựng `columns` trong lúc render sẽ chậm khi gõ; chạy thử lại nút Thêm ở Phân màu cỡ (`addAtActive`, `keepAnchor`) |
-| T5 | Đổi tên, chuyển chỗ tài liệu module `docs/update_docs/*` (nếu Tech Lead muốn) | Sau T1 vì code trỏ tới `11-van-hanh.md` |
+| ~~T5~~ | ~~Đổi tên, chuyển chỗ tài liệu module `docs/update_docs/*`~~ | Bỏ (Tech Lead 21/10/2026): giữ tên hiện tại |
 
 ## 2. Trạng thái phase
 
-Git (19/10/2026): mọi code của các phase dưới đây đã commit trên `main`; `main` trùng `origin/main` ở commit mốc tài liệu `98d19db`; `githq5/main` chậm hơn (ở `24301de`). Nhánh `feature/docs-chuan-hoa` trên `origin` đã xóa (Q50). Trạng thái duyệt theo bản trạng thái cũ, cập nhật theo Tech Lead 19/10/2026.
+Git (21/10/2026): mọi code của các phase dưới đây và các task T4, T12, T15, T17–T19 đã commit trên `main`; `main` trùng `origin/main` ở `5f54917` (T19). `origin` chỉ còn nhánh `main`; máy này chỉ còn nhánh `main`, không còn worktree. `githq5/main` lần đọc gần nhất ở `24301de` (21/10/2026 không đọc được `githq5`: lỗi xác thực). Nhánh `feature/docs-chuan-hoa` trên `origin` đã xóa (Q50). Trạng thái duyệt theo bản trạng thái cũ, cập nhật theo Tech Lead 19/10/2026.
 
 | Phase | Nội dung | Trạng thái | Còn lại |
 |---|---|---|---|
@@ -79,7 +79,7 @@ Git (19/10/2026): mọi code của các phase dưới đây đã commit trên `m
 
 QMS, Hoàn thiện, Báo cáo, Quản lý in thêu, các màn May còn lại: chưa bắt đầu.
 
-Kết quả kiểm tra: đợt chuẩn hóa tài liệu 19/10/2026 không đổi code nên không chạy lint, test, build. Số liệu gần nhất do phase 5.17 tự ghi: backend 37 bộ, 421 bài qua, 2 bỏ qua (bộ `MES_*_T514`); frontend 36 file, 295 bài.
+Kết quả kiểm tra gần nhất: cả bộ backend 427 bài qua, 2 bỏ qua (T18, 20/10/2026, bộ `MES_*_T514`, chạy trước lượt sửa theo review); frontend 36 file, 295 bài (phase 5.17 tự ghi).
 
 ## 3. Máy chủ
 
@@ -223,7 +223,7 @@ Phát hiện khi rà code để viết tài liệu; chưa chạy thử từng tr
 | Trung bình | `frontend/src/lib/api.ts` | Body lỗi không phải JSON (502 HTML) bị báo "Không kết nối được máy chủ" |
 | Trung bình | `backend/test/*`, `npm test` | Không có chốt chặn database |
 | Trung bình | `backend/.env.example` | Thiếu 8 biến nên `deploy.cjs` không cảnh báo khi thiếu (T11) |
-| Thấp | `backend/src/app.factory.ts` | Lỗi DTO lồng nhau mất thông điệp con; `ParseIntPipe` trả thông điệp tiếng Anh; body vượt 512 KB có thể thành 500 (T13) |
+| Thấp | `backend/src/app.factory.ts` | Lỗi DTO lồng nhau mất thông điệp con; `ParseIntPipe` và JSON sai cú pháp trả thông điệp tiếng Anh; lỗi khác của body-parser (415 charset, encoding; quá 1.000 tham số urlencoded; query lồng quá sâu) vẫn thành 500 `INTERNAL_ERROR`; phản hồi lỗi của bộ đọc body thiếu header của helmet (đăng ký trước helmet) |
 | Thấp | `backend/src/platform/admin/*` | Nhật ký `USER_CREATE`, `ROLE_CREATE`, `BRANCH_CREATE` ghi ngoài transaction, không ghi IP; `importBravoBranches` hết giờ chờ khóa trả 500 |
 | Thấp | `po-allocation.service.ts`, `base.repository.ts` (`factoryBranchWrite`) | Nhà máy đã ngừng của chính ĐVCS bị báo "ĐVCS khác"; cột ĐVCS trống khi `FtyName` là danh sách |
 | Thấp | `po-allocation.service.ts` (`OPENJSON`) | Sắp xếp, lọc, xuất 50.000 dòng có thể chậm, chưa đo |

@@ -1,16 +1,26 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import type { Response } from 'express';
-import { AppException } from './app.exception';
+import type { Request, Response } from 'express';
+import { AppException, Errors } from './app.exception';
 import { isDeadlock } from './db-errors';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Exception');
 
-  catch(exception: unknown, host: ArgumentsHost) {
-    const res = host.switchToHttp().getResponse<Response>();
+  catch(caught: unknown, host: ArgumentsHost) {
+    const http = host.switchToHttp();
+    const res = http.getResponse<Response>();
+    // Bộ đọc body (JSON giới hạn ở app.factory.ts, urlencoded mặc định của Nest) báo vượt cỡ bằng lỗi của body-parser, không phải
+    // HttpException: không đổi thì thành 500
+    const tooLarge = isBodyTooLarge(caught) ? caught : null;
+    const exception = tooLarge ? Errors.payloadTooLarge(numberOrUndefined(tooLarge.limit)) : caught;
     const traceId = randomUUID();
+    if (tooLarge) {
+      // Giới hạn đặt sát mức cần: người dùng thật chạm tới là dấu hiệu cần nâng, nên để lại dấu vết (không ghi nội dung body)
+      const req = http.getRequest<Request>();
+      this.logger.warn(`[${traceId}] body vượt giới hạn ${String(tooLarge.limit)} byte (${String(tooLarge.length)} byte): ${req.method} ${req.originalUrl}`);
+    }
 
     let status = 500;
     let code = 'INTERNAL_ERROR';
@@ -49,3 +59,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     res.status(status).json({ error: { code, message, details }, traceId });
   }
 }
+
+function isBodyTooLarge(e: unknown): e is { type: string; limit?: unknown; length?: unknown } {
+  return typeof e === 'object' && e !== null && (e as { type?: unknown }).type === 'entity.too.large';
+}
+
+const numberOrUndefined = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);

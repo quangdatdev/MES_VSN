@@ -74,6 +74,7 @@ sequenceDiagram
 
 | Điểm kiểm | Code | Lỗi |
 |---|---|---|
+| Đọc body | `backend/src/app.factory.ts` (`useBodyParser`, JSON tối đa 512 KB) | 413 `PAYLOAD_TOO_LARGE`; JSON sai cú pháp 400 `BAD_REQUEST` (thông điệp tiếng Anh của Nest) |
 | Token, phiên | `backend/src/platform/auth/auth.guard.ts` | 401 `UNAUTHENTICATED`, `TOKEN_EXPIRED`; token tạm ở endpoint không có `@AllowPreAuth`: 401 |
 | ĐVCS của phiên | `auth.guard.ts` → `platform/permission/branch.service.ts` (`isAllowed`, cờ `IsAggregate` tra DB, cache 30 giây) | 403 `BRANCH_NOT_ALLOWED` |
 | Khai báo quyền | `platform/auth/permission.guard.ts` | 403 `ENDPOINT_NOT_DECLARED` (chỉ khi đã có access token hợp lệ; thiếu token thì 401 trước), 403 `PERMISSION_DENIED` |
@@ -193,4 +194,4 @@ sequenceDiagram
 | Hiện lỗi | `ApiError(status, code, message, details)`; `lib/notify.ts` (`toastError`) | Hiện thông điệp của máy chủ; thêm gợi ý cho `FIELD_READONLY`, `SCOPE_DENIED` |
 | Body lỗi không phải JSON (proxy trả HTML khi 502) | `api.ts` | Báo nhầm "Không kết nối được máy chủ" (lỗi đã biết, [STATUS](current/STATUS.md)) |
 
-**NEEDS VERIFICATION:** body vượt 512 KB có thể trả 500 `INTERNAL_ERROR` thay vì 413 (suy từ `http-exception.filter.ts`, chưa chạy thử). Tech Lead chốt 19/10/2026: kiểm bằng test sau khi xong tài liệu (task T13 ở [STATUS](current/STATUS.md)).
+Body JSON vượt 512 KB: máy chủ trả 413 `PAYLOAD_TOO_LARGE` (mục 2; test ở `backend/test/auth.spec.ts`), `toastError` hiện thông điệp của máy chủ, có ghi mức tối đa.

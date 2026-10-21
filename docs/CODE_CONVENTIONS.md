@@ -180,7 +180,7 @@ Không có gói kiểu chung giữa backend và frontend. Kiểu API ở fronten
 | Có mã lỗi tạo bằng `new AppException` ngoài `Errors`: `FIELD_NOT_READABLE` (`platform/data/column-filter.ts`, `cutting-progress.service.ts`, `po-allocation.service.ts`), `LINE_SCOPE_UPDATE_FAILED` (`permission.service.ts`) | CURRENT (lệch) | APPROVED (19/10/2026): gom vào `Errors`, task T10 |
 | Thông điệp tiếng Việt nói cách xử lý; số liệu cấu trúc đặt ở `details` | CURRENT | `Errors.factoryOfOtherBranch` |
 | Lỗi validate: 422 `VALIDATION_FAILED` từ `ValidationPipe`; DTO lồng nhau chỉ lấy `constraints` cấp đầu nên mất thông điệp con | CURRENT | `backend/src/app.factory.ts` |
-| Deadlock thành 409 `CONFLICT`; lỗi khác không phải `HttpException` thành 500 `INTERNAL_ERROR` kèm `traceId` | CURRENT | `common/http-exception.filter.ts` |
+| Deadlock thành 409 `CONFLICT`; body vượt giới hạn của bộ đọc thành 413 `PAYLOAD_TOO_LARGE`; lỗi khác không phải `HttpException` thành 500 `INTERNAL_ERROR` kèm `traceId` | CURRENT | `common/http-exception.filter.ts` |
 | Không nuốt lỗi im lặng; Promise luôn được `await` | CURRENT, kiểm bằng review (lint không bật luật type-checked) | `backend/eslint.config.mjs` |
 | Frontend hiện lỗi qua `ApiError` + `toastError`; không tự dịch mã lỗi trừ màn đăng nhập | CURRENT | `frontend/src/lib/api.ts`, `lib/notify.ts` |
 
