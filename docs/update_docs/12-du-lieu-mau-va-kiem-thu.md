@@ -6,23 +6,23 @@ Cách chạy lệnh `migrate`, `seed`, `reset:demo` và các chốt an toàn: [V
 
 ## Hai loại dữ liệu seed
 
-Nguồn: `backend/scripts/seed-data.ts` (khai báo), `backend/scripts/seed.ts` (`runSeed`), `seed-order.ts` (đơn hàng giả), `hr-data.ts` (nhân sự), `sewing-data.ts`. `npm run migrate` luôn gọi seed **không** dữ liệu mẫu; `npm run seed` thêm dữ liệu mẫu khi `SEED_SAMPLE_DATA=true` (mặc định trừ khi `NODE_ENV=production`).
+Nguồn: `backend/scripts/seed-data.ts` (khai báo), `backend/scripts/seed.ts` (`runSeed`), `seed-order.ts` (đơn hàng giả), `hr-data.ts` (nhân sự), `sewing-data.ts`, `cluster-data.ts` (Phân cụm trưởng giả lập). `npm run migrate` luôn gọi seed **không** dữ liệu mẫu; `npm run seed` thêm dữ liệu mẫu khi `SEED_SAMPLE_DATA=true` (mặc định trừ khi `NODE_ENV=production`).
 
 | Phần | Luôn nạp (dữ liệu hệ thống) | Chỉ khi có dữ liệu mẫu |
 |---|---|---|
 | Đơn vị cơ sở (`SysBranch`) | `A00` Toàn công ty (đơn vị tổng hợp); ĐVCS chép từ danh mục chi nhánh BRAVO nếu `MES_Sync` đã đồng bộ | `A01`, `A02`, `A03` |
 | Vai trò (`SysRole`) | 8 vai trò hệ thống, kể cả Toàn quyền | – |
-| Tài nguyên, quyền, menu | 34 tài nguyên × 5 hành động = 170 quyền; 8 nhóm menu, 34 mục menu | – |
+| Tài nguyên, quyền, menu | 35 tài nguyên × 5 hành động = 175 quyền; 8 nhóm menu, 34 mục menu (`hr.directory` không có menu) | – |
 | Ma trận quyền, chính sách cột của vai trò | Theo bảng mẫu bên dưới | – |
 | Phạm vi dữ liệu của tài nguyên, cột đăng ký | Có | – |
 | Cây tổ chức (`SysOrgUnit`) | Nút gốc cho mỗi ĐVCS đang có, không phải tổng hợp (ĐVCS chép từ BRAVO thì bước chép tạo nút gốc). Không tạo nút Xưởng, Chuyền | – |
 | Danh mục (`SysCatalog`, `SysCatalogItem`, `SysShift`) | Đơn vị tính, Loại đơn hàng, 4 ca làm việc | – |
 | Nhà máy SX (`SysProductionFactory`) | – | `A01`, `A01-B`, `A02`, `A03` |
 | Lịch làm việc (`SysWorkCalendar`, `SysWorkCalendarDay`) | – (ĐVCS chưa có lịch dùng lịch mặc định trong code) | Mỗi ĐVCS mẫu chưa có lịch: lịch mặc định kèm ngày lễ, Tết 2026–2027 gần đúng ghi "(mẫu)"; `A01` thêm Chủ nhật làm bù 15/11/2026, `A02` thêm ngày nghỉ riêng 20/11/2026 (`workCalendarSample` ở `seed-data.ts`). `reset:demo` xóa mọi lịch, seed nạp lại |
-| Tài khoản | `admin` | 7 tài khoản demo còn lại |
+| Tài khoản | `admin` | 8 tài khoản demo còn lại; gắn nhân viên mẫu cho `truongchuyen.a`, `truongchuyen.b`, `totruong.a` |
 | `MES_Order` | – | Đơn hàng, PO, kế hoạch, dàn chuyền giả |
-| `MES_Sewing` | Danh mục bước chuẩn bị SX `CB01`–`CB16` | – |
-| `MES_Hr` | 5 loại phòng ban, 7 chức danh dùng chung | Phòng ban (kể cả xưởng, chuyền may mẫu), chức danh theo phòng ban, 40 nhân viên giả |
+| `MES_Sewing` | Danh mục bước chuẩn bị SX `CB01`–`CB16` | Tổ, tổ trưởng, cụm theo mã hàng giả lập GSD cho màn Phân cụm trưởng (mục dưới) |
+| `MES_Hr` | 5 loại phòng ban, 7 chức danh dùng chung | Phòng ban (kể cả xưởng, chuyền may mẫu), chức danh theo phòng ban, 40 nhân viên giả; 21 nhân viên mẫu của Phân cụm trưởng |
 
 Quy tắc chạy lại (chỉ thêm phần thiếu, phần nào luôn đồng bộ theo code, không cấp lại quyền đã thu hồi): [Vận hành › Seed](11-van-hanh.md#seed).
 
@@ -56,7 +56,7 @@ Thứ tự trong bảng là `SortOrder` 10, 20, … 80. Mọi vai trò seed là 
 
 ### Tài nguyên, quyền, menu
 
-- Mỗi tài nguyên trong `resources` của `seed-data.ts` sinh một dòng `SysResource`, 5 quyền `SysPermission` mã `<tài nguyên>:<hành động>` với hành động `view`, `create`, `update`, `delete`, `export` (tên quyền dạng "Xem: Thông tin đơn hàng"), và một mục menu lá `menu.<tài nguyên>` dưới nhóm `menu.<module>`.
+- Mỗi tài nguyên trong `resources` của `seed-data.ts` sinh một dòng `SysResource`, 5 quyền `SysPermission` mã `<tài nguyên>:<hành động>` với hành động `view`, `create`, `update`, `delete`, `export` (tên quyền dạng "Xem: Thông tin đơn hàng"), và một mục menu lá `menu.<tài nguyên>` dưới nhóm `menu.<module>`. Tài nguyên không khai `path` thì không có mục menu (`hr.directory`, phase 5.18); quyền của nó vẫn hiện ở Quản trị › Phân quyền theo nhóm của tiền tố mã.
 - 8 nhóm menu theo thứ tự: `order` Quản trị đơn hàng, `cutting` Quản trị nhà cắt, `sewing` Quản trị xưởng may, `qms` Quản trị chất lượng, `finishing` Quản trị hoàn thiện, `hr` Quản trị nhân sự, `report` Báo cáo quản trị, `admin` Quản trị.
 - Mục menu đánh dấu điện thoại (`SysMenu.IsMobile`): `sewing.cluster`, `sewing.output`, `qms.endline`.
 - Danh sách màn, đường dẫn, màn nào đã có nội dung: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.2.
@@ -91,6 +91,7 @@ Ký hiệu: **V** xem, **C** thêm, **U** sửa, **D** xóa, **E** xuất file, 
 | `finishing.packing` | Tiến độ đóng thùng | B | V | VE | V | VCU | – | – | – | VCUDE |
 | `hr.orgchart` | Sơ đồ tổ chức | S | V | VE | – | – | – | – | VCUE | VCUDE |
 | `hr.employee` | Thông tin nhân sự | S | V | VE | – | – | – | – | VCUE | VCUDE |
+| `hr.directory` | Danh bạ nhân viên (không có màn, ô chọn người ở màn khác; phase 5.18) | S | V | V | V | V | – | – | V | VCUDE |
 | `report.prepare` | Kế hoạch chuẩn bị sản xuất | B | V | VE | VE | – | – | – | – | VCUDE |
 | `report.progress` | Tiến độ sản xuất | B | V | VE | VE | – | – | VE | – | VCUDE |
 | `report.revenue` | Doanh thu nhà máy | B | V | VE | – | – | – | VE | – | VCUDE |
@@ -145,8 +146,10 @@ Bảng nguồn (`SysResource.SourceTable`) và chiều phạm vi gắn cột (`S
 | `cutting.progress` | `CuttingPlan` | `FACTORY` → `BranchCode` |
 | `cutting.supply` | `CuttingSupply` | `FACTORY` → `BranchCode` |
 | `sewing.plan` | `SewingDayPlan` | `FACTORY` → `BranchCode`, `LINE` → `LineCode` |
+| `sewing.cluster` | `SewingTeam` | `FACTORY` → `BranchCode`, `LINE` → `LineCode` |
 | `hr.orgchart` | `Department` | – |
 | `hr.employee` | `Employee` | – |
+| `hr.directory` | `Employee` | – |
 
 Cột đăng ký (`SysResourceField`, khai ở `resourceFields`; mã trùng khóa JSON của API). Cột đánh dấu **(nhạy cảm)** mặc định Ẩn khi vai trò không khai chính sách.
 
@@ -162,6 +165,7 @@ Cột đăng ký (`SysResourceField`, khai ở `resourceFields`; mã trùng khó
 | `cutting.progress` | `planNo` Số kế hoạch, `customerName`, `styleCode`, `productName`, `poBuyDate`, `shipDate`, `planQty` Số lượng KH, `dayQty` Trong ngày, `cutQty` Lũy kế cắt, `diffQty` +/-, `lastCutDate` Ngày cắt gần nhất, `statusCode` |
 | `cutting.supply` | `supplyNo` Số lệnh cấp, `supplyDate` Ngày cấp, `styleCode` Mã hàng, `creatorName` Người lập, `confirmerName` Người cấp, `note` Ghi chú, `lineCode` Chuyền sản xuất, `planQty` Số lượng kế hoạch, `syncQty` Số lượng đồng bộ, `suppliedQty` Số lượng đã cấp, `dayQty` Số lượng cấp trong ngày, `remainQty` Số lượng còn lại, `statusCode` Trạng thái |
 | `sewing.plan` | `lineCode` Tổ SX, `styleCode` Mã hàng, `poBuyDate` PO/Buy date, `cmPrice` Giá CM **(nhạy cảm)**, `startDate` Ngày vào chuyền, `endDate` Ngày kết thúc, `planQty` Tổng kế hoạch, `deliveredQty` Đã giao, `remainQty` Còn lại, `linemapQty` Kế hoạch theo linemap, `dayQty` Kế hoạch ngày xưởng giao, `planRevenue` Doanh số kế hoạch **(nhạy cảm)**, `startTime` Từ giờ, `endTime` Đến giờ |
+| `sewing.cluster` | `leaderEmployeeId` Tên cụm trưởng |
 | `hr.employee` | `email`, `birthPlace` Nơi sinh, `hometown` Nguyên quán, `birthDate` Ngày sinh **(nhạy cảm)**, `idNumber` Số CMND/CCCD **(nhạy cảm)**, `contactPhone` Điện thoại liên lạc **(nhạy cảm)**, `contactPerson` Người liên hệ **(nhạy cảm)**, `currentAddress` Địa chỉ hiện tại **(nhạy cảm)** |
 
 `hr.employee` chỉ đăng ký thông tin cá nhân: mã, tên, phòng ban, chức danh, tình trạng là khung của màn, ẩn đi thì không lưu được hồ sơ.
@@ -243,8 +247,9 @@ Mật khẩu ban đầu của mọi tài khoản là giá trị `DEMO_PASSWORD` 
 | `quantri` | Ngô Văn Quân | `ADMIN` | `A00`–`A03` | `A00` | – (minh họa quản trị chỉ xem, cột giá Ẩn) |
 | `giamdoc` | Phạm Quốc Hưng | `DIRECTOR` | `A00`, `A01` | `A00` | – |
 | `kehoach.a` | Lê Thị Mai | `PLANNER` | `A01` | `A01` | – |
-| `truongchuyen.a` | Nguyễn Văn Tâm | `LINE_LEADER` | `A01` | `A01` | Chuyền: danh sách mã `A01-L03` (bộ phận chuyền mẫu; phạm vi chuyền lưu theo mã, [Phân quyền](04-phan-quyen.md)) |
-| `truongchuyen.b` | Hoàng Minh Bảo | `LINE_LEADER` | `A01` | `A01` | Chuyền `A01-L03`; ngoại lệ Cho phép `order.shipment:view` đến hết 31/12/2026 (giờ Việt Nam); cột riêng `order.lineplan.cmPrice` Chỉ đọc đến hết 31/12/2026 |
+| `truongchuyen.a` | Nguyễn Văn Tâm | `LINE_LEADER` | `A01` | `A01` | Chuyền: danh sách mã `A01-L03` (bộ phận chuyền mẫu; phạm vi chuyền lưu theo mã, [Phân quyền](04-phan-quyen.md)); nhân viên `NV2001`, tổ trưởng `A01-L03` |
+| `truongchuyen.b` | Hoàng Minh Bảo | `LINE_LEADER` | `A01` | `A01` | Chuyền `A01-L03`; ngoại lệ Cho phép `order.shipment:view` đến hết 31/12/2026 (giờ Việt Nam); cột riêng `order.lineplan.cmPrice` Chỉ đọc đến hết 31/12/2026; nhân viên `NV2002`, tổ trưởng `A01-L03` |
+| `totruong.a` | Trần Thị Ngọc Lan | `LINE_LEADER` | `A01` | `A01` | Chuyền `A01-L01`, `A01-L02`; nhân viên `NV2003`, tổ trưởng hai tổ này (thử ô Chọn tổ nhiều tổ ở Phân cụm trưởng) |
 | `ketoan` | Đỗ Thu Hà | `ACCOUNTANT` | `A00`–`A03` | `A00` | ĐVCS: danh sách `A01`, `A02` (ở `A03` không có quyền gì; ở `A00` chỉ đọc dữ liệu theo ĐVCS của hai đơn vị này) |
 | `nhansu` | Trịnh Thu Hằng | `HR` | `A00`–`A03` | `A00` | – (dữ liệu nhân sự dùng chung toàn công ty) |
 
@@ -284,6 +289,11 @@ Thay bằng đơn hàng BRAVO đã chép: `npm run load:bravo -- --yes` hoặc `
   | `A03` | không chia xưởng: chuyền nằm thẳng dưới `NM3` | 6 chuyền |
 - 6 chức danh theo phòng ban: `KTT`, `KTV` (Kế toán), `CVNS` (HCNS), `NVKH` (Kế hoạch), `CNC` (Bộ phận cắt), `NVQC` (Bộ phận QC).
 - 40 nhân viên mã `NV1001`–`NV1040` (mã chấm công trùng mã), người đầu tiên của một số nhóm làm quản lý phòng ban; vài người đã nghỉ việc để thử bộ lọc tình trạng.
+- Phân cụm trưởng (phase 5.18, `cluster-data.ts`, thêm theo mã khi bảng nhân viên chỉ có nhân viên do seed sinh): tổ trưởng `NV2001` Nguyễn Văn Tâm, `NV2002` Hoàng Minh Bảo (chuyền `A01-L03`), `NV2003` Trần Thị Ngọc Lan (chuyền `A01-L01`); 18 công nhân may `NV2101`–`NV2106`, `NV2121`–`NV2126`, `NV2141`–`NV2146` ở `A01-L01`, `A01-L02`, `A01-L03`.
+
+### Phân cụm trưởng giả lập (`MES_Sewing`)
+
+Thay dữ liệu GSD tới khi nối (`SourceSystem = 'DEMO'`), chỉ thêm tổ chưa có: mỗi chuyền mẫu đang dùng của `A01`–`A03` một tổ; tổ trưởng chỉ theo `clusterDemo.teamLeaders` (`A01-L01`, `A01-L02`: `NV2003`; `A01-L03`: `NV2001`, `NV2002`), tổ khác không có tổ trưởng (người đăng nhập thấy tổ đó ở chế độ chỉ xem); mỗi tổ 3 mã hàng (mã đã xếp vào chuyền, thiếu thì `<mã chuyền>-MH<n>`) × 8–10 cụm tên theo ảnh mẫu; ba tổ của tài khoản mẫu có sẵn cụm trưởng cho 3 cụm đầu của mã đầu. Chi tiết: [May](07-may.md) mục Phân cụm trưởng.
 
 ## Kịch bản demo
 
@@ -454,6 +464,7 @@ npm test -w backend
 | `po-allocation-write.spec.ts` | Có (`MES_Sync/0007`, `MES_Order/0009`) | Đổi Nhà máy SX: quyền Sửa, `A00`, xem trước, áp mọi dòng cùng khóa, luật ĐVCS theo nhà máy, nhà máy chưa gắn ĐVCS hoặc chưa vào danh mục, nhà máy mới phải đang dùng, "Theo OSM", cột Chỉ đọc, dữ liệu sai 422, 409 khi bước làm mới giữ khóa |
 | `po-allocation-grant-migration.spec.ts` | Có (rollback) | Thân migration `MES_Core/0010` chạy trong transaction rồi hủy: cấp quyền Sửa cho `PLANNER`, Toàn quyền, không trùng khi chạy lại, nhật ký, bảng nguồn, phiên bản quyền; database chưa seed thì không làm gì |
 | `cutting-grant-migration.spec.ts` | Có (rollback) | Thân migration `MES_Core/0012` chạy trong transaction rồi hủy: Kế hoạch đang có Xem nhận Sửa, Xuất, nhật ký cùng dạng màn Vai trò; Toàn quyền, Trưởng chuyền, Giám đốc không đổi; chạy lại không trùng, không thêm nhật ký; Kế hoạch đã bị gỡ Xem, hoặc `PLANNER` không phải vai trò hệ thống: không cấp; database chưa seed không làm gì |
+| `cluster-leader.spec.ts` | Có (`MES_Core`, `MES_Hr`, `MES_Sewing`) | Phân cụm trưởng: tổ theo tổ trưởng và phạm vi, chỉ xem, lưu, xung đột, kiểm đầu vào, `A00`, chính sách cột, danh bạ nhân viên; gắn nhân viên cho tài khoản ở Quản trị ([May](07-may.md) phần Phân cụm trưởng, Test) |
 | `sewing-plan.spec.ts` | Có (`MES_Sewing`) | Kế hoạch may: dòng dàn chuyền theo ngày, đơn vị; Cập nhật, Đã giao, giao vượt, ngày đã qua, phiên bản; Chốt, Hủy chốt, bản chụp; Xếp chuyền không giảm, bỏ, đổi chuyền dòng đã có số; phân quyền, chính sách cột; sửa riêng Giá CM ở ĐVCS có kế hoạch, kế hoạch đổi giá theo; nhật ký ([May](07-may.md) phần Kế hoạch may, Test) |
 | `cutting-supply.spec.ts` | Có (`MES_Cutting`) | Xác nhận cấp BTP: `LineColorSizeFeed`, ô chọn, lưới theo Ngày cấp, gom lệnh, số lệnh, kiểm khi lưu, Xác nhận cấp, Hủy duyệt, xóa, chặn giảm Phân bổ màu cỡ, Xếp chuyền dưới số đã cấp, phân quyền, chính sách cột, xuất file ([Cắt](15-cat.md) phần Xác nhận cấp BTP, Test) |
 | `cutting-supply-grant-migration.spec.ts` | Có (rollback) | Thân migration `MES_Core/0013` như `cutting-grant-migration.spec.ts`: Kế hoạch đang có Xem nhận Thêm, Sửa, Xóa, Xuất |
@@ -513,6 +524,7 @@ npm test -w backend
 | `shipment-plan-add-po.test.tsx` | Kế hoạch xuất hàng, thêm PO khi Sửa: Chọn mã hàng chỉ có PO chưa lập kế hoạch, Số lượng gốc cộng dồn, SL KHXH giữ nguyên, Lưu gửi PO thêm kèm lưới; bỏ PO vừa thêm thì về như cũ; không có quyền xem PO thì nút Chọn mã hàng khóa, không gọi API PO |
 | `po-allocation.test.tsx` | Màn Phân bổ PO: đủ cột, dòng nhập tay (vạch, huy hiệu, nhà máy theo OSM, không còn trong OSM), chưa đồng bộ OSM, cột bị ẩn hoặc che, sắp xếp mặc định; đổi Nhà máy SX (nút khóa khi chưa tích, xem trước, nhà máy gom theo ĐVCS, "Theo OSM", máy chủ từ chối và Thử lại, `A00`, cột Chỉ đọc); cảnh báo lần làm mới bằng chữ (số dòng OSM, mốc; dòng cũ trùng dòng mới; cách xử lý chỉ cho người chạy được đồng bộ) |
 | `sewing.test.tsx` | Kế hoạch chuẩn bị SX: tuần ISO, trạng thái, nháp ô TH, chế độ xem và nhập, bước bị che, số liệu đầu màn, danh mục bước |
+| `cluster-leader.test.tsx` | Phân cụm trưởng: luật (nhãn người, giữ phần chọn dở, xung đột, cột Che, sau khi lưu); màn (chọn sẵn tổ, bảng theo ảnh, chọn người rồi Lưu, chỉ xem, cột Ẩn); hộp thoại gắn nhân viên ở Quản trị › Người dùng |
 | `sewing-plan.test.tsx` | Kế hoạch may: luật tính (Đã giao, Còn lại, Doanh số = linemap × Giá CM, không giao vượt, dòng Tổng, ô giờ, ô Đơn vị theo sơ đồ tổ chức); màn hình (các cột, Cập nhật, Chốt, Hủy chốt, ngày đã qua chỉ xem, thiếu quyền Thêm, chỉ có quyền Xem, cột bị Ẩn); Thông tin đơn hàng sửa riêng Giá CM cho đơn của ĐVCS khác có kế hoạch ở đây |
 | `prep-steps-save.test.tsx` | Cấu hình chuẩn bị SX: gõ thêm trong lúc lưu không mất |
 | `hr.test.tsx` | Cây phòng ban, chức danh theo phòng ban, file mẫu nhập Excel, Sơ đồ tổ chức (kể cả ô "Xưởng sản xuất": khóa nói lý do, báo trước người được giao chuyền, đổi ĐVCS, khôi phục, đã lưu mà chưa cập nhật phân quyền; ĐVCS mặc định theo phòng ban cha: điền sẵn, đổi theo cha, chọn tay thì giữ, cha không có ĐVCS thì giữ giá trị đã lưu, ĐVCS đã tắt thì không lấy, chuyền thiếu quyền thì không đổi, báo phòng ban con giữ ĐVCS, cache bị xóa không mất form), Thông tin nhân sự, không mất form trên điện thoại |

@@ -9,7 +9,7 @@ Menu, tài nguyên và quyền là dữ liệu do seed tạo (`backend/scripts/s
 
 | Thứ tự | Màn | Route | Tài nguyên | Seed cấp cho `ADMIN` | Frontend | Backend |
 |---|---|---|---|---|---|---|
-| 1 | Người dùng | `/admin/users` | `admin.user` | Xem, Thêm, Sửa, Xóa | `frontend/src/features/admin/UsersPage.tsx`, `UserAccessDrawer.tsx`, `UserBranchesDialog.tsx` | `backend/src/platform/admin/admin-users.service.ts`, `admin-grants.service.ts` |
+| 1 | Người dùng | `/admin/users` | `admin.user` | Xem, Thêm, Sửa, Xóa | `frontend/src/features/admin/UsersPage.tsx`, `UserAccessDrawer.tsx`, `UserBranchesDialog.tsx`, `UserEmployeeDialog.tsx` | `backend/src/platform/admin/admin-users.service.ts`, `admin-grants.service.ts` |
 | 2 | Vai trò | `/admin/roles` | `admin.role` | Xem, Thêm, Sửa, Xóa | `frontend/src/features/admin/RolesPage.tsx` | `backend/src/platform/admin/admin-access.service.ts` |
 | 3 | Phân quyền | `/admin/permissions` | `admin.permission` | Xem, Sửa | `frontend/src/features/admin/PermissionsPage.tsx` | `admin-access.service.ts` |
 | 4 | Chính sách cột | `/admin/field-policies` | `admin.fieldpolicy` | Xem, Sửa | `frontend/src/features/admin/FieldPoliciesPage.tsx` | `admin-grants.service.ts` |
@@ -94,7 +94,7 @@ Tăng `SysPermissionVersion` trong cùng transaction rồi xóa cache quyền, n
 
 ## Màn Người dùng
 
-Route `/admin/users`, cần `admin.user:view`. Danh sách tài khoản `SysUser`, mỗi trang 100 dòng, mới tạo lên đầu (`CreatedAt` giảm dần), ô tìm theo tên đăng nhập, họ tên, email (LIKE trong DB, ký tự `%`, `_`, `[` hiểu theo nghĩa đen). Cột: tên đăng nhập, họ tên (đánh dấu "Bạn"), vai trò, ĐVCS, trạng thái (`Hoạt động`, `Khóa tạm` khi `LockedUntilAt` còn hiệu lực, `Đã khóa` khi `IsActive = 0`). Bấm vào một dòng mở ngăn kéo Phân quyền chi tiết.
+Route `/admin/users`, cần `admin.user:view`. Danh sách tài khoản `SysUser`, mỗi trang 100 dòng, mới tạo lên đầu (`CreatedAt` giảm dần), ô tìm theo tên đăng nhập, họ tên, email (LIKE trong DB, ký tự `%`, `_`, `[` hiểu theo nghĩa đen). Cột: tên đăng nhập, họ tên (đánh dấu "Bạn"; dòng phụ "Nhân viên: Tên - Mã - Phòng ban" khi tài khoản đã gắn nhân viên), vai trò, ĐVCS, trạng thái (`Hoạt động`, `Khóa tạm` khi `LockedUntilAt` còn hiệu lực, `Đã khóa` khi `IsActive = 0`). Bấm vào một dòng mở ngăn kéo Phân quyền chi tiết.
 
 | Thao tác | Quyền | Nội dung, luật |
 |---|---|---|
@@ -104,6 +104,7 @@ Route `/admin/users`, cần `admin.user:view`. Danh sách tài khoản `SysUser`
 | Đặt lại mật khẩu | `admin.user:update` | Mật khẩu mới tối thiểu 8 ký tự; xóa khóa tạm, thu hồi mọi phiên của người đó. Không áp cho chính mình. Nhật ký `PASSWORD_RESET` (không ghi mật khẩu) |
 | Gán vai trò | `admin.permission:update` | Popup tích vai trò đang dùng; vai trò đã ngừng mà người đó đang giữ hiện riêng để bỏ chọn, chưa bỏ thì không lưu được. Máy chủ so khác biệt: vai trò giữ nguyên thì giữ phạm vi của nó; vai trò bị bỏ thì xóa phạm vi trước rồi xóa phép gán, phạm vi bị xóa ghi vào nhật ký `USER_ROLES`. Vai trò không có hoặc đã ngừng ⇒ 422 |
 | Gán ĐVCS | `admin.permission:update` | Popup tích ĐVCS được chọn khi đăng nhập (`SysUserBranch`); mỗi ĐVCS ghi các nhà máy SX đang dùng của nó; `A00` ghi "Xem tổng hợp mọi đơn vị, chỉ đọc". ĐVCS đã ngừng đang tích phải bỏ chọn mới lưu được. Nhật ký `USER_BRANCHES` |
+| Gắn nhân viên | `admin.permission:update` | Phase 5.18 (quyết định 10.3): popup chọn một nhân viên đang làm (tìm mã, tên không dấu trên máy chủ qua danh bạ nhân viên `hr.directory`; người thao tác cần quyền Xem danh bạ), bỏ chọn rồi lưu là gỡ. Màn Phân cụm trưởng dựa vào nhân viên này để biết tài khoản là tổ trưởng tổ nào ([May](07-may.md)). Một nhân viên gắn tối đa một tài khoản (`MES_Core/0017`): nhân viên đang gắn với tài khoản khác thì 409 nêu tài khoản đó, gỡ ở đó trước. Không tự gắn cho mình, theo trần quyền quản trị như gán vai trò. Nhật ký `USER_EMPLOYEE` (Id, mã nhân viên cũ, mới). Không tăng phiên bản quyền: nhân viên không nằm trong quyền đã cache, Phân cụm trưởng đọc lại mỗi request |
 | Phân quyền chi tiết | `admin.user:view` để mở | Ngăn kéo bốn tab, mục dưới |
 
 - Nhà máy SX không gán theo người: đăng nhập ĐVCS nào thì lập kế hoạch xuất hàng được cho đơn hàng của các nhà máy SX thuộc ĐVCS đó (ADR 0013). `productionFactoryIds` gửi lên bị bỏ qua.
@@ -327,7 +328,9 @@ Cột "Lỗi đặc thù" chỉ ghi lỗi riêng của endpoint; mọi endpoint 
 
 | Method, đường dẫn | Quyền | Body chính | Kết quả | Lỗi đặc thù |
 |---|---|---|---|---|
-| `GET /admin/users?page&pageSize&q` | `admin.user:view` | | Trang `{ id, username, fullName, email, isActive, isLocked, lastLoginAt, roleIds, branchIds, defaultBranchId }` | |
+| `GET /admin/users?page&pageSize&q` | `admin.user:view` | | Trang `{ id, username, fullName, email, isActive, isLocked, lastLoginAt, roleIds, branchIds, defaultBranchId, employeeId, employee }`; `employee` `{ id, code, fullName, departmentCode, departmentName, isActive }` khi đã gắn và người thao tác tra được danh bạ nhân viên, không thì `null` | |
+| `GET /admin/users/employee-options?q=` | `admin.permission:update` | | `{ canSearch, items }`: tối đa 20 nhân viên đang làm khớp mã, tên (không dấu); không có `hr.directory:view` thì `canSearch = false`, rỗng | |
+| `PUT /admin/users/:id/employee` | `admin.permission:update` | `{ employeeId }` (bắt buộc có mặt; `null` là gỡ) | `{ ok }` | 404; 403 chính mình (`SELF_ELEVATION_FORBIDDEN`), trần quyền, thiếu quyền xem danh bạ; 422 nhân viên không có hoặc đã nghỉ việc; 409 nhân viên đang gắn với tài khoản khác |
 | `POST /admin/users` | `admin.user:create` | `{ username, fullName, email?, initialPassword }` | `201 { id }` | 409 trùng tên đăng nhập |
 | `PUT /admin/users/:id` | `admin.user:update` | `{ fullName?, email? (null/'' xóa), isActive?, unlock? }` | `{ ok }` | 404; 403 tự tắt mình, trần quyền |
 | `POST /admin/users/:id/reset-password` | `admin.user:update` | `{ newPassword }` (8–100) | `200 { ok }` | 404; 403 chính mình, trần quyền |

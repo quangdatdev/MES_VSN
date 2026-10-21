@@ -18,6 +18,8 @@ const loaders: Record<string, () => PageModule> = {
   '/cutting/supply': () => import('../features/cutting/CuttingSupplyPage'),
   // Quản trị xưởng may: module May (phase 5.16)
   '/sewing/plan': () => import('../features/sewing/SewingPlanPage'),
+  // Phân cụm trưởng (phase 5.18): menu đánh dấu điện thoại
+  '/sewing/cluster': () => import('../features/sewing/ClusterLeaderPage'),
   // Quản trị nhân sự (quyết định 10.1)
   '/hr/org-chart': () => import('../features/hr/OrgChartPage'),
   '/hr/employees': () => import('../features/hr/EmployeesPage'),

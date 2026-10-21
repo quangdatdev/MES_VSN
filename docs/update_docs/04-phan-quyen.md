@@ -193,7 +193,7 @@ Dùng lại `POST /auth/select-branch`, lần này bằng access token. Danh sá
 | Dùng chung có ĐVCS nguồn | `SHARED`, repository khai `originBranch = true`, bảng có `BranchCode` (ĐVCS nguồn) | Không lọc ĐVCS | Tạo: `BranchCode` = ĐVCS của phiên. Sửa, xóa: dòng của ĐVCS phiên hoặc của ĐVCS đang dùng dòng (`usedBy`). `A00`: 403 | `order.allocation` (`SalesOrder`), `order.po` (`SalesOrderPo`) |
 | Dùng chung, ghi theo ĐVCS của nhà máy | `SHARED`, repository khai `factoryBranchWrite = true` và `productionFactoryColumn`, bảng không có `BranchCode` | Không lọc ĐVCS | Không tạo qua repository (dòng do hệ thống chép). Sửa, xóa: dòng mà không mã nhà máy nào đã gắn ĐVCS khác (mục 6.6). `A00`: 403 | `order.poallocation` (`PoAllocation`) |
 
-Tài nguyên `SHARED` không có bảng nguồn (`SourceTable` trống) không đi qua `BaseRepository`: nhóm `admin.*` (API quản trị tự kiểm quyền bằng `@RequirePermission`). Tài nguyên chưa có màn thật (`cutting.embroidery`, `sewing.cluster`, `sewing.output`, `sewing.balance`, nhóm `qms.*`, `finishing.*`, `report.*`) có `ScopeType = 'BRANCH'` theo mặc định của seed nhưng chưa có bảng nguồn, chưa có repository.
+Tài nguyên `SHARED` không có bảng nguồn (`SourceTable` trống) không đi qua `BaseRepository`: nhóm `admin.*` (API quản trị tự kiểm quyền bằng `@RequirePermission`). Tài nguyên chưa có màn thật (`cutting.embroidery`, `sewing.output`, `sewing.balance`, nhóm `qms.*`, `finishing.*`, `report.*`) có `ScopeType = 'BRANCH'` theo mặc định của seed nhưng chưa có bảng nguồn, chưa có repository.
 
 ### 3.3 Đơn vị tổng hợp A00
 
@@ -374,6 +374,8 @@ Kết quả về hành vi:
 | `otherBranchFactoryRows(qb, scope, alias?)` | Bảng khai `factoryBranchWrite`: các dòng không ghi được vì có nhà máy đã gắn ĐVCS khác, để lớp con đếm và báo lý do (mục 6.6). Không dùng để trả dòng |
 
 Ghi nhiều dòng chia lô vì SQL Server nhận tối đa 2.100 tham số mỗi câu: 500 Id mỗi câu kiểm, khóa; câu INSERT nhiều dòng tối đa 100 dòng và không quá 2.000 tham số.
+
+Luật nghiệp vụ theo dữ liệu chỉ thu hẹp thêm sau phân quyền, so trên dòng đã đọc qua repository, không tính là điều kiện phân quyền module tự viết ([Quyết định](13-quyet-dinh.md) mục 3.3): ví dụ Phân cụm trưởng chỉ cho tổ trưởng của tổ lưu (tổ trưởng theo dữ liệu Phân tổ trưởng và nhân viên gắn với tài khoản, mục 17.2), Kế hoạch may không sửa ngày đã qua. Quản trị không cấu hình hay ghi đè được các luật này ở màn Phân quyền.
 
 <a id="bang-dung-chung"></a>
 ### 6.5 Bảng dùng chung có ĐVCS nguồn: `originBranch`, `usedBy`, `inUseHere`

@@ -92,12 +92,54 @@ export interface SewingDayPlanItemTable extends Audit {
   BranchCode: string;
 }
 
+/** Nguồn của dòng Phân cụm trưởng: seed giả lập, hoặc đồng bộ GSD (MES_Sewing/0005) */
+export type ClusterSource = 'DEMO' | 'GSD';
+
+/** Phân cụm trưởng (phase 5.18): một tổ là một chuyền may; dòng do hệ thống chép từ GSD (đang giả lập). */
+export interface SewingTeamTable extends Audit {
+  Id: Id;
+  LineCode: string;
+  SourceSystem: ClusterSource;
+  SourceKey: string | null;
+  SourceSyncedAt: ColumnType<Date, Date, Date>;
+  BranchCode: string;
+}
+
+/** Tổ trưởng của tổ (Phân tổ trưởng của GSD): nhân viên MES_Hr.Employee.Id */
+export interface SewingTeamLeaderTable extends Audit {
+  Id: Id;
+  SewingTeamId: number;
+  EmployeeId: number;
+  SourceKey: string | null;
+  SourceSyncedAt: ColumnType<Date, Date, Date>;
+  BranchCode: string;
+}
+
+/** Cụm của một mã hàng ở tổ (Phân cụm của GSD) cùng cụm trưởng tổ trưởng chọn (cột Leader*) */
+export interface SewingTeamClusterTable extends Audit {
+  Id: Id;
+  SewingTeamId: number;
+  StyleCode: string;
+  StyleLabel: string | null;
+  Code: string;
+  Name: string;
+  SortOrder: ColumnType<number, number | undefined, number>;
+  SourceKey: string | null;
+  SourceSyncedAt: ColumnType<Date, Date, Date>;
+  LeaderEmployeeId: number | null;
+  LeaderEmployeeCode: string | null;
+  BranchCode: string;
+}
+
 export interface SewingDatabase {
   PrepStep: PrepStepTable;
   SewingPrep: SewingPrepTable;
   SewingPrepStep: SewingPrepStepTable;
   SewingDayPlan: SewingDayPlanTable;
   SewingDayPlanItem: SewingDayPlanItemTable;
+  SewingTeam: SewingTeamTable;
+  SewingTeamLeader: SewingTeamLeaderTable;
+  SewingTeamCluster: SewingTeamClusterTable;
 }
 
 export type SewingDb = Kysely<SewingDatabase>;

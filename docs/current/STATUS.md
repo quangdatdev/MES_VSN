@@ -49,6 +49,59 @@ Tech Lead 19/10/2026: các việc sửa code làm **sau khi chốt tài liệu**
 |---|---|---|
 | ~~T5~~ | ~~Đổi tên, chuyển chỗ tài liệu module `docs/update_docs/*`~~ | Bỏ (Tech Lead 21/10/2026): giữ tên hiện tại |
 
+### 1.3 Phase 5.18: Phân cụm trưởng
+
+Ready for review 21/10/2026 (code, test, review xong; **chưa commit**), nhánh `feature/5.18-phan-cum-truong` (từ `develop`). Người dùng yêu cầu 21/10/2026 (ngoài đợt chuẩn hóa), ảnh mẫu `docs/screens/phan-cum-truong.png`. Quyết định liên quan: [13](../update_docs/13-quyet-dinh.md) mục 1.2, 3.3, 3.5, 9.1, 10.3, 12, 16.3.
+
+**Mục tiêu** (đầu vào: Cập nhật cụm, Phân tổ trưởng; đầu ra: Nhập năng suất cụm). Dữ liệu đầu vào sẽ lấy từ GSD, người dùng tích hợp sau; phase này dựng màn và luồng lưu trên dữ liệu giả lập.
+1. Màn `/sewing/cluster` (tài nguyên `sewing.cluster`, đang là trang giữ chỗ) theo bố cục ảnh mẫu: Chọn tổ, Chọn mã hàng, bảng STT · Tên cụm · Tên cụm trưởng, nút Lưu. Dùng được trên điện thoại (menu đã đánh dấu điện thoại).
+2. Tổ: lấy từ cây sơ đồ tổ chức (tổ là chuyền may, mã bộ phận). Người đăng nhập là tổ trưởng (theo dữ liệu Phân tổ trưởng, qua nhân viên gắn với tài khoản) chỉ thấy tổ mình và sửa được; người không phải tổ trưởng thấy mọi tổ trong phạm vi, chỉ xem. Luôn giao với phạm vi quyền (ĐVCS, chuyền).
+3. Chọn mã hàng: mã hàng đã được phân cụm cho tổ (mã hàng + chuyền ở dữ liệu Phân cụm). Tên cụm: danh sách cụm của mã hàng ở tổ, hiện tên, lưu mã.
+4. Tên cụm trưởng: nhân viên đang làm việc (khác nghỉ việc), tìm theo mã hoặc tên không dấu, hiện "Tên - Mã - Phòng ban"; lưu `EmployeeId` kèm mã chụp lúc lưu.
+5. Máy chủ cưỡng chế: quyền `sewing.cluster`, ĐVCS, phạm vi chuyền, `A00` chỉ đọc, chỉ tổ trưởng của tổ mới lưu, chính sách cột của cột Tên cụm trưởng; ghi nhật ký.
+
+**Chốt với người dùng**
+
+| # | Câu hỏi | Chốt |
+|---|---|---|
+| Q1 | Màn biết người đăng nhập là tổ trưởng tổ nào bằng cách nào? | Người dùng chọn 21/10/2026: nối tài khoản với nhân viên bằng cột mới `SysUser.EmployeeId` (quyết định 10.3). Tổ = dữ liệu Phân tổ trưởng của nhân viên đó, giao với phạm vi quyền. Seed gắn tài khoản mẫu; ô gắn nhân viên ở Quản trị › Người dùng làm ở 5.18.5 |
+| Q2 | Người có quyền xem mà không phải tổ trưởng thấy gì? | Người dùng chọn: mọi tổ trong phạm vi, chỉ xem; chỉ tổ trưởng của tổ đó lưu được |
+| Q3 | Cụm trưởng lưu gì ("view tên lưu mã" so với quyết định 10.3)? | Người dùng chọn: khóa `EmployeeId`, chụp kèm mã nhân viên lúc lưu; màn hiện theo hồ sơ hiện tại |
+| Q4 | Dữ liệu giả lập Phân cụm, Phân tổ trưởng đặt ở đâu? | Người dùng chọn: bảng ở `MES_Sewing` có cột nguồn (`SourceSystem`, `SourceKey`); `npm run seed` sinh mẫu (`SourceSystem = 'DEMO'`). Khi nối GSD: đồng bộ GSD → `MES_Sync`, rồi chép vào các bảng này (như Kế hoạch chuẩn bị SX chép dàn chuyền), màn và luồng lưu không đổi |
+| Q5 | Trưởng chuyền không có quyền `hr.employee`, lấy danh sách nhân viên cho ô Tên cụm trưởng từ đâu? | Tự chọn (người dùng có thể đổi): tài nguyên mới `hr.directory` "Danh bạ nhân viên" (`SHARED`, bảng `Employee`, không có menu) đi qua `BaseRepository`, chỉ trả mã, tên, phòng ban, tình trạng. Module Nhân sự đăng ký nguồn vào nền tảng (`EmployeeDirectoryService`, như `LineSource`), không đọc thẳng bảng (quyết định 16.3). Ma trận mẫu: Xem cho Quản trị, Giám đốc, Kế hoạch, Trưởng chuyền, Nhân sự (Toàn quyền theo luật chung) |
+| Q6 | Giao diện theo ảnh mẫu tới đâu? | Tự chọn: bố cục theo ảnh; màu, chữ theo design system đã chốt (quyết định 12), không chép khung xanh đậm, tiêu đề đỏ |
+| Q7 | Một nhân viên làm cụm trưởng nhiều cụm? Bỏ cụm trưởng? | Tự chọn: không chặn; nút × ở ô bỏ cụm trưởng (cụm về chưa phân) |
+| Q8 | Cột đăng ký chính sách cột | Tự chọn: chỉ `leaderEmployeeId` (Tên cụm trưởng), cột nhập duy nhất của màn |
+| Q9 | Cấu trúc bảng | Tự chọn: `SewingTeam` (tổ, bảng nguồn của `sewing.cluster`, phạm vi `FACTORY` → `BranchCode`, `LINE` → `LineCode`), bảng con `SewingTeamLeader` (Phân tổ trưởng) và `SewingTeamCluster` (Phân cụm: mã hàng, cụm, thứ tự; cột nhập cụm trưởng). Lý do: một tài nguyên một bảng nguồn, mọi đọc ghi qua `BaseRepository`/`ChildRepository` |
+| Q10 | Dữ liệu mẫu | Tự chọn: thêm tài khoản mẫu `totruong.a` (Trưởng chuyền, A01, phạm vi chuyền A01-L01, A01-L02) là tổ trưởng hai tổ; `truongchuyen.a`, `truongchuyen.b` gắn nhân viên tổ trưởng A01-L03. Mỗi tổ mẫu 2–3 mã hàng (lấy mã hàng đã xếp chuyền nếu có), mỗi mã 8–10 cụm theo ảnh mẫu |
+| Q11 | Phân cụm trưởng có ngày hiệu lực? | Tự chọn: không; mỗi cụm một cụm trưởng hiện tại, lịch sử ở Nhật ký |
+| Q12 | Một nhân viên gắn nhiều tài khoản? | Tự chọn sau review M4: không; chỉ mục duy nhất có lọc (`MES_Core/0017`), gắn trùng thì 409 nêu tài khoản đang giữ |
+| Q13 | Chữ nút lưu | Tự chọn: "Lưu" theo ảnh mẫu (như "Cập nhật" của Kế hoạch may), khác quy tắc "Lưu thay đổi" (10 mục 12.A3) |
+
+**Task**
+
+| # | Việc | Trạng thái |
+|---|---|---|
+| 5.18.1 | Nền: `MES_Core/0016` (`SysUser.EmployeeId`), `0017` (một nhân viên một tài khoản), tra nhân viên của tài khoản, danh bạ nhân viên (`hr.directory`, `EmployeeDirectoryService`, `HrEmployeeSource`), seed nhận tài nguyên không có menu; khóa ngầm | Xong 21/10/2026; `0016`, `0017` đã chạy trên `MES_Core_T514` |
+| 5.18.2 | `MES_Sewing/0005`: `SewingTeam`, `SewingTeamLeader`, `SewingTeamCluster`; `sewing.cluster` gắn bảng, phạm vi, cột; dữ liệu mẫu (seed, `reset:demo`); khóa ngầm | Xong 21/10/2026; migrate, seed đã chạy trên `MES_*_T514` (26 tổ, 702 cụm, 21 nhân viên mẫu, tài khoản `totruong.a`, gắn 3 tài khoản mẫu; sau review bỏ 17 tổ trưởng tự chọn, còn 4 tổ trưởng ở `A01-L01`..`L03`). `reset:demo` chưa chạy thử: chỉ chạy trên SQL Server của máy này, `.env` trỏ máy chủ (NEEDS VERIFICATION) |
+| 5.18.3 | API `/sewing/cluster` (tổ, mã hàng, cụm, tìm nhân viên, lưu) và test backend | Xong 21/10/2026: `cluster-leader.spec.ts` 13/13 (`MES_*_T514`) |
+| 5.18.4 | Màn Phân cụm trưởng, test frontend, chạy thử trên Chrome (máy tính, điện thoại) | Xong 21/10/2026: `cluster-leader.test.tsx` 9/9; frontend 38 file, 307/307; thử trên Chrome 1280×800, 1093×560, 390×844, chế độ tối (tài khoản thử tạm `ui518` trên T514, đã vô hiệu) |
+| 5.18.5 | Gắn nhân viên cho tài khoản ở Quản trị › Người dùng (API, giao diện, nhật ký, không tự gắn cho mình) và test | Xong 21/10/2026: `PUT /admin/users/:id/employee`, `GET /admin/users/employee-options`, `UserEmployeeDialog.tsx`; test trong hai file test của phase |
+| 5.18.6 | Tài liệu (07, 08, 05, 12, 13, ARCHITECTURE, PROJECT_OVERVIEW), review `code-reviewer`, STATUS | Xong 21/10/2026: tài liệu 04, 05, 07, 08, 10, 11, 12, 13 (10.3, 10.7, 3.3, mục 17 mới), ARCHITECTURE, DATA_FLOWS, PROJECT_OVERVIEW; review [phase-5-18.md](../review/phase-5-18.md): APPROVE WITH SUGGESTIONS (4 MEDIUM, 8 LOW), đã sửa 4 MEDIUM, 6 LOW; lint, typecheck, build qua; cả bộ backend sau lượt sửa 39 bộ, 447 qua, 2 bỏ qua (`MES_*_T514`); `check:softkeys` trên T514: các khóa mới OK, 3 giá trị mồ côi có sẵn ở `SewingPrep` (bản chép Kế hoạch chuẩn bị SX, chép lại khi mở màn), không thuộc phase này |
+
+**Phạm vi review:** `backend/migrations/MES_Core/0016_*`, `MES_Sewing/0005_*`, `softkeys.json`; `backend/src/platform/org/*`, `platform/admin/admin-users.service.ts`, `admin.dto.ts`, `admin.controller.ts`, `platform/database/core.types.ts`; `backend/src/modules/hr/` (danh bạ, `hr.module.ts`); `backend/src/modules/sewing/cluster-*`, `sewing.module.ts`, `sewing.types.ts`; `backend/scripts/seed-data.ts`, `seed.ts`, `cluster-data.ts`, `reset-demo.ts`; test backend mới; `frontend/src/features/sewing/ClusterLeader*`, `features/admin/UsersPage.tsx`, `routes/registry.tsx`, test frontend mới.
+
+**Không làm:** nối GSD thật (đồng bộ, đối chiếu mã chuyền, nhân viên của GSD với MES); màn Phân tổ trưởng, Cập nhật cụm trong MES; Bấm năng suất cụm; xuất file; hiệu lực theo ngày; ẩn menu theo dữ liệu tổ trưởng (menu vẫn theo quyền).
+
+**Rủi ro, phát sinh**
+- Đợt từ 19/10/2026 là chuẩn hóa, không xây tính năng mới (Tech Lead 20/10/2026); phase này do người dùng giao 21/10/2026.
+- Tài khoản chưa gắn nhân viên thì chỉ xem; quản trị gắn ở Quản trị › Người dùng.
+- ~~Seed gắn lại tài khoản đã gỡ, thêm nhân viên giả vào bảng có dữ liệu thật (review M2, M3)~~: đã sửa.
+- Câu hỏi mới: Q56, Q57 (mục 4.1).
+- Nối GSD cần bảng đối chiếu mã tổ, mã nhân viên của GSD với mã bộ phận, `Employee.Id` của MES.
+- Tổ trưởng ở GSD mà không có phạm vi chuyền tương ứng ở MES thì không thấy tổ (giao hai lớp): cần quy trình gán phạm vi cho tổ trưởng.
+- `hr.directory` mở mã, tên, phòng ban của nhân viên đang làm cho vai trò sản xuất (Q5): mức nhạy cảm thấp, cần Tech Lead xác nhận.
+
 ## 2. Trạng thái phase
 
 Git (21/10/2026): mọi code của các phase dưới đây và các task T4, T12, T15, T17–T19 đã commit trên `main`; `main` trùng `origin/main` ở `5f54917` (T19). `origin` chỉ còn nhánh `main`; máy này chỉ còn nhánh `main`, không còn worktree. `githq5/main` lần đọc gần nhất ở `24301de` (21/10/2026 không đọc được `githq5`: lỗi xác thực). Nhánh `feature/docs-chuan-hoa` trên `origin` đã xóa (Q50). Trạng thái duyệt theo bản trạng thái cũ, cập nhật theo Tech Lead 19/10/2026.
@@ -75,6 +128,7 @@ Git (21/10/2026): mọi code của các phase dưới đây và các task T4, T1
 | 5.15 | Xác nhận cấp BTP | Ready for review | Q37 |
 | 5.16 | Kế hoạch may, Giá CM | Ready for review | – |
 | 5.17 | Mỗi ĐVCS một KHXH mỗi đơn, mỗi PO một kế hoạch | Ready for review | Q40, Q41 |
+| 5.18 | Phân cụm trưởng (dữ liệu GSD giả lập) | Ready for review (chưa commit) | Mục 1.3; Q56, Q57 |
 | Triển khai | `deploy/deploy.cjs` không hạ web | Ready for review | Q32 |
 
 QMS, Hoàn thiện, Báo cáo, Quản lý in thêu, các màn May còn lại: chưa bắt đầu.
@@ -91,6 +145,8 @@ Tech Lead xác nhận 19/10/2026: máy chủ chạy bản mới nhất kéo từ
 - T18 (API đồng bộ dàn chuyền) khi triển khai: không có migration, seed. Người dùng 21/10/2026: không tạo vai trò riêng; bên gọi dùng một tài khoản MES có vai trò sẵn có với `order.colorsize:view` và `order.colorsize:export` (thiếu `:view` thì mất mọi quyền khác của tài nguyên, bị 403), ví dụ Giám đốc (chỉ xem, xuất); gán ĐVCS `A00` (đọc mọi ĐVCS theo phạm vi phép gán) hoặc từng ĐVCS. Chạy HTTP (người dùng chấp nhận). Gửi cho Dev bên gọi: [docs/tich-hop/api-dong-bo-dan-chuyen.md](../tich-hop/api-dong-bo-dan-chuyen.md), kèm địa chỉ máy chủ và tài khoản.
 - T11 khi triển khai: không có migration. Lần triển khai đầu sau T11, `deploy.cjs` in cảnh báo (không dừng) các biến bản mới thêm vào `backend/.env.example` mà `shared\.env` chưa có. `DB_ENCRYPT`, `DB_TRUST_CERT`, `JWT_ACCESS_TTL`, `PRE_AUTH_TTL`, `REFRESH_TTL_DAYS`, `LOGIN_MAX_FAILED`, `LOGIN_LOCK_MINUTES`: không cần thêm, để trống là giữ mặc định như trước. Danh sách có `NODE_ENV`: máy chủ đang không chạy chế độ production, thêm `NODE_ENV=production` rồi `--sync-env` (`deploy/huong-dan.html` mục 3). NEEDS VERIFICATION: chưa đọc `.env` của máy chủ.
 - T16 khi triển khai: migration `MES_Core/0015` (chỉ thêm dữ liệu; `deploy.cjs` tự chạy `migrate`, chạy được với `--online-migrate`), có hiệu lực ngay khi commit vì code che cột đã có từ 5.14; không cần nhập liệu sau triển khai. Vai trò Trưởng chuyền trên máy chủ đã có mức khác cho cột Khách hàng ở màn này thì giữ nguyên.
+
+- Phase 5.18 (Phân cụm trưởng) khi triển khai (chưa gộp, chưa commit): migration `MES_Core/0016_user_employee` (thêm cột), `0017_user_employee_unique` (chỉ mục duy nhất) và `MES_Sewing/0005_cluster_leader` (thêm bảng), bản cũ còn chạy không đọc, chạy được trước khi deploy (`--online-migrate`). `migrate` tự nạp tài nguyên mới `hr.directory` (Xem cho Quản trị, Giám đốc, Kế hoạch, Trưởng chuyền, Nhân sự, Toàn quyền) và gắn bảng `SewingTeam` cho `sewing.cluster`. Máy chủ không dữ liệu mẫu nên **không có tổ, cụm nào**: màn báo chưa có dữ liệu Phân cụm tới khi nối GSD (hoặc khi Tech Lead cho chạy seed dữ liệu mẫu). Sau triển khai: quản trị gắn nhân viên cho tài khoản tổ trưởng ở Quản trị › Người dùng.
 
 Thêm việc mới cho máy chủ: ghi ở đây, kèm migration, có dừng bản cũ khi migrate không, việc nhập liệu sau triển khai.
 
@@ -135,6 +191,8 @@ Thêm việc mới cho máy chủ: ghi ở đây, kèm migration, có dừng b�
 | Q39 | (cần BA) thứ tự ngày nhập tay, nút tính lại bỏ qua dòng Đang may/Đã xong, chính sách cột cho 4 cột ngày |
 | Q40 | Sửa `seed-order.ts`, `sim:board` theo quyết định 15.1, 15.2? |
 | Q41 | Thêm PO khi Sửa theo cùng điều kiện lập mới: đúng ý? |
+| Q56 | Phân cụm trưởng (5.18): tổ trưởng vắng thì ai phân cụm trưởng thay (hiện không ai, kể cả Toàn quyền)? Người vừa là tổ trưởng vừa có vai trò xem rộng (Quản đốc, Kế hoạch) hiện chỉ thấy tổ mình: có cần xem cả các tổ khác (chỉ đọc)? |
+| Q57 | Xác nhận các điểm tự chọn của phase 5.18 (STATUS mục 1.3): Q5 tài nguyên `hr.directory` (Trưởng chuyền tra được mã, tên, phòng ban nhân viên đang làm toàn công ty), Q9 cấu trúc bảng, Q12 một nhân viên một tài khoản, Q13 nút "Lưu" theo ảnh |
 
 ### 4.2 Chờ BA
 

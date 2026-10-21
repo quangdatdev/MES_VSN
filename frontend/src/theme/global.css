@@ -3960,3 +3960,169 @@ body[data-resizing="horizontal"] {
     padding: 12px;
   }
 }
+
+/*
+ * Phân cụm trưởng (phase 5.18) theo ảnh mẫu docs/screens/phan-cum-truong.png: nhãn bên trái, ô chọn kéo hết bề ngang (Chọn tổ, Chọn mã
+ * hàng); bảng STT, Tên cụm, Tên cụm trưởng; nút Lưu dưới bảng. Màu, chữ theo design system (quyết định 12), không chép khung xanh của ảnh.
+ * Điện thoại (menu đánh dấu điện thoại): mỗi cụm một khối, ô chọn người rộng hết khung, nút Lưu dính đáy.
+ */
+.cluster-pick {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 16px;
+  max-width: 920px;
+}
+.cluster-pick-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-ink-soft);
+}
+.cluster-style-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+}
+.cluster-style-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--app-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.cluster-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 8px;
+  background: var(--app-section);
+}
+.cluster-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.cluster-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--app-ink);
+}
+.cluster-state {
+  min-height: 160px;
+  padding: 24px 16px;
+  border: 1px dashed var(--app-line-strong);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+.cluster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.cluster-table th {
+  padding: 8px 12px;
+  background: var(--app-section);
+  border-bottom: 1px solid var(--app-line);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-ink-soft);
+  text-align: left;
+}
+.cluster-table td {
+  padding: 6px 12px;
+  border-top: 1px solid var(--app-line);
+  vertical-align: middle;
+}
+.cluster-table tbody tr:first-child td {
+  border-top: 0;
+}
+.cluster-table .cluster-no {
+  width: 64px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-ink-soft);
+}
+.cluster-table .cluster-name {
+  width: 34%;
+  font-weight: 600;
+}
+/* Cụm vừa chọn người, chưa lưu: nền cam rất nhạt (như ô nhập chưa lưu của Kế hoạch chuẩn bị SX) */
+.cluster-table tr[data-dirty] td {
+  background: color-mix(in srgb, var(--brand) 9%, var(--app-surface));
+}
+.cluster-none {
+  color: var(--app-ink-soft);
+}
+/*
+ * Nút Lưu dính đáy vùng cuộn: bảng 10 cụm trở lên trên màn laptop vẫn thấy nút mà không phải cuộn xuống. Vùng dính bị padding đáy của
+ * .app-main (vùng cuộn) thu lại, nên bù đúng padding đó để không lộ dòng bảng bên dưới thanh nút
+ */
+.cluster-actions {
+  position: sticky;
+  bottom: -24px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 -12px -12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--app-line);
+  border-radius: 0 0 8px 8px;
+  background: var(--app-section);
+}
+@media (max-width: 47.99em) {
+  .cluster-pick {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .cluster-pick .mantine-Input-wrapper,
+  .cluster-pick > .mantine-Text-root:not(.cluster-pick-label) {
+    margin-bottom: 6px;
+  }
+  .cluster-pane {
+    padding: 8px;
+  }
+  .cluster-table thead {
+    display: none;
+  }
+  .cluster-table,
+  .cluster-table tbody {
+    display: block;
+  }
+  .cluster-table tr {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 6px 8px;
+    padding: 10px;
+    border-top: 1px solid var(--app-line);
+  }
+  .cluster-table tbody tr:first-child {
+    border-top: 0;
+  }
+  .cluster-table td,
+  .cluster-table .cluster-no,
+  .cluster-table .cluster-name {
+    width: auto;
+    padding: 0;
+    border: 0;
+  }
+  .cluster-table .cluster-no {
+    text-align: left;
+  }
+  .cluster-table td.cluster-leader {
+    grid-column: 1 / -1;
+  }
+  .cluster-table tr[data-dirty] {
+    background: color-mix(in srgb, var(--brand) 9%, var(--app-surface));
+  }
+  .cluster-actions {
+    bottom: -12px;
+    margin: 0 -8px -8px;
+    padding: 8px;
+  }
+}

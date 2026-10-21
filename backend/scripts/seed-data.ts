@@ -82,7 +82,8 @@ export type Matrix = [string, string, string, string, string, string, string?];
 export interface ResourceDef {
   code: string;
   name: string;
-  path: string;
+  /** Đường dẫn màn; không có: tài nguyên không có màn riêng (không tạo mục menu), ví dụ danh bạ nhân viên dùng ở ô chọn người */
+  path?: string;
   /** Bảng nguồn (SysResource.SourceTable) khi tài nguyên đã có dữ liệu thật */
   table?: string;
   /** Phạm vi dữ liệu (SysResource.ScopeType). Mặc định: nhóm admin dùng chung, còn lại theo nhà máy */
@@ -118,7 +119,10 @@ export const resources: ResourceDef[] = [
   // chốt; Thêm cần khi cập nhật, chốt lần đầu cho chuyền trong ngày (tạo bản ghi chuyền × ngày, SewingPlanService.ensureHeaders);
   // không dùng Xóa (dòng lấy từ Xếp chuyền). Kế hoạch đã có Thêm, Sửa nên máy đã cài không cần migration cấp quyền
   { code: 'sewing.plan', name: 'Kế hoạch may', path: '/sewing/plan', table: 'SewingDayPlan', matrix: ['V', 'VE', 'VCUE', 'V', '', ''] },
-  { code: 'sewing.cluster', name: 'Phân cụm trưởng', path: '/sewing/cluster', mobile: true, matrix: ['V', 'VE', 'V', 'VCU', '', ''] },
+  // Phân cụm trưởng (phase 5.18): tổ (chuyền) kèm tổ trưởng và cụm theo mã hàng chép từ GSD (đang giả lập, SourceSystem = 'DEMO') ở
+  // MES_Sewing; tổ trưởng phân cụm trưởng cho từng cụm. Sửa là lưu cụm trưởng; không có Thêm, Xóa (tổ, cụm do hệ thống chép). Quyền giữ
+  // như ma trận từ phase 4 (máy đã cài không cần migration cấp quyền)
+  { code: 'sewing.cluster', name: 'Phân cụm trưởng', path: '/sewing/cluster', table: 'SewingTeam', mobile: true, matrix: ['V', 'VE', 'V', 'VCU', '', ''] },
   { code: 'sewing.output', name: 'Bấm năng suất cụm', path: '/sewing/output', mobile: true, matrix: ['V', 'VE', 'V', 'VCU', 'V', ''] },
   { code: 'sewing.balance', name: 'Biểu đồ cân bằng chuyền', path: '/sewing/balance', matrix: ['V', 'VE', 'V', 'V', '', ''] },
 
@@ -134,6 +138,10 @@ export const resources: ResourceDef[] = [
   // Không có quyền xóa: phòng ban giải thể, nhân viên nghỉ việc
   { code: 'hr.orgchart', name: 'Sơ đồ tổ chức', path: '/hr/org-chart', table: 'Department', scope: 'SHARED', matrix: ['V', 'VE', '', '', '', '', 'VCUE'] },
   { code: 'hr.employee', name: 'Thông tin nhân sự', path: '/hr/employees', table: 'Employee', scope: 'SHARED', matrix: ['V', 'VE', '', '', '', '', 'VCUE'] },
+  // Danh bạ nhân viên (phase 5.18): mã, tên, phòng ban của người đang làm cho ô chọn người phụ trách (Tên cụm trưởng, gắn nhân viên cho
+  // tài khoản), không có màn riêng. Tài nguyên riêng trên cùng bảng Employee để vai trò sản xuất tra được người mà không xem hồ sơ. Chỉ
+  // dùng Xem; máy đã cài nhận khi chạy migrate (tài nguyên mới)
+  { code: 'hr.directory', name: 'Danh bạ nhân viên', table: 'Employee', scope: 'SHARED', matrix: ['V', 'V', 'V', 'V', '', '', 'V'] },
 
   { code: 'report.prepare', name: 'Kế hoạch chuẩn bị sản xuất', path: '/report/prepare', matrix: ['V', 'VE', 'VE', '', '', ''] },
   { code: 'report.progress', name: 'Tiến độ sản xuất', path: '/report/progress', matrix: ['V', 'VE', 'VE', '', '', 'VE'] },
@@ -173,6 +181,8 @@ export const scopeBindings: Record<string, Record<string, string>> = {
   'cutting.progress': { FACTORY: 'BranchCode' },
   'cutting.supply': { FACTORY: 'BranchCode' },
   'sewing.plan': { FACTORY: 'BranchCode', LINE: 'LineCode' },
+  // Trưởng chuyền chỉ thấy tổ (chuyền) của mình; tổ trưởng theo dữ liệu Phân tổ trưởng là điều kiện nghiệp vụ thêm (phase 5.18)
+  'sewing.cluster': { FACTORY: 'BranchCode', LINE: 'LineCode' },
 };
 
 /** Cột đăng ký (Resource Registry mức cột). Mã trùng trường JSON của API. S = nhạy cảm (mặc định Ẩn). */
@@ -337,6 +347,9 @@ export const resourceFields: Record<string, [code: string, name: string, sensiti
     ['startTime', 'Từ giờ'],
     ['endTime', 'Đến giờ'],
   ],
+  // Phân cụm trưởng (phase 5.18): chỉ cột nhập của màn. Mã trùng khóa JSON của API (cluster-leader.service.ts); bị Ẩn, Che thì tên, mã,
+  // phòng ban của cụm trưởng cũng không trả
+  'sewing.cluster': [['leaderEmployeeId', 'Tên cụm trưởng']],
   // Mã trùng khóa JSON của API Thông tin nhân sự (modules/hr/employee-fields.ts). Chỉ đăng ký thông tin cá nhân: mã, tên, phòng
   // ban, chức danh, tình trạng là khung của màn (ẩn đi thì không lưu được hồ sơ), và phòng ban, chức danh còn đi kèm cột tên.
   // 5 cột giấy tờ, liên lạc nhạy cảm (quyết định 10.5)
@@ -434,6 +447,11 @@ export interface UserDef {
    * như ĐVCS mẫu; quản trị gỡ rồi thì seed chạy lại không gán lại
    */
   extraRoles?: string[];
+  /**
+   * Mã nhân viên mẫu gắn với tài khoản (SysUser.EmployeeId, phase 5.18): seed chỉ gắn khi tài khoản chưa gắn nhân viên nào, để màn
+   * Phân cụm trưởng biết tài khoản là tổ trưởng tổ nào (clusterDemo)
+   */
+  employee?: string;
 }
 
 /** Năm người mẫu của phương án nền tảng mục 4.4, cộng tài khoản quản trị. */
@@ -451,6 +469,7 @@ export const users: UserDef[] = [
     branches: ['A01'],
     defaultBranch: 'A01',
     scopes: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }],
+    employee: 'NV2001',
   },
   {
     username: 'truongchuyen.b',
@@ -461,6 +480,20 @@ export const users: UserDef[] = [
     scopes: [{ dimension: 'LINE', mode: 'LIST', value: 'A01-L03' }],
     overrides: [{ permission: 'order.shipment:view', effect: 'ALLOW', validTo: '2026-12-31T16:59:59.000Z', reason: 'Xem kế hoạch xuất hàng để chuẩn bị nguyên phụ liệu cho chuyền 3' }],
     fieldPolicies: [{ resource: 'order.lineplan', field: 'cmPrice', level: 'READONLY', validTo: '2026-12-31T16:59:59.000Z', reason: 'Theo dõi giá CM của chuyền 3 đến hết năm 2026' }],
+    employee: 'NV2002',
+  },
+  // Tổ trưởng hai tổ (phase 5.18): thử ô Chọn tổ có nhiều tổ ở màn Phân cụm trưởng
+  {
+    username: 'totruong.a',
+    fullName: 'Trần Thị Ngọc Lan',
+    role: 'LINE_LEADER',
+    branches: ['A01'],
+    defaultBranch: 'A01',
+    scopes: [
+      { dimension: 'LINE', mode: 'LIST', value: 'A01-L01' },
+      { dimension: 'LINE', mode: 'LIST', value: 'A01-L02' },
+    ],
+    employee: 'NV2003',
   },
   {
     username: 'ketoan',
@@ -677,3 +710,36 @@ export const HR_GIVEN = {
   2: ['Anh', 'Chi', 'Dung', 'Giang', 'Hà', 'Hạnh', 'Hoa', 'Lan', 'Linh', 'Mai', 'Nga', 'Nhung', 'Oanh', 'Phương', 'Thảo', 'Trang', 'Vy', 'Yến'],
 } as const;
 export const HR_PROVINCES = ['Hà Nội', 'Hải Phòng', 'Nam Định', 'Thái Bình', 'Thanh Hóa', 'Nghệ An', 'Hà Tĩnh', 'Quảng Nam', 'Bình Định', 'Đồng Nai', 'Bình Dương', 'TP. Hồ Chí Minh'];
+
+/**
+ * Phân cụm trưởng mẫu (phase 5.18): giả lập dữ liệu GSD (Phân tổ trưởng, Phân cụm) tới khi nối GSD; seed ghi với SourceSystem = 'DEMO'
+ * (backend/scripts/cluster-data.ts). Nhân viên mẫu mã cố định NV2xxx, chỉ thêm mã còn thiếu (bảng nhân viên đã có dữ liệu vẫn nhận).
+ */
+export const clusterDemo = {
+  /** Tổ trưởng mẫu, gắn với tài khoản mẫu qua `employee` của users */
+  leaders: [
+    { code: 'NV2001', fullName: 'Nguyễn Văn Tâm', gender: 1, department: 'A01-L03' },
+    { code: 'NV2002', fullName: 'Hoàng Minh Bảo', gender: 1, department: 'A01-L03' },
+    { code: 'NV2003', fullName: 'Trần Thị Ngọc Lan', gender: 2, department: 'A01-L01' },
+  ] as { code: string; fullName: string; gender: 1 | 2; department: string }[],
+  /** Công nhân may mẫu theo chuyền (mã NV21xx, tên sinh xác định): người để chọn làm cụm trưởng */
+  workers: { 'A01-L01': 6, 'A01-L02': 6, 'A01-L03': 6 } as Record<string, number>,
+  /** Tổ trưởng theo tổ; tổ mẫu khác lấy một người đang làm của ĐVCS theo thứ tự mã */
+  teamLeaders: { 'A01-L01': ['NV2003'], 'A01-L02': ['NV2003'], 'A01-L03': ['NV2001', 'NV2002'] } as Record<string, string[]>,
+  /** Cụm công đoạn theo thứ tự trên chuyền, tên theo ảnh mẫu: [mã, tên] */
+  clusters: [
+    ['CAP-BTP', 'Cấp BTP'],
+    ['TUI-NGUC', 'CỤM TÚI NGỰC'],
+    ['DECOUP', 'LT DECOUP TT'],
+    ['NEP-TT', 'CỤM NẸP TT'],
+    ['TRA-TAY', 'TRA TAY'],
+    ['CUON-SUON', 'CUỐN SƯỜN'],
+    ['TRA-CO', 'TRA CỔ'],
+    ['MAY-LAI', 'MAY LAI'],
+    ['DONG-NUT', 'ĐÓNG NÚT'],
+    ['UI', 'Ủi'],
+  ] as [code: string, name: string][],
+  /** Phần mô tả GSD ghi sau mã hàng: độ khó / mùa */
+  levels: ['Đơn giản', 'Trung bình', 'Phức tạp'],
+  seasons: ['S27', 'F26'],
+};

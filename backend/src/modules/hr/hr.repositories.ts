@@ -314,6 +314,64 @@ export class EmployeeRepository extends BaseRepository<EmployeeRow> {
   }
 }
 
+/** Một dòng danh bạ: chỉ các cột dưới, không bao giờ đọc phần khác của hồ sơ */
+export interface DirectoryRow {
+  Id: number;
+  Code: string;
+  FullName: string;
+  EmploymentStatus: number;
+  DepartmentCode: string | null;
+  DepartmentName: string | null;
+}
+
+/**
+ * Danh bạ nhân viên (tài nguyên hr.directory, phase 5.18): mã, tên, phòng ban, tình trạng cho ô chọn người phụ trách ở màn khác (Tên
+ * cụm trưởng, gắn nhân viên cho tài khoản). Cùng bảng Employee với hr.employee nhưng là tài nguyên riêng: vai trò sản xuất tra được danh
+ * bạ mà không xem được hồ sơ, Thông tin nhân sự. Dữ liệu dùng chung (SHARED) nên chỉ lọc theo quyền Xem của tài nguyên này.
+ */
+@Injectable()
+export class EmployeeDirectoryRepository extends BaseRepository<EmployeeRow> {
+  protected readonly table = 'Employee';
+  protected readonly resource = 'hr.directory';
+
+  constructor(@Inject(HR_DB) db: HrDb, registry: ResourceRegistry) {
+    super(db, registry);
+  }
+
+  private base() {
+    return this.db
+      .selectFrom('Employee')
+      .select(['Employee.Id', 'Employee.Code', 'Employee.FullName', 'Employee.EmploymentStatus'])
+      .select((eb) => [
+        eb.selectFrom('Department').select('Department.Code').whereRef('Department.Id', '=', 'Employee.DepartmentId').as('DepartmentCode'),
+        eb.selectFrom('Department').select('Department.Name').whereRef('Department.Id', '=', 'Employee.DepartmentId').as('DepartmentName'),
+      ]);
+  }
+
+  /** Nhân viên đang làm khớp mã hoặc tên (không dấu); nhân viên của phòng ban thuộc `branchCode` xếp trước, rồi theo tên */
+  async search(scope: Scope, opts: { q?: string; branchCode?: string; limit: number }): Promise<DirectoryRow[]> {
+    let qb = this.base().where('Employee.EmploymentStatus', '=', 1);
+    const text = opts.q?.trim();
+    if (text) qb = qb.where((eb) => eb.or([foldedLike(sql.ref('Employee.Code'), text), foldedLike(sql.ref('Employee.FullName'), text)]));
+    let ordered = await this.scoped(qb, scope, 'view');
+    if (opts.branchCode) {
+      ordered = ordered.orderBy(sql`CASE WHEN EXISTS (SELECT 1 FROM Department d WHERE d.Id = Employee.DepartmentId AND d.BranchCode = ${opts.branchCode}) THEN 0 ELSE 1 END`);
+    }
+    const limit = Math.min(Math.max(1, Math.trunc(opts.limit) || 1), 200);
+    return (await ordered.orderBy('Employee.FullName').orderBy('Employee.Id').offset(0).fetch(limit).execute()) as DirectoryRow[];
+  }
+
+  /** Nhân viên theo Id, kể cả đã nghỉ việc (hiện người đã được chọn từ trước) */
+  async byIds(scope: Scope, ids: number[]): Promise<DirectoryRow[]> {
+    const out: DirectoryRow[] = [];
+    for (let i = 0; i < ids.length; i += 1000) {
+      const qb = await this.scoped(this.base().where('Employee.Id', 'in', ids.slice(i, i + 1000)), scope, 'view');
+      out.push(...((await qb.execute()) as DirectoryRow[]));
+    }
+    return out;
+  }
+}
+
 // ---------- Danh mục của module: loại phòng ban, chức danh ----------
 // Dùng chung toàn công ty, không có cột nhà máy nên không qua BaseRepository (như các danh mục khác: PrepStep, SysCatalogItem).
 // Quyền kiểm ở controller: loại phòng ban sửa ở Quản trị › Danh mục hệ thống (admin.catalog); chức danh chưa có màn sửa.

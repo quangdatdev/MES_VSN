@@ -157,3 +157,66 @@ export interface SewingPlanOption {
   endDate?: Masked<string>;
   planQty?: Masked<number>;
 }
+
+/** Phân cụm trưởng (phase 5.18): một tổ (chuyền may) người đăng nhập thấy */
+export interface ClusterTeam {
+  id: number;
+  branchCode: string;
+  lineCode: string;
+  /** Tên tổ theo cây sơ đồ tổ chức; chuyền không còn là "<mã> (chuyền cũ)" */
+  lineName: string;
+  /** Người đăng nhập là tổ trưởng của tổ, có quyền Sửa, tổ trong phạm vi sửa, không ở A00 */
+  canEdit: boolean;
+}
+
+export interface ClusterTeams {
+  /** Tài khoản đã gắn với nhân viên */
+  linked: boolean;
+  /** Là tổ trưởng của ít nhất một tổ: khi đó chỉ có tổ của mình */
+  leader: boolean;
+  items: ClusterTeam[];
+}
+
+/** Mã hàng đã phân cụm cho tổ. `assigned` null khi cột Tên cụm trưởng bị Ẩn, Che */
+export interface ClusterStyle {
+  styleCode: string;
+  styleLabel: string | null;
+  clusters: number;
+  assigned: number | null;
+}
+
+/** Một cụm của mã hàng ở tổ. Cột Tên cụm trưởng bị Ẩn thì không có các khóa leader*, bị Che thì leaderEmployeeId là "***" */
+export interface ClusterItem {
+  id: number;
+  code: string;
+  name: string;
+  sortOrder: number;
+  leaderEmployeeId?: Masked<number | null>;
+  /** Mã nhân viên hiện tại (không tra được danh bạ thì mã chụp lúc lưu) */
+  leaderCode?: string | null;
+  leaderName?: string | null;
+  leaderDepartment?: string | null;
+  /** false: cụm trưởng đã nghỉ việc; null: không tra được danh bạ */
+  leaderActive?: boolean | null;
+}
+
+export interface ClusterDetail {
+  team: { id: number; branchCode: string; lineCode: string; lineName: string };
+  teamLeaders: { id: number; code: string; fullName: string }[];
+  styleCode: string;
+  styleLabel: string | null;
+  canEdit: boolean;
+  /** Vì sao chỉ xem (null: sửa được) */
+  readOnlyReason: string | null;
+  /** Có quyền tra Danh bạ nhân viên */
+  canSearch: boolean;
+  items: ClusterItem[];
+}
+
+/** Người trong danh bạ cho ô Tên cụm trưởng */
+export interface ClusterEmployee {
+  id: number;
+  code: string;
+  fullName: string;
+  departmentName: string | null;
+}

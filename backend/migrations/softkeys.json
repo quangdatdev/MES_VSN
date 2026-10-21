@@ -208,6 +208,44 @@
       "status": "MES_Sewing/0003 (Phase 5.16)"
     },
     {
+      "from": "MES_Sewing.SewingTeam.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0005 (phase 5.18)"
+    },
+    {
+      "from": "MES_Sewing.SewingTeam.LineCode",
+      "to": "MES_Hr.Department.Code",
+      "sameBranch": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0005 (phase 5.18): tổ của Phân cụm trưởng là chuyền may (mã bộ phận), như SewingPrep.LineCode"
+    },
+    {
+      "from": "MES_Sewing.SewingTeamLeader.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0005 (phase 5.18)"
+    },
+    {
+      "from": "MES_Sewing.SewingTeamLeader.EmployeeId",
+      "to": "MES_Hr.Employee.Id",
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0005 (phase 5.18): tổ trưởng (Phân tổ trưởng của GSD, đang giả lập), nối theo Id (quyết định 10.3)"
+    },
+    {
+      "from": "MES_Sewing.SewingTeamCluster.BranchCode",
+      "to": "MES_Core.SysBranch.Code",
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0005 (phase 5.18)"
+    },
+    {
+      "from": "MES_Sewing.SewingTeamCluster.LeaderEmployeeId",
+      "to": "MES_Hr.Employee.Id",
+      "nullable": true,
+      "ownerModule": "sewing",
+      "status": "MES_Sewing/0005 (phase 5.18): cụm trưởng do tổ trưởng chọn, mã chụp ở LeaderEmployeeCode; NULL khi chưa phân"
+    },
+    {
       "from": "MES_Cutting.CuttingPlan.BranchCode",
       "to": "MES_Core.SysBranch.Code",
       "ownerModule": "cutting",
@@ -286,7 +324,14 @@
       "to": "MES_Core.SysUser.Id",
       "nullable": true,
       "ownerModule": "hr",
-      "status": "MES_Hr/0001 (Phase 5.8). Chưa có khóa ngầm SysUser.EmployeeCode → Employee.Code: mã nhân viên sửa được, nối tài khoản theo Id khi làm (quyết định 10.3)"
+      "status": "MES_Hr/0001 (Phase 5.8). Tài khoản nối với nhân viên theo Id (SysUser.EmployeeId, MES_Core/0016), không theo mã (quyết định 10.3)"
+    },
+    {
+      "from": "MES_Core.SysUser.EmployeeId",
+      "to": "MES_Hr.Employee.Id",
+      "nullable": true,
+      "ownerModule": "platform",
+      "status": "MES_Core/0016 (phase 5.18): nhân viên của tài khoản, cho màn Phân cụm trưởng biết người đăng nhập là tổ trưởng tổ nào (quyết định 10.3); NULL khi chưa gắn; chỉ mục duy nhất có lọc từ MES_Core/0017"
     }
   ],
   "tableOwners": {

@@ -20,17 +20,18 @@ MES **tự quản dữ liệu nhân sự**: thêm, sửa, nhập hàng loạt ng
 |---|---|
 | `backend/src/modules/hr/hr.module.ts` | Khai module; không phụ thuộc module nghiệp vụ khác |
 | `backend/src/modules/hr/hr-line-source.ts` | `HrLineSource`: nguồn chuyền may (bộ phận tích "Xưởng sản xuất") đăng ký vào `OrgService` của nền tảng lúc khởi động (mục Chuyền may) |
+| `backend/src/modules/hr/hr-employee-source.ts` | `HrEmployeeSource`: nguồn danh bạ nhân viên đăng ký vào `EmployeeDirectoryService` của nền tảng lúc khởi động (mục Danh bạ nhân viên) |
 | `backend/src/modules/hr/hr.db.ts` | Kết nối riêng tới `MES_Hr` (tên lấy từ `DB_HR_NAME`, mặc định `MES_Hr`) |
 | `backend/src/modules/hr/hr.types.ts` | Kiểu Kysely của 4 bảng |
 | `backend/src/modules/hr/hr.dto.ts` | DTO và bộ kiểm đầu vào |
-| `backend/src/modules/hr/hr.repositories.ts` | `DepartmentRepository`, `EmployeeRepository` (qua `BaseRepository`), `HrCatalogRepository` (loại phòng ban, chức danh) |
+| `backend/src/modules/hr/hr.repositories.ts` | `DepartmentRepository`, `EmployeeRepository`, `EmployeeDirectoryRepository` (danh bạ, tài nguyên `hr.directory`) qua `BaseRepository`; `HrCatalogRepository` (loại phòng ban, chức danh) |
 | `backend/src/modules/hr/employee-fields.ts` | Định nghĩa **một chỗ** các trường của hồ sơ (khóa API, cột DB, nhãn, nhóm, kiểu, bắt buộc, độ dài, tên gọi khác khi dán Excel) |
 | `frontend/src/features/hr/api.ts`, `types.ts` | Hook gọi API, khóa truy vấn `HR_KEYS`, kiểu dữ liệu |
 | `frontend/src/features/hr/tree.ts` | Dựng cây từ danh sách phẳng, lọc cây, lựa chọn phòng ban thụt lề, bỏ dấu (`fold`) |
 | `frontend/src/features/hr/common.tsx` | `DepartmentSelect` (ô chọn phòng ban dạng cây), `FieldCell` (ô form có chú thích dạng tooltip), `WorkshopBadge` (dấu "Xưởng sản xuất"), `DissolvedBadge` (nhãn "Đã giải thể"), `Splitter`, `useStoredSize`, `Fact`, `Trail`, `LoadError` |
 | `backend/scripts/hr-data.ts` | `hrDbState`, `seedHr`, `seedHrIfReady`, `clearHr` |
 
-**Ranh giới module** (lint ở `backend/eslint.config.mjs`): module Nhân sự không import module Đơn hàng, May, Cắt và `platform/sync` (Đồng bộ); module Đơn hàng, May, Cắt không import phần nào của module Nhân sự (luật `NO_HR`: module Nhân sự chưa có API công khai). Module Đơn hàng, May, Cắt lấy chuyền may qua `OrgService` của nền tảng, nơi module Nhân sự đăng ký nguồn chuyền.
+**Ranh giới module** (lint ở `backend/eslint.config.mjs`): module Nhân sự không import module Đơn hàng, May, Cắt và `platform/sync` (Đồng bộ); module Đơn hàng, May, Cắt không import phần nào của module Nhân sự (luật `NO_HR`: module Nhân sự chưa có API công khai). Module Đơn hàng, May, Cắt lấy chuyền may qua `OrgService` của nền tảng, nơi module Nhân sự đăng ký nguồn chuyền; tra nhân viên (ô chọn người) qua `EmployeeDirectoryService` của nền tảng, nơi module Nhân sự đăng ký `HrEmployeeSource` (phase 5.18).
 
 ## Dữ liệu dùng chung toàn công ty
 
@@ -49,6 +50,16 @@ MES **tự quản dữ liệu nhân sự**: thêm, sửa, nhập hàng loạt ng
 - **Danh sách phòng ban, chức danh cho ô chọn** ở Thông tin nhân sự (`GET /hr/employees/options`) chỉ cần `hr.employee:view`, không cần quyền Sơ đồ tổ chức.
 - **Danh mục Loại phòng ban** dùng quyền `admin.catalog` (vai trò Quản trị có `VCU`), là ngoại lệ so với ADR 0012 mục 6: vai trò Nhân sự chỉ thấy loại phòng ban trong ô chọn, không sửa được danh mục. Muốn Nhân sự tự sửa thì phải cấp `admin.catalog`, mà quyền đó sửa được cả các danh mục hệ thống khác.
 - Quyền Xuất file của `hr.orgchart` có trong ma trận nhưng màn Sơ đồ tổ chức chưa có nút, chưa có API xuất.
+- **Danh bạ nhân viên** (`hr.directory`, phase 5.18): Xem là được tra mã, tên, phòng ban, tình trạng của nhân viên ở các ô chọn người của màn khác (mục Danh bạ nhân viên). Ma trận mẫu: Quản trị, Giám đốc, Kế hoạch, Trưởng chuyền, Nhân sự Xem; Toàn quyền đủ (seed tạo đủ 5 quyền như mọi tài nguyên, chỉ Xem có tác dụng). Không có màn riêng, không có mục menu; cấp, thu quyền ở Quản trị › Phân quyền (nhóm Quản trị nhân sự).
+
+## Danh bạ nhân viên (`hr.directory`, phase 5.18)
+
+Ô chọn người ở màn của module khác (Tên cụm trưởng ở Phân cụm trưởng, gắn nhân viên cho tài khoản ở Quản trị › Người dùng) cần tra nhân viên, mà người dùng các màn đó (Trưởng chuyền, Quản trị) không có quyền Thông tin nhân sự. Quyết định: [Quyết định](13-quyet-dinh.md) mục 10.7.
+
+- Tài nguyên riêng `hr.directory` "Danh bạ nhân viên", `SHARED`, cùng bảng nguồn `Employee` với `hr.employee`, không có mục menu (`path` để trống trong `seed-data.ts`). Đọc qua `EmployeeDirectoryRepository` (`BaseRepository`): không có quyền Xem thì không có ai.
+- Chỉ trả `Id`, mã, họ tên, tình trạng, mã và tên phòng ban; không bao giờ đọc phần khác của hồ sơ. Không có cột đăng ký chính sách cột.
+- Tìm (`search`): chỉ người đang làm, khớp mã hoặc tên không dấu (`foldedLike`), người của phòng ban thuộc ĐVCS ưu tiên xếp trước, rồi theo tên; tối đa 200. Theo Id (`byIds`): kể cả người đã nghỉ việc (hiện người đã được chọn từ trước).
+- Nền tảng không import module: `HrEmployeeSource` (`hr-employee-source.ts`) cài `EmployeeSource` (`backend/src/platform/org/employee-source.ts`) và đăng ký vào `EmployeeDirectoryService` lúc khởi động, như `HrLineSource`. Khác `HrLineSource`, nguồn này đọc theo quyền của người hỏi (truyền `Scope`), không đọc thẳng bảng. Chưa có nguồn đăng ký thì danh bạ rỗng.
 
 ## Trường nhạy cảm và chính sách cột
 
@@ -440,7 +451,9 @@ Khai ở `backend/migrations/softkeys.json`, kiểm bằng `npm run check:softke
 
 Chiều ngược (khai ở module dùng): `MES_Order.ShipmentPlanLine.LineCode`, `MES_Sewing.SewingPrep.LineCode`, `MES_Sewing.SewingDayPlan.LineCode` (Kế hoạch may), `MES_Cutting.CuttingSupplyLine.LineCode` (Xác nhận cấp BTP) → `Department.Code`, cùng ĐVCS (`sameBranch`), không lọc theo cờ (bộ phận đã bỏ tích, giải thể vẫn là đích hợp lệ; mã không còn là bộ phận nào là chuyền cũ mồ côi).
 
-**Chưa có liên kết tài khoản ↔ nhân viên:** không khai khóa ngầm `SysUser.EmployeeCode → Employee.Code` vì mã nhân viên sửa được. Khi nối tài khoản với nhân viên thì thêm cột `SysUser.EmployeeId` (ADR 0012 mục 4). Module khác sau này trỏ tới nhân viên bằng `EmployeeId`.
+Chiều ngược khác, trỏ tới `Employee.Id` (phase 5.18): `MES_Core.SysUser.EmployeeId` (nhân viên của tài khoản, cho phép `NULL`), `MES_Sewing.SewingTeamLeader.EmployeeId` (tổ trưởng), `MES_Sewing.SewingTeamCluster.LeaderEmployeeId` (cụm trưởng, cho phép `NULL`).
+
+**Liên kết tài khoản ↔ nhân viên** (phase 5.18, quyết định 10.3): cột `SysUser.EmployeeId` (`MES_Core/0016`), theo `Id` vì mã nhân viên sửa được; cột `SysUser.EmployeeCode` cũ không dùng. Một nhân viên gắn tối đa một tài khoản (chỉ mục duy nhất có lọc `UX_SysUser_EmployeeId`, `MES_Core/0017`). Gắn, gỡ ở Quản trị › Người dùng ([Quản trị hệ thống](05-quan-tri-he-thong.md)); nền tảng đọc qua `UserDirectoryService.employeeIdOf` (không cache). Module khác trỏ tới nhân viên bằng `EmployeeId`.
 
 ## Dữ liệu mẫu và script
 
@@ -449,7 +462,7 @@ Code: `backend/scripts/hr-data.ts`, dữ liệu ở cuối `backend/scripts/seed
 - `npm run seed` (bước 13) gọi `seedHrIfReady`: chỉ chạy khi `MES_Hr` đã tạo **và** đã migrate (`hrDbState`); chưa thì cảnh báo và bỏ qua, không làm hỏng phần đã seed của database khác. Chỉ thêm phần còn thiếu theo mã, không sửa mục đã có (người dùng có thể đã sửa trên màn):
   - Luôn nạp: 5 loại phòng ban (`CONG_TY` cấp 1, `KHOI` 2, `NHA_MAY` 2, `PHONG` 3, `BO_PHAN` 4 cấp cuối; `IsSystem = 1`) và các chức danh dùng chung (không gắn phòng ban).
   - Chỉ khi có dữ liệu mẫu (`SEED_SAMPLE_DATA` không phải `false`): phòng ban mẫu (1 đã giải thể; các nhà máy, bộ phận gắn `A01`–`A03`; xưởng và chuyền may mẫu tích "Xưởng sản xuất", mã như `A01-L03`; danh sách: [Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md)), chức danh gắn phòng ban mẫu, và 40 nhân viên giả (chỉ khi bảng `Employee` còn trống, sinh xác định theo hạt giống, trong một transaction, có người nghỉ việc, gán người quản lý). Tên, giấy tờ hư cấu: CCCD đầu `999`, điện thoại đầu `0900`, email miền `.example`.
-- `npm run reset:demo -- --yes` gọi `clearHr`: xóa toàn bộ loại phòng ban, phòng ban, chức danh, nhân viên để seed nạp lại (kể cả chuyền may mẫu, trước khi nạp lại đơn hàng và dàn chuyền); Id đổi sau mỗi lần. Script dàn chuyền (`sim:board`, `load:bravo`) đọc chuyền từ `MES_Hr` (`readLines` ở `backend/scripts/script-db.ts`): bộ phận đang tích, chưa giải thể, có ĐVCS. Chỉ chạy trên máy demo (`assertDemoMachine`). Khi module khác có khóa ngầm `EmployeeId` thì phải xét lại script này.
+- `npm run reset:demo -- --yes` gọi `clearHr`: xóa toàn bộ loại phòng ban, phòng ban, chức danh, nhân viên để seed nạp lại (kể cả chuyền may mẫu, trước khi nạp lại đơn hàng và dàn chuyền); Id đổi sau mỗi lần. Script dàn chuyền (`sim:board`, `load:bravo`) đọc chuyền từ `MES_Hr` (`readLines` ở `backend/scripts/script-db.ts`): bộ phận đang tích, chưa giải thể, có ĐVCS. Chỉ chạy trên máy demo (`assertDemoMachine`). Có khóa ngầm `EmployeeId` từ nơi khác (phase 5.18): `reset:demo` gỡ nhân viên khỏi mọi tài khoản và xóa dữ liệu Phân cụm trưởng trước khi gọi `clearHr`; seed gắn lại tài khoản mẫu ([May](07-may.md) mục Phân cụm trưởng).
 - Chi tiết lệnh: [Vận hành](11-van-hanh.md); tài khoản thử, kịch bản: [Dữ liệu mẫu và kiểm thử](12-du-lieu-mau-va-kiem-thu.md).
 
 ## Test
@@ -465,7 +478,7 @@ Code: `backend/scripts/hr-data.ts`, dữ liệu ở cuối `backend/scripts/seed
 ## Giới hạn hiện tại
 
 - Chưa có màn sửa Chức danh; chưa có "hoạch định vị trí" (công việc × cấp bậc × phòng ban), định biên.
-- Chưa nối tài khoản đăng nhập với nhân viên; chưa phân quyền theo phòng ban (L3).
+- Chưa phân quyền theo phòng ban (L3). Tài khoản nối với nhân viên từ phase 5.18 (`SysUser.EmployeeId`), mới dùng ở Phân cụm trưởng.
 - Chưa tải lên file `.xlsx` (chỉ dán vào lưới); chưa nhập để sửa hàng loạt hồ sơ đã có.
 - Chưa có quá trình công tác (lịch sử đổi phòng ban, chức danh), chưa xuất file Sơ đồ tổ chức.
 - Mã phòng ban không sửa được (nằm trong `Path`); nhập sai thì giải thể rồi tạo lại.

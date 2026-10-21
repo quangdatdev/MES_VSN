@@ -16,6 +16,7 @@ import {
   UserFieldPolicyDto,
   BranchCreateDto,
   BranchUpdateDto,
+  EmployeeOptionsQuery,
   PageQuery,
   ResetPasswordDto,
   RoleCreateDto,
@@ -23,6 +24,7 @@ import {
   RoleUpdateDto,
   UserBranchesDto,
   UserCreateDto,
+  UserEmployeeDto,
   UserRolesDto,
   UserUpdateDto,
 } from './admin.dto';
@@ -41,7 +43,11 @@ export class AdminController {
 
   // ---- Người dùng ----
   @Get('users') @RequirePermission('admin.user:view')
-  listUsers(@Query() q: PageQuery) { return this.users.list(q); }
+  listUsers(@CurrentUser() a: AuthUser, @Query() q: PageQuery) { return this.users.list(a, q); }
+
+  // Nhân viên để gắn cho tài khoản (danh bạ nhân viên theo quyền hr.directory của người thao tác)
+  @Get('users/employee-options') @RequirePermission('admin.permission:update')
+  employeeOptions(@CurrentUser() a: AuthUser, @Query() q: EmployeeOptionsQuery) { return this.users.employeeOptions(a, q); }
 
   @Post('users') @RequirePermission('admin.user:create')
   createUser(@CurrentUser() a: AuthUser, @Body() dto: UserCreateDto) { return this.users.create(a, dto); }
@@ -54,6 +60,10 @@ export class AdminController {
 
   @Put('users/:id/roles') @RequirePermission('admin.permission:update')
   async setUserRoles(@CurrentUser() a: AuthUser, @id() uid: number, @Body() dto: UserRolesDto) { await this.users.setRoles(a, uid, dto); return { ok: true }; }
+
+  // Nhân viên của tài khoản quyết định tổ người đó làm tổ trưởng (Phân cụm trưởng, phase 5.18): cùng quyền với gán vai trò, ĐVCS
+  @Put('users/:id/employee') @RequirePermission('admin.permission:update')
+  async setUserEmployee(@CurrentUser() a: AuthUser, @id() uid: number, @Body() dto: UserEmployeeDto) { await this.users.setEmployee(a, uid, dto); return { ok: true }; }
 
   @Put('users/:id/branches') @RequirePermission('admin.permission:update')
   async setUserBranches(@CurrentUser() a: AuthUser, @id() uid: number, @Body() dto: UserBranchesDto) { await this.users.setBranches(a, uid, dto); return { ok: true }; }

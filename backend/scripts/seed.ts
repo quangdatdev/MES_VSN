@@ -37,12 +37,14 @@ import {
 } from './seed-data';
 import { addCalendarDays, DEFAULT_WORK_CALENDAR, readWorkCalendars } from '../src/platform/catalog/work-calendar';
 import { syncBranchesFromBravo } from './bravo-branches';
+import { seedClusterDemo } from './cluster-data';
 import { seedHrIfReady } from './hr-data';
 import { seedOrders } from './seed-order';
 import { hasSewingDb } from './sewing-data';
 
 /**
- * coreOnly: chỉ MES_Core (bỏ mục 11–13: đơn hàng giả, bước chuẩn bị SX, nhân sự giả), dùng trong test để không nạp dữ liệu giả vào DB demo.
+ * coreOnly: chỉ MES_Core (bỏ mục 11–14: đơn hàng giả, bước chuẩn bị SX, nhân sự giả, Phân cụm trưởng mẫu), dùng trong test để không nạp dữ
+ * liệu giả vào DB demo.
  * sampleData = false (máy chủ dùng thật, npm run migrate): chỉ tạo tài khoản admin (10), bỏ đơn hàng giả (11), phòng ban và nhân viên
  * giả (13); giữ phần là cấu hình: danh mục bước chuẩn bị SX (12), loại phòng ban và chức danh dùng chung (13).
  */
@@ -190,6 +192,8 @@ export async function runSeed({
       groupId.set(g.code, id);
     }
     for (const [i, r] of resources.entries()) {
+      // Tài nguyên không có màn riêng (danh bạ nhân viên, phase 5.18) không có mục menu
+      if (!r.path) continue;
       const code = `menu.${r.code}`;
       const exists = await db.selectFrom('SysMenu').select(['Id', 'Name', 'Path', 'SortOrder', 'IsSystem']).where('Code', '=', code).executeTakeFirst();
       if (exists) {
@@ -405,12 +409,15 @@ export async function runSeed({
     // quản trị đã thu hồi thì chạy lại không cấp lại. Gán lại vai trò mà thiếu phạm vi là nới thành không giới hạn (review 5.4.8 lượt 5)
     const hash = await argon2.hash(env.demoPassword, { type: argon2.argon2id });
     const userId = new Map<string, number>();
+    // Tài khoản mẫu tạo ở lần chạy này: bước 14 chỉ gắn nhân viên mẫu cho tài khoản mới (hoặc --sync-matrix), như vai trò, phạm vi
+    const createdUsers = new Set<string>();
     // Chiều theo cây tổ chức (OrgType có giá trị: FACTORY) ghi OrgUnitId; chiều giá trị (LINE từ MES_Core/0009: mã bộ phận chuyền) ghi ScopeValue
     const dimByOrg = new Map((await db.selectFrom('SysScopeDimension').select(['Code', 'OrgType']).execute()).map((d) => [d.Code, d.OrgType !== null]));
     // Không dữ liệu mẫu: chỉ admin để đăng nhập lần đầu; người dùng thật tạo ở màn Người dùng
     for (const u of sampleData ? users : users.filter((x) => x.username === 'admin')) {
       let row = await db.selectFrom('SysUser').select('Id').where('Username', '=', u.username).executeTakeFirst();
       const isNew = !row;
+      if (isNew) createdUsers.add(u.username);
       if (!row) {
         row = await db
           .insertInto('SysUser')
@@ -568,6 +575,13 @@ export async function runSeed({
       // 13. Nhân sự trong MES_Hr: loại phòng ban, chức danh dùng chung luôn nạp; phòng ban, nhân viên giả chỉ khi có dữ liệu mẫu.
       // Thêm phần còn thiếu theo mã; nhân viên chỉ khi bảng còn trống. Máy chưa tạo MES_Hr thì bỏ qua
       for (const [k, v] of Object.entries(await seedHrIfReady({ sample: sampleData }))) bump(k, v);
+
+      // 14. Phân cụm trưởng mẫu (phase 5.18): giả lập dữ liệu GSD (tổ, tổ trưởng, cụm theo mã hàng) cho chuyền mẫu, nhân viên tổ trưởng mẫu,
+      // gắn tài khoản mẫu với nhân viên. Chỉ khi có dữ liệu mẫu; chỉ thêm phần còn thiếu. Sau bước 11 để lấy mã hàng đã xếp vào chuyền
+      if (sampleData) {
+        const sampleBranches = branches.filter((x) => !x.isAggregate && branchId.has(x.code)).map((x) => x.code);
+        for (const [k, v] of Object.entries(await seedClusterDemo(db, sampleBranches, { syncMatrix, newUsers: createdUsers }))) bump(k, v);
+      }
     }
 
     await sql`UPDATE dbo.SysPermissionVersion SET Version = Version + 1, ModifiedAt = SYSUTCDATETIME() WHERE Id = 1`.execute(db);

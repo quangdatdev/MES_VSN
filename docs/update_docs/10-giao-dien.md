@@ -131,9 +131,10 @@ Tên màn là tên menu do seed đặt (`backend/scripts/seed-data.ts`, mảng `
 | `/cutting/progress` | Đồng bộ tiến độ cắt | `features/cutting/CuttingProgressPage.tsx` | [Cắt](15-cat.md) |
 | `/cutting/supply` | Xác nhận cấp BTP | `features/cutting/CuttingSupplyPage.tsx` | [Cắt](15-cat.md) |
 | `/sewing/plan` | Kế hoạch may | `features/sewing/SewingPlanPage.tsx` | [May](07-may.md) |
+| `/sewing/cluster` | Phân cụm trưởng (menu điện thoại) | `features/sewing/ClusterLeaderPage.tsx` | [May](07-may.md) |
 | `/hr/org-chart` | Sơ đồ tổ chức | `features/hr/OrgChartPage.tsx` | [Nhân sự](08-nhan-su.md) |
 | `/hr/employees` | Thông tin nhân sự | `features/hr/EmployeesPage.tsx` | [Nhân sự](08-nhan-su.md) |
-| `/admin/users` | Người dùng | `features/admin/UsersPage.tsx` (`UserAccessDrawer.tsx`, `UserBranchesDialog.tsx`) | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
+| `/admin/users` | Người dùng | `features/admin/UsersPage.tsx` (`UserAccessDrawer.tsx`, `UserBranchesDialog.tsx`, `UserEmployeeDialog.tsx`) | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/roles` | Vai trò | `features/admin/RolesPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/permissions` | Phân quyền | `features/admin/PermissionsPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/field-policies` | Chính sách cột | `features/admin/FieldPoliciesPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
@@ -142,7 +143,7 @@ Tên màn là tên menu do seed đặt (`backend/scripts/seed-data.ts`, mảng `
 | `/admin/audit` | Nhật ký hệ thống | `features/admin/AuditPage.tsx` | [Quản trị hệ thống](05-quan-tri-he-thong.md) |
 | `/admin/sync` | Đồng bộ dữ liệu | `features/admin/SyncPage.tsx` | [Đồng bộ](09-dong-bo.md) |
 
-Các mục menu còn lại chưa đăng ký trong `routes/registry.tsx`, mở ra `ModulePage`: `/cutting/embroidery` (Quản lý in thêu), `/sewing/cluster` (Phân cụm trưởng), `/sewing/output` (Bấm năng suất cụm), `/sewing/balance` (Biểu đồ cân bằng chuyền) và mọi mục của nhóm `qms` (Quản trị chất lượng), `finishing` (Quản trị hoàn thiện), `report` (Báo cáo quản trị). Danh sách đầy đủ: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.2.
+Các mục menu còn lại chưa đăng ký trong `routes/registry.tsx`, mở ra `ModulePage`: `/cutting/embroidery` (Quản lý in thêu), `/sewing/output` (Bấm năng suất cụm), `/sewing/balance` (Biểu đồ cân bằng chuyền) và mọi mục của nhóm `qms` (Quản trị chất lượng), `finishing` (Quản trị hoàn thiện), `report` (Báo cáo quản trị). Danh sách đầy đủ: [Tổng quan](../PROJECT_OVERVIEW.md) mục 2.2.
 
 ### 4.4 Thêm một màn mới
 

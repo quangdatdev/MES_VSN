@@ -7,6 +7,8 @@
 //  - MES_Order: xóa toàn bộ dữ liệu đơn hàng (đơn, PO, kế hoạch, dàn chuyền, phân màu cỡ), nạp lại dữ liệu mẫu.
 //  - MES_Hr: xóa loại phòng ban, phòng ban, chức danh, nhân viên rồi nạp lại dữ liệu nhân sự giả (Id đổi), gồm xưởng, chuyền
 //    may mẫu (bộ phận tích "Xưởng sản xuất", phase 5.10).
+//  - MES_Sewing: xóa tổ, tổ trưởng, cụm của Phân cụm trưởng (giả lập GSD, phase 5.18) vì nhân viên đánh số lại; seed nạp lại bản mẫu và gắn
+//    lại tài khoản mẫu với nhân viên (mọi tài khoản bị gỡ nhân viên trước khi xóa nhân sự).
 //  - MES_Core: tên đơn vị cơ sở mẫu (ĐVCS theo BRAVO giữ tên BRAVO), vai trò, ma trận quyền, chính sách cột của vai trò mẫu,
 //    danh mục hệ thống (đơn vị tính, loại đơn hàng, nhà máy SX, ca làm việc), tài khoản demo (họ tên, mật khẩu,
 //    vai trò, phạm vi, ngoại lệ, cột riêng, ĐVCS, nhà máy SX) về như seed; ĐVCS ngoài mẫu và BRAVO, nhà máy SX, vai trò, người
@@ -21,6 +23,7 @@ import { clearHr, hrDbState } from './hr-data';
 import { clearOrderData, loadBravoOrders } from './load-bravo-orders';
 import { assertDemoMachine } from './local-db';
 import { clearCutting } from './cutting-data';
+import { clearClusterData } from './cluster-data';
 import { clearSewingDayPlan, clearSewingPrep } from './sewing-data';
 import { runSeed } from './seed';
 import { bravoBranchCode } from '../src/platform/admin/branch-import';
@@ -38,6 +41,7 @@ async function main() {
         `  - xóa Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (ngày đã nhập; danh mục bước giữ nguyên);`,
         `  - xóa Đồng bộ tiến độ cắt trong ${env.db.cuttingName} (kế hoạch đã chép và số cắt đã nhập);`,
         `  - xóa loại phòng ban, phòng ban, chức danh, hồ sơ nhân viên trong ${env.db.hrName} rồi nạp lại dữ liệu nhân sự giả (gồm xưởng, chuyền may mẫu);`,
+        `  - xóa tổ, tổ trưởng, cụm, cụm trưởng của Phân cụm trưởng trong ${env.db.sewingName} rồi nạp lại bản mẫu; gỡ nhân viên khỏi mọi tài khoản, gắn lại tài khoản mẫu;`,
         `  - đặt lại đơn vị cơ sở, nhà máy SX, vai trò, quyền, chính sách cột và tài khoản demo trong ${env.db.coreName} (máy chủ ${env.db.host});`,
         '  - vô hiệu hóa người dùng, vai trò, đơn vị cơ sở, nhà máy SX tạo thêm; thu hồi mọi phiên đăng nhập.',
         'Chỉ dùng cho database demo. Chạy lại với: npm run reset:demo -- --yes',
@@ -96,6 +100,8 @@ async function main() {
           .execute();
       }
       await trx.updateTable('SysUser').set({ IsActive: false, ModifiedAt: now }).where('Username', 'not in', usernames).execute();
+      // Nhân viên sắp bị xóa, đánh số lại (clearHr): không để tài khoản trỏ tới Id cũ; seed gắn lại tài khoản mẫu (phase 5.18)
+      await trx.updateTable('SysUser').set({ EmployeeId: null }).where('EmployeeId', 'is not', null).execute();
       await trx.updateTable('SysUserSession').set({ RevokedAt: now }).where('RevokedAt', 'is', null).execute();
 
       // Danh mục hệ thống về như seed: mục danh mục, ca mẫu bật lại đúng tên; phần tạo thêm khi demo ngừng dùng (không xóa).
@@ -149,6 +155,7 @@ async function main() {
     console.log(`Đã xóa ${cuts.plans} kế hoạch, ${cuts.entries} dòng số cắt, ${cuts.supplies} lệnh cấp BTP trong ${env.db.cuttingName}.`);
     await order.transaction().execute((trx) => clearOrderData(trx));
     console.log(`Đã xóa dữ liệu đơn hàng trong ${env.db.orderName}.`);
+    console.log(`Đã xóa ${await clearClusterData()} tổ của Phân cụm trưởng (tổ trưởng, cụm, cụm trưởng) trong ${env.db.sewingName}.`);
     console.log(`Đã xóa ${await clearHr()} hồ sơ nhân viên và sơ đồ tổ chức trong ${env.db.hrName} (seed nạp lại bản mẫu).`);
 
     await runSeed({ resetPasswords: true, syncMatrix: true });
