@@ -39,7 +39,7 @@ export function foldedLike(column: Expression<unknown>, text: string) {
 // ---------- Phòng ban (hr.orgchart): dùng chung toàn công ty ----------
 
 /**
- * Cây phòng ban (ADR 0012 mục 3). Đọc, ghi qua BaseRepository (tài nguyên hr.orgchart, SHARED): không có quyền thì không thấy gì.
+ * Cây phòng ban (quyết định 10.2). Đọc, ghi qua BaseRepository (tài nguyên hr.orgchart, SHARED): không có quyền thì không thấy gì.
  * Thêm, sửa không dùng create/update của nền tảng:
  * - bảng có trigger nên không INSERT ... OUTPUT được (thêm rồi đọc lại theo mã);
  * - BranchCode ở đây là thuộc tính "phòng ban của nhà máy nào", không phải cột phạm vi mà nền tảng tự đặt hoặc bỏ đi.

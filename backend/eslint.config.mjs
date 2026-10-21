@@ -1,15 +1,15 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
-// Module nghiệp vụ không đọc MES_Sync trực tiếp (ADR 0007): tên, danh mục chép từ BRAVO lấy qua CatalogLookupService, dữ liệu
+// Module nghiệp vụ không đọc MES_Sync trực tiếp (quyết định 1.2): tên, danh mục chép từ BRAVO lấy qua CatalogLookupService, dữ liệu
 // nghiệp vụ chép từ BRAVO, OSM (đơn hàng, nhà máy SX) qua SourceFeedService. Thêm module mới thì gắn NO_SYNC vào khối luật của
 // module đó: flat config lấy khối viết sau cho cùng một luật, không gộp, nên không dùng được một khối chung src/modules/**.
 const NO_SYNC = {
   group: ['**/platform/sync/*'],
-  message: 'Module nghiệp vụ không đọc MES_Sync trực tiếp (ADR 0007): dùng CatalogLookupService hoặc SourceFeedService.',
+  message: 'Module nghiệp vụ không đọc MES_Sync trực tiếp (quyết định 1.2): dùng CatalogLookupService hoặc SourceFeedService.',
 };
-// Module Nhân sự chưa có API công khai cho module khác (ADR 0012): không import phần bên trong
-const NO_HR = { group: ['../hr/*', '**/modules/hr/*'], message: 'Module Nhân sự chưa có API công khai (ADR 0012): không import phần bên trong.' };
+// Module Nhân sự chưa có API công khai cho module khác (quyết định 1.2): không import phần bên trong
+const NO_HR = { group: ['../hr/*', '**/modules/hr/*'], message: 'Module Nhân sự chưa có API công khai (quyết định 1.2): không import phần bên trong.' };
 
 export default tseslint.config(
   { ignores: ['dist/**', 'node_modules/**', 'jest.config.js'] },
@@ -90,7 +90,7 @@ export default tseslint.config(
         'error',
         {
           patterns: [
-            { group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Đơn hàng không phụ thuộc module May (ADR 0009).' },
+            { group: ['../sewing/*', '**/modules/sewing/*'], message: 'Module Đơn hàng không phụ thuộc module May (quyết định 1.2).' },
             { group: ['../cutting/*', '**/modules/cutting/*'], message: 'Module Đơn hàng không phụ thuộc module Cắt: module Cắt đăng ký vào ShipmentPlanDeleteGuards, LineSupplyGuards (quyết định 13.4, 13.8).' },
             NO_HR,
             NO_SYNC,
@@ -110,13 +110,13 @@ export default tseslint.config(
       ],
     },
   },
-  // Module Nhân sự (ADR 0012) đứng riêng: không đọc bên trong module nghiệp vụ khác
+  // Module Nhân sự (quyết định 1.2) đứng riêng: không đọc bên trong module nghiệp vụ khác
   {
     files: ['src/modules/hr/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [{ group: ['../order/*', '../sewing/*', '../cutting/*', '**/modules/order/*', '**/modules/sewing/*', '**/modules/cutting/*'], message: 'Module Nhân sự không phụ thuộc module nghiệp vụ khác (ADR 0012).' }, NO_SYNC] },
+        { patterns: [{ group: ['../order/*', '../sewing/*', '../cutting/*', '**/modules/order/*', '**/modules/sewing/*', '**/modules/cutting/*'], message: 'Module Nhân sự không phụ thuộc module nghiệp vụ khác (quyết định 1.2).' }, NO_SYNC] },
       ],
     },
   },

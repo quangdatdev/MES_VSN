@@ -96,7 +96,7 @@ export class AuditQuery extends PageQuery {
   @IsOptional() @Type(() => Number) @IsInt() userId?: number;
 }
 
-// ---- Phạm vi theo phép gán (L3), ngoại lệ theo người (L5), chính sách cột (L4) – ADR 0005 ----
+// ---- Phạm vi theo phép gán (L3), ngoại lệ theo người (L5), chính sách cột (L4) – quyết định 3.5, 3.6, 3.7 ----
 
 export const SCOPE_MODES = ['ALL', 'ORG_SUBTREE', 'LIST', 'OWN'] as const;
 export const ACCESS_LEVELS = ['HIDDEN', 'MASKED', 'READONLY', 'EDITABLE'] as const;

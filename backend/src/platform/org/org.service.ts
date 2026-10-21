@@ -8,7 +8,7 @@ export interface LineInfo {
   branchCode: string;
   /** false: bộ phận tích "Xưởng sản xuất" đã giải thể; chỉ gặp khi hỏi kèm includeInactive (bỏ tích thì không còn trong danh sách) */
   isActive: boolean;
-  /** Bộ phận cha của chuyền (phase 5.10; trước là xưởng của ADR 0010), null khi chuyền nằm ở gốc: để ô chọn chuyền gom nhóm */
+  /** Bộ phận cha của chuyền (phase 5.10; trước là xưởng của cây tổ chức cũ, quyết định 6.4), null khi chuyền nằm ở gốc: để ô chọn chuyền gom nhóm */
   workshopCode: string | null;
   workshopName: string | null;
   /**

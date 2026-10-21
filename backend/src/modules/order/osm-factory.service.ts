@@ -19,7 +19,7 @@ export interface OsmFactorySummary {
 const RETRY_DELAYS_MS = [2_000, 10_000];
 
 /**
- * Nhà máy SX của đơn hàng theo OSM (ADR 0013 mục 9): sau mỗi đợt đồng bộ có chép nguồn OSM hoặc sản phẩm BRAVO, và một lần lúc
+ * Nhà máy SX của đơn hàng theo OSM (quyết định 7.6): sau mỗi đợt đồng bộ có chép nguồn OSM hoặc sản phẩm BRAVO, và một lần lúc
  * khởi động. Chạy cả khi nạp đơn hàng tự động đang tắt (BRAVO_ORDER_IMPORT): chỉ cập nhật cột Nhà máy SX của đơn đã có. Chưa
  * đồng bộ OSM thì không làm gì. Đơn mới nạp từ BRAVO nhận Nhà máy SX theo OSM ngay ở bước nạp.
  */

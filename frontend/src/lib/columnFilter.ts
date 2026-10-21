@@ -5,7 +5,7 @@ import type { UrlPatch } from './useUrlParams';
 
 /** Giá trị của một ô để lọc: chuỗi, số, ngày dạng YYYY-MM-DD; null là ô trống. */
 export type FilterValue = string | number | null;
-/** Bộ lọc của một cột (ADR 0011): chỉ giữ các giá trị đã chọn (in), hoặc bỏ các giá trị đã bỏ tích (notIn). */
+/** Bộ lọc của một cột (quyết định 11.2): chỉ giữ các giá trị đã chọn (in), hoặc bỏ các giá trị đã bỏ tích (notIn). */
 export interface ColumnFilter {
   mode: 'in' | 'notIn';
   values: FilterValue[];

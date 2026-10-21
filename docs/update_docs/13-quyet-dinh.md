@@ -9,7 +9,7 @@ Mỗi quyết định gồm: nội dung đang áp dụng, lý do, điều phải
 - Quyết định ở đây là căn cứ cho quy tắc và ý định; code là căn cứ cho hiện trạng (mục 16.2). Tài liệu nói khác code, hoặc khác quyết định ở đây: báo Tech Lead, không tự chọn bên nào.
 - Đổi hoặc thêm quyết định: sửa mục ở đây (hoặc thêm mục mới vào đúng chủ đề, đánh số tiếp), ghi lý do, hệ quả, nguồn (task, người chốt), rồi sửa tài liệu của khối liên quan. Quy trình: [Quy trình phát triển](../DEVELOPMENT_WORKFLOW.md) mục 6.
 - Thuật ngữ (ĐVCS, Nhà máy SX, `A00`, PO, KHXH…): [Tổng quan](../PROJECT_OVERVIEW.md).
-- Dòng **Nguồn** nhắc `docs/phases/…`, `docs/adr/…`, `docs/thiet-ke/…`: các file đó đã xóa ngày 19/10/2026 sau khi chuyển nội dung còn hiệu lực vào bộ tài liệu; cần đọc bản gốc thì `git show 98d19db:<đường dẫn>`. Comment trong code trích "ADR 00xx mục …": tra mục tương ứng ở bảng tra ADR cuối file.
+- Dòng **Nguồn** nhắc `docs/phases/…`, `docs/adr/…`, `docs/thiet-ke/…`: các file đó đã xóa ngày 19/10/2026 sau khi chuyển nội dung còn hiệu lực vào bộ tài liệu; cần đọc bản gốc thì `git show 98d19db:<đường dẫn>`. Comment trong code trích "quyết định X.Y": số mục của file này (đổi từ "ADR 00xx" ở task T1, 21/10/2026). Migration đã chạy không sửa nên comment trong `backend/migrations` còn trích "ADR 00xx": tra bảng tra ADR cuối file.
 
 ## 1. Nền tảng và công nghệ
 
@@ -724,19 +724,19 @@ Màn hình, bảng, API: [Cắt](15-cat.md). Kế hoạch, câu hỏi đã chố
 | ADR | Tên | Trạng thái ADR | Mục trong file này | Phần không còn hiệu lực |
 |---|---|---|---|---|
 | 0001 | Kiến trúc nền tảng | Accepted | 1.1, 1.2, 2.1, 2.2, 3.1 | Mục 4 (Demo chỉ Role × Menu + lọc nhà máy): đã đủ 5 lớp theo ADR 0005 |
-| 0002 | Phân quyền theo `BranchCode` | Accepted, bị ADR 0013 thay một phần | 3.2, 3.3, 3.4 | "Nhà máy" nay là ĐVCS (ADR 0013); `A00` không còn đọc tất cả vô điều kiện mà theo phạm vi (ADR 0005); danh mục ĐVCS theo BRAVO, không thêm tay ở màn Quản trị |
-| 0003 | Công nghệ cho Demo | Accepted | 1.3–1.6, 6.6, 12.1, 12.2 | Mantine 7 (thực tế 9); `vite-plugin-pwa`; font Be Vietnam Pro, Inter; màu denim, navy, nút vàng gold; database `MES_Demo`; bcrypt dự phòng; trang chọn nhà máy dạng thẻ |
+| 0002 | Phân quyền theo `BranchCode` | Accepted, bị ADR 0013 thay một phần | 3.2, 3.3, 3.4; nhắc ở 3.1, 6.1 | "Nhà máy" nay là ĐVCS (ADR 0013); `A00` không còn đọc tất cả vô điều kiện mà theo phạm vi (ADR 0005); danh mục ĐVCS theo BRAVO, không thêm tay ở màn Quản trị |
+| 0003 | Công nghệ cho Demo | Accepted | 1.3–1.6, 6.6, 12.1, 12.2; nhắc ở 1.2 | Mantine 7 (thực tế 9); `vite-plugin-pwa`; font Be Vietnam Pro, Inter; màu denim, navy, nút vàng gold; database `MES_Demo`; bcrypt dự phòng; trang chọn nhà máy dạng thẻ |
 | 0004 | Phiên đăng nhập, trần quyền quản trị | Accepted, bị ADR 0014 thay một phần | 4.1–4.4, 5.3 | Tách nhiệm vụ không còn áp cho tài khoản `admin` (vẫn áp cho vai trò ADMIN) |
-| 0005 | Phạm vi (L3), cột (L4), ngoại lệ (L5) | Accepted | 3.5–3.9, 4.4 | Ví dụ `DemoPo`, migration `MES_Demo/0002` (đã bỏ cùng màn PO demo); chiều `LINE` theo cây tổ chức (`OrgType = 'LINE'`, cả nhánh): nay là chiều giá trị theo mã chuyền (phase 5.10, mục 3.5, 6.7) |
-| 0006 | Module Đơn hàng | Accepted, bị ADR 0013 thay một phần | 3.7, 3.8, 3.10, 3.11, 7.1, 7.5 | Đơn hàng, PO lọc theo nhà máy (nay dùng chung, mục 7.2); khóa ngoại ghép kế hoạch → đơn, PO → đơn (nay theo `Id`); dữ liệu chỉ do seed sinh (nay nạp từ BRAVO) |
+| 0005 | Phạm vi (L3), cột (L4), ngoại lệ (L5) | Accepted | 3.5–3.9, 4.4; nhắc ở 3.3, 3.4, 4.3 | Ví dụ `DemoPo`, migration `MES_Demo/0002` (đã bỏ cùng màn PO demo); chiều `LINE` theo cây tổ chức (`OrgType = 'LINE'`, cả nhánh): nay là chiều giá trị theo mã chuyền (phase 5.10, mục 3.5, 6.7) |
+| 0006 | Module Đơn hàng | Accepted, bị ADR 0013 thay một phần | 3.7, 3.8, 3.10, 3.11, 7.1, 7.5; nhắc ở 3.9, 7.2 | Đơn hàng, PO lọc theo nhà máy (nay dùng chung, mục 7.2); khóa ngoại ghép kế hoạch → đơn, PO → đơn (nay theo `Id`); dữ liệu chỉ do seed sinh (nay nạp từ BRAVO) |
 | 0007 | Đồng bộ qua database trung gian | Accepted | 1.2, 8.1–8.5 | "Database trung gian ở máy khác thì sửa `linkSyncSources`": nay khai `DB_TRUNGGIAN_SERVER`; "ánh xạ sang `MES_Order` làm sau": đã có nạp tăng dần (mục 7.7) |
 | 0008 | Lưới nhập kiểu bảng tính | Accepted | 11.1 | – |
-| 0009 | Module May, Kế hoạch chuẩn bị SX | Accepted | 9.1–9.5 | – |
-| 0010 | Cây Nhà máy → Xưởng → Chuyền | Accepted, bị ADR 0013 và phase 5.10 thay một phần | 6.4, 6.5 | Cấp gốc nay gọi là ĐVCS; cấp Xưởng, Chuyền, chuyển chuyền giữa xưởng, phạm vi cả xưởng: thay bằng bộ phận tích "Xưởng sản xuất" (mục 6.7) |
-| 0011 | Lưới xem dữ liệu, lọc theo cột | Accepted (Tech Lead duyệt 19/10/2026) | 11.2–11.6, 7.8 | Ô tìm ở cây xưởng, chuyền của Danh mục hệ thống (mục 5): danh mục đó đã bỏ |
-| 0012 | Module Nhân sự | Accepted | 10.1–10.6 | Cây phòng ban tách hẳn khỏi cây sản xuất: nay bộ phận tích "Xưởng sản xuất" là chuyền may (mục 6.7, 10.2) |
-| 0013 | Đơn vị cơ sở, Nhà máy SX, đơn hàng dùng chung | Accepted (Tech Lead duyệt 19/10/2026) | 6.1–6.3, 6.6, 7.2–7.8, 8.1, 8.4, 8.5, 15.2 | Mục 11 phần nhiều ĐVCS cùng đưa một PO vào kế hoạch: từ phase 5.17 mỗi PO một kế hoạch (mục 15.2), chỉ còn ở dữ liệu cũ; mục 3 (tích Nhà máy SX theo người, `productionFactoryIds`): thay bằng mục 11; mục 4 "PO chỉ thêm ở ĐVCS của đơn" (`GetOptions.sameBranch`): thay bằng mục 11; Nhà máy SX tạm cùng mã chi nhánh nhận đơn: thay bằng theo OSM (mục 9), trừ máy demo chưa có OSM; mục 10 phần Phân bổ PO chỉ Xem, Xuất file, đọc bảng chép qua lớp đồng bộ (`SourceFeedService.osmPo*`, không qua `BaseRepository`), 12 cột đăng ký: thay bằng bảng làm việc `PoAllocation`, Nhà máy SX nhập tay (phase 5.10, mục 7.9) |
-| 0014 | Vai trò Toàn quyền | Accepted (Tech Lead duyệt 19/10/2026) | 5.1–5.3 | – |
+| 0009 | Module May, Kế hoạch chuẩn bị SX | Accepted | 9.1–9.5; nhắc ở 1.2 | – |
+| 0010 | Cây Nhà máy → Xưởng → Chuyền | Accepted, bị ADR 0013 và phase 5.10 thay một phần | 6.4, 6.5; nhắc ở 4.2, 4.3 | Cấp gốc nay gọi là ĐVCS; cấp Xưởng, Chuyền, chuyển chuyền giữa xưởng, phạm vi cả xưởng: thay bằng bộ phận tích "Xưởng sản xuất" (mục 6.7) |
+| 0011 | Lưới xem dữ liệu, lọc theo cột | Accepted (Tech Lead duyệt 19/10/2026) | 11.2–11.6, 7.8; nhắc ở 3.7 | Ô tìm ở cây xưởng, chuyền của Danh mục hệ thống (mục 5): danh mục đó đã bỏ |
+| 0012 | Module Nhân sự | Accepted | 10.1–10.6; nhắc ở 1.2, 3.4 | Cây phòng ban tách hẳn khỏi cây sản xuất: nay bộ phận tích "Xưởng sản xuất" là chuyền may (mục 6.7, 10.2) |
+| 0013 | Đơn vị cơ sở, Nhà máy SX, đơn hàng dùng chung | Accepted (Tech Lead duyệt 19/10/2026) | 6.1–6.3, 6.6, 7.2–7.8, 8.1, 8.4, 8.5, 15.2; nhắc ở 3.4, 3.6, 3.9, 4.2, 6.4, 7.1 | Mục 11 phần nhiều ĐVCS cùng đưa một PO vào kế hoạch: từ phase 5.17 mỗi PO một kế hoạch (mục 15.2), chỉ còn ở dữ liệu cũ; mục 3 (tích Nhà máy SX theo người, `productionFactoryIds`): thay bằng mục 11; mục 4 "PO chỉ thêm ở ĐVCS của đơn" (`GetOptions.sameBranch`): thay bằng mục 11; Nhà máy SX tạm cùng mã chi nhánh nhận đơn: thay bằng theo OSM (mục 9), trừ máy demo chưa có OSM; mục 10 phần Phân bổ PO chỉ Xem, Xuất file, đọc bảng chép qua lớp đồng bộ (`SourceFeedService.osmPo*`, không qua `BaseRepository`), 12 cột đăng ký: thay bằng bảng làm việc `PoAllocation`, Nhà máy SX nhập tay (phase 5.10, mục 7.9) |
+| 0014 | Vai trò Toàn quyền | Accepted (Tech Lead duyệt 19/10/2026) | 5.1–5.3; nhắc ở 4.3 | – |
 
 ## Quyết định chưa khớp code
 

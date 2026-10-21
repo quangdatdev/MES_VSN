@@ -249,7 +249,7 @@ export class ShipmentService {
 
   /**
    * Popup "Chọn mã hàng": đơn hàng kèm số lượng đã lập kế hoạch và còn lại. Chỉ đơn hàng có nhà máy SX thuộc ĐVCS của phiên
-   * theo danh mục Nhà máy SX (ADR 0013 mục 11), đơn hàng có Chi nhánh FOB nào cũng được; đơn chưa chọn nhà máy SX không hiện. Dữ liệu đọc từ Thông tin đơn hàng nên đi qua
+   * theo danh mục Nhà máy SX (quyết định 6.3, 7.3), đơn hàng có Chi nhánh FOB nào cũng được; đơn chưa chọn nhà máy SX không hiện. Dữ liệu đọc từ Thông tin đơn hàng nên đi qua
    * chính sách cột của tài nguyên đó (review 5.1 #4); SL còn lại suy ra được SL đơn hàng nên theo cùng mức.
    * Đơn đã có kế hoạch ở ĐVCS phiên không hiện: thêm số lượng bằng cách thêm PO vào kế hoạch đó (quyết định 15.1).
    */
@@ -358,7 +358,7 @@ export class ShipmentService {
    * Lưới "PO của kế hoạch" dưới danh sách kế hoạch (task 5.9.14): PO đã chọn khi lập kế hoạch và số lượng đã xác nhận, chưa
    * xác nhận. Xác nhận làm ở Cập nhật tỷ lệ cắt, theo cả PO, nên số là của cả PO (dữ liệu lập trước phase 5.17 có PO nằm trong nhiều
    * kế hoạch).
-   * Dữ liệu PO đi qua phạm vi và chính sách cột của order.po (ADR 0006; controller khai báo @FieldResource('order.po')).
+   * Dữ liệu PO đi qua phạm vi và chính sách cột của order.po (quyết định 3.7; controller khai báo @FieldResource('order.po')).
    * `hiddenCount`: PO của kế hoạch nằm ngoài phạm vi người dùng được xem ở order.po.
    */
   async posOfPlan(user: AuthUser, planId: number) {

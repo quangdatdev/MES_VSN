@@ -4,7 +4,7 @@ import { SyncDbLifecycle, syncDbProvider } from './sync.db';
 import { SyncRepository } from './sync.repository';
 import { SyncService } from './sync.service';
 
-/** Đồng bộ dữ liệu từ hệ thống ngoài qua database trung gian vào MES_Sync (ADR 0007, Phase 5.2). */
+/** Đồng bộ dữ liệu từ hệ thống ngoài qua database trung gian vào MES_Sync (quyết định 8.1, Phase 5.2). */
 @Module({
   controllers: [SyncController],
   providers: [syncDbProvider, SyncDbLifecycle, SyncRepository, SyncService],

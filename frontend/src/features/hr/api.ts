@@ -5,7 +5,7 @@ import type { Paged } from '../../lib/types';
 import { useCan } from '../../shell/permissions';
 import type { Department, DepartmentOptions, EmployeeCard, EmployeeDetail, EmployeeOptions, LineHolders, ManagerOption } from './types';
 
-// Dữ liệu nhân sự dùng chung toàn công ty (ADR 0012): khóa truy vấn không kèm nhà máy của phiên.
+// Dữ liệu nhân sự dùng chung toàn công ty (quyết định 10.4): khóa truy vấn không kèm nhà máy của phiên.
 export const HR_KEYS = {
   tree: (all: boolean) => ['hr', 'departments', 'tree', all] as const,
   departments: ['hr', 'departments'] as const,

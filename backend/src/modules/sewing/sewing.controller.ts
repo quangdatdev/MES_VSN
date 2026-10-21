@@ -20,7 +20,7 @@ export class PrepController {
   @Get() @RequirePermission('order.prep:view')
   list(@CurrentUser() u: AuthUser, @Query() q: PrepListQuery) { return this.service.list(u, q); }
 
-  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), ADR 0011
+  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), quyết định 11.3
   @Get('values') @RequirePermission('order.prep:view')
   values(@CurrentUser() u: AuthUser, @Query() q: PrepValuesQuery) { return this.service.values(u, q); }
 

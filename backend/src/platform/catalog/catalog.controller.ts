@@ -30,7 +30,7 @@ export class CatalogController {
   @Get() @RequirePermission('admin.catalog:view')
   overview() { return this.catalogs.overview(); }
 
-  // ---- Nhà máy SX, mỗi nhà máy thuộc một đơn vị cơ sở (ADR 0013) ----
+  // ---- Nhà máy SX, mỗi nhà máy thuộc một đơn vị cơ sở (quyết định 6.2) ----
   @Get('factories') @RequirePermission('admin.catalog:view')
   factories(@Query() q: CatalogItemsQuery) { return this.catalogs.factories(q.q); }
 

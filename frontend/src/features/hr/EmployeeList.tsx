@@ -28,7 +28,7 @@ interface Props {
 
 /**
  * Danh sách nhân viên dạng thẻ bên dưới cây phòng ban: tìm (mã, mã chấm công, tên, email, chức danh; không dấu), lọc chức danh,
- * tình trạng; mới tạo lên trước, 20 thẻ mỗi trang. Lọc, tìm chạy trên máy chủ (ADR 0012 mục 10).
+ * tình trạng; mới tạo lên trước, 20 thẻ mỗi trang. Lọc, tìm chạy trên máy chủ (quyết định 10.6).
  */
 export function EmployeeList({ filter, ready, onFilter, scopeName, titles, selectedId, onSelect, onClear }: Props) {
   const canCreate = useCan('hr.employee:create');

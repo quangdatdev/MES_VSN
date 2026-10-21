@@ -36,7 +36,7 @@ export interface SelectBranchResponse {
   branch: Branch;
 }
 
-/** Nhà máy SX thuộc đơn vị cơ sở của phiên (ADR 0013 mục 11) */
+/** Nhà máy SX thuộc đơn vị cơ sở của phiên (quyết định 6.3) */
 export interface ProductionFactory {
   code: string;
   name: string;

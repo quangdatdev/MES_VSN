@@ -10,7 +10,7 @@ import type { OrderDb } from '../src/modules/order/order.types';
 import { MAX_FILTER_VALUES, parseColumnFilters, presentValues, type FilterSpec } from '../src/platform/data/column-filter';
 import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 
-// Phase 5.6 – lưới xem dữ liệu: 100 dòng đầu theo ngày tạo, lọc theo giá trị của cột trên máy chủ (ADR 0011).
+// Phase 5.6 – lưới xem dữ liệu: 100 dòng đầu theo ngày tạo, lọc theo giá trị của cột trên máy chủ (quyết định 11.2, 11.4).
 
 describe('Lọc theo cột: đọc tham số cf', () => {
   const spec: FilterSpec = {
@@ -97,7 +97,7 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
     await id('ShipmentPlan', { PlanNo: 'TEST-CF-P2', SalesOrderId: other, CustomerName: CUST.other, StyleCode: STYLE, ProductName: 'Áo test', PoBuyDate: 'TEST-CF', PlanQty: 100, ShipDate: '2027-12-31', PlannerName: 'Test', StatusCode: 'PLANNED', BranchCode: 'A02' });
     await id('ShipmentPlanLine', { ShipmentPlanId: planId, LineCode: 'A01-L03', Qty: 100, AvgOutput: 100, StartDate: '2027-11-02', ProductionDays: 1, OffDays: 0, EndDate: '2027-11-02', StatusCode: 'PLANNED', SortOrder: 0, BranchCode: 'A01' });
     const poId = await id('SalesOrderPo', { SalesOrderId: first, PoCode: 'TEST-CF-PO', PoNumber: 'TEST-CF-PO', CustomerName: CUST.a, StyleCode: STYLE, Qty: 100, ShipDate: '2027-12-31', StatusCode: 'DRAFT', BranchCode: 'A01', CreatedAt: new Date('2099-01-05T00:00:00Z') });
-    // Màn Tỷ lệ cắt chỉ có PO nằm trong kế hoạch xuất hàng của ĐVCS đang làm việc (ADR 0013 mục 11)
+    // Màn Tỷ lệ cắt chỉ có PO nằm trong kế hoạch xuất hàng của ĐVCS đang làm việc (quyết định 7.4)
     await id('ShipmentPlanPo', { ShipmentPlanId: planId, SalesOrderPoId: poId, BranchCode: 'A01' });
   }
 
@@ -123,7 +123,7 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
   it('mặc định 100 dòng đầu, mới tạo lên trước (dữ liệu chép từ BRAVO cùng thời điểm nạp thì theo Id giảm dần)', async () => {
     const body = await list(admin, '/api/v1/order/sales-orders');
     expect(body.pageSize).toBe(100);
-    // Đơn hàng dùng chung toàn công ty (ADR 0013): có cả đơn của A02 khi đang ở A01
+    // Đơn hàng dùng chung toàn công ty (quyết định 7.2): có cả đơn của A02 khi đang ở A01
     expect(body.items.slice(0, 5).map((i: any) => i.orderNo)).toEqual(['TEST-CF-X', 'TEST-CF-1', 'TEST-CF-2', 'TEST-CF-3', 'TEST-CF-4']);
     const times = body.items.map((i: any) => new Date(i.createdAt).getTime());
     expect(times).toEqual([...times].sort((a, b) => b - a));
@@ -146,7 +146,7 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
     expect(await nos(`cf=${cf({ season: { in: ['FW26', null] }, customerName: { in: [CUST.b] } })}`)).toEqual(['TEST-CF-2', 'TEST-CF-3']);
     // Ngày tạo lọc theo ngày giờ Việt Nam
     expect(await nos(`cf=${cf({ createdAt: { in: ['2099-01-01'] } })}`)).toEqual(['TEST-CF-3', 'TEST-CF-4']);
-    // Đơn hàng dùng chung (ADR 0013): đơn của ĐVCS khác lọc ra được
+    // Đơn hàng dùng chung (quyết định 7.2): đơn của ĐVCS khác lọc ra được
     expect(await nos(`cf=${cf({ customerName: { in: [CUST.other] } })}`)).toEqual(['TEST-CF-X']);
     const total = (await list(planner, `/api/v1/order/sales-orders?style=${STYLE}&cf=${cf({ customerName: { in: [CUST.a] } })}`)).total;
     expect(total).toBe(2);
@@ -155,7 +155,7 @@ describe('Lọc theo cột và lưới 100 dòng theo ngày tạo (cần SQL Ser
   it('giá trị cho popup lấy từ DB trong phạm vi được xem, theo các bộ lọc khác, tìm thu hẹp được', async () => {
     const values = async (t: string, q: string) => (await list(t, `/api/v1/order/sales-orders/values?style=${STYLE}&${q}`)) as { values: unknown[]; truncated: boolean };
     const all = await values(planner, 'field=customerName');
-    // Đơn hàng dùng chung (ADR 0013): có cả khách của đơn ĐVCS khác
+    // Đơn hàng dùng chung (quyết định 7.2): có cả khách của đơn ĐVCS khác
     expect(all.values).toEqual(expect.arrayContaining([CUST.a, CUST.b, CUST.other]));
     expect(all.truncated).toBe(false);
     // Kế hoạch xuất hàng vẫn theo ĐVCS: ở A01 không thấy khách của kế hoạch A02; A00 xem mọi ĐVCS

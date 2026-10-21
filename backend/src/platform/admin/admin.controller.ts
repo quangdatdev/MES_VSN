@@ -121,7 +121,7 @@ export class AdminController {
   @Get('menus') @RequirePermission('admin.permission:view')
   listMenus() { return this.access.listMenus(); }
 
-  // ---- Đơn vị cơ sở (ADR 0013) ----
+  // ---- Đơn vị cơ sở (quyết định 6.1) ----
   @Get('branches') @RequirePermission('admin.branch:view')
   listBranches() { return this.branches.list(); }
 

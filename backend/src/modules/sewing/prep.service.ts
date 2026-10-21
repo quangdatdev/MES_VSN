@@ -132,7 +132,7 @@ export class PrepService {
    */
   private readonly syncing = new Map<string, Promise<void>>();
 
-  /** Chép dàn chuyền của nhà máy đang làm việc (A00: mọi nhà máy) trước khi đọc, để màn luôn theo Xếp chuyền (ADR 0009). */
+  /** Chép dàn chuyền của nhà máy đang làm việc (A00: mọi nhà máy) trước khi đọc, để màn luôn theo Xếp chuyền (quyết định 9.2). */
   private sync(user: AuthUser): Promise<void> {
     const scope = scopeOf(user);
     const key = scope.isAggregate ? '*' : scope.branchCode;

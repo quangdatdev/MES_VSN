@@ -3,7 +3,7 @@ import { env } from '../../config/env';
 import { createDb } from '../../platform/database/db';
 import type { SewingDatabase, SewingDb } from './sewing.types';
 
-/** Module May có database riêng (MES_Sewing, ADR 0009); kết nối thuộc về module. */
+/** Module May có database riêng (MES_Sewing, quyết định 9.1); kết nối thuộc về module. */
 export const SEWING_DB = 'SEWING_DB';
 export const sewingDbProvider = { provide: SEWING_DB, useFactory: () => createDb<SewingDatabase>(env.db.sewingName) };
 

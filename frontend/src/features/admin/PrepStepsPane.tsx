@@ -45,7 +45,7 @@ const same = (a: Row, b: Row) =>
   a.name.trim() === b.name.trim() && a.planDays === b.planDays && a.performer.trim() === b.performer.trim() && a.dataSource.trim() === b.dataSource.trim() && a.sortOrder === b.sortOrder && a.active === b.active;
 
 /**
- * Danh mục "Cấu hình chuẩn bị SX" (module May, ADR 0009): các bước chuẩn bị trước ngày vào chuyền, theo thứ tự cột ở màn
+ * Danh mục "Cấu hình chuẩn bị SX" (module May, quyết định 9.3): các bước chuẩn bị trước ngày vào chuyền, theo thứ tự cột ở màn
  * Kế hoạch chuẩn bị SX. Sửa thẳng trên bảng như bảng tính (dán được từ Excel) rồi Lưu thay đổi một lần.
  */
 export function PrepStepsPane() {

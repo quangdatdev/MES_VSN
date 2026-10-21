@@ -63,7 +63,7 @@ export async function runSeed({
   const bump = (k: string, n = 1) => (stats[k] = (stats[k] ?? 0) + n);
 
   try {
-    // 1. Đơn vị cơ sở (ADR 0013): đơn vị tổng hợp luôn có; ĐVCS mẫu chỉ khi có dữ liệu mẫu; rồi chép theo danh mục chi nhánh
+    // 1. Đơn vị cơ sở (quyết định 6.1): đơn vị tổng hợp luôn có; ĐVCS mẫu chỉ khi có dữ liệu mẫu; rồi chép theo danh mục chi nhánh
     // BRAVO nếu MES_Sync đã đồng bộ (thêm mã còn thiếu, tên theo BRAVO)
     // ĐVCS tạo trong lần chạy này: chưa ai thu hồi được, gán cho cả tài khoản mẫu đã có (bước 10)
     const createdBranches = new Set<string>();
@@ -95,7 +95,7 @@ export async function runSeed({
     const newRoles = new Set<number>();
     for (const [i, r] of roles.entries()) {
       const found = await db.selectFrom('SysRole').select(['Id', 'IsSystem']).where('Code', '=', r.code).executeTakeFirst();
-      // Toàn quyền chưa có thì tạo riêng ở bước 9b, trong một transaction cùng quyền, chính sách cột, phép gán, nhật ký (ADR 0014).
+      // Toàn quyền chưa có thì tạo riêng ở bước 9b, trong một transaction cùng quyền, chính sách cột, phép gán, nhật ký (quyết định 5.2).
       // Có rồi mà do người dùng tự tạo trùng mã thì không đụng tới
       if (r.code === FULL_ACCESS_ROLE && !found?.IsSystem) {
         if (found) console.warn(`Đã có vai trò ${FULL_ACCESS_ROLE} do người dùng tạo (không phải vai trò hệ thống): seed không cấp quyền, không gán vai trò này. Đổi mã vai trò đó rồi chạy lại seed.`);
@@ -218,7 +218,7 @@ export async function runSeed({
       bump('menu');
     }
 
-    // 5. Ma trận Role × quyền: chỉ cho vai trò/quyền mới, trừ khi --sync-matrix. Toàn quyền tính riêng (ADR 0014): chưa có thì
+    // 5. Ma trận Role × quyền: chỉ cho vai trò/quyền mới, trừ khi --sync-matrix. Toàn quyền tính riêng (quyết định 5.1, 5.2): chưa có thì
     // tạo ở bước 9b; có rồi thì nhận quyền mới, quyền quản trị chỉ khi ADMIN đang có (vòng ADMIN chạy trước trong cùng tài nguyên)
     for (const r of resources) {
       const perRole: [string, string][] = [...ROLE_ORDER.map((code, idx): [string, string] => [code, r.matrix[idx] ?? '']), [FULL_ACCESS_ROLE, fullAccessLetters(r)]];
@@ -238,7 +238,7 @@ export async function runSeed({
       }
     }
 
-    // 6. Cây tổ chức: chỉ nút gốc FACTORY của mỗi ĐVCS (Code cấm sửa; Path = '/' + Code + '/'; ADR 0010), phạm vi theo ĐVCS
+    // 6. Cây tổ chức: chỉ nút gốc FACTORY của mỗi ĐVCS (Code cấm sửa; Path = '/' + Code + '/'; quyết định 6.4), phạm vi theo ĐVCS
     // dùng nút này. Chuyền may là bộ phận tích "Xưởng sản xuất" ở MES_Hr (phase 5.10): seedHr nạp xưởng, chuyền mẫu; không tạo
     // nút Xưởng, Chuyền ở SysOrgUnit nữa (nút cũ trên database đã cài giữ nguyên, MES_Core/0009 ngừng dùng).
     const orgId = new Map<string, number>();
@@ -279,7 +279,7 @@ export async function runSeed({
       bump('ca làm việc');
     }
 
-    // 6c. Nhà máy SX mẫu (ADR 0013): chỉ khi có dữ liệu mẫu, chỉ thêm mã còn thiếu, ĐVCS của nhà máy phải đang có
+    // 6c. Nhà máy SX mẫu (quyết định 6.2): chỉ khi có dữ liệu mẫu, chỉ thêm mã còn thiếu, ĐVCS của nhà máy phải đang có
     if (sampleData) {
       for (const [i, f] of productionFactories.entries()) {
         if (!branchId.has(f.branch)) continue;
@@ -374,7 +374,7 @@ export async function runSeed({
       }
     }
 
-    // 9b. Vai trò Toàn quyền (ADR 0014): tạo một lần, trong một transaction
+    // 9b. Vai trò Toàn quyền (quyết định 5.2): tạo một lần, trong một transaction
     // Tài khoản được gán: như bước 10 (máy không dữ liệu mẫu chỉ có admin). --sync-matrix thì bước 10 gán (reset-demo xóa phép gán trước)
     const accounts = sampleData ? users : users.filter((x) => x.username === 'admin');
     const boot = await db.transaction().execute((trx) => bootstrapFullAccess(trx, { by, accounts, assign: !syncMatrix }));
@@ -388,7 +388,7 @@ export async function runSeed({
     const fullId = await db.selectFrom('SysRole').select('Id').where('Code', '=', FULL_ACCESS_ROLE).where('IsSystem', '=', true).executeTakeFirst();
     if (fullId) roleId.set(FULL_ACCESS_ROLE, fullId.Id);
 
-    /** Gán vai trò không kèm phạm vi (vai trò gán thêm, ADR 0014); có rồi thì thôi. Trả true khi vừa gán */
+    /** Gán vai trò không kèm phạm vi (vai trò gán thêm, quyết định 5.2); có rồi thì thôi. Trả true khi vừa gán */
     const addRole = async (uid: number, code: string, executor: Kysely<CoreDatabase> = db) => {
       const rid = roleId.get(code);
       if (rid === undefined) {
@@ -482,7 +482,7 @@ export async function runSeed({
             bump('phạm vi');
           }
         }
-        // Vai trò gán thêm (Toàn quyền, ADR 0014), cả khi --sync-matrix: cùng điều kiện với lần tạo vai trò, không nới quyền của
+        // Vai trò gán thêm (Toàn quyền, quyết định 5.2), cả khi --sync-matrix: cùng điều kiện với lần tạo vai trò, không nới quyền của
         // tài khoản quản trị đã bị giới hạn (vai trò chính có phạm vi) hay vô hiệu hóa
         for (const rc of u.extraRoles ?? []) {
           const blocked = await extraRoleBlocked(trx, row.Id, u.role);
@@ -550,7 +550,7 @@ export async function runSeed({
       // 12. Danh mục Cấu hình chuẩn bị SX trong MES_Sewing: chỉ thêm bước còn thiếu theo mã, không sửa bước đã có.
       // Máy chưa tạo MES_Sewing thì bỏ qua (không làm hỏng phần đã seed của MES_Core, MES_Order)
       const sewing = (await hasSewingDb()) ? createDb<SewingDatabase>(env.db.sewingName) : null;
-      if (!sewing) console.warn(`Chưa có database ${env.db.sewingName}: bỏ qua danh mục Cấu hình chuẩn bị SX (xem docs/thiet-ke/db-sewing.md).`);
+      if (!sewing) console.warn(`Chưa có database ${env.db.sewingName}: bỏ qua danh mục Cấu hình chuẩn bị SX (xem docs/update_docs/07-may.md).`);
       else try {
         const have = new Set((await sewing.selectFrom('PrepStep').select('Code').execute()).map((r) => r.Code));
         for (const [i, st] of prepSteps.entries()) {
@@ -585,7 +585,7 @@ export async function runSeed({
 }
 
 /**
- * Lý do tài khoản không nhận vai trò gán thêm không phạm vi (ADR 0014), hoặc null khi được: phải đang hoạt động và đang giữ
+ * Lý do tài khoản không nhận vai trò gán thêm không phạm vi (quyết định 5.2), hoặc null khi được: phải đang hoạt động và đang giữ
  * vai trò chính không kèm phạm vi, còn hiệu lực. Tài khoản quản trị đã bị cố ý hạ quyền thì không nhận lại quyền qua seed.
  */
 async function extraRoleBlocked(db: Kysely<CoreDatabase>, userId: number, mainRole: string): Promise<string | null> {
@@ -605,7 +605,7 @@ async function extraRoleBlocked(db: Kysely<CoreDatabase>, userId: number, mainRo
   return main ? null : `tài khoản không còn giữ ${mainRole} không giới hạn`;
 }
 
-/** ADMIN đang có quyền này trong DB (quyền quản trị của Toàn quyền không vượt ADMIN, ADR 0014) */
+/** ADMIN đang có quyền này trong DB (quyền quản trị của Toàn quyền không vượt ADMIN, quyết định 5.1) */
 async function adminRoleHas(db: Kysely<CoreDatabase>, permissionId: number) {
   const row = await db
     .selectFrom('SysRolePermission as rp')
@@ -618,8 +618,8 @@ async function adminRoleHas(db: Kysely<CoreDatabase>, permissionId: number) {
 }
 
 /**
- * Tạo vai trò Toàn quyền một lần (ADR 0014), trong transaction của bên gọi: vai trò, quyền (mọi hành động nghiệp vụ; quyền quản
- * trị chỉ những quyền ADMIN đang có trong DB, để người giữ ADMIN gán, sửa được vai trò này: trần quyền ADR 0004), chính sách cột,
+ * Tạo vai trò Toàn quyền một lần (quyết định 5.2), trong transaction của bên gọi: vai trò, quyền (mọi hành động nghiệp vụ; quyền quản
+ * trị chỉ những quyền ADMIN đang có trong DB, để người giữ ADMIN gán, sửa được vai trò này: trần quyền, quyết định 4.2), chính sách cột,
  * phép gán cho tài khoản khai `extraRoles`, nhật ký, tăng phiên bản quyền. Lỗi giữa chừng thì không còn gì, lần seed sau làm lại.
  * Chỉ gán khi tài khoản đang hoạt động và đang giữ vai trò chính (ADMIN) không kèm phạm vi, còn hiệu lực: tài khoản quản trị đã
  * bị hạ quyền thì không nhận lại quyền qua đường này. Vai trò đã có thì không làm gì: quản trị gỡ rồi thì seed chạy lại không gán lại.

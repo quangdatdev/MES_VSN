@@ -9,7 +9,7 @@ import { api } from '../lib/api';
 import { useSession } from '../store/session';
 import { theme } from '../theme/theme';
 
-// Nhà máy SX (ADR 0013 mục 11, review 5.9.13 M2): ĐVCS của nhà máy quyết định đơn nào lập kế hoạch được ở đơn vị đó, nên thêm,
+// Nhà máy SX (quyết định 4.2, 6.2, review 5.9.13 M2): ĐVCS của nhà máy quyết định đơn nào lập kế hoạch được ở đơn vị đó, nên thêm,
 // đổi ĐVCS, bật/tắt nhà máy cần thêm quyền sửa phân quyền. Chỉ có quyền sửa danh mục thì vẫn sửa được tên.
 // Phase 5.10: không còn khung Chuyền may; Nhà máy SX là khung mặc định, danh sách ĐVCS đi kèm tổng quan danh mục.
 

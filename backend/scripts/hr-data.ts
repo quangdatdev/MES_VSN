@@ -172,7 +172,7 @@ export async function seedHrIfReady({ sample = true }: { sample?: boolean } = {}
   if (state !== 'ready') {
     console.warn(
       state === 'missing'
-        ? `Chưa có database ${env.db.hrName} (hoặc tài khoản chưa được cấp quyền): bỏ qua danh mục, dữ liệu nhân sự (xem docs/thiet-ke/db-hr.md).`
+        ? `Chưa có database ${env.db.hrName} (hoặc tài khoản chưa được cấp quyền): bỏ qua danh mục, dữ liệu nhân sự (xem docs/update_docs/08-nhan-su.md).`
         : `Database ${env.db.hrName} chưa chạy migration: bỏ qua danh mục, dữ liệu nhân sự. Chạy npm run migrate rồi seed lại.`,
     );
     return {};

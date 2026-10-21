@@ -365,7 +365,7 @@ function ItemDialog({ catalog, item, onClose }: { catalog: MesCatalog; item: Cat
   );
 }
 
-// ---------------- Nhà máy SX (ADR 0013) ----------------
+// ---------------- Nhà máy SX (quyết định 6.2) ----------------
 
 const STOP_FACTORY = 'Không còn trong ô chọn Nhà máy SX của đơn hàng. Đơn hàng của nhà máy này không còn hiện ở popup Chọn mã hàng khi lập kế hoạch xuất hàng. Đơn hàng đã chọn nhà máy này giữ nguyên.';
 
@@ -376,7 +376,7 @@ const SCOPE_LOCKED = 'Nhà máy SX gắn đơn vị cơ sở quyết định đ�
 function FactoriesPane({ info }: { info: MesCatalog }) {
   const canCreate = useCan('admin.catalog:create');
   const canEdit = useCan('admin.catalog:update');
-  // Thêm, đổi ĐVCS, bật/tắt nhà máy đổi phạm vi lập kế hoạch: máy chủ đòi quyền sửa phân quyền (ADR 0013 mục 11)
+  // Thêm, đổi ĐVCS, bật/tắt nhà máy đổi phạm vi lập kế hoạch: máy chủ đòi quyền sửa phân quyền (quyết định 4.2, 6.2)
   const canScope = useCan('admin.permission:update');
   const [search, setSearch] = useState('');
   const [branch, setBranch] = useState<string | null>(null);
@@ -479,7 +479,7 @@ function FactoryDialog({ factory, canScope, branches, branchesLoading, defaultBr
     },
     validateInputOnBlur: true,
     validate: {
-      // Mã là tên nhà máy theo OSM (ADR 0013 mục 9): có dấu, khoảng trắng; đơn hàng lưu danh sách mã cách nhau dấu phẩy
+      // Mã là tên nhà máy theo OSM (quyết định 6.2, 7.6): có dấu, khoảng trắng; đơn hàng lưu danh sách mã cách nhau dấu phẩy
       code: (v) => (factory || /^[^,\p{C}]{1,100}$/u.test(v.trim()) ? null : 'Nhập mã, tối đa 100 ký tự, không có dấu phẩy'),
       name: (v) => (v.trim() ? null : 'Nhập tên nhà máy'),
       branchCode: (v) => (v || !canScope ? null : 'Chọn đơn vị cơ sở'),

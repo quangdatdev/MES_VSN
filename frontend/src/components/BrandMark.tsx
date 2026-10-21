@@ -9,7 +9,7 @@ interface Props {
 }
 
 /**
- * Logo Vietsun. Logo gốc chữ xám trên nền trắng đặc nên trên nền tối phải dùng bản chữ trắng, nền trong suốt.
+ * Logo Vietsun. Logo gốc nền trong suốt nhưng chữ xám, khó đọc trên nền tối nên ở đó phải dùng bản chữ trắng.
  * Chế độ auto đặt cả hai ảnh, CSS chọn theo chế độ màu: không nháy bản sáng lúc mở trang ở chế độ tối.
  * Ảnh bị ẩn có loading="lazy" nên trình duyệt không tải.
  */

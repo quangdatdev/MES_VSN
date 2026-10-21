@@ -18,7 +18,7 @@ export const isNotMigrated = (e: unknown) => sqlErrorNumbers(e).includes(NOT_MIG
 export const isConnectionLost = (e: unknown) => ['ELOGIN', 'ESOCKET', 'ETIMEOUT'].includes((e as { code?: string })?.code ?? '') || (e as Error)?.name === 'TimeoutError';
 const isDuplicate = (e: unknown) => sqlErrorNumbers(e).some((n) => DUPLICATE.has(n));
 
-/** Truy cập MES_Sync. Bảng hệ thống dùng chung toàn công ty, không theo nhà máy (ADR 0007). */
+/** Truy cập MES_Sync. Bảng hệ thống dùng chung toàn công ty, không theo nhà máy (quyết định 8.1). */
 @Injectable()
 export class SyncRepository {
   constructor(

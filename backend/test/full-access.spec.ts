@@ -7,10 +7,10 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.factory';
 import { env } from '../src/config/env';
 
-// Vai trò Toàn quyền (ADR 0014) gán cho tài khoản admin mẫu: ghi được nghiệp vụ, thấy cột giá; luật chung vẫn giữ (A00 chỉ đọc,
-// không tự đổi quyền của mình); người chỉ giữ ADMIN gán, gỡ được vai trò này (trần quyền quản trị, ADR 0004).
+// Vai trò Toàn quyền (quyết định 5.1, 5.2, 5.3) gán cho tài khoản admin mẫu: ghi được nghiệp vụ, thấy cột giá; luật chung vẫn giữ (A00 chỉ đọc,
+// không tự đổi quyền của mình); người chỉ giữ ADMIN gán, gỡ được vai trò này (trần quyền quản trị, quyết định 4.2).
 // Cần MES_Core, MES_Order đã migrate, seed.
-describe('Vai trò Toàn quyền (ADR 0014)', () => {
+describe('Vai trò Toàn quyền (quyết định 5.1–5.3)', () => {
   let app: INestApplication;
   const api = () => request(app.getHttpServer());
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });

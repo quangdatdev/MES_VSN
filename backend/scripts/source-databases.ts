@@ -1,4 +1,4 @@
-// Database nguồn mà lớp đồng bộ đọc view (ADR 0007): migrate.ts tạo synonym tới view, sync-gen.ts đọc cấu trúc cột của view.
+// Database nguồn mà lớp đồng bộ đọc view (quyết định 8.1): migrate.ts tạo synonym tới view, sync-gen.ts đọc cấu trúc cột của view.
 // Tên database, linked server lấy từ .env, không ghi trong code.
 import { env } from '../src/config/env';
 

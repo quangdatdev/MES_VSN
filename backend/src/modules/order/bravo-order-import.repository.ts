@@ -51,7 +51,7 @@ export interface AppliedImport {
 /**
  * Ghi đơn hàng nạp từ BRAVO vào MES_Order. Việc của hệ thống, không theo phiên người dùng: ghi mọi ĐVCS, BranchCode lấy từ
  * dữ liệu BRAVO (chi nhánh nhận đơn) hoặc từ đơn đã có, không từ client; CreatedBy để trống (đơn của hệ thống nguồn). Như
- * SewingPrepRepository (ADR 0009), không đi qua BaseRepository vì không có phạm vi phiên; người dùng xem, sửa qua repository
+ * SewingPrepRepository (quyết định 9.2), không đi qua BaseRepository vì không có phạm vi phiên; người dùng xem, sửa qua repository
  * của màn hình như mọi đơn khác. Không xóa dòng nào.
  * Kết nối riêng (một kết nối, câu dài tới 2 phút) để không chiếm pool của màn hình.
  */
@@ -77,7 +77,7 @@ export class BravoOrderImportRepository implements OnApplicationShutdown {
   }
 
   /**
-   * Cập nhật Nhà máy SX theo OSM (ADR 0013 mục 9) cho đơn nạp từ BRAVO: đơn có trong OSM nhận danh sách nhà máy theo OSM và
+   * Cập nhật Nhà máy SX theo OSM (quyết định 7.6) cho đơn nạp từ BRAVO: đơn có trong OSM nhận danh sách nhà máy theo OSM và
    * khóa sửa tay (IsFactoryFromOsm); đơn trước đó theo OSM mà nay OSM không còn thì mở khóa, giữ giá trị. Đơn chưa có trong OSM
    * giữ Nhà máy SX người dùng chọn. `factories`: ProductId → danh sách nhà máy (FtyName của OSM, chưa chuẩn hóa). Cùng khóa ứng
    * dụng với bước nạp đơn hàng: hai việc ghi SalesOrder không chạy chồng. `productIds`: chỉ xét các sản phẩm này (bài test dùng
@@ -127,7 +127,7 @@ export class BravoOrderImportRepository implements OnApplicationShutdown {
       // SQL Server không cho EXISTS đứng trong danh sách cột
       .select(sql<number>`CASE WHEN EXISTS (SELECT 1 FROM dbo.ShipmentPlanPo x WHERE x.SalesOrderPoId = p.Id) THEN 1 ELSE 0 END`.as('InPlan'))
       .where('o.SourceProductId', 'is not', null)
-      // PO tay của ĐVCS khác ĐVCS của đơn (ADR 0013 mục 11) không ghép với PO BRAVO cùng số: PO BRAVO thuộc ĐVCS nhận đơn,
+      // PO tay của ĐVCS khác ĐVCS của đơn (quyết định 7.7) không ghép với PO BRAVO cùng số: PO BRAVO thuộc ĐVCS nhận đơn,
       // BRAVO có PO đó thì thêm PO mới, PO tay giữ nguyên (review 5.9.13 L4)
       .where((eb) => eb.or([eb('p.CreatedBy', 'is', null), eb('p.BranchCode', '=', eb.ref('o.BranchCode'))]))
       .execute();

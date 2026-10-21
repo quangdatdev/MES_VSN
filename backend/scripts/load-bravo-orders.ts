@@ -1,8 +1,8 @@
 // Nạp lại toàn bộ đơn hàng vào MES_Order từ bảng chép BRAVO trong MES_Sync, thay cho đơn hàng giả của seed.
-// Chỉ đọc bảng chép của MES (schema bravo trong MES_Sync), không đọc database trung gian hay database BRAVO (ADR 0007).
+// Chỉ đọc bảng chép của MES (schema bravo trong MES_Sync), không đọc database trung gian hay database BRAVO (quyết định 8.1).
 // Ánh xạ dùng chung với bước nạp tăng dần sau mỗi lần đồng bộ (src/modules/order/bravo-order.mapping.ts); điểm BA chưa chốt
-// dùng giả định ghi ở docs/thiet-ke/db-order.md (mục "Nạp từ BRAVO"). Máy dùng thật không chạy lệnh này: backend tự nạp tăng
-// dần sau mỗi đợt đồng bộ, không xóa kế hoạch (ADR 0013, bổ sung 12/10/2026).
+// dùng giả định ghi ở docs/update_docs/06-don-hang.md mục 8.2. Máy dùng thật không chạy lệnh này: backend tự nạp tăng
+// dần sau mỗi đợt đồng bộ, không xóa kế hoạch (quyết định 7.7, bổ sung 12/10/2026).
 //
 // Kế hoạch xuất hàng, dàn chuyền, phân màu cỡ là dữ liệu MES tự lập, BRAVO không có: script sinh mô phỏng xếp kín các chuyền
 // quanh hôm nay (simulate-board.ts, người lập "Lập tự động (mô phỏng)"). Bỏ phần này bằng --no-plans.
@@ -56,7 +56,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
   const sync = createDb<any>(env.db.syncName, long);
   const order = createDb<OrderDatabase>(env.db.orderName, long);
   try {
-    // Đơn hàng lấy hết theo BRAVO (ADR 0013): chép đủ ĐVCS của danh mục chi nhánh trước, để không bỏ đơn của ĐVCS MES chưa có
+    // Đơn hàng lấy hết theo BRAVO (quyết định 6.1, 7.2): chép đủ ĐVCS của danh mục chi nhánh trước, để không bỏ đơn của ĐVCS MES chưa có
     const imported = await syncBranchesFromBravo(core);
     if (imported?.added.length) console.log(`Đã thêm đơn vị cơ sở theo BRAVO: ${imported.added.map((b) => b.code).join(', ')}.`);
     // Chuyền của dàn chuyền mô phỏng: bộ phận tích "Xưởng sản xuất" ở MES_Hr (phase 5.10); reset-demo nạp lại sơ đồ tổ chức trước
@@ -73,7 +73,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
       throw new Error(`Bảng chép BRAVO trong ${env.db.syncName} chưa có dữ liệu: vào màn Đồng bộ dữ liệu, bấm Đồng bộ (cần ThongTinPO, ThongTinPO_MauCo và các danh mục) rồi chạy lại.`);
     }
     const source = await readBravoOrderSource(sync, branches);
-    // Nhà máy SX theo OSM (ADR 0013 mục 9). Máy demo chưa đồng bộ OSM: giữ giả định cũ (nhà máy SX cùng mã chi nhánh nhận đơn, nếu
+    // Nhà máy SX theo OSM (quyết định 7.6). Máy demo chưa đồng bộ OSM: giữ giả định cũ (nhà máy SX cùng mã chi nhánh nhận đơn, nếu
     // đang dùng) để tài khoản mẫu thấy đơn ở Chọn mã hàng; giá trị này không khóa sửa tay
     const osmFactories = await readOsmFactories(sync);
     const sameCode = osmFactories
@@ -91,7 +91,7 @@ export async function loadBravoOrders({ plans = !process.argv.includes('--no-pla
     await order.transaction().execute(async (trx) => {
       // Backend đang nạp tăng dần thì chờ lần đó xong; lấy khóa trước khi xóa gì (kể cả phần May dưới đây)
       await lockBravoImport(trx);
-      // Xóa bản chép Kế hoạch chuẩn bị SX trước khi nạp (Id dòng dàn chuyền sẽ được đánh số lại, ADR 0009). Làm trước, không
+      // Xóa bản chép Kế hoạch chuẩn bị SX trước khi nạp (Id dòng dàn chuyền sẽ được đánh số lại, quyết định 9.2). Làm trước, không
       // làm sau: lượt mở màn xen giữa thì chép lại dòng cũ, sau khi nạp dấu phiên bản đổi và lượt sau thay hết
       const prep = await clearSewingPrep();
       if (prep) console.log(`Đã xóa ${prep} dòng Kế hoạch chuẩn bị SX cũ trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);

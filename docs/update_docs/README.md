@@ -15,10 +15,10 @@ Lớp tài liệu chính thức là [AGENTS.md](../../AGENTS.md) và các file �
 | [10-giao-dien.md](10-giao-dien.md) | Khung frontend, thành phần dùng chung, gọi API, quy tắc UI/UX, quy tắc hiệu năng, theme |
 | [11-van-hanh.md](11-van-hanh.md) | Cài đặt, biến môi trường, lệnh, migrate, seed, script, triển khai máy chủ, sự cố |
 | [12-du-lieu-mau-va-kiem-thu.md](12-du-lieu-mau-va-kiem-thu.md) | Dữ liệu seed, vai trò và ma trận quyền mẫu, tài khoản demo, kịch bản demo, kiểm thử tay, danh sách file test |
-| [13-quyet-dinh.md](13-quyet-dinh.md) | Quyết định kiến trúc đang hiệu lực (căn cứ cho quy tắc); bảng tra ADR cho comment trong code |
+| [13-quyet-dinh.md](13-quyet-dinh.md) | Quyết định kiến trúc đang hiệu lực (căn cứ cho quy tắc); bảng tra ADR cho comment còn trích ADR trong migration đã chạy |
 | [15-cat.md](15-cat.md) | Module Cắt: Đồng bộ tiến độ cắt, Xác nhận cấp BTP, API `/cutting`, bảng `MES_Cutting` |
 
-Tên file giữ số thứ tự cũ vì code đang trỏ tới một số file (ví dụ `11-van-hanh.md`); đổi tên làm sau khi sửa comment trong code (task T1, T5 ở [STATUS](../current/STATUS.md)).
+Tên file giữ số thứ tự cũ: code trỏ tới một số file (ví dụ `11-van-hanh.md`); Tech Lead 21/10/2026 chốt không đổi tên (bỏ task T5).
 
 ## Tài liệu khác trong `docs/`
 
@@ -36,7 +36,7 @@ Tên file giữ số thứ tự cũ vì code đang trỏ tới một số file (
 
 ## Tài liệu đã xóa (19/10/2026)
 
-Đã xóa sau khi chuyển nội dung còn hiệu lực. Bản gốc lấy lại bằng `git show 98d19db:<đường dẫn>`. Comment trong code còn trỏ tới các file này tới khi làm task T1; bảng dưới cho biết đọc ở đâu thay thế.
+Đã xóa sau khi chuyển nội dung còn hiệu lực. Bản gốc lấy lại bằng `git show 98d19db:<đường dẫn>`. Comment trong code đã đổi sang tài liệu thay thế (task T1, 21/10/2026); riêng migration đã chạy không sửa nên còn trích các file này. Bảng dưới cho biết đọc ở đâu thay thế.
 
 | Tài liệu đã xóa | Đọc thay ở |
 |---|---|
@@ -44,7 +44,7 @@ Tên file giữ số thứ tự cũ vì code đang trỏ tới một số file (
 | `docs/update_docs/02-trang-thai.md` | [STATUS](../current/STATUS.md) |
 | `docs/update_docs/03-kien-truc.md` | [ARCHITECTURE](../ARCHITECTURE.md) (database, migration, khóa ngầm, ranh giới), [CODE_CONVENTIONS](../CODE_CONVENTIONS.md) (quy ước) |
 | `docs/update_docs/14-quy-trinh-lam-viec.md` | [AGENTS.md](../../AGENTS.md), [DEVELOPMENT_WORKFLOW](../DEVELOPMENT_WORKFLOW.md), [ENGINEERING_STANDARDS](../ENGINEERING_STANDARDS.md), [CLAUDE.md](../../CLAUDE.md) |
-| `docs/adr/0001`–`0014` ("ADR 00xx mục …" trong comment code) | [13-quyet-dinh.md](13-quyet-dinh.md), bảng tra ADR cuối file |
+| `docs/adr/0001`–`0014` ("ADR 00xx mục …" trong comment của migration đã chạy) | [13-quyet-dinh.md](13-quyet-dinh.md), bảng tra ADR cuối file |
 | `docs/phases/*.md` (gồm kế hoạch `sheetgrid-ban-dong.md`) | [STATUS](../current/STATUS.md) (trạng thái, việc chờ); quyết định ở [13](13-quyet-dinh.md) |
 | `docs/thiet-ke/api-contract.md` | [ARCHITECTURE](../ARCHITECTURE.md) mục 5.1 (contract chung); mục API của 04–09, 15 |
 | `docs/thiet-ke/db-core.md` | [04](04-phan-quyen.md) mục 16, [05](05-quan-tri-he-thong.md) |

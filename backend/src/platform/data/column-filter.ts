@@ -4,7 +4,7 @@ import type { AuthUser } from '../auth/auth.types';
 import type { FieldPolicyService } from '../permission/field-policy.service';
 
 /**
- * Lọc theo giá trị của cột (nút mũi tên trên tiêu đề lưới, kiểu Excel) – ADR 0011.
+ * Lọc theo giá trị của cột (nút mũi tên trên tiêu đề lưới, kiểu Excel) – quyết định 11.2.
  * Client gửi `cf` dạng JSON {"<trường JSON>": {"in": [...]}} hoặc {"notIn": [...]}; null là ô trống.
  * Mỗi màn khai báo danh sách trắng (FilterSpec): trường JSON → biểu thức SQL do máy chủ dựng, không lấy gì từ client
  * ngoài giá trị (đi qua tham số). Danh sách giá trị để chọn cũng lấy từ DB, qua BaseRepository.distinctValues, trong

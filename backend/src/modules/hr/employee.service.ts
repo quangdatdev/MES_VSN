@@ -79,7 +79,7 @@ function presentCard(r: EmployeeListRow) {
 }
 
 /**
- * Thông tin nhân sự (ADR 0012). Mã nhân viên sửa được, chỉ cấm trùng; mã chấm công để trống thì lấy theo mã nhân viên, cũng cấm
+ * Thông tin nhân sự (quyết định 10.3, 10.6). Mã nhân viên sửa được, chỉ cấm trùng; mã chấm công để trống thì lấy theo mã nhân viên, cũng cấm
  * trùng. Chức danh phải dùng được cho phòng ban: chức danh chung, hoặc gắn với phòng ban đó hay một phòng ban cha của nó.
  */
 @Injectable()

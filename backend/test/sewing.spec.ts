@@ -14,7 +14,7 @@ import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import { SewingPrepRepository } from '../src/modules/sewing/sewing.repositories';
 import type { SewingDb } from '../src/modules/sewing/sewing.types';
 
-// Phase 5.5 – Kế hoạch chuẩn bị SX (ADR 0009). Cần MES_Core, MES_Order, MES_Sewing đã migrate và seed.
+// Phase 5.5 – Kế hoạch chuẩn bị SX (quyết định 9.1). Cần MES_Core, MES_Order, MES_Sewing đã migrate và seed.
 // Test tự tạo một đơn hàng, một kế hoạch, 2 dòng dàn chuyền ở A01 (chuyền 3 vào chuyền đã qua, chuyền 5 vào chuyền còn xa),
 // một bước chuẩn bị riêng; xóa hết khi xong.
 describe('Phase 5.5: Kế hoạch chuẩn bị SX', () => {

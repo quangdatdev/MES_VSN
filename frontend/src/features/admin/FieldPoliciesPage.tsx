@@ -60,7 +60,7 @@ const PolicyCell = memo(function PolicyCell({ k, fieldName, roleName, value, isC
 });
 
 /**
- * Chính sách cột theo vai trò (L4, ADR 0005): mỗi màn hình một bảng cột × vai trò.
+ * Chính sách cột theo vai trò (L4, quyết định 3.7): mỗi màn hình một bảng cột × vai trò.
  * Không khai báo: cột thường là Sửa được, cột nhạy cảm là Ẩn. Người nhiều vai trò lấy mức mở nhất.
  */
 export default function FieldPoliciesPage() {

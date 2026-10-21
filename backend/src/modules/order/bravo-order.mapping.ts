@@ -1,6 +1,6 @@
 // Ánh xạ đơn hàng BRAVO (bảng chép trong MES_Sync) sang MES_Order: hàm thuần, không đọc ghi database. Dùng chung cho bước nạp
 // tăng dần sau mỗi lần đồng bộ (BravoOrderImportService) và lệnh nạp lại toàn bộ `load:bravo`. Giả định khi BA chưa chốt
-// (anh-xa-bravo-don-hang.html, mục Cần chốt) ghi ở docs/thiet-ke/db-order.md, mục "Nạp từ BRAVO".
+// (anh-xa-bravo-don-hang.html, mục Cần chốt) ghi ở docs/update_docs/06-don-hang.md mục 8.2.
 import { createHash } from 'crypto';
 import { factoryListFor } from '../../platform/catalog/factory-list';
 import type { BravoOrderSource, SourceCell, SourceOrder } from '../../platform/feed/source-feed.service';
@@ -227,7 +227,7 @@ export interface MesState {
 }
 
 export interface ImportPlan {
-  /** Nhà máy SX của đơn mới theo OSM (danh sách mã, ADR 0013 mục 9); OSM chưa có đơn này thì để trống, người dùng chọn tay */
+  /** Nhà máy SX của đơn mới theo OSM (danh sách mã, quyết định 7.6); OSM chưa có đơn này thì để trống, người dùng chọn tay */
   newOrders: (BuiltOrder & { factoryCode: string | null; factoryFromOsm: boolean })[];
   /**
    * Ghi cột lấy từ BRAVO, dấu nội dung; trạng thái Mới → Hoàn thành khi `closed` (tính trong câu ghi). `force`: BRAVO đổi đơn
@@ -266,8 +266,8 @@ const poNumberKey = (s: string) => s.toUpperCase().replace(/[^\x20-\x7E]/g, '?')
 const sameCells = (a: Cell[], b: Cell[]) => a.length === b.length && a.every((c, i) => c.color === b[i].color && c.size === b[i].size && c.qty === b[i].qty);
 
 /**
- * So dữ liệu BRAVO với MES_Order, ra việc cần ghi. Không xóa gì. Quy tắc (ADR 0013 mục 8):
- * - Sản phẩm mới (có PO, ĐVCS đang dùng): thêm đơn, PO, màu cỡ như `load:bravo`; Nhà máy SX theo OSM nếu OSM có (ADR 0013 mục 9).
+ * So dữ liệu BRAVO với MES_Order, ra việc cần ghi. Không xóa gì. Quy tắc (quyết định 7.7):
+ * - Sản phẩm mới (có PO, ĐVCS đang dùng): thêm đơn, PO, màu cỡ như `load:bravo`; Nhà máy SX theo OSM nếu OSM có (quyết định 7.6).
  * - Đơn đã có, biết BRAVO đổi hay không theo dấu nội dung (SourceHash), không theo mốc chép:
  *   - dấu khác: BRAVO đã đổi đơn, cột lấy từ BRAVO theo BRAVO, kể cả khi người dùng đã sửa ở MES;
  *   - dấu giống: không ghi gì, giữ phần người dùng sửa;

@@ -60,12 +60,12 @@ export class CatalogItemsQuery {
   @IsOptional() @IsString() @MaxLength(60) q?: string;
 }
 
-// ---------- Nhà máy SX (ADR 0013) ----------
+// ---------- Nhà máy SX (quyết định 6.2) ----------
 
 export class FactoryCreateDto {
   /**
    * Mã lưu vào đơn hàng (SalesOrder.ProductionFactoryCode, danh sách cách nhau dấu phẩy) nên không có dấu phẩy, không sửa được
-   * sau khi tạo. Mã là tên nhà máy theo OSM (ADR 0013 mục 9): có khoảng trắng, chữ tiếng Việt
+   * sau khi tạo. Mã là tên nhà máy theo OSM (quyết định 6.2): có khoảng trắng, chữ tiếng Việt
    */
   @factoryCode() @Matches(/^[^,\p{C}]{1,100}$/u, { message: 'Mã tối đa 100 ký tự, không có dấu phẩy (thường là tên nhà máy theo OSM).' }) code!: string;
   @trim() @IsString() @MinLength(1) @MaxLength(100) name!: string;

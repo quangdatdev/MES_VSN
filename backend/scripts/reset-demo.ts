@@ -109,7 +109,7 @@ async function main() {
           .where('Code', '=', f.code)
           .execute();
       }
-      // Giữ nhà máy do đồng bộ OSM tự thêm: đơn hàng nạp từ BRAVO mang các mã này (ADR 0013 mục 9)
+      // Giữ nhà máy do đồng bộ OSM tự thêm: đơn hàng nạp từ BRAVO mang các mã này (quyết định 6.2, 7.6)
       await trx
         .updateTable('SysProductionFactory')
         .set({ IsActive: false, ModifiedAt: now })
@@ -140,7 +140,7 @@ async function main() {
     });
 
     // Không có transaction chung giữa hai database: làm MES_Order sau khi MES_Core đã xong.
-    // Id dòng dàn chuyền sẽ được đánh số lại: bản chép Kế hoạch chuẩn bị SX cũ không còn đúng dòng nào (ADR 0009). Xóa trước dữ
+    // Id dòng dàn chuyền sẽ được đánh số lại: bản chép Kế hoạch chuẩn bị SX cũ không còn đúng dòng nào (quyết định 9.2). Xóa trước dữ
     // liệu đơn hàng (lượt mở màn xen giữa chỉ chép lại dòng cũ, dấu phiên bản đổi sau khi nạp)
     console.log(`Đã xóa ${await clearSewingPrep()} dòng Kế hoạch chuẩn bị SX trong ${env.db.sewingName} (danh mục bước giữ nguyên).`);
     console.log(`Đã xóa ${await clearSewingDayPlan()} kế hoạch theo ngày (chuyền × ngày) của Kế hoạch may trong ${env.db.sewingName}.`);

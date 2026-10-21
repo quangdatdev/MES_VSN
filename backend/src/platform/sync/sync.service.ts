@@ -183,7 +183,7 @@ export class SyncService implements OnModuleInit {
     return this.ready(() => this.repo.branchNames());
   }
 
-  /** Danh mục chi nhánh BRAVO (mã, tên ngắn, tên đầy đủ) để chép thành Đơn vị cơ sở (ADR 0013) */
+  /** Danh mục chi nhánh BRAVO (mã, tên ngắn, tên đầy đủ) để chép thành Đơn vị cơ sở (quyết định 6.1) */
   bravoBranches() {
     return this.ready(() => this.repo.bravoBranches());
   }

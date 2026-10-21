@@ -12,7 +12,7 @@ export interface CatalogEntry extends CatalogOption {
   isActive: boolean;
 }
 
-/** Nhà máy SX (ADR 0013) cho module nghiệp vụ: mã, tên, ĐVCS quản lý */
+/** Nhà máy SX (quyết định 6.2) cho module nghiệp vụ: mã, tên, ĐVCS quản lý */
 export interface FactoryEntry extends CatalogEntry {
   branchCode: string | null;
 }

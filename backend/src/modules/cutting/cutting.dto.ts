@@ -29,7 +29,7 @@ export class CuttingListQuery {
   @IsOptional() @IsString() @MaxLength(100) customer?: string;
   @IsOptional() @IsString() @MaxLength(120) style?: string;
   @IsOptional() @IsIn(CUTTING_STATUSES) status?: CuttingStatus;
-  /** Bộ lọc theo cột (JSON, ADR 0011) */
+  /** Bộ lọc theo cột (JSON, quyết định 11.2) */
   @IsOptional() @IsString() @MaxLength(20000, { message: 'Bộ lọc theo cột quá dài.' }) cf?: string;
 }
 

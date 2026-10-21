@@ -1,6 +1,6 @@
 import { HttpException } from '@nestjs/common';
 
-/** Lỗi nghiệp vụ có mã ổn định để frontend xử lý (xem docs/thiet-ke/api-contract.md). */
+/** Lỗi nghiệp vụ có mã ổn định để frontend xử lý (xem docs/ARCHITECTURE.md mục 5.1). */
 export class AppException extends HttpException {
   constructor(
     readonly code: string,

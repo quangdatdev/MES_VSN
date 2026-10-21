@@ -47,7 +47,7 @@ export class SalesOrderController {
   @Get('options') @RequirePermission('order.allocation:view')
   options(@CurrentUser() u: AuthUser) { return this.service.options(u); }
 
-  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), ADR 0011
+  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), quyết định 11.3
   @Get('values') @RequirePermission('order.allocation:view')
   values(@CurrentUser() u: AuthUser, @Query() q: OrderValuesQuery) { return this.service.values(u, q); }
 
@@ -146,7 +146,7 @@ export class ShipmentController {
   @Get() @RequirePermission('order.shipment:view')
   list(@CurrentUser() u: AuthUser, @Query() q: OrderListQuery) { return this.service.list(u, q); }
 
-  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), ADR 0011
+  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), quyết định 11.3
   @Get('values') @RequirePermission('order.shipment:view')
   values(@CurrentUser() u: AuthUser, @Query() q: OrderValuesQuery) { return this.service.values(u, q); }
 
@@ -198,7 +198,7 @@ export class LinePlanController {
   @Get() @RequirePermission('order.lineplan:view')
   list(@CurrentUser() u: AuthUser, @Query() q: OrderListQuery) { return this.service.list(u, q); }
 
-  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), ADR 0011
+  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), quyết định 11.3
   @Get('values') @RequirePermission('order.lineplan:view')
   values(@CurrentUser() u: AuthUser, @Query() q: OrderValuesQuery) { return this.service.values(u, q); }
 
@@ -227,7 +227,7 @@ export class ColorSizeController {
   @Get() @RequirePermission('order.colorsize:view')
   list(@CurrentUser() u: AuthUser, @Query() q: OrderListQuery) { return this.service.list(u, q); }
 
-  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), ADR 0011
+  // Giá trị của một cột cho popup lọc theo cột (nút mũi tên trên tiêu đề lưới), quyết định 11.3
   @Get('values') @RequirePermission('order.colorsize:view')
   values(@CurrentUser() u: AuthUser, @Query() q: OrderValuesQuery) { return this.service.values(u, q); }
 

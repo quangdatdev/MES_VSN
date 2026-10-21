@@ -724,7 +724,7 @@ const CANDIDATE_PO_COLS: Column<CandidatePo>[] = [
 
 /**
  * Popup B3 "Chọn mã hàng": chọn đơn hàng còn số lượng, chọn PO, nhập PO/Buy date. Chỉ có đơn hàng của các nhà máy SX thuộc
- * đơn vị cơ sở đang làm việc theo danh mục Nhà máy SX (máy chủ lọc, ADR 0013 mục 11); kế hoạch lập ra thuộc đơn vị đó.
+ * đơn vị cơ sở đang làm việc theo danh mục Nhà máy SX (máy chủ lọc, quyết định 6.3, 7.3); kế hoạch lập ra thuộc đơn vị đó.
  */
 function StylePicker({ onClose, onConfirm }: { onClose: () => void; onConfirm: (p: Picked) => void }) {
   const branch = useSession((s) => s.branch);

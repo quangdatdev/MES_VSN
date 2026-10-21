@@ -1,4 +1,4 @@
-// Dữ liệu khởi tạo cho Demo. Nguồn: docs/thiet-ke/seed-demo.md (giữ hai nơi đồng bộ khi sửa).
+// Dữ liệu khởi tạo cho Demo. Nguồn: docs/update_docs/12-du-lieu-mau-va-kiem-thu.md (giữ hai nơi đồng bộ khi sửa).
 
 export const ACTIONS = ['view', 'create', 'update', 'delete', 'export'] as const;
 export type Action = (typeof ACTIONS)[number];
@@ -14,7 +14,7 @@ export const ACTION_LABEL: Record<Action, string> = {
 };
 
 /**
- * Đơn vị cơ sở (SysBranch, ADR 0013). A00 là đơn vị tổng hợp của MES, luôn tạo. A01–A03 chỉ là dữ liệu mẫu (máy demo chưa
+ * Đơn vị cơ sở (SysBranch, quyết định 6.1). A00 là đơn vị tổng hợp của MES, luôn tạo. A01–A03 chỉ là dữ liệu mẫu (máy demo chưa
  * có đồng bộ BRAVO): danh sách thật lấy theo danh mục chi nhánh BRAVO (MES_Sync.bravo.DM_CHINHANH), seed chép sau bước này.
  */
 export const branches = [
@@ -29,7 +29,7 @@ export const LINE_COUNT: Record<string, number> = { A01: 12, A02: 8, A03: 6 };
 export const lineCode = (branch: string, n: number) => `${branch}-L${String(n).padStart(2, '0')}`;
 
 /**
- * Xưởng giả (ADR 0010): mỗi xưởng gom một dải chuyền liên tiếp (số thứ tự chuyền). A03 không chia xưởng: chuyền nằm thẳng
+ * Xưởng giả (quyết định 6.7): mỗi xưởng gom một dải chuyền liên tiếp (số thứ tự chuyền). A03 không chia xưởng: chuyền nằm thẳng
  * dưới nhà máy, để thấy cả hai cách trong demo.
  */
 export const WORKSHOPS: Record<string, { from: number; to: number }[]> = {
@@ -48,13 +48,13 @@ export const roles = [
   { code: 'LINE_LEADER', name: 'Trưởng chuyền', description: 'Phân cụm, bấm năng suất, ghi tiến độ gấp xếp/đóng thùng; phân màu cỡ cho chuyền mình' },
   { code: 'QC', name: 'Kiểm hàng', description: 'Danh mục lỗi, kiểm Endline, báo cáo chất lượng' },
   { code: 'ACCOUNTANT', name: 'Kế toán', description: 'Xem và xuất đơn hàng, doanh thu; thấy giá nhưng không sửa' },
-  // Phase 5.8 (ADR 0012 mục 6): người được thêm, sửa phòng ban và hồ sơ nhân viên; ADMIN chỉ xem (tách nhiệm vụ, ADR 0004)
+  // Phase 5.8 (quyết định 10.5): người được thêm, sửa phòng ban và hồ sơ nhân viên; ADMIN chỉ xem (tách nhiệm vụ, quyết định 5.3)
   { code: 'HR', name: 'Nhân sự', description: 'Quản lý sơ đồ tổ chức và hồ sơ nhân viên; không xem nghiệp vụ sản xuất' },
-  // ADR 0014 (người dùng yêu cầu 12/10/2026): quyền tính riêng (fullAccessLetters), không có cột trong ma trận của tài nguyên
+  // Quyết định 5.1 (người dùng yêu cầu 12/10/2026): quyền tính riêng (fullAccessLetters), không có cột trong ma trận của tài nguyên
   { code: 'FULL_ACCESS', name: 'Toàn quyền', description: 'Mọi quyền xem, thêm, sửa, xóa, xuất file và quản trị; thấy, sửa mọi cột. Vẫn theo luật chung: ghi dữ liệu theo ĐVCS đang làm việc, không tự đổi quyền của mình' },
 ];
 
-/** Vai trò Toàn quyền (ADR 0014) */
+/** Vai trò Toàn quyền (quyết định 5.1) */
 export const FULL_ACCESS_ROLE = 'FULL_ACCESS';
 
 export interface Group {
@@ -75,7 +75,7 @@ export const groups: Group[] = [
 ];
 
 /**
- * matrix theo thứ tự cột: ADMIN, DIRECTOR, PLANNER, LINE_LEADER, QC, ACCOUNTANT, HR (khớp docs/thiet-ke/seed-demo.md mục 4).
+ * matrix theo thứ tự cột: ADMIN, DIRECTOR, PLANNER, LINE_LEADER, QC, ACCOUNTANT, HR (khớp docs/update_docs/12-du-lieu-mau-va-kiem-thu.md mục "Ma trận quyền mẫu").
  * Cột HR thêm ở Phase 5.8: bỏ trống là không có quyền.
  */
 export type Matrix = [string, string, string, string, string, string, string?];
@@ -92,7 +92,7 @@ export interface ResourceDef {
 }
 
 export const resources: ResourceDef[] = [
-  // Đơn hàng, PO lấy hết từ BRAVO, dùng chung toàn công ty, không lọc theo ĐVCS (ADR 0013, đổi từ BRANCH ngày 11/10/2026)
+  // Đơn hàng, PO lấy hết từ BRAVO, dùng chung toàn công ty, không lọc theo ĐVCS (quyết định 7.2, đổi từ BRANCH ngày 11/10/2026)
   { code: 'order.allocation', name: 'Thông tin đơn hàng', path: '/order/info', table: 'SalesOrder', scope: 'SHARED', matrix: ['V', 'VE', 'VCUDE', '', '', 'VE'] },
   // Phân bổ PO theo nhà máy SX lấy từ OSM (task 5.9.12): bảng làm việc MES_Order.PoAllocation chép từ dữ liệu OSM đã đồng bộ,
   // dùng chung toàn công ty (ĐVCS suy từ Nhà máy SX). Quyền xem như Thông tin đơn hàng; Kế hoạch sửa Nhà máy SX (Phase 5.10,
@@ -102,7 +102,7 @@ export const resources: ResourceDef[] = [
   { code: 'order.po', name: 'Cập nhật tỷ lệ cắt', path: '/order/cut-ratio', table: 'SalesOrderPo', scope: 'SHARED', matrix: ['V', 'VE', 'VCUDE', 'V', '', 'VE'] },
   { code: 'order.lineplan', name: 'Xếp chuyền', path: '/order/line-plan', table: 'ShipmentPlan', matrix: ['V', 'VE', 'VCUDE', 'V', '', 'VE'] },
   { code: 'order.colorsize', name: 'Phân bổ màu cỡ', path: '/order/color-size', table: 'ShipmentPlanLine', matrix: ['V', 'VE', 'VCUDE', 'VU', '', 'VE'] },
-  // Kế hoạch chuẩn bị SX (Phase 5.5, ADR 0009): màn thuộc nhóm Quản trị đơn hàng, dữ liệu ở MES_Sewing (module May).
+  // Kế hoạch chuẩn bị SX (Phase 5.5, quyết định 9.1, 9.4): màn thuộc nhóm Quản trị đơn hàng, dữ liệu ở MES_Sewing (module May).
   // Dòng do hệ thống chép từ Xếp chuyền nên không có Thêm, Xóa
   { code: 'order.prep', name: 'Kế hoạch chuẩn bị SX', path: '/order/prep', table: 'SewingPrep', matrix: ['V', 'VE', 'VUE', 'V', '', ''] },
 
@@ -115,7 +115,8 @@ export const resources: ResourceDef[] = [
   { code: 'cutting.embroidery', name: 'Quản lý in thêu', path: '/cutting/embroidery', matrix: ['V', 'VE', 'V', '', '', ''] },
 
   // Kế hoạch may (phase 5.16, quyết định 14.1): kế hoạch theo ngày cho từng dòng dàn chuyền ở MES_Sewing. Sửa gồm Cập nhật, Chốt, Hủy
-  // chốt; không dùng Thêm, Xóa (dòng lấy từ Xếp chuyền). Kế hoạch đã có Sửa nên máy đã cài không cần migration cấp quyền
+  // chốt; Thêm cần khi cập nhật, chốt lần đầu cho chuyền trong ngày (tạo bản ghi chuyền × ngày, SewingPlanService.ensureHeaders);
+  // không dùng Xóa (dòng lấy từ Xếp chuyền). Kế hoạch đã có Thêm, Sửa nên máy đã cài không cần migration cấp quyền
   { code: 'sewing.plan', name: 'Kế hoạch may', path: '/sewing/plan', table: 'SewingDayPlan', matrix: ['V', 'VE', 'VCUE', 'V', '', ''] },
   { code: 'sewing.cluster', name: 'Phân cụm trưởng', path: '/sewing/cluster', mobile: true, matrix: ['V', 'VE', 'V', 'VCU', '', ''] },
   { code: 'sewing.output', name: 'Bấm năng suất cụm', path: '/sewing/output', mobile: true, matrix: ['V', 'VE', 'V', 'VCU', 'V', ''] },
@@ -129,7 +130,7 @@ export const resources: ResourceDef[] = [
   { code: 'finishing.folding', name: 'Tiến độ gấp xếp', path: '/finishing/folding', matrix: ['V', 'VE', 'V', 'VCU', '', ''] },
   { code: 'finishing.packing', name: 'Tiến độ đóng thùng', path: '/finishing/packing', matrix: ['V', 'VE', 'V', 'VCU', '', ''] },
 
-  // Quản trị nhân sự (menu 10/10/2026, màn thật Phase 5.8, ADR 0012): dữ liệu dùng chung toàn công ty, vai trò Nhân sự được sửa.
+  // Quản trị nhân sự (menu 10/10/2026, màn thật Phase 5.8, quyết định 10.4, 10.5): dữ liệu dùng chung toàn công ty, vai trò Nhân sự được sửa.
   // Không có quyền xóa: phòng ban giải thể, nhân viên nghỉ việc
   { code: 'hr.orgchart', name: 'Sơ đồ tổ chức', path: '/hr/org-chart', table: 'Department', scope: 'SHARED', matrix: ['V', 'VE', '', '', '', '', 'VCUE'] },
   { code: 'hr.employee', name: 'Thông tin nhân sự', path: '/hr/employees', table: 'Employee', scope: 'SHARED', matrix: ['V', 'VE', '', '', '', '', 'VCUE'] },
@@ -147,22 +148,22 @@ export const resources: ResourceDef[] = [
   // Không có quyền xóa: danh mục ngừng dùng bằng IsActive (CLAUDE.md mục 5)
   { code: 'admin.catalog', name: 'Danh mục hệ thống', path: '/admin/catalogs', matrix: ['VCU', '', '', '', '', ''] },
   { code: 'admin.audit', name: 'Nhật ký hệ thống', path: '/admin/audit', matrix: ['VE', '', '', '', '', ''] },
-  // Đồng bộ dữ liệu (ADR 0007): Xem = theo dõi; Sửa = bấm chạy đồng bộ
+  // Đồng bộ dữ liệu (quyết định 8.4): Xem = theo dõi; Sửa = bấm chạy đồng bộ
   { code: 'admin.sync', name: 'Đồng bộ dữ liệu', path: '/admin/sync', matrix: ['VU', '', '', '', '', ''] },
 ];
 
 export const ROLE_ORDER = ['ADMIN', 'DIRECTOR', 'PLANNER', 'LINE_LEADER', 'QC', 'ACCOUNTANT', 'HR'];
 
 /**
- * Quyền của vai trò Toàn quyền trên một tài nguyên (ADR 0014): mọi hành động nghiệp vụ; quyền quản trị đúng bằng ADMIN, vì người
- * thao tác chỉ gán, sửa được vai trò có quyền `admin.*` mà chính mình có (trần quyền quản trị, ADR 0004). Các quyền quản trị
+ * Quyền của vai trò Toàn quyền trên một tài nguyên (quyết định 5.1): mọi hành động nghiệp vụ; quyền quản trị đúng bằng ADMIN, vì người
+ * thao tác chỉ gán, sửa được vai trò có quyền `admin.*` mà chính mình có (trần quyền quản trị, quyết định 4.2). Các quyền quản trị
  * ADMIN không có (ví dụ xuất file danh sách vai trò) không dùng ở màn nào.
  */
 export const fullAccessLetters = (r: ResourceDef): string => (r.code.startsWith('admin.') ? r.matrix[0] : 'VCUDE');
 
 /** Chiều phạm vi (ngoài FACTORY luôn có) gắn với từng tài nguyên: chiều → cột của bảng nguồn. */
 export const scopeBindings: Record<string, Record<string, string>> = {
-  // Đơn hàng, PO dùng chung (ADR 0013): BranchCode chỉ là Chi nhánh FOB, không còn là chiều phạm vi
+  // Đơn hàng, PO dùng chung (quyết định 7.2): BranchCode chỉ là Chi nhánh FOB, không còn là chiều phạm vi
   'order.allocation': { OWNER: 'CreatedBy' },
   'order.shipment': { FACTORY: 'BranchCode', OWNER: 'CreatedBy' },
   'order.po': { OWNER: 'CreatedBy' },
@@ -338,7 +339,7 @@ export const resourceFields: Record<string, [code: string, name: string, sensiti
   ],
   // Mã trùng khóa JSON của API Thông tin nhân sự (modules/hr/employee-fields.ts). Chỉ đăng ký thông tin cá nhân: mã, tên, phòng
   // ban, chức danh, tình trạng là khung của màn (ẩn đi thì không lưu được hồ sơ), và phòng ban, chức danh còn đi kèm cột tên.
-  // 5 cột giấy tờ, liên lạc nhạy cảm (ADR 0012 mục 8)
+  // 5 cột giấy tờ, liên lạc nhạy cảm (quyết định 10.5)
   'hr.employee': [
     ['email', 'Email'],
     ['birthPlace', 'Nơi sinh'],
@@ -405,11 +406,11 @@ export const roleFieldPolicies: { role: string; resource: string; field: string;
   { role: 'LINE_LEADER', resource: 'order.prep', field: 'customerName', level: 'MASKED' },
   // Máy đã cài trước T16 nhận dòng này qua migration MES_Core/0015 (seed chỉ thêm chính sách mẫu cho vai trò, cột mới)
   { role: 'LINE_LEADER', resource: 'cutting.progress', field: 'customerName', level: 'MASKED' },
-  // Toàn quyền (ADR 0014): mọi cột nhạy cảm được xem, sửa (cột tính sẵn như Thành tiền, Doanh thu vẫn không nhập được)
+  // Toàn quyền (quyết định 5.1): mọi cột nhạy cảm được xem, sửa (cột tính sẵn như Thành tiền, Doanh thu vẫn không nhập được)
   ...Object.entries(resourceFields).flatMap(([resource, fields]) =>
     fields.filter(([, , sensitive]) => sensitive === 'S').map(([field]) => ({ role: FULL_ACCESS_ROLE, resource, field, level: 'EDITABLE' as Level })),
   ),
-  // Giấy tờ, liên lạc của nhân viên (ADR 0012 mục 8): mặc định Ẩn; Nhân sự sửa được, Giám đốc thấy là có nhưng bị che
+  // Giấy tờ, liên lạc của nhân viên (quyết định 10.5): mặc định Ẩn; Nhân sự sửa được, Giám đốc thấy là có nhưng bị che
   ...['birthDate', 'idNumber', 'contactPhone', 'contactPerson', 'currentAddress'].flatMap((field) => [
     { role: 'HR', resource: 'hr.employee', field, level: 'EDITABLE' as Level },
     { role: 'DIRECTOR', resource: 'hr.employee', field, level: 'MASKED' as Level },
@@ -437,9 +438,9 @@ export interface UserDef {
 
 /** Năm người mẫu của phương án nền tảng mục 4.4, cộng tài khoản quản trị. */
 export const users: UserDef[] = [
-  // Toàn quyền: người dùng chốt 12/10/2026 gán cho tài khoản admin (ADR 0014, thay phần tách nhiệm vụ của ADR 0004 với tài khoản này)
+  // Toàn quyền: người dùng chốt 12/10/2026 gán cho tài khoản admin (quyết định 5.2, 5.3: thay phần tách nhiệm vụ với tài khoản này)
   { username: 'admin', fullName: 'Quản trị hệ thống', role: 'ADMIN', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00', extraRoles: ['FULL_ACCESS'] },
-  // Quản trị chỉ xem nghiệp vụ (tách nhiệm vụ, ADR 0004): minh họa ở kịch bản demo, vì admin đã có Toàn quyền
+  // Quản trị chỉ xem nghiệp vụ (tách nhiệm vụ, quyết định 5.3): minh họa ở kịch bản demo, vì admin đã có Toàn quyền
   { username: 'quantri', fullName: 'Ngô Văn Quân', role: 'ADMIN', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00' },
   { username: 'giamdoc', fullName: 'Phạm Quốc Hưng', role: 'DIRECTOR', branches: ['A00', 'A01'], defaultBranch: 'A00' },
   { username: 'kehoach.a', fullName: 'Lê Thị Mai', role: 'PLANNER', branches: ['A01'], defaultBranch: 'A01' },
@@ -473,7 +474,7 @@ export const users: UserDef[] = [
       { dimension: 'FACTORY', mode: 'LIST', org: 'A02' },
     ],
   },
-  // Dữ liệu nhân sự dùng chung toàn công ty (ADR 0012): làm việc ở đơn vị tổng hợp như quản trị
+  // Dữ liệu nhân sự dùng chung toàn công ty (quyết định 10.4): làm việc ở đơn vị tổng hợp như quản trị
   { username: 'nhansu', fullName: 'Trịnh Thu Hằng', role: 'HR', branches: ['A00', 'A01', 'A02', 'A03'], defaultBranch: 'A00' },
 ];
 
@@ -548,7 +549,7 @@ export function catalogSeedItems(c: (typeof catalogs)[number]): [code: string, n
 }
 
 /**
- * Nhà máy SX mẫu (SysProductionFactory, ADR 0013), chỉ nạp khi có dữ liệu mẫu: mỗi ĐVCS mẫu một nhà máy cùng mã (như danh
+ * Nhà máy SX mẫu (SysProductionFactory, quyết định 6.2), chỉ nạp khi có dữ liệu mẫu: mỗi ĐVCS mẫu một nhà máy cùng mã (như danh
  * mục PROD_FACTORY cũ, đơn hàng đã chọn vẫn trỏ đúng), A01 thêm một nhà máy thứ hai để thấy một ĐVCS có nhiều nhà máy.
  * Máy dùng thật tạo nhà máy ở Quản trị › Danh mục hệ thống.
  */

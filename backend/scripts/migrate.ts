@@ -56,7 +56,7 @@ async function linkSyncSources(db: Kysely<any>) {
 
 /**
  * Synonym của các nguồn đọc ở một database nguồn (BRAVO: database trung gian DB_TRUNGGIAN_NAME; OSM: DB_OSM_NAME, view gốc
- * v_OSMData ở DB_OSM_APP_NAME) trỏ tới view trong database đó, qua linked server khi database ở máy khác (ADR 0007). Tạo lại
+ * v_OSMData ở DB_OSM_APP_NAME) trỏ tới view trong database đó, qua linked server khi database ở máy khác (quyết định 8.1). Tạo lại
  * mỗi lần migrate để đổi tên chỉ cần sửa .env, không cần migration mới; database MES_Sync tạo lại cũng tự có synonym đúng.
  * Thủ tục chép chỉ đọc qua synonym này. `optional`: máy không khai database này thì tắt các nguồn của nó, có thì bật lại.
  */

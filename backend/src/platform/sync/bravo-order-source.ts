@@ -106,7 +106,7 @@ export async function readOsmFactoryLists(sync: Kysely<any>): Promise<string[] |
 }
 
 /**
- * Đọc đơn hàng, PO, màu cỡ BRAVO đã chép trong MES_Sync (chỉ đọc, ADR 0007) của các ĐVCS `branches`. Dùng chung cho bước
+ * Đọc đơn hàng, PO, màu cỡ BRAVO đã chép trong MES_Sync (chỉ đọc, quyết định 8.1) của các ĐVCS `branches`. Dùng chung cho bước
  * nạp tăng dần sau mỗi lần đồng bộ (BravoOrderImportService) và lệnh `load:bravo`. Bảng chép bravo.* sinh theo cột của view
  * (sync-gen.ts), không có kiểu Kysely: đọc bằng sql có kiểu dòng.
  */

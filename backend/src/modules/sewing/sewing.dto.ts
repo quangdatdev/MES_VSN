@@ -41,7 +41,7 @@ export class PrepListQuery {
    * dòng vào chuyền trong tuần (thứ Hai – Chủ nhật).
    */
   @IsOptional() @DateOnly() @RealDate() week?: string;
-  /** Bộ lọc theo cột (JSON, ADR 0011) */
+  /** Bộ lọc theo cột (JSON, quyết định 11.2) */
   @IsOptional() @IsString() @MaxLength(20000, { message: 'Bộ lọc theo cột quá dài.' }) cf?: string;
 }
 

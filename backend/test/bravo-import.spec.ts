@@ -2,7 +2,7 @@ import { buildOrders, planImport, type MesOrder, type MesPo, type MesState } fro
 import { normalizeFactories, splitFactories } from '../src/platform/catalog/factory-list';
 import type { BravoOrderSource, SourceCell, SourceOrder, SourcePo } from '../src/platform/sync/bravo-order-source';
 
-// Không cần database: so dữ liệu BRAVO với MES_Order của bước nạp tăng dần (ADR 0013 mục 8)
+// Không cần database: so dữ liệu BRAVO với MES_Order của bước nạp tăng dần (quyết định 7.7)
 const T0 = new Date('2026-10-01T08:00:00Z');
 const T1 = new Date('2026-10-05T08:00:00Z');
 
@@ -45,7 +45,7 @@ const source = (over: Partial<BravoOrderSource> = {}): BravoOrderSource => ({
   ...over,
 });
 const units = new Map([['CHIEC', 'Chiếc']]);
-// Nhà máy SX theo OSM (ADR 0013 mục 9): sản phẩm 1 có trong OSM, danh sách hai nhà máy
+// Nhà máy SX theo OSM (quyết định 7.6): sản phẩm 1 có trong OSM, danh sách hai nhà máy
 const opts = { branches: ['A01', 'A02'], unitNames: units, osmFactories: new Map([[1, 'VIET DUC, VSN-DN']]) as Map<number, string> | null };
 
 /** Trạng thái MES đúng như vừa nạp `src` (có dấu nội dung): so lại phải không còn gì để ghi */

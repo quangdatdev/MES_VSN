@@ -64,7 +64,7 @@ export class ResourceRegistry {
         .orderBy('Id')
         .execute();
       const map = new Map(bindings.map((b) => [b.Code, b.ColumnName]));
-      // Quên khai báo chiều nhà máy cũng không được mất lọc nhà máy (ADR 0005)
+      // Quên khai báo chiều nhà máy cũng không được mất lọc nhà máy (quyết định 3.3)
       if (row.ScopeType === 'BRANCH') map.set('FACTORY', 'BranchCode');
       info = {
         id: row.Id,

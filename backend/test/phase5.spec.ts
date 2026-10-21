@@ -18,7 +18,7 @@ import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import { OrgService } from '../src/platform/org/org.service';
 import { PermissionService } from '../src/platform/permission/permission.service';
 
-// Phase 5.1 (L3 phạm vi theo phép gán, L4 cột, L5 ngoại lệ – ADR 0005) và module Đơn hàng (Phase 5.3, ADR 0006).
+// Phase 5.1 (L3 phạm vi theo phép gán, L4 cột, L5 ngoại lệ – quyết định 3.5, 3.7, 3.6) và module Đơn hàng (Phase 5.3, quyết định 7.1).
 // Cần MES_Core + MES_Order đã migrate và seed. Đơn hàng có thể là dữ liệu giả của seed hoặc dữ liệu BRAVO (npm run load:bravo):
 // test tự tạo đơn hàng riêng (FIXTURE_STYLE) cho phần cần giá CM hay kế hoạch chưa xếp chuyền, xóa khi xong.
 describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
@@ -92,7 +92,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
   const FIXTURE_STYLE = 'TEST-P5-FIXTURE';
   /**
    * Nhà máy SX của đơn hàng test (danh sách như OSM): nhà máy F thuộc ĐVCS A01, nhà máy G thuộc A02 (khác Chi nhánh FOB A01 của
-   * đơn). Lập kế hoạch được ở cả A01 và A02 (ADR 0013 mục 11)
+   * đơn). Lập kế hoạch được ở cả A01 và A02 (quyết định 6.3, 7.3)
    */
   const FIXTURE_FACTORY = 'TEST-P5-F';
   const FIXTURE_FACTORY_B = 'TEST-P5-G';
@@ -691,7 +691,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       const gdToken = await tokenFor('giamdoc', 'A00');
       const director = (await api().get(`${PLANS}?pageSize=1`).set(auth(gdToken))).body;
       expect(director.total).toBeGreaterThan(list.total);
-      // Thông tin đơn hàng không lọc theo ĐVCS (ADR 0013): phạm vi ĐVCS của kế toán không giới hạn đơn hàng
+      // Thông tin đơn hàng không lọc theo ĐVCS (quyết định 7.2): phạm vi ĐVCS của kế toán không giới hạn đơn hàng
       const orders = async (t: string) => (await api().get('/api/v1/order/sales-orders?pageSize=1').set(auth(t)).expect(200)).body.total as number;
       expect(await orders(a00)).toBe(await orders(gdToken));
       const a03 = await tokenFor('ketoan', 'A03');
@@ -1049,7 +1049,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       return { c, poIds, line: draft.find((d: any) => d.remainingQty > min) };
     }
 
-    it('Chọn mã hàng chỉ có đơn có nhà máy SX thuộc ĐVCS đăng nhập; ĐVCS khác: PO, lưới màu cỡ, tạo kế hoạch đều 404; gắn nhà máy vào ĐVCS thì thấy ngay (ADR 0013 mục 11)', async () => {
+    it('Chọn mã hàng chỉ có đơn có nhà máy SX thuộc ĐVCS đăng nhập; ĐVCS khác: PO, lưới màu cỡ, tạo kế hoạch đều 404; gắn nhà máy vào ĐVCS thì thấy ngay (quyết định 6.3, 7.3)', async () => {
       const id = await tempUser('test.p59', ['PLANNER'], ['A03']);
       try {
         const t = await tokenFor('test.p59', 'A03', TEST_PASSWORD);
@@ -1080,7 +1080,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Nhà máy SX theo OSM là danh sách: một nhà máy trong danh sách thuộc ĐVCS thì thấy đơn ở Chọn mã hàng; không sửa tay được (409) (ADR 0013 mục 9)', async () => {
+    it('Nhà máy SX theo OSM là danh sách: một nhà máy trong danh sách thuộc ĐVCS thì thấy đơn ở Chọn mã hàng; không sửa tay được (409) (quyết định 7.6)', async () => {
       const db = app.get<OrderDb>(ORDER_DB);
       const ORDER = `/api/v1/order/sales-orders/${fixture.orderId}`;
       // Xem ở A02 (nhà máy G): A01 đã có kế hoạch của đơn nên popup của A01 không hiện đơn (quyết định 15.1)
@@ -1111,7 +1111,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('đơn hàng, PO dùng chung: ĐVCS khác xem được nhưng không sửa, xóa, đổi Nhà máy SX; PO chưa vào kế hoạch của ĐVCS đó thì không thêm PO (422), sửa màu cỡ (404) (review 5.9 H1, ADR 0013 mục 11)', async () => {
+    it('đơn hàng, PO dùng chung: ĐVCS khác xem được nhưng không sửa, xóa, đổi Nhà máy SX; PO chưa vào kế hoạch của ĐVCS đó thì không thêm PO (422), sửa màu cỡ (404) (review 5.9 H1, quyết định 7.2, 7.4)', async () => {
       const id = await tempUser('test.p59w', ['PLANNER'], ['A02']);
       try {
         const t = await tokenFor('test.p59w', 'A02', TEST_PASSWORD);
@@ -1143,7 +1143,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('lập kế hoạch ở ĐVCS của phiên cho đơn hàng của ĐVCS khác; ĐVCS đó sửa được tỷ lệ cắt của PO trong kế hoạch (ADR 0013 mục 11)', async () => {
+    it('lập kế hoạch ở ĐVCS của phiên cho đơn hàng của ĐVCS khác; ĐVCS đó sửa được tỷ lệ cắt của PO trong kế hoạch (quyết định 7.2, 7.3, 7.4)', async () => {
       const id = await tempUser('test.p59x', ['PLANNER'], ['A02']);
       try {
         const t = await tokenFor('test.p59x', 'A02', TEST_PASSWORD);
@@ -1216,7 +1216,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Tỷ lệ cắt ở đơn vị tổng hợp: thấy PO trong kế hoạch của mọi ĐVCS và PO nhập tay; ghi bị từ chối (ADR 0013 mục 11)', async () => {
+    it('Tỷ lệ cắt ở đơn vị tổng hợp: thấy PO trong kế hoạch của mọi ĐVCS và PO nhập tay; ghi bị từ chối (quyết định 7.4)', async () => {
       const id = await tempUser('test.p59a', ['PLANNER'], ['A00']);
       try {
         const t = await tokenFor('test.p59a', 'A00', TEST_PASSWORD);
@@ -1231,7 +1231,7 @@ describe('Phase 5: phạm vi, cột, ngoại lệ, module Đơn hàng', () => {
       }
     });
 
-    it('Thêm PO cho mã hàng có PO nhập tay ở ĐVCS dù chưa có kế hoạch; PO tay của ĐVCS mình sửa được (ADR 0013 mục 11)', async () => {
+    it('Thêm PO cho mã hàng có PO nhập tay ở ĐVCS dù chưa có kế hoạch; PO tay của ĐVCS mình sửa được (quyết định 7.4)', async () => {
       const id = await tempUser('test.p59m', ['PLANNER'], ['A02']);
       const db = app.get<OrderDb>(ORDER_DB);
       const created: number[] = [];

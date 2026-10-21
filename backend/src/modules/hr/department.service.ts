@@ -64,7 +64,7 @@ const presentType = (t: DepartmentTypeRow) => ({
 const label = (d: { Name: string; Code: string }) => `${d.Name} (${d.Code})`;
 
 /**
- * Sơ đồ tổ chức (ADR 0012 mục 3). Quy tắc kiểm ở máy chủ, sửa các lỗi của bản Support-Web (KE-HOACH-MES-VSN.md mục 2.4):
+ * Sơ đồ tổ chức (quyết định 10.2). Quy tắc kiểm ở máy chủ, sửa các lỗi của bản Support-Web (KE-HOACH-MES-VSN.md mục 2.4):
  * mã không sửa được; cha mới không nằm trong nhánh con; giải thể bị chặn khi còn phòng ban con đang dùng hoặc nhân viên đang
  * làm; loại cấp cuối không có phòng ban con. Mọi thay đổi ghi nhật ký.
  *

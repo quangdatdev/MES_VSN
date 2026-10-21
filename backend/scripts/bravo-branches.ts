@@ -1,5 +1,5 @@
 // Chép Đơn vị cơ sở theo danh mục chi nhánh BRAVO cho các script (seed, nạp BRAVO). Ứng dụng làm việc này ở màn Quản trị ›
-// Đơn vị cơ sở và sau mỗi lần đồng bộ danh mục chi nhánh (ADR 0013).
+// Đơn vị cơ sở và sau mỗi lần đồng bộ danh mục chi nhánh (quyết định 6.1).
 import { sql, type Kysely } from 'kysely';
 import { env } from '../src/config/env';
 import type { CoreDatabase } from '../src/platform/database/core.types';

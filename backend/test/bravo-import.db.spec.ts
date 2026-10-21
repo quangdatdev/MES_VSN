@@ -10,7 +10,7 @@ import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
 import type { BravoOrderSource, SourceCell, SourceOrder, SourcePo } from '../src/platform/sync/bravo-order-source';
 
-// Nạp tăng dần đơn hàng BRAVO vào MES_Order (ADR 0013 mục 8), chạy trên database thật. Dữ liệu nguồn giả lập (không ghi vào
+// Nạp tăng dần đơn hàng BRAVO vào MES_Order (quyết định 7.7), chạy trên database thật. Dữ liệu nguồn giả lập (không ghi vào
 // MES_Sync), ProductId riêng của bài test: chỉ thêm, sửa đơn của bài này; dọn sạch khi xong.
 const BASE = 990_000_000 + (process.pid % 1000) * 1000;
 const T0 = new Date('2026-10-01T08:00:00Z');
@@ -80,7 +80,7 @@ describe('Nạp tăng dần đơn hàng BRAVO vào MES_Order', () => {
     await app.init();
     db = app.get<OrderDb>(ORDER_DB);
     repo = app.get(BravoOrderImportRepository);
-    // Đơn thử 1 có trong OSM (ADR 0013 mục 9)
+    // Đơn thử 1 có trong OSM (quyết định 7.6)
     opts = { branches: ['A01'], unitNames: new Map([['CHIEC', 'Chiếc']]), osmFactories: new Map([[BASE + 1, 'NM THỬ OSM, NM THỬ OSM 2']]) };
     await cleanup();
   });
@@ -177,7 +177,7 @@ describe('Nạp tăng dần đơn hàng BRAVO vào MES_Order', () => {
   it('PO tay của ĐVCS khác ĐVCS của đơn trùng số PO BRAVO mới: không ghép, BRAVO thêm PO riêng, PO tay giữ nguyên (review 5.9.13 L4)', async () => {
     await run({ orders: [order(1)], pos: [po(1)], cells: [cell(1)] });
     const o = await orderOf(1);
-    // ĐVCS A02 lập kế hoạch cho đơn của A01 và thêm PO tay (ADR 0013 mục 11) trước khi BRAVO có PO đó
+    // ĐVCS A02 lập kế hoạch cho đơn của A01 và thêm PO tay (quyết định 7.3, 7.4) trước khi BRAVO có PO đó
     const manual = await db
       .insertInto('SalesOrderPo')
       .values({ SalesOrderId: o.Id, PoCode: `TEST-M-${BASE}`, PoNumber: 'T1-P2', CustomerName: o.CustomerName, StyleCode: o.StyleCode, Qty: 5, ShipDate: '2026-12-15', StatusCode: 'DRAFT', BranchCode: 'A02', CreatedBy: 1 } as any)

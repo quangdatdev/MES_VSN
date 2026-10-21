@@ -43,7 +43,7 @@ export class MeService {
     const roles = access.roleIds.length
       ? await this.db.selectFrom('SysRole').select(['Code', 'Name']).where('Id', 'in', access.roleIds).orderBy('SortOrder').execute()
       : [];
-    // Nhà máy SX thuộc ĐVCS của phiên (ADR 0013 mục 11): giao diện nói rõ popup Chọn mã hàng lọc theo các nhà máy này
+    // Nhà máy SX thuộc ĐVCS của phiên (quyết định 6.3, 7.3): giao diện nói rõ popup Chọn mã hàng lọc theo các nhà máy này
     const factories = access.productionFactories.length
       ? await this.db.selectFrom('SysProductionFactory').select(['Code', 'Name', 'BranchCode']).where('Code', 'in', access.productionFactories).orderBy('SortOrder').orderBy('Code').execute()
       : [];

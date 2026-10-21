@@ -37,7 +37,7 @@ import { ShipmentPlanFeed } from './shipment-plan-feed.service';
 import { ShipmentService } from './shipment.service';
 
 /**
- * Module Đơn hàng: 5 màn theo mô tả giao diện của BA, database MES_Order (ADR 0006), và màn Phân bổ PO (bảng làm việc chép từ dữ
+ * Module Đơn hàng: 5 màn theo mô tả giao diện của BA, database MES_Order (quyết định 7.1), và màn Phân bổ PO (bảng làm việc chép từ dữ
  * liệu OSM đã đồng bộ, Nhà máy SX sửa tay được). Chỉ xuất API công khai cho module khác: ScheduleFeed (module May), ShipmentPlanFeed,
  * ShipmentPlanDeleteGuards, LineColorSizeFeed và LineSupplyGuards (module Cắt); LineDayPlanGuards (module May, Kế hoạch may).
  */
@@ -80,7 +80,7 @@ import { ShipmentService } from './shipment.service';
     OsmFactoryService,
     PoAllocationRefreshService,
   ],
-  // API công khai cho module khác: module May đọc dàn chuyền (ADR 0009); module Cắt đọc kế hoạch, chặn xóa kế hoạch (quyết định 13.2, 13.4),
+  // API công khai cho module khác: module May đọc dàn chuyền (quyết định 9.2); module Cắt đọc kế hoạch, chặn xóa kế hoạch (quyết định 13.2, 13.4),
   // đọc phân bổ màu cỡ theo chuyền và chặn giảm phần giao dưới số BTP đã cấp (quyết định 13.8); module May chặn Xếp chuyền giảm, bỏ dòng
   // dàn chuyền đã có Kế hoạch may (quyết định 14.2)
   exports: [ScheduleFeed, ShipmentPlanFeed, ShipmentPlanDeleteGuards, LineColorSizeFeed, LineSupplyGuards, LineDayPlanGuards],

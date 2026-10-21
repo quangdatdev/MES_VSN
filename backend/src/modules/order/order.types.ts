@@ -35,7 +35,7 @@ export interface SalesOrderTable extends Audit {
   ShipDate: DateCol;
   StatusCode: SalesOrderStatus;
   /**
-   * Nhà máy SX: một hoặc nhiều mã (MES_Core.SysProductionFactory.Code, khóa ngầm) cách nhau dấu phẩy, theo OSM (ADR 0013 mục 9,
+   * Nhà máy SX: một hoặc nhiều mã (MES_Core.SysProductionFactory.Code, khóa ngầm) cách nhau dấu phẩy, theo OSM (quyết định 7.6,
    * platform/catalog/factory-list.ts); NULL: chưa có
    */
   ProductionFactoryCode: ColumnType<string | null, string | null | undefined, string | null>;

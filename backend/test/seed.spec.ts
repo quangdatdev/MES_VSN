@@ -56,7 +56,7 @@ describe('Seed chạy lại', () => {
     expect(factories).toEqual(['A01', 'A02', 'A03'].map((c) => ({ Code: c, Path: `/${c}/`, ParentId: null, BranchCode: c, IsActive: true })));
   });
 
-  describe('vai trò Toàn quyền (ADR 0014)', () => {
+  describe('vai trò Toàn quyền (quyết định 5.1, 5.2)', () => {
     const roleOf = (code: string) => core.selectFrom('SysRole').select('Id').where('Code', '=', code).executeTakeFirst();
     const permsOf = async (roleId: number) =>
       (
@@ -92,7 +92,7 @@ describe('Seed chạy lại', () => {
     });
 
     /**
-     * Như database trước ADR 0014 (chưa có vai trò Toàn quyền), chạy trong một transaction rồi hủy: dữ liệu thật không đổi.
+     * Như database trước khi có vai trò Toàn quyền (quyết định 5.2), chạy trong một transaction rồi hủy: dữ liệu thật không đổi.
      * `prep` chỉnh trạng thái trước khi tạo vai trò (trong cùng transaction).
      */
     async function inRolledBack(prep: (trx: Transaction<CoreDatabase>) => Promise<void>, check: (trx: Transaction<CoreDatabase>, r: Awaited<ReturnType<typeof bootstrapFullAccess>>) => Promise<void>) {

@@ -8,7 +8,7 @@ import { AdminUsersService } from './admin-users.service';
 import { AdminController } from './admin.controller';
 
 @Module({
-  // Đơn vị cơ sở chép từ danh mục chi nhánh BRAVO trong MES_Sync (ADR 0013)
+  // Đơn vị cơ sở chép từ danh mục chi nhánh BRAVO trong MES_Sync (quyết định 6.1)
   imports: [SyncModule],
   controllers: [AdminController],
   providers: [AdminUsersService, AdminAccessService, AdminBranchesService, AdminAuditService, AdminGrantsService],

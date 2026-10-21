@@ -23,7 +23,7 @@ const cell = (v: unknown) => {
 };
 
 /**
- * Xuất file đi qua đúng chính sách cột như màn hình (ADR 0005): cột Ẩn không có trong file, cột Che ra "***",
+ * Xuất file đi qua đúng chính sách cột như màn hình (quyết định 3.7): cột Ẩn không có trong file, cột Che ra "***",
  * cột nhạy cảm được xuất thì ghi nhật ký đọc dữ liệu nhạy cảm (EXPORT).
  */
 @Injectable()

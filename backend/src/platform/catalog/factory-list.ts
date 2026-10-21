@@ -1,5 +1,5 @@
 /**
- * Nhà máy SX của đơn hàng (ADR 0013 mục 9): một hoặc nhiều mã nhà máy (SysProductionFactory.Code, là tên nhà máy theo OSM)
+ * Nhà máy SX của đơn hàng (quyết định 7.6): một hoặc nhiều mã nhà máy (SysProductionFactory.Code, là tên nhà máy theo OSM)
  * cách nhau dấu phẩy, như cột FtyName của view OSM ("VIET DUC,VSN-DN"). Lưu dạng chuẩn: không khoảng trắng quanh dấu phẩy,
  * không mã trùng, giữ thứ tự của OSM; lọc theo nhà máy của ĐVCS tách lại bằng STRING_SPLIT(..., ',').
  */

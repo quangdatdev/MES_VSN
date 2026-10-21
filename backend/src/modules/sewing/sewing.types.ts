@@ -24,7 +24,7 @@ export interface PrepStepTable extends Audit {
   IsSystem: ColumnType<boolean, boolean | undefined, never>;
 }
 
-/** Một dòng dàn chuyền (bản chép từ MES_Order, ADR 0009) cùng các cột nhập tay. */
+/** Một dòng dàn chuyền (bản chép từ MES_Order, quyết định 9.1) cùng các cột nhập tay. */
 export interface SewingPrepTable extends Audit {
   Id: Id;
   ShipmentPlanLineId: number;

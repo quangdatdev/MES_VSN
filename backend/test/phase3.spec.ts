@@ -12,8 +12,8 @@ import { ORDER_DB } from '../src/modules/order/order.db';
 import type { OrderDb } from '../src/modules/order/order.types';
 import { PermissionService } from '../src/platform/permission/permission.service';
 
-// Kịch bản 1-4, 7, 8, 10, 11, 14-17 trong docs/thiet-ke/seed-demo.md mục 7 (5, 6, 9, 12, 13, 18 nằm ở auth.spec.ts).
-// Từ Phase 5.3 chạy trên module Đơn hàng (thay PO demo). Từ Phase 5.9 (ADR 0013) Thông tin đơn hàng dùng chung toàn công ty:
+// Kịch bản 1-4, 7, 8, 10, 11, 14-17 theo số của seed-demo.md cũ (git show 98d19db:docs/thiet-ke/seed-demo.md; nay ở docs/update_docs/12-du-lieu-mau-va-kiem-thu.md) (5, 6, 9, 12, 13, 18 nằm ở auth.spec.ts).
+// Từ Phase 5.3 chạy trên module Đơn hàng (thay PO demo). Từ Phase 5.9 (quyết định 7.2) Thông tin đơn hàng dùng chung toàn công ty:
 // lọc theo đơn vị cơ sở (ĐVCS) kiểm trên Kế hoạch xuất hàng; đơn hàng kiểm việc không lọc và đóng dấu ĐVCS khi tạo.
 describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core + MES_Order đã migrate + seed)', () => {
   let app: INestApplication;
@@ -91,7 +91,7 @@ describe('Phase 3: lọc BranchCode, quản trị phân quyền (cần MES_Core 
       expect((await api().delete(`${ORDERS}/${c.body.id}`).set(auth(planner)).expect(200)).body).toEqual({ removed: true });
     });
 
-    it('4. đơn hàng dùng chung (ADR 0013): tạo mới mang ĐVCS của phiên làm Chi nhánh FOB, ĐVCS khác cũng thấy', async () => {
+    it('4. đơn hàng dùng chung (quyết định 7.2): tạo mới mang ĐVCS của phiên làm Chi nhánh FOB, ĐVCS khác cũng thấy', async () => {
       const c = await api()
         .post(ORDERS)
         .set(auth(planner))

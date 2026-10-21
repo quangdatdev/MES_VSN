@@ -60,7 +60,7 @@ const daySpan = (from: string, to: string) => Math.round((Date.parse(to) - Date.
 
 /**
  * Danh mục hệ thống (Phase 5.4). Danh mục MES (nhà máy SX, ca làm việc, danh mục mã-tên trong SysCatalog) thêm, sửa,
- * ngừng dùng được; không xóa vật lý, mã không sửa được. Danh mục chép từ BRAVO chỉ xem, đọc qua lớp đồng bộ (ADR 0007).
+ * ngừng dùng được; không xóa vật lý, mã không sửa được. Danh mục chép từ BRAVO chỉ xem, đọc qua lớp đồng bộ (quyết định 8.1).
  * Dùng chung toàn công ty, không theo nhà máy, không đi qua BaseRepository (như các bảng Sys* khác).
  * Chuyền may không còn ở đây (phase 5.10): chuyền là bộ phận tích "Xưởng sản xuất" của module Nhân sự.
  */
@@ -77,7 +77,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
   ) {}
 
   onModuleInit() {
-    // Tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX (ADR 0013 mục 9): quản trị gắn ĐVCS
+    // Tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX (quyết định 6.2): quản trị gắn ĐVCS
     this.sync.onSucceeded(OSM_FACTORY_SOURCE, () => this.importOsmFactories());
   }
 
@@ -232,7 +232,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
     this.lookup.invalidate(c.Code);
   }
 
-  // ---------------- Nhà máy SX (ADR 0013) ----------------
+  // ---------------- Nhà máy SX (quyết định 6.2) ----------------
 
   /** Mọi nhà máy SX kèm tên ĐVCS; `q`: tìm mã, tên, mô tả, mã ĐVCS trong DB. */
   async factories(search?: string) {
@@ -260,7 +260,7 @@ export class CatalogService implements OnModuleInit, OnApplicationBootstrap {
 
   /**
    * ĐVCS của nhà máy quyết định đơn hàng nào lập kế hoạch xuất hàng được ở ĐVCS đó, và qua kế hoạch, ai sửa được tỷ lệ cắt của
-   * PO (ADR 0013 mục 11): thêm nhà máy, đổi ĐVCS, bật, tắt nhà máy đòi thêm quyền sửa phân quyền (review 5.9.13 M2).
+   * PO (quyết định 4.2, 6.2): thêm nhà máy, đổi ĐVCS, bật, tắt nhà máy đòi thêm quyền sửa phân quyền (review 5.9.13 M2).
    */
   private assertCanScope(actor: AuthUser) {
     return this.permissions.assertAdminCeiling(actor, ['admin.permission:update'], 'Nhà máy SX gắn đơn vị cơ sở quyết định đơn hàng nào lập kế hoạch được ở đơn vị đó.');

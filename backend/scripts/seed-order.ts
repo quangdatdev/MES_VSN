@@ -18,7 +18,7 @@ const addDays = (d: string, n: number) => {
 const daysBetween = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
 
 /**
- * Nhà máy SX mẫu của đơn hàng (seed-data productionFactories, ADR 0013): A01 chia hai nhà máy; vài đơn của chi nhánh A02 may ở
+ * Nhà máy SX mẫu của đơn hàng (seed-data productionFactories, quyết định 6.2, 7.3): A01 chia hai nhà máy; vài đơn của chi nhánh A02 may ở
  * nhà máy 1B (thuộc ĐVCS A01) để thấy kế hoạch xuất hàng lập cho đơn hàng của ĐVCS khác
  */
 const factoryOf = (branch: string, i: number) => ((branch === 'A01' && i % 3 === 2) || (branch === 'A02' && i % 6 === 5) ? 'A01-B' : branch);

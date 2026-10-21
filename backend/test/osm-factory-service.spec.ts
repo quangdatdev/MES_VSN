@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { OsmFactoryService } from '../src/modules/order/osm-factory.service';
 
-// Không cần database: bước cập nhật Nhà máy SX theo OSM (ADR 0013 mục 9, review OSM M4, L2)
+// Không cần database: bước cập nhật Nhà máy SX theo OSM (quyết định 7.6, review OSM M4, L2)
 const deadlock = () => Object.assign(new Error('chosen as the deadlock victim'), { number: 1205 });
 
 function make(factories: Map<number, string> | null, apply: jest.Mock) {

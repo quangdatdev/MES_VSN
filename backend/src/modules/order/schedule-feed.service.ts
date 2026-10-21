@@ -46,7 +46,7 @@ const branchOf = (scope: Scope) => (scope.isAggregate ? null : scope.branchCode)
 
 /**
  * API công khai của module Đơn hàng cho module khác (CLAUDE.md mục 6: giao tiếp qua service công khai, không đọc bảng
- * của module khác). Module May dùng để chép dàn chuyền sang Kế hoạch chuẩn bị SX (ADR 0009).
+ * của module khác). Module May dùng để chép dàn chuyền sang Kế hoạch chuẩn bị SX (quyết định 9.2).
  */
 @Injectable()
 export class ScheduleFeed {

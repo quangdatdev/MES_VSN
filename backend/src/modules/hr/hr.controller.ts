@@ -51,7 +51,7 @@ export class DepartmentController {
 
 /**
  * Danh mục Loại phòng ban: nằm ở Quản trị › Danh mục hệ thống nên dùng quyền danh mục (admin.catalog) như Cấu hình chuẩn bị SX
- * (người dùng chốt 12/10/2026, ngoại lệ ADR 0012 mục 6). Ô chọn loại ở Sơ đồ tổ chức vẫn lấy qua /hr/departments/options.
+ * (người dùng chốt 12/10/2026, ngoại lệ quyết định 10.5). Ô chọn loại ở Sơ đồ tổ chức vẫn lấy qua /hr/departments/options.
  */
 @Controller('hr/department-types')
 export class DepartmentTypeController {

@@ -65,7 +65,7 @@ function branchExpr(factories: { code: string; branchCode: string }[]): RawBuild
   return sql`(SELECT TOP 1 j.b FROM OPENJSON(${json}) WITH (c NVARCHAR(100) '$.c', b VARCHAR(10) '$.b') j WHERE j.c = PoAllocation.ProductionFactoryCode)`;
 }
 
-/** Danh sách trắng lọc theo cột (ADR 0011): trường JSON → cột; ĐVCS theo bảng tra của danh mục lúc gọi */
+/** Danh sách trắng lọc theo cột (quyết định 11.2): trường JSON → cột; ĐVCS theo bảng tra của danh mục lúc gọi */
 function filterSpec(branch: RawBuilder<unknown>): FilterSpec {
   return Object.fromEntries(FIELDS.map((f) => [f, { expr: COLUMNS[f] ?? branch, kind: kindOf(f) }]));
 }

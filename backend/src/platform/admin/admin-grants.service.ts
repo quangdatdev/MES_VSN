@@ -20,8 +20,8 @@ function validRange(from?: string | null, to?: string | null) {
 }
 
 /**
- * Quản trị L3 (phạm vi theo phép gán), L4 (chính sách cột), L5 (ngoại lệ theo người) – ADR 0005.
- * Mọi thay đổi: không tự áp cho chính mình, tôn trọng trần quyền quản trị (ADR 0004), ghi audit và tăng
+ * Quản trị L3 (phạm vi theo phép gán), L4 (chính sách cột), L5 (ngoại lệ theo người) – quyết định 3.5, 3.7, 3.6.
+ * Mọi thay đổi: không tự áp cho chính mình, tôn trọng trần quyền quản trị (quyết định 4.2), ghi audit và tăng
  * PermissionVersion trong cùng transaction để hiệu lực ngay.
  */
 @Injectable()
@@ -235,7 +235,7 @@ export class AdminGrantsService {
       if (!dim) throw invalid(`Chiều phạm vi "${s.dimension}" không tồn tại hoặc đã tắt.`);
       const org = s.orgUnitId != null ? orgs.find((o) => o.Id === s.orgUnitId) : undefined;
       const value = s.value?.trim() || null;
-      // Tổ hợp hợp lệ theo ADR 0005; chiều chuyền là chiều giá trị từ MES_Core/0009 (xét trước OrgType: database chưa chạy 0009 vẫn đúng luật mới)
+      // Tổ hợp hợp lệ theo quyết định 3.5; chiều chuyền là chiều giá trị từ MES_Core/0009 (xét trước OrgType: database chưa chạy 0009 vẫn đúng luật mới)
       if (s.mode === 'ALL') {
         if (s.orgUnitId != null || value) throw invalid('Phạm vi "Tất cả" không kèm đơn vị hay giá trị.');
       } else if (dim.Code === LINE_DIMENSION) {

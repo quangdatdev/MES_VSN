@@ -32,7 +32,7 @@ interface Entry {
 const isPlain = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);
 
 /**
- * L4 – quyền theo cột (ADR 0005). Mức hiệu lực của một cột:
+ * L4 – quyền theo cột (quyết định 3.7). Mức hiệu lực của một cột:
  *  1. chính sách theo người còn trong hạn dùng (thắng mọi Role);
  *  2. không có thì mức mở nhất trong các Role đang hiệu lực ở nhà máy của phiên (Sửa > Chỉ đọc > Che > Ẩn),
  *     Role không khai báo cột thì cột thường là Sửa được, cột nhạy cảm là Ẩn.

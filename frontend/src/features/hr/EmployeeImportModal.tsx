@@ -53,7 +53,7 @@ interface Checked {
 }
 
 /**
- * Nhập hồ sơ nhân viên bằng cách dán từ Excel (ADR 0012 mục 9): tải file mẫu, điền trong Excel, chép các dòng rồi dán vào lưới.
+ * Nhập hồ sơ nhân viên bằng cách dán từ Excel (quyết định 10.6): tải file mẫu, điền trong Excel, chép các dòng rồi dán vào lưới.
  * Kiểm tra: máy chủ đọc, dò phòng ban, chức danh và báo lỗi theo ô. Lưu: thêm các dòng hợp lệ (máy chủ kiểm lại), mỗi dòng độc
  * lập; dòng đã lưu rời khỏi lưới, dòng lỗi ở lại để sửa.
  */

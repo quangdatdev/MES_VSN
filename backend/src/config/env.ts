@@ -42,13 +42,13 @@ export const env = {
     password: process.env.DB_PASSWORD ?? '',
     coreName: process.env.DB_CORE_NAME || 'MES_Core',
     orderName: process.env.DB_ORDER_NAME || 'MES_Order',
-    // Module May (ADR 0009)
+    // Module May (quyết định 9.1)
     sewingName: process.env.DB_SEWING_NAME || 'MES_Sewing',
     // Module Cắt: Đồng bộ tiến độ cắt (phase 5.14, quyết định 13.1)
     cuttingName: process.env.DB_CUTTING_NAME || 'MES_Cutting',
-    // Module Nhân sự: phòng ban, chức danh, hồ sơ nhân viên (ADR 0012)
+    // Module Nhân sự: phòng ban, chức danh, hồ sơ nhân viên (quyết định 10.1)
     hrName: process.env.DB_HR_NAME || 'MES_Hr',
-    // Bảng chép dữ liệu từ hệ thống ngoài và nhật ký đồng bộ (ADR 0007)
+    // Bảng chép dữ liệu từ hệ thống ngoài và nhật ký đồng bộ (quyết định 8.1)
     syncName: process.env.DB_SYNC_NAME || 'MES_Sync',
     // Database trung gian chứa view của BRAVO. MES chỉ đọc view ở đây, không đọc thẳng database BRAVO.
     stagingName: process.env.DB_TRUNGGIAN_NAME ?? '',
@@ -76,11 +76,11 @@ export const env = {
   // Seed có nạp dữ liệu mẫu (đơn hàng giả, phòng ban và nhân viên giả) không. Mặc định không khi NODE_ENV=production: máy chủ thật
   // quên đặt biến thì seed chạy lại về sau (sau khi pull) cũng không nạp dữ liệu giả
   seedSampleData: flag('SEED_SAMPLE_DATA', !isProd),
-  // Backend tự nạp tăng dần đơn hàng BRAVO vào MES_Order sau mỗi đợt đồng bộ và lúc khởi động (ADR 0013 mục 8). Mặc định bật
+  // Backend tự nạp tăng dần đơn hàng BRAVO vào MES_Order sau mỗi đợt đồng bộ và lúc khởi động (quyết định 7.7). Mặc định bật
   // trên máy dùng thật (không dữ liệu mẫu), tắt trên máy demo, máy test: đơn giả không bị trộn đơn thật, test không tự nạp;
   // máy demo nạp đơn BRAVO bằng npm run load:bravo
   bravoOrderImport: flag('BRAVO_ORDER_IMPORT', !flag('SEED_SAMPLE_DATA', !isProd)),
-  // Cập nhật Nhà máy SX của đơn hàng theo OSM sau mỗi đợt đồng bộ và lúc khởi động (ADR 0013 mục 9). Mặc định bật, kể cả khi
+  // Cập nhật Nhà máy SX của đơn hàng theo OSM sau mỗi đợt đồng bộ và lúc khởi động (quyết định 7.6). Mặc định bật, kể cả khi
   // nạp đơn hàng tự động tắt; test tắt (test/setup-env.ts) để bước này không chạy xen vào bài test
   osmFactoryUpdate: flag('OSM_FACTORY_UPDATE', true),
   // Làm mới bảng Phân bổ PO (MES_Order.PoAllocation) từ dữ liệu OSM đã chép sau mỗi đợt đồng bộ nguồn OSM.OSMData và lúc khởi

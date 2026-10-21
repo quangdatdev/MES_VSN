@@ -9,7 +9,7 @@ import { SewingDbLifecycle, sewingDbProvider } from './sewing.db';
 import { PrepStepRepository, SewingPrepRepository, SewingPrepStepRepository } from './sewing.repositories';
 
 /**
- * Module May: Kế hoạch chuẩn bị SX (ADR 0009), Kế hoạch may (phase 5.16), database MES_Sewing. Đọc dàn chuyền qua ScheduleFeed của module
+ * Module May: Kế hoạch chuẩn bị SX (quyết định 9.1), Kế hoạch may (phase 5.16), database MES_Sewing. Đọc dàn chuyền qua ScheduleFeed của module
  * Đơn hàng; chặn Xếp chuyền bỏ, giảm dòng đã có Kế hoạch may qua LineDayPlanGuards (quyết định 14.2).
  */
 @Module({

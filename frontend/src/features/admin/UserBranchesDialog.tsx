@@ -27,8 +27,8 @@ function factoryHint(b: AdminBranch) {
 }
 
 /**
- * Đơn vị cơ sở của một người (ADR 0013): chọn được khi đăng nhập. Lập kế hoạch xuất hàng theo nhà máy SX thuộc ĐVCS đang
- * đăng nhập (danh mục Nhà máy SX), không tích nhà máy theo người (ADR 0013 mục 11).
+ * Đơn vị cơ sở của một người (quyết định 6.1): chọn được khi đăng nhập. Lập kế hoạch xuất hàng theo nhà máy SX thuộc ĐVCS đang
+ * đăng nhập (danh mục Nhà máy SX), không tích nhà máy theo người (quyết định 6.3).
  */
 export function UserBranchesDialog({ user, branches, onClose, onDone }: Props) {
   const [branchIds, setBranchIds] = useState<number[]>(user.branchIds);

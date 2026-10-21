@@ -7,7 +7,7 @@ import { CORE_DB, type CoreDb } from '../database/database.module';
 import type { OrgType, ScopeMode } from '../database/core.types';
 import { OrgService } from '../org/org.service';
 
-/** Quyền nhóm quản trị: chỉ người đang có quyền đó mới cấp hoặc quản lý người có quyền đó (xem ADR 0004). */
+/** Quyền nhóm quản trị: chỉ người đang có quyền đó mới cấp hoặc quản lý người có quyền đó (xem quyết định 4.2). */
 const ADMIN_PREFIX = 'admin.';
 
 /**
@@ -73,7 +73,7 @@ export interface UserAccess {
   /** Quyền của từng vai trò đang hiệu lực: chính sách cột chỉ tính vai trò có quyền xem tài nguyên. */
   rolePermissions: Map<number, Set<string>>;
   /**
-   * Mã nhà máy SX (đang dùng) thuộc ĐVCS của phiên theo danh mục Nhà máy SX (ADR 0013 mục 11); đơn vị tổng hợp: mọi nhà máy
+   * Mã nhà máy SX (đang dùng) thuộc ĐVCS của phiên theo danh mục Nhà máy SX (quyết định 6.3); đơn vị tổng hợp: mọi nhà máy
    * đã gắn ĐVCS. BaseRepository lọc theo danh sách này khi bên gọi yêu cầu (popup chọn mã hàng lúc lập kế hoạch xuất hàng).
    */
   productionFactories: string[];
@@ -118,7 +118,7 @@ const minOf = (a: number | null, b: number | null) => (a === null ? b : b === nu
 export const accessStamp = (a: Pick<UserAccess, 'version' | 'expiresAt'>) => (a.expiresAt ? `${a.version}.${a.expiresAt}` : a.version);
 
 /**
- * L2 + L3 + L5 (ADR 0005): quyền của user tại nhà máy của phiên.
+ * L2 + L3 + L5 (quyết định 3.5, 3.6): quyền của user tại nhà máy của phiên.
  *  1. Deny theo người còn hiệu lực ⇒ mất quyền.
  *  2. Allow theo người còn hiệu lực ⇒ có quyền, phạm vi = hợp phạm vi mọi phép gán đang hiệu lực ở nhà máy này.
  *  3. Hợp quyền của các phép gán Role đang hiệu lực, phạm vi tính theo từng phép gán.

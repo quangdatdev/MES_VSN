@@ -48,7 +48,7 @@ const assignedByColorSizeQuery = (db: Kysely<any>, planId: number) =>
 // ---------- Thông tin đơn hàng (order.allocation) ----------
 
 /**
- * Đơn hàng lấy hết từ BRAVO, dùng chung toàn công ty (SHARED, ADR 0013): BranchCode là Chi nhánh FOB, đơn nhập tay đóng dấu
+ * Đơn hàng lấy hết từ BRAVO, dùng chung toàn công ty (SHARED, quyết định 7.2): BranchCode là Chi nhánh FOB, đơn nhập tay đóng dấu
  * ĐVCS của phiên. Popup Chọn mã hàng của kế hoạch xuất hàng lọc theo nhà máy SX thuộc ĐVCS của phiên (cột ProductionFactoryCode).
  */
 @Injectable()
@@ -75,7 +75,7 @@ export class SalesOrderRepository extends BaseRepository<SalesOrderRow> {
 /**
  * Giá CM của đơn (quyết định 14.3): cùng bảng, cùng tài nguyên với SalesOrderRepository nhưng ĐVCS có kế hoạch xuất hàng của đơn
  * (`usedBy` = ShipmentPlan.SalesOrderId) cũng ghi được, như ĐVCS nguồn. Chỉ dùng cho đường sửa riêng Giá CM: không mở `usedBy` ở
- * SalesOrderRepository, vì như vậy ĐVCS khác sửa được cả Nhà máy SX, xóa được đơn (ADR 0013 mục 4).
+ * SalesOrderRepository, vì như vậy ĐVCS khác sửa được cả Nhà máy SX, xóa được đơn (quyết định 7.2).
  */
 @Injectable()
 export class SalesOrderPriceRepository extends BaseRepository<SalesOrderRow> {
@@ -135,8 +135,8 @@ export const orderWithoutPlanIn = (branchCode: string) =>
   sql<SqlBool>`NOT EXISTS (SELECT 1 FROM dbo.ShipmentPlan sp WHERE sp.SalesOrderId = SalesOrder.Id AND sp.BranchCode = ${branchCode})`;
 
 /**
- * PO của đơn hàng: dùng chung như đơn hàng (ADR 0013); PO nhập tay đóng dấu ĐVCS của phiên. ĐVCS đưa PO vào kế hoạch xuất
- * hàng của mình thì sửa được tỷ lệ cắt của PO đó như ĐVCS nguồn (ADR 0013 mục 11).
+ * PO của đơn hàng: dùng chung như đơn hàng (quyết định 7.2); PO nhập tay đóng dấu ĐVCS của phiên. ĐVCS đưa PO vào kế hoạch xuất
+ * hàng của mình thì sửa được tỷ lệ cắt của PO đó như ĐVCS nguồn (quyết định 7.2).
  */
 @Injectable()
 export class SalesOrderPoRepository extends BaseRepository<SalesOrderPoRow> {
@@ -242,7 +242,7 @@ export class ShipmentPlanRepository extends BaseRepository<ShipmentPlanRow> {
   /**
    * Số lượng đã lập kế hoạch theo đơn hàng và màu cỡ (để tính "SL đã tạo KHXH", "SL còn lại").
    * Tính trên mọi kế hoạch của đơn hàng ở mọi ĐVCS, không theo phạm vi người xem: đơn hàng dùng chung toàn công ty, kế hoạch
-   * lập ở ĐVCS nào cũng trừ vào cùng số lượng gốc (ADR 0013), và người chỉ thấy kế hoạch mình tạo cũng không được lập vượt
+   * lập ở ĐVCS nào cũng trừ vào cùng số lượng gốc (quyết định 7.3), và người chỉ thấy kế hoạch mình tạo cũng không được lập vượt
    * (review 5.1 #7). Chỉ trả tổng số, không trả dòng kế hoạch nào.
    * `sharingPoIds`: chỉ tính kế hoạch có dùng chung ít nhất một PO trong danh sách (lưới màu cỡ của popup, quyết định 15.3): PO
    * khác nhau thì số lượng gốc khác nhau, không trừ lẫn nhau.
@@ -554,7 +554,7 @@ export class LinePlanLineRepository extends ChildRepository<PlanLineRow> {
   }
 
   /**
-   * Mọi dòng dàn chuyền của một nhà máy (null: mọi nhà máy), cho module May chép sang MES_Sewing (ADR 0009).
+   * Mọi dòng dàn chuyền của một nhà máy (null: mọi nhà máy), cho module May chép sang MES_Sewing (quyết định 9.2).
    * Chỉ lọc nhà máy, không theo phạm vi người dùng: kết quả không trả thẳng cho người dùng, chỉ đi qua repository
    * của module May, nơi lọc nhà máy và chuyền theo quyền order.prep. Mã nhà máy lấy từ phiên do server cấp.
    */

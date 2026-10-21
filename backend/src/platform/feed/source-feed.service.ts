@@ -7,7 +7,7 @@ export type { BravoOrderSource, SourceCell, SourceOrder, SourcePo } from '../syn
 export type { OsmPoSourceRow } from '../sync/osm-po-source';
 
 /**
- * Cổng đọc dữ liệu nghiệp vụ chép từ hệ thống ngoài (BRAVO, OSM) cho module nghiệp vụ (ADR 0007: module không đọc MES_Sync,
+ * Cổng đọc dữ liệu nghiệp vụ chép từ hệ thống ngoài (BRAVO, OSM) cho module nghiệp vụ (quyết định 1.2: module không đọc MES_Sync,
  * không gọi phần bên trong lớp đồng bộ). Chỉ đọc; việc ghi vào database của module do module tự làm.
  */
 @Injectable()

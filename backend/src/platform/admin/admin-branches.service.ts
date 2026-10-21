@@ -15,7 +15,7 @@ import { bravoBranchCode, importBravoBranches } from './branch-import';
 const BRAVO_BRANCH_SOURCE = 'BRAVO.DM_CHINHANH';
 
 /**
- * Quản trị › Đơn vị cơ sở (SysBranch, ADR 0013). Danh sách theo danh mục chi nhánh BRAVO, cộng đơn vị tổng hợp A00 của MES.
+ * Quản trị › Đơn vị cơ sở (SysBranch, quyết định 6.1). Danh sách theo danh mục chi nhánh BRAVO, cộng đơn vị tổng hợp A00 của MES.
  * Mã, tên của ĐVCS có trong BRAVO sửa ở BRAVO; ở MES chỉ bật, tắt (ai được vào đâu).
  */
 @Injectable()
@@ -95,7 +95,7 @@ export class AdminBranchesService implements OnModuleInit {
     return { rows: rows.length, ...result };
   }
 
-  /** Thêm tay ĐVCS: chỉ dùng khi máy chưa có đồng bộ BRAVO (màn hình không còn nút này, ADR 0013) */
+  /** Thêm tay ĐVCS: chỉ dùng khi máy chưa có đồng bộ BRAVO (màn hình không còn nút này, quyết định 6.1) */
   async create(actor: AuthUser, dto: BranchCreateDto) {
     if (dto.code === 'A00') throw Errors.conflict('Mã A00 dành cho đơn vị tổng hợp.');
     const exists = await this.db.selectFrom('SysBranch').select('Id').where('Code', '=', dto.code).executeTakeFirst();

@@ -137,7 +137,7 @@ export class AdminUsersService {
       'Không thể gán vai trò có quyền quản trị mà bạn không có.',
     );
 
-    // So sánh khác biệt: phép gán giữ nguyên thì giữ nguyên phạm vi của nó (ADR 0005)
+    // So sánh khác biệt: phép gán giữ nguyên thì giữ nguyên phạm vi của nó (quyết định 3.5)
     const current = await this.db
       .selectFrom('SysUserRole as ur')
       .innerJoin('SysRole as r', 'r.Id', 'ur.RoleId')
@@ -186,7 +186,7 @@ export class AdminUsersService {
 
   /**
    * Đơn vị cơ sở được chọn khi đăng nhập (SysUserBranch). Nhà máy SX lập kế hoạch xuất hàng được theo ĐVCS đăng nhập (danh
-   * mục Nhà máy SX), không tích theo người (ADR 0013 mục 11).
+   * mục Nhà máy SX), không tích theo người (quyết định 6.3).
    */
   async setBranches(actor: AuthUser, id: number, dto: UserBranchesDto) {
     if (id === actor.userId) throw Errors.selfElevation('Bạn không được tự thay đổi đơn vị cơ sở của chính mình.');

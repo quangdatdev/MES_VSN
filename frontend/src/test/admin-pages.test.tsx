@@ -119,7 +119,7 @@ describe('Người dùng: khóa tài khoản phải xác nhận', () => {
     await waitFor(() => expect(calls).toEqual([{ path: '/admin/users/2', method: 'PUT', body: { fullName: 'Lê Đạt', email: null, isActive: false } }]));
   });
 
-  it('gán đơn vị cơ sở: mỗi đơn vị ghi nhà máy SX của nó, không còn tích nhà máy theo người (ADR 0013 mục 11)', async () => {
+  it('gán đơn vị cơ sở: mỗi đơn vị ghi nhà máy SX của nó, không còn tích nhà máy theo người (quyết định 6.3)', async () => {
     signIn(['admin.permission:update']);
     const branches = [
       { id: 11, code: 'A01', name: 'VSN', description: null, isAggregate: false, isActive: true, isSystem: false, inBravo: true, factories: [{ code: 'VSN-DN', name: 'VSN-DN', isActive: true }, { code: 'A01', name: 'Nhà máy cũ', isActive: false }] },

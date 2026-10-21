@@ -34,7 +34,7 @@ const MAX_IDS = 50;
 const RETRY_DELAYS_MS = [2_000, 10_000];
 
 /**
- * Nạp tăng dần đơn hàng BRAVO vào MES_Order (ADR 0013 mục 8): sau mỗi đợt đồng bộ có chép nguồn đơn hàng, và một lần lúc
+ * Nạp tăng dần đơn hàng BRAVO vào MES_Order (quyết định 7.7): sau mỗi đợt đồng bộ có chép nguồn đơn hàng, và một lần lúc
  * khởi động (lần đầu sau khi triển khai, đợt đồng bộ chạy lúc backend dừng). Thêm đơn, PO mới, cập nhật phần lấy từ BRAVO, giữ
  * phần MES tự quản (Nhà máy SX, đơn giá, kế hoạch, màu cỡ đã xác nhận). Không xóa gì. Quy tắc chi tiết ở planImport
  * (bravo-order.mapping.ts); khác `load:bravo` (xóa hết rồi nạp lại, chỉ máy demo). Tắt bằng BRAVO_ORDER_IMPORT=false.

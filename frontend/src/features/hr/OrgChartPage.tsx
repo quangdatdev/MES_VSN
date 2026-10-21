@@ -19,7 +19,7 @@ const NO_DEPTS: Department[] = [];
 const VIEW: PanelMode = { kind: 'view' };
 
 /**
- * Sơ đồ tổ chức (hr.orgchart, ADR 0012): cây phòng ban bên trái, thông tin phòng ban đang chọn bên phải. Thêm phòng ban con hoặc
+ * Sơ đồ tổ chức (hr.orgchart, quyết định 10.2): cây phòng ban bên trái, thông tin phòng ban đang chọn bên phải. Thêm phòng ban con hoặc
  * cùng cấp bằng chuột phải, nút ba chấm trên cây hoặc nút Thêm phòng ban. Phòng ban đang chọn nằm trên URL (?dept=MÃ).
  */
 export default function OrgChartPage() {

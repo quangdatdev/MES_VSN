@@ -270,7 +270,7 @@ export default function PrepPlanPage() {
   const branch = useSession((s) => s.branch?.code);
   const canUpdate = useCan(`${RESOURCE}:update`) && !aggregate;
   const canExport = useCan(`${RESOURCE}:export`);
-  // Lưới nhập khi được sửa các bước; chỉ xem hoặc cột bị Che thì lưới xem (giữ cách hiện ***, ADR 0008)
+  // Lưới nhập khi được sửa các bước; chỉ xem hoặc cột bị Che thì lưới xem (giữ cách hiện ***, quyết định 11.1)
   const editing = canUpdate && policy.level('steps') === 'EDITABLE';
   const lines = useLines();
   const lineName = useMemo(() => new Map(lines.map((l) => [l.code, l.name])), [lines]);

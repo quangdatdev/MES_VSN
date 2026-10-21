@@ -11,14 +11,14 @@ const loaders: Record<string, () => PageModule> = {
   '/order/cut-ratio': () => import('../features/order/CutRatioPage'),
   '/order/line-plan': () => import('../features/order/LinePlanPage'),
   '/order/color-size': () => import('../features/order/ColorSizePage'),
-  // Màn của nhóm Quản trị đơn hàng, code và dữ liệu thuộc module May (ADR 0009)
+  // Màn của nhóm Quản trị đơn hàng, code và dữ liệu thuộc module May (quyết định 9.4)
   '/order/prep': () => import('../features/sewing/PrepPlanPage'),
   // Quản trị nhà cắt: module Cắt (phase 5.14)
   '/cutting/progress': () => import('../features/cutting/CuttingProgressPage'),
   '/cutting/supply': () => import('../features/cutting/CuttingSupplyPage'),
   // Quản trị xưởng may: module May (phase 5.16)
   '/sewing/plan': () => import('../features/sewing/SewingPlanPage'),
-  // Quản trị nhân sự (ADR 0012)
+  // Quản trị nhân sự (quyết định 10.1)
   '/hr/org-chart': () => import('../features/hr/OrgChartPage'),
   '/hr/employees': () => import('../features/hr/EmployeesPage'),
   '/admin/users': () => import('../features/admin/UsersPage'),

@@ -33,7 +33,7 @@ export class SupplyListQuery {
   @IsOptional() @IsString() @MaxLength(120) style?: string;
   @IsOptional() @IsString() @MaxLength(100) creator?: string;
   @IsOptional() @IsIn(SUPPLY_STATUSES) status?: SupplyStatus;
-  /** Bộ lọc theo cột (JSON, ADR 0011) */
+  /** Bộ lọc theo cột (JSON, quyết định 11.2) */
   @IsOptional() @IsString() @MaxLength(20000, { message: 'Bộ lọc theo cột quá dài.' }) cf?: string;
 }
 

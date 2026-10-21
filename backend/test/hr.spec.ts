@@ -15,7 +15,7 @@ import { CORE_DB, type CoreDb } from '../src/platform/database/database.module';
 import { OrgService } from '../src/platform/org/org.service';
 import { PermissionService } from '../src/platform/permission/permission.service';
 
-// Phase 5.8 – Sơ đồ tổ chức, Thông tin nhân sự (ADR 0012). Cần MES_Core, MES_Hr đã migrate và seed (vai trò Nhân sự, tài khoản nhansu).
+// Phase 5.8 – Sơ đồ tổ chức, Thông tin nhân sự (quyết định 10.1). Cần MES_Core, MES_Hr đã migrate và seed (vai trò Nhân sự, tài khoản nhansu).
 // Test tự tạo phòng ban mã TST-…, chức danh TST-…, nhân viên mã TST…, loại phòng ban mã TST_…; xóa hết khi xong.
 describe('Phase 5.8: Quản trị nhân sự', () => {
   let app: INestApplication;
@@ -38,7 +38,7 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
 
   /**
    * Tài khoản thử chỉ có vai trò Quản trị hệ thống (xem nghiệp vụ, không ghi): tài khoản admin mẫu có thêm vai trò Toàn quyền
-   * (ADR 0014) nên không dùng để kiểm "chỉ có quyền xem". Dọn ở afterAll.
+   * (quyết định 5.3) nên không dùng để kiểm "chỉ có quyền xem". Dọn ở afterAll.
    */
   const VIEWER = 'test.hrview';
   let viewerId = 0;
@@ -239,7 +239,7 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     expect((await get(await hrUser())).idNumber).toBe('999000111222');
     expect((await get(await tokenFor('giamdoc', 'A00'))).idNumber).toBe('***');
     expect('idNumber' in (await get(await viewOnly()))).toBe(false);
-    // Toàn quyền (ADR 0014): thấy cột nhạy cảm
+    // Toàn quyền (quyết định 5.1): thấy cột nhạy cảm
     expect((await get(await tokenFor('admin', 'A00'))).idNumber).toBe('999000111222');
     const csv = await api().get(`/api/v1/hr/employees/export?departmentId=${fx.root}`).set(auth(await tokenFor('giamdoc', 'A00'))).expect(200);
     expect(csv.text).toContain('Số CMND/CCCD');
@@ -427,7 +427,7 @@ describe('Phase 5.8: Quản trị nhân sự', () => {
     line.l2 = (await createDept(admin, { code: 'TST-L2', name: 'Chuyền thử 2', departmentTypeId: fx.finalType, parentId: line.parent, branchCode: 'A01', isProductionWorkshop: true }).expect(201)).body.id;
     line.l3 = (await createDept(admin, { code: 'TST-L3', name: 'Chuyền thử 3', departmentTypeId: fx.finalType, parentId: fx.root, branchCode: 'A02', isProductionWorkshop: true }).expect(201)).body.id;
     expect(await version()).toBe(v + 2);
-    // A00 vẫn ghi được dữ liệu nhân sự dùng chung (ADR 0012 mục 5), kể cả cờ, khi đủ quyền
+    // A00 vẫn ghi được dữ liệu nhân sự dùng chung (quyết định 3.4, 10.4), kể cả cờ, khi đủ quyền
     const atA00 = await tokenFor('admin', 'A00');
     await putDept(atA00, line.l3, { isProductionWorkshop: false }).expect(200);
     await putDept(atA00, line.l3, { isProductionWorkshop: true }).expect(200);

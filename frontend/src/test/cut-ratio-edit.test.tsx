@@ -83,7 +83,7 @@ describe('Cập nhật tỷ lệ cắt: đang sửa màu cỡ', () => {
   });
 });
 
-describe('Cập nhật tỷ lệ cắt: PO trong kế hoạch của đơn vị (ADR 0013 mục 11)', () => {
+describe('Cập nhật tỷ lệ cắt: PO trong kế hoạch của đơn vị (quyết định 7.2, 7.4)', () => {
   it('PO của đơn ĐVCS khác đã vào kế hoạch ở đây: sửa, xác nhận được; xóa bị khóa có lý do', async () => {
     useSession.getState().reset('anonymous');
     useSession.getState().set({

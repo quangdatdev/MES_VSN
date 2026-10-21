@@ -142,7 +142,7 @@ export interface SysAuditLogTable {
   IpAddress: string | null;
 }
 
-/** Cấp của cây tổ chức (ADR 0010): Nhà máy → Xưởng → Chuyền; chuyền cũng được nằm thẳng dưới nhà máy */
+/** Cấp của cây tổ chức (quyết định 6.4): Nhà máy → Xưởng → Chuyền; chuyền cũng được nằm thẳng dưới nhà máy */
 export type OrgType = 'FACTORY' | 'WORKSHOP' | 'LINE';
 export type ScopeMode = 'ALL' | 'ORG_SUBTREE' | 'LIST' | 'OWN';
 export type AccessLevel = 'HIDDEN' | 'MASKED' | 'READONLY' | 'EDITABLE';
@@ -267,7 +267,7 @@ export interface SysCatalogItemTable extends Audit {
   IsSystem: boolean;
 }
 
-/** Nhà máy SX (MES_Core/0007, ADR 0013): mỗi nhà máy thuộc một Đơn vị cơ sở; mã lưu ở SalesOrder.ProductionFactoryCode */
+/** Nhà máy SX (MES_Core/0007, quyết định 6.2): mỗi nhà máy thuộc một Đơn vị cơ sở; mã lưu ở SalesOrder.ProductionFactoryCode */
 export interface SysProductionFactoryTable extends Audit {
   Id: Id;
   Code: string;
@@ -280,7 +280,7 @@ export interface SysProductionFactoryTable extends Audit {
   IsSystem: boolean;
 }
 
-/** Nhà máy SX từng được tích cho người dùng. Không còn dùng từ ADR 0013 mục 11 (lọc theo nhà máy của ĐVCS); giữ bảng, chờ xóa */
+/** Nhà máy SX từng được tích cho người dùng. Không còn dùng từ quyết định 6.3 (lọc theo nhà máy của ĐVCS); giữ bảng, chờ xóa */
 export interface SysUserProductionFactoryTable {
   Id: Id;
   UserId: number;

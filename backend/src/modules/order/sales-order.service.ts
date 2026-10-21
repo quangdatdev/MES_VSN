@@ -71,7 +71,7 @@ export function presentSalesOrder(r: SalesOrderRow) {
     statusCode: r.StatusCode,
     branchCode: r.BranchCode,
     productionFactoryCode: r.ProductionFactoryCode,
-    /** Nhà máy SX lấy theo OSM: màn hình khóa ô chọn (ADR 0013 mục 9) */
+    /** Nhà máy SX lấy theo OSM: màn hình khóa ô chọn (quyết định 7.6) */
     factoryFromOsm: !!r.IsFactoryFromOsm,
     createdAt: r.CreatedAt,
     modifiedAt: r.ModifiedAt,
@@ -252,7 +252,7 @@ export class SalesOrderService {
     if (dto.shipDate !== undefined) set.ShipDate = dto.shipDate;
     if (dto.statusCode !== undefined) set.StatusCode = dto.statusCode;
     if (dto.productionFactoryCode !== undefined) {
-      // Nhà máy SX theo OSM không sửa tay (ADR 0013 mục 9); lưu cả form gửi lại đúng giá trị đang có thì bỏ qua
+      // Nhà máy SX theo OSM không sửa tay (quyết định 7.6); lưu cả form gửi lại đúng giá trị đang có thì bỏ qua
       if (before?.IsFactoryFromOsm) {
         if ((dto.productionFactoryCode || null) !== before.ProductionFactoryCode) throw conflict('Nhà máy SX của đơn này lấy theo OSM, không sửa tay được. Sửa ở OSM rồi đồng bộ lại.');
       } else set.ProductionFactoryCode = await this.factoryCode(dto.productionFactoryCode, before?.ProductionFactoryCode);

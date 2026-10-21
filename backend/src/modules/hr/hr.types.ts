@@ -22,7 +22,7 @@ export interface DepartmentTypeTable extends Audit {
   IsSystem: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
-/** Phòng ban trong cây hành chính (ADR 0012 mục 3). Path = Path của cha + Code + '/'. */
+/** Phòng ban trong cây hành chính (quyết định 10.2). Path = Path của cha + Code + '/'. */
 export interface DepartmentTable extends Audit {
   Id: Id;
   Code: string;
@@ -54,7 +54,7 @@ export interface JobTitleTable extends Audit {
   IsSystem: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
-/** Hồ sơ nhân viên. Mã sửa được, liên kết theo Id (ADR 0012 mục 4). */
+/** Hồ sơ nhân viên. Mã sửa được, liên kết theo Id (quyết định 10.3). */
 export interface EmployeeTable extends Audit {
   Id: Id;
   Code: string;

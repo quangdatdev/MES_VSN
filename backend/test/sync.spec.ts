@@ -14,8 +14,8 @@ import { SyncRepository } from '../src/platform/sync/sync.repository';
 import { SyncService } from '../src/platform/sync/sync.service';
 import type { SyncDb } from '../src/platform/sync/sync.types';
 
-// Phase 5.2: đồng bộ qua database trung gian vào MES_Sync (ADR 0007).
-// Cần MES_Sync đã migrate và seed (quyền admin.sync), xem docs/thiet-ke/db-sync.md. Bài chép dữ liệu thật cần thêm
+// Phase 5.2: đồng bộ qua database trung gian vào MES_Sync (quyết định 8.1).
+// Cần MES_Sync đã migrate và seed (quyền admin.sync), xem docs/update_docs/09-dong-bo.md. Bài chép dữ liệu thật cần thêm
 // DB_TRUNGGIAN_NAME cùng máy SQL Server (bài này kết nối thẳng tới database đó, không qua linked server); các bài về thủ tục
 // chép dùng bảng mẫu tự tạo trong MES_Sync, không phụ thuộc BRAVO.
 const withStaging = env.db.stagingName && !env.db.stagingServer ? it : it.skip;
@@ -56,7 +56,7 @@ describe('Phase 5.2: đồng bộ dữ liệu qua database trung gian', () => {
     syncDb = app.get<SyncDb>(SYNC_DB);
     core = app.get<CoreDb>(CORE_DB);
     sync = app.get(SyncService);
-    if (!(await app.get(SyncRepository).databaseReady())) throw new Error(`Cần database ${env.db.syncName} đã tạo và migrate (docs/thiet-ke/db-sync.md)`);
+    if (!(await app.get(SyncRepository).databaseReady())) throw new Error(`Cần database ${env.db.syncName} đã tạo và migrate (docs/update_docs/09-dong-bo.md)`);
     await sync.idle();
     admin = await tokenFor('admin', 'A00');
     planner = await tokenFor('kehoach.a', 'A01');

@@ -114,7 +114,7 @@ export class SewingPrepRepository extends BaseRepository<SewingPrepRow> {
   }
 
   /**
-   * Chép dàn chuyền sang (ADR 0009): thêm dòng mới, cập nhật mã hàng, chuyền, số lượng, ngày vào chuyền đã đổi, xóa dòng
+   * Chép dàn chuyền sang (quyết định 9.2): thêm dòng mới, cập nhật mã hàng, chuyền, số lượng, ngày vào chuyền đã đổi, xóa dòng
    * của dòng dàn chuyền đã bị bỏ (kèm ngày đã nhập). Việc của hệ thống khi mở màn, không theo quyền người xem: BranchCode
    * lấy từ dòng nguồn của máy chủ. `branchCode` null: mọi nhà máy (phiên ở đơn vị tổng hợp A00).
    * - Một lần chép tại một thời điểm (khóa ứng dụng, không khóa phạm vi trên bảng nên phiên A00 và phiên nhà máy không

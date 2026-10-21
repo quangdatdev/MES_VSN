@@ -1,4 +1,4 @@
-// Kiểu dữ liệu của module Nhân sự, khớp API /hr/* (backend/src/modules/hr, ADR 0012)
+// Kiểu dữ liệu của module Nhân sự, khớp API /hr/* (backend/src/modules/hr, quyết định 10.1)
 
 /** Phòng ban trong cây (GET /hr/departments/tree, /hr/departments/:id) */
 export interface Department {

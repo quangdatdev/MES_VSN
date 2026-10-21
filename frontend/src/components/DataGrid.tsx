@@ -21,7 +21,7 @@ export interface Column<T> {
   format?: CellFormat;
   /** Tham số sort gửi server (trường JSON); không có thì cột không sắp xếp được. */
   sortKey?: string;
-  /** Trường lọc theo giá trị (nút mũi tên trên tiêu đề, ADR 0011); máy chủ phải có trường này trong danh sách trắng của màn. */
+  /** Trường lọc theo giá trị (nút mũi tên trên tiêu đề, quyết định 11.2); máy chủ phải có trường này trong danh sách trắng của màn. */
   filterKey?: string;
   /** Chữ của một giá trị trong popup lọc (tên trạng thái, tên chuyền...); mặc định định dạng theo `format`. */
   filterLabel?: (v: string | number) => string;

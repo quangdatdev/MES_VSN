@@ -4,7 +4,7 @@ import { CurrentUser, RequirePermission } from '../auth/decorators';
 import { SyncRunsQuery, SyncStartDto } from './sync.dto';
 import { SyncService } from './sync.service';
 
-/** Màn Đồng bộ dữ liệu: chép view của database trung gian vào MES_Sync (ADR 0007). */
+/** Màn Đồng bộ dữ liệu: chép view của database trung gian vào MES_Sync (quyết định 8.1, 8.4). */
 @Controller('admin/sync')
 export class SyncController {
   constructor(private readonly sync: SyncService) {}

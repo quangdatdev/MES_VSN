@@ -190,7 +190,7 @@ function findDepartment(ctx: EmployeeContext, text: string) {
 }
 
 /**
- * Nhập hồ sơ nhân viên dán từ Excel (ADR 0012 mục 9). Xem trước: đọc, dò và kiểm mọi dòng, trả lỗi theo ô. Lưu: kiểm lại từ đầu
+ * Nhập hồ sơ nhân viên dán từ Excel (quyết định 10.6). Xem trước: đọc, dò và kiểm mọi dòng, trả lỗi theo ô. Lưu: kiểm lại từ đầu
  * (không tin kết quả xem trước) rồi thêm từng dòng độc lập, dòng lỗi không chặn dòng khác.
  */
 @Injectable()

@@ -1,7 +1,7 @@
 import type { EmployeeTable } from './hr.types';
 
 /**
- * Các trường của hồ sơ nhân viên, định nghĩa một chỗ cho API, kiểm tra, nhập từ Excel và xuất file (ADR 0012 mục 8, 9). Màn
+ * Các trường của hồ sơ nhân viên, định nghĩa một chỗ cho API, kiểm tra, nhập từ Excel và xuất file (quyết định 10.5, 10.6). Màn
  * hình nhận danh sách này qua /hr/employees/options để dựng form, lưới nhập và file mẫu theo cùng thứ tự, cùng tên.
  * `key` là khóa JSON của API, trùng mã cột đăng ký ở SysResourceField (chính sách cột).
  */

@@ -101,7 +101,7 @@ export class CutRatioService {
 
   /**
    * Điều kiện trên dòng PO của danh sách mã hàng: chỉ PO ĐVCS của phiên đang dùng (nằm trong kế hoạch xuất hàng của ĐVCS này,
-   * hoặc PO nhập tay ở đây; ADR 0013 mục 11), dải lọc, "PO do tôi lập", lọc theo cột.
+   * hoặc PO nhập tay ở đây; quyết định 7.4), dải lọc, "PO do tôi lập", lọc theo cột.
    */
   private async styleWhere(user: AuthUser, q: CutRatioStyleQuery, except?: string) {
     const filters = await readableColumnFilters(this.fields, user, RESOURCE, q.cf, STYLE_FILTER);
@@ -188,7 +188,7 @@ export class CutRatioService {
 
   /**
    * "Thêm PO": PO BRAVO chưa có nên cho nhập tay, kèm màu cỡ. Chỉ thêm cho mã hàng đang có trên màn ở ĐVCS của phiên (có PO
-   * trong kế hoạch xuất hàng của ĐVCS này hoặc PO nhập tay ở đây); PO mới mang ĐVCS của phiên (ADR 0013 mục 11).
+   * trong kế hoạch xuất hàng của ĐVCS này hoặc PO nhập tay ở đây); PO mới mang ĐVCS của phiên (quyết định 7.4).
    */
   async create(user: AuthUser, dto: PoCreateDto) {
     const scope = scopeOf(user);
@@ -234,8 +234,8 @@ export class CutRatioService {
 
   /**
    * "Cập nhật": thay toàn bộ màu cỡ của PO và tính lại tổng số lượng. PO đã xác nhận thì phải hủy xác nhận trước. Khóa PO tới
-   * hết transaction rồi mới đọc trạng thái: ĐVCS nguồn và các ĐVCS có PO trong kế hoạch cùng ghi được một PO (ADR 0013 mục
-   * 11), người xác nhận cùng lúc phải chờ (review 5.9.13 M1).
+   * hết transaction rồi mới đọc trạng thái: ĐVCS nguồn và các ĐVCS có PO trong kế hoạch cùng ghi được một PO (quyết định
+   * 7.2), người xác nhận cùng lúc phải chờ (review 5.9.13 M1).
    */
   async updateColorSizes(user: AuthUser, poId: number, dto: ColorSizeLinesDto) {
     const scope = scopeOf(user);

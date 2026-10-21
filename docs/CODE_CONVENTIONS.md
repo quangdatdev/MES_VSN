@@ -43,6 +43,7 @@ Nhãn trạng thái của từng quy ước:
 - Định danh, tên bảng, cột, biến môi trường: tiếng Anh.
 - Chữ trên giao diện, thông điệp lỗi API, comment, tài liệu: tiếng Việt có đầy đủ dấu. Thông điệp lỗi nói rõ chuyện gì xảy ra và cách xử lý.
 - Comment chỉ giải thích "vì sao", không mô tả lại code.
+- Comment dẫn quyết định ghi "quyết định X.Y" (số mục của [13 Quyết định](update_docs/13-quyet-dinh.md)); dẫn tài liệu ghi đường dẫn từ gốc repo (`docs/...`). Không trích ADR, `docs/thiet-ke/*.md` (đã xóa; task T1 21/10/2026 đổi hết, trừ migration đã chạy). Quy tắc bắt buộc trích "CLAUDE.md mục …" là số mục của `AGENTS.md`.
 - Trên giao diện, `SysBranch` luôn gọi là "Đơn vị cơ sở" (cột ngắn "ĐVCS"), không gọi là "nhà máy".
 
 Đúng:

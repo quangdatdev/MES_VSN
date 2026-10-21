@@ -19,7 +19,7 @@ export class CuttingProgressController {
   @Get() @RequirePermission('cutting.progress:view')
   list(@CurrentUser() u: AuthUser, @Query() q: CuttingListQuery) { return this.service.list(u, q); }
 
-  // Giá trị của một cột cho popup lọc theo cột (ADR 0011)
+  // Giá trị của một cột cho popup lọc theo cột (quyết định 11.3)
   @Get('values') @RequirePermission('cutting.progress:view')
   values(@CurrentUser() u: AuthUser, @Query() q: CuttingValuesQuery) { return this.service.values(u, q); }
 

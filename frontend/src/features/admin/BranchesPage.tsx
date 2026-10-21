@@ -38,7 +38,7 @@ function SourceBadge({ b }: { b: AdminBranch }) {
 }
 
 /**
- * Quản trị › Đơn vị cơ sở (ADR 0013): danh sách theo danh mục chi nhánh BRAVO, tự cập nhật sau mỗi lần đồng bộ danh mục
+ * Quản trị › Đơn vị cơ sở (quyết định 6.1): danh sách theo danh mục chi nhánh BRAVO, tự cập nhật sau mỗi lần đồng bộ danh mục
  * chi nhánh. Mã, tên của ĐVCS có trong BRAVO sửa ở BRAVO; ở đây bật, tắt (ai chọn được khi đăng nhập) và xem nhà máy SX.
  */
 export default function BranchesPage() {

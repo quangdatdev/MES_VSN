@@ -22,7 +22,7 @@ export interface AdminRole {
   userCount: number;
 }
 
-/** Đơn vị cơ sở (SysBranch, ADR 0013) */
+/** Đơn vị cơ sở (SysBranch, quyết định 6.1) */
 export interface AdminBranch {
   id: number;
   code: string;
@@ -183,7 +183,7 @@ export const LEVELS: { value: AccessLevel; label: string; hint: string }[] = [
   { value: 'HIDDEN', label: 'Ẩn', hint: 'Không có cột này, kể cả khi xuất file' },
 ];
 
-// ---- Đồng bộ dữ liệu (ADR 0007) ----
+// ---- Đồng bộ dữ liệu (quyết định 8.1–8.4) ----
 export type SyncStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 export type SyncMode = 'INCREMENTAL' | 'FULL';
 

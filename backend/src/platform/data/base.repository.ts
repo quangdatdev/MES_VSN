@@ -34,7 +34,7 @@ export interface ListOptions {
   /** Cột không tìm theo q: cột người dùng không được xem nguyên giá trị (tìm được là đoán được giá trị). */
   searchExclude?: string[];
   /**
-   * Chỉ dòng của các nhà máy SX thuộc ĐVCS của phiên (ADR 0013 mục 11), theo cột `productionFactoryColumn` của repository
+   * Chỉ dòng của các nhà máy SX thuộc ĐVCS của phiên (quyết định 6.3, 7.3), theo cột `productionFactoryColumn` của repository
    * (danh sách mã cách nhau dấu phẩy: chỉ cần một mã thuộc ĐVCS). Danh sách nhà máy lấy từ quyền của phiên, không từ client.
    */
   assignedFactories?: boolean;
@@ -47,7 +47,7 @@ export interface ListOptions {
 
 /**
  * Danh mục Nhà máy SX (mã → ĐVCS quản lý) cho bảng khai `factoryBranchWrite`. Repository của module trả CatalogLookupService
- * của nền tảng (ADR 0013), không tự dựng danh sách.
+ * của nền tảng (quyết định 6.2), không tự dựng danh sách.
  */
 export interface FactoryDirectory {
   productionFactories(): Promise<{ code: string; branchCode: string | null }[]>;
@@ -133,13 +133,13 @@ function rowSatisfies(row: Record<string, unknown>, conds: { c: Condition; colum
 }
 
 /**
- * Cổng duy nhất để module nghiệp vụ chạm bảng theo nhà máy (CLAUDE.md mục 4, ADR 0002, ADR 0005).
+ * Cổng duy nhất để module nghiệp vụ chạm bảng theo nhà máy (CLAUDE.md mục 4, quyết định 3.3).
  *  - BRANCH: mọi thao tác tự thêm BranchCode của phiên; đơn vị tổng hợp (A00) đọc không lọc nhà máy, ghi bị từ chối.
  *  - Phạm vi L3: điều kiện sinh từ phạm vi của quyền đang dùng (view khi đọc; create, update, delete khi ghi),
  *    theo SysResourceScopeBinding. Không có quyền thì không thấy gì.
  *  - SHARED: không lọc nhà máy. Bảng dùng chung có cột BranchCode ghi ĐVCS nguồn (`originBranch`, ví dụ đơn hàng: Chi
  *    nhánh FOB): đọc không lọc, nhưng tạo thì đóng dấu ĐVCS của phiên, sửa, xóa chỉ dòng của ĐVCS đang làm việc (hoặc ĐVCS
- *    đang dùng dòng, `usedBy`), đơn vị tổng hợp chỉ đọc như BRANCH (ADR 0013).
+ *    đang dùng dòng, `usedBy`), đơn vị tổng hợp chỉ đọc như BRANCH (quyết định 7.2).
  *  - Tài nguyên chưa khai báo ở SysResource: từ chối.
  * BranchCode khi tạo luôn lấy từ Scope, mọi giá trị client gửi bị ghi đè.
  * Kiểu dòng không bắt buộc có BranchCode: bảng SHARED (hồ sơ nhân viên) không có cột này. Lọc nhà máy theo ScopeType ở
@@ -164,10 +164,10 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   /**
    * Bảng có ĐVCS nguồn mà ĐVCS khác dùng dòng của nó: bảng theo ĐVCS (cùng database, có cột BranchCode) trỏ tới dòng qua
    * cột `column`. ĐVCS có dòng trỏ tới (ví dụ PO nằm trong kế hoạch xuất hàng của ĐVCS đó: ShipmentPlanPo.SalesOrderPoId)
-   * sửa, xóa được dòng như ĐVCS nguồn; `inUseHere` lọc màn hình theo cùng điều kiện (ADR 0013 mục 11).
+   * sửa, xóa được dòng như ĐVCS nguồn; `inUseHere` lọc màn hình theo cùng điều kiện (quyết định 7.2, 7.4).
    */
   protected readonly usedBy: { table: string; column: string } | null = null;
-  /** Cột mã nhà máy SX của bảng, cho tùy chọn `assignedFactories` (ADR 0013). Không khai báo thì tùy chọn đó bị từ chối. */
+  /** Cột mã nhà máy SX của bảng, cho tùy chọn `assignedFactories` (quyết định 7.3). Không khai báo thì tùy chọn đó bị từ chối. */
   protected readonly productionFactoryColumn: string | null = null;
   /**
    * Bảng dùng chung (SHARED) không có cột ĐVCS, ĐVCS giữ dòng suy từ Nhà máy SX của dòng (cột `productionFactoryColumn`, danh sách
@@ -204,7 +204,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 
   /**
    * Giới hạn theo nhà máy SX thuộc ĐVCS của phiên (lấy từ quyền của phiên); ĐVCS chưa có nhà máy nào thì không thấy gì.
-   * Cột nhà máy là danh sách mã cách nhau dấu phẩy (ADR 0013 mục 9, theo OSM): dòng hiện ra khi có ít nhất một mã thuộc ĐVCS.
+   * Cột nhà máy là danh sách mã cách nhau dấu phẩy (quyết định 7.6, theo OSM): dòng hiện ra khi có ít nhất một mã thuộc ĐVCS.
    */
   private assigned<Q extends { where: (...a: any[]) => Q }>(qb: Q, scope: Scope, alias?: string): Q {
     if (!this.productionFactoryColumn) throw new Error(`${this.resource} không khai báo cột nhà máy SX (productionFactoryColumn)`);
@@ -257,7 +257,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
   }
 
   /**
-   * Lọc của màn hình làm việc trên dòng dùng chung (ADR 0013 mục 11): dòng ĐVCS của phiên đang dùng (`usedBy`), hoặc dòng
+   * Lọc của màn hình làm việc trên dòng dùng chung (quyết định 7.4): dòng ĐVCS của phiên đang dùng (`usedBy`), hoặc dòng
    * người dùng nhập tay ở ĐVCS này (CreatedBy có giá trị; dòng nạp từ hệ thống nguồn để trống CreatedBy). Đơn vị tổng hợp:
    * của mọi ĐVCS. Không phải phân quyền (dòng vẫn đọc được ở màn khác); ghép vào `where` của danh sách. Cả hai loại dòng này
    * ĐVCS của phiên đều sửa được.
@@ -378,7 +378,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
 
   /**
    * Các giá trị khác nhau của một cột trên các dòng trong phạm vi của hành động, khớp bộ lọc đang áp (popup lọc theo
-   * cột, ADR 0011). Nhận cột của danh sách trắng (FilterSpec) và tự dựng biểu thức, không nhận SQL tùy ý từ module.
+   * cột, quyết định 11.3). Nhận cột của danh sách trắng (FilterSpec) và tự dựng biểu thức, không nhận SQL tùy ý từ module.
    * `search` là chữ người dùng gõ, đi qua tham số. Lấy thêm một dòng để biết còn giá trị nữa không.
    */
   async distinctValues(
@@ -588,7 +588,7 @@ export abstract class BaseRepository<R extends { Id: number }> implements Scoped
  * Bảng con theo nhà máy (dòng màu cỡ của PO, dòng dàn chuyền...). Không có quyền riêng: dòng con nằm trong phạm vi
  * khi thỏa một phép gán của hành động, xét chung điều kiện của dòng cha và của chính dòng con trong phép gán đó
  * (ví dụ: dòng dàn chuyền thuộc kế hoạch được xem VÀ nằm ở chuyền được giao). Lọc ĐVCS theo đúng cách của cha: cha
- * theo ĐVCS thì kèm BranchCode của phiên; cha dùng chung (đơn hàng, PO, ADR 0013) thì không lọc. BranchCode của dòng mới
+ * theo ĐVCS thì kèm BranchCode của phiên; cha dùng chung (đơn hàng, PO, quyết định 7.2) thì không lọc. BranchCode của dòng mới
  * chép từ dòng cha (khóa ngoại ghép ở DB bảo đảm con cùng ĐVCS với cha; cha theo ĐVCS thì đó là ĐVCS của phiên). Khóa tới
  * cha và BranchCode do repository đặt, không lấy từ client.
  */

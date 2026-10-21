@@ -3,7 +3,7 @@ import type { AppliedImport } from '../src/modules/order/bravo-order-import.repo
 import { BravoOrderImportService } from '../src/modules/order/bravo-order-import.service';
 import type { ImportPlan } from '../src/modules/order/bravo-order.mapping';
 
-// Không cần database: thử lại khi bị chọn hủy vì khóa chéo, xếp lần chạy sau (ADR 0013 mục 8, review 5.9.10 M4.2, L4.3)
+// Không cần database: thử lại khi bị chọn hủy vì khóa chéo, xếp lần chạy sau (quyết định 7.7, review 5.9.10 M4.2, L4.3)
 const deadlock = () => Object.assign(new Error('Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim.'), { number: 1205 });
 const emptyPlan = (): ImportPlan => ({ newOrders: [], orderUpdates: [], hashUpdates: [], newPos: [], poUpdates: [], cellUpdates: [], cellsKept: [], branchChanged: [], factoryTooLong: [], goneOrders: 0, gonePos: 0, skipped: new Map() });
 const applied = (over: Partial<AppliedImport> = {}): AppliedImport => ({ newOrders: 0, updatedOrders: 0, baselined: 0, newPos: 0, updatedPos: 0, cellUpdates: 0, cellsKept: [], newByBranch: {}, ...over });

@@ -327,7 +327,7 @@ function SalesOrderDialog({ order, policy, priceOnly = false, onClose, onDone }:
                 field="productionFactoryCode"
                 label="Nhà máy SX"
                 render={(lock) =>
-                  // Theo OSM (ADR 0013 mục 9): chỉ xem, giá trị gửi lại nguyên như cũ khi lưu
+                  // Theo OSM (quyết định 7.6): chỉ xem, giá trị gửi lại nguyên như cũ khi lưu
                   order?.factoryFromOsm && order.productionFactoryCode && order.productionFactoryCode !== MASK ? (
                     <TextInput
                       label="Nhà máy SX"

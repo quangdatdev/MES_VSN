@@ -15,7 +15,7 @@ import { api, ApiError } from '../lib/api';
 import { useSession } from '../store/session';
 import { theme } from '../theme/theme';
 
-// Phase 5.8 – Sơ đồ tổ chức, Thông tin nhân sự (ADR 0012)
+// Phase 5.8 – Sơ đồ tổ chức, Thông tin nhân sự (quyết định 10.1)
 
 vi.mock('../lib/api', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../lib/api')>();

@@ -33,7 +33,7 @@ export const bravoBranchCode = (r: Pick<BravoBranchRow, 'BranchCode'>) => {
 };
 
 /**
- * Chép danh mục chi nhánh BRAVO thành Đơn vị cơ sở (SysBranch, ADR 0013): thêm mã chưa có, đổi tên ngắn (TenChiNhanh) và
+ * Chép danh mục chi nhánh BRAVO thành Đơn vị cơ sở (SysBranch, quyết định 6.1): thêm mã chưa có, đổi tên ngắn (TenChiNhanh) và
  * tên đầy đủ (TenDayDu, cột Description) theo BRAVO. Không tắt ĐVCS vắng trong BRAVO và không đụng đơn vị tổng hợp: ai
  * được vào đâu do quản trị MES quyết. Dùng chung cho màn Quản trị, việc sau khi đồng bộ và script seed.
  * Mỗi ĐVCS chép về có nút gốc trong cây tổ chức (SysOrgUnit loại FACTORY, cùng mã, cùng tên): giới hạn vai trò theo ĐVCS

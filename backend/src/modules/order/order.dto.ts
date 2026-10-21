@@ -33,7 +33,7 @@ const styleCode = () => Transform(({ value }) => (typeof value === 'string' ? va
 const PO_NUMBER = /^[^\p{C}\p{Zl}\p{Zp}]+$/u;
 // Đổi chữ hoa trước khi kiểm (như mã hàng): MaxLength đếm theo UTF-16 như NVARCHAR, đúng giá trị được lưu
 const poNumber = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
-// Nhà máy SX (SysProductionFactory.Code, tên nhà máy theo OSM, ADR 0013 mục 9); chuỗi rỗng là bỏ chọn. Nhận cả danh sách cách
+// Nhà máy SX (SysProductionFactory.Code, tên nhà máy theo OSM, quyết định 6.2, 7.6); chuỗi rỗng là bỏ chọn. Nhận cả danh sách cách
 // nhau dấu phẩy (như cột) để lưu cả form gửi lại đúng giá trị đang có; giá trị mới phải là một mã của danh mục (service kiểm)
 const FACTORY_CODE = /^[^\p{C}]{0,400}$/u;
 
@@ -41,7 +41,7 @@ export const SALES_ORDER_STATUSES = ['NEW', 'PLANNING', 'IN_PRODUCTION', 'DONE',
 export const PLAN_STATUSES = ['PLANNED', 'SCHEDULED', 'IN_PRODUCTION', 'DONE'] as const;
 export const LINE_STATUSES = ['PLANNED', 'ALLOCATED', 'IN_PRODUCTION', 'DONE'] as const;
 
-/** Bộ lọc theo cột (JSON, ADR 0011): chặn chuỗi dài vô lý trước khi parse; quá 8.000 ký tự thì parseColumnFilters báo rõ. */
+/** Bộ lọc theo cột (JSON, quyết định 11.2): chặn chuỗi dài vô lý trước khi parse; quá 8.000 ký tự thì parseColumnFilters báo rõ. */
 export const ColumnFilterParam = () => MaxLength(20000, { message: 'Bộ lọc theo cột quá dài.' });
 /** Tên trường JSON của cột được hỏi giá trị; còn phải nằm trong danh sách trắng của màn. */
 export const FilterFieldParam = () => Matches(/^[a-zA-Z]{1,40}$/, { message: 'Cột lọc không hợp lệ.' });

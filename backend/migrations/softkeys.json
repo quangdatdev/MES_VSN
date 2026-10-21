@@ -61,7 +61,7 @@
       "to": "MES_Core.SysProductionFactory.Code",
       "nullable": true,
       "ownerModule": "order",
-      "status": "MES_Order/0004 (Phase 5.3, cột Nhà máy SX); đích đổi sang SysProductionFactory ở MES_Core/0007 (Phase 5.9, ADR 0013); danh sách mã cách nhau dấu phẩy theo OSM ở MES_Order/0007 (12/10/2026, ADR 0013 mục 9)",
+      "status": "MES_Order/0004 (Phase 5.3, cột Nhà máy SX); đích đổi sang SysProductionFactory ở MES_Core/0007 (Phase 5.9, quyết định 6.2); danh sách mã cách nhau dấu phẩy theo OSM ở MES_Order/0007 (12/10/2026, quyết định 7.6)",
       "list": ","
     },
     {
@@ -137,7 +137,7 @@
       "to": "MES_Order.ShipmentPlanLine.Id",
       "sameBranch": true,
       "ownerModule": "sewing",
-      "status": "MES_Sewing/0001 (Phase 5.5); bản chép cập nhật mỗi lần mở màn, dòng dàn chuyền bị bỏ thì dòng chuẩn bị bị xóa theo (ADR 0009)"
+      "status": "MES_Sewing/0001 (Phase 5.5); bản chép cập nhật mỗi lần mở màn, dòng dàn chuyền bị bỏ thì dòng chuẩn bị bị xóa theo (quyết định 9.2)"
     },
     {
       "from": "MES_Sewing.SewingPrep.ShipmentPlanId",
@@ -286,7 +286,7 @@
       "to": "MES_Core.SysUser.Id",
       "nullable": true,
       "ownerModule": "hr",
-      "status": "MES_Hr/0001 (Phase 5.8). Chưa có khóa ngầm SysUser.EmployeeCode → Employee.Code: mã nhân viên sửa được, nối tài khoản theo Id khi làm (ADR 0012 mục 4)"
+      "status": "MES_Hr/0001 (Phase 5.8). Chưa có khóa ngầm SysUser.EmployeeCode → Employee.Code: mã nhân viên sửa được, nối tài khoản theo Id khi làm (quyết định 10.3)"
     }
   ],
   "tableOwners": {
@@ -298,6 +298,6 @@
     "MES_Hr": "hr"
   },
   "retired": {
-    "MES_Demo": "Bỏ ngày 09/10/2026 khi module Đơn hàng thay màn PO demo (ADR 0006). Database cũ có thể xóa tay."
+    "MES_Demo": "Bỏ ngày 09/10/2026 khi module Đơn hàng thay màn PO demo (quyết định 7.1). Database cũ có thể xóa tay."
   }
 }

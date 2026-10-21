@@ -1,4 +1,4 @@
-// Kiểu dữ liệu trả về từ /api/v1/order/* (xem docs/thiet-ke/api-contract.md mục Module Đơn hàng).
+// Kiểu dữ liệu trả về từ /api/v1/order/* (xem docs/ARCHITECTURE.md mục 5.1, docs/update_docs/06-don-hang.md mục 6).
 // Trường có thể vắng mặt (cột Ẩn) hoặc là "***" (cột Che) tùy chính sách cột của người xem.
 
 import type { Masked } from '../../lib/fieldPolicy';

@@ -268,7 +268,7 @@ export default function CutRatioPage() {
     [statusCode],
   );
   const styleColumns = useMemo(
-    // Chi nhánh FOB của đơn hàng: đơn của ĐVCS khác vẫn sửa được tỷ lệ khi PO đã vào kế hoạch của đơn vị này (ADR 0013 mục 11)
+    // Chi nhánh FOB của đơn hàng: đơn của ĐVCS khác vẫn sửa được tỷ lệ khi PO đã vào kế hoạch của đơn vị này (quyết định 7.2, 7.4)
     () => withBranchNames(STYLE_COLS, branchName),
     [branchName],
   );

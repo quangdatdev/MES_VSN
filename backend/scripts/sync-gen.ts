@@ -322,7 +322,7 @@ async function main() {
   try {
     const parts = [
       `-- Sinh bởi backend/scripts/sync-gen.ts từ cấu trúc view của database nguồn. Không sửa tay:`,
-      `-- muốn đổi thì sửa SOURCES trong script rồi sinh migration mới. ADR 0007.`,
+      `-- muốn đổi thì sửa SOURCES trong script rồi sinh migration mới (quyết định 8.5).`,
       '',
     ];
     // Schema của hệ thống mới (không phải bravo) tạo trước bảng chép

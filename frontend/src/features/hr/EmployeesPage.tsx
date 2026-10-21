@@ -27,7 +27,7 @@ const NO_DEPTS: PickDepartment[] = [];
 const NO_TITLES: JobTitleOption[] = [];
 
 /**
- * Thông tin nhân sự (hr.employee, ADR 0012): cây phòng ban và danh sách nhân viên bên trái, hồ sơ bên phải. Chọn phòng ban thì
+ * Thông tin nhân sự (hr.employee, quyết định 10.1): cây phòng ban và danh sách nhân viên bên trái, hồ sơ bên phải. Chọn phòng ban thì
  * danh sách gồm cả phòng ban con. Phòng ban, nhân viên, bộ lọc nằm trên URL (?dept=MÃ&emp=Id&q=…&title=…&status=…&page=…).
  */
 export default function EmployeesPage() {

@@ -321,7 +321,7 @@ export function ExportButton({ resource, path, fileName }: { resource: string; p
 
 /** Thao tác ghi chỉ có ở nhà máy cụ thể (A00 chỉ đọc); vẫn để backend cưỡng chế. */
 /**
- * Đơn hàng, PO dùng chung toàn công ty nhưng chỉ ghi được ở ĐVCS nguồn (Chi nhánh FOB, ADR 0013): lý do khóa nút ghi khi
+ * Đơn hàng, PO dùng chung toàn công ty nhưng chỉ ghi được ở ĐVCS nguồn (Chi nhánh FOB, quyết định 7.2): lý do khóa nút ghi khi
  * dòng thuộc ĐVCS khác, null khi ghi được. Chỉ để phản chiếu, máy chủ vẫn chặn (404).
  */
 export function useOriginLock(what: string) {

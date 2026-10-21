@@ -198,7 +198,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     expect(o.orderTypeNames.SXXK).toBe('Sản xuất xuất khẩu');
   });
 
-  it('chép ĐVCS từ BRAVO: bỏ qua mã sai dạng, mã trống, trùng đơn vị tổng hợp; chạy lại không đổi gì (ADR 0013)', async () => {
+  it('chép ĐVCS từ BRAVO: bỏ qua mã sai dạng, mã trống, trùng đơn vị tổng hợp; chạy lại không đổi gì (quyết định 6.1)', async () => {
     const r = await importBravoBranches(core, [
       { BranchCode: 'A00', TenChiNhanh: 'Không được đè tổng hợp', TenDayDu: null },
       { BranchCode: 'sai mã!', TenChiNhanh: 'x', TenDayDu: null },
@@ -224,11 +224,11 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     expect((await api().put(`/api/v1/admin/branches/${bravo[0].id}`).set(auth(admin)).send({ name: 'Đổi tên thử' }).expect(409)).body.error.message).toContain('BRAVO');
   });
 
-  it('danh mục Nhà máy SX: mỗi nhà máy thuộc một ĐVCS (không phải đơn vị tổng hợp), mã không sửa được; có nhật ký (ADR 0013)', async () => {
+  it('danh mục Nhà máy SX: mỗi nhà máy thuộc một ĐVCS (không phải đơn vị tổng hợp), mã không sửa được; có nhật ký (quyết định 6.2)', async () => {
     await api().post('/api/v1/admin/catalogs/factories').set(auth(planner)).send({ code: 'TEST-P54-G', name: 'x', branchCode: 'A01' }).expect(403);
     await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Tổng hợp', branchCode: 'A00' }).expect(422);
     await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Không có ĐVCS', branchCode: 'Z99' }).expect(422);
-    // Mã là tên nhà máy theo OSM (có dấu, khoảng trắng, ADR 0013 mục 9) nhưng không có dấu phẩy: đơn hàng lưu danh sách mã cách nhau dấu phẩy
+    // Mã là tên nhà máy theo OSM (có dấu, khoảng trắng, quyết định 6.2) nhưng không có dấu phẩy: đơn hàng lưu danh sách mã cách nhau dấu phẩy
     await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST,P54', name: 'Sai mã', branchCode: 'A01' }).expect(422);
     const created = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: ' test-p54-g ', name: 'Nhà máy thử', branchCode: 'A01' }).expect(201)).body;
     await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-G', name: 'Trùng', branchCode: 'A01' }).expect(409);
@@ -244,7 +244,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     expect(audit.map((a: any) => a.actionCode)).toEqual(expect.arrayContaining(['FACTORY_CREATE', 'FACTORY_UPDATE']));
   });
 
-  it('nhà máy SX trong quyền của phiên theo ĐVCS đăng nhập: thêm, đổi ĐVCS, ngừng nhà máy có hiệu lực ngay; không còn tích theo người (ADR 0013 mục 11)', async () => {
+  it('nhà máy SX trong quyền của phiên theo ĐVCS đăng nhập: thêm, đổi ĐVCS, ngừng nhà máy có hiệu lực ngay; không còn tích theo người (quyết định 6.3)', async () => {
     const codes = async () => ((await api().get('/api/v1/me').set(auth(planner)).expect(200)).body.productionFactories as any[]).map((x) => x.code);
     expect(await codes()).not.toContain('TEST-P54-U');
     const f = (await api().post('/api/v1/admin/catalogs/factories').set(auth(admin)).send({ code: 'TEST-P54-U', name: 'Nhà máy gán thử', branchCode: 'A01' }).expect(201)).body;
@@ -611,7 +611,7 @@ describe('Phase 5.4: danh mục hệ thống', () => {
     }
   });
 
-  it('tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX: so trùng không phân biệt hoa thường, bỏ tên quá dài, không bật lại mục đã ngừng (ADR 0013 mục 9)', async () => {
+  it('tên nhà máy mới trong OSM tự vào danh mục Nhà máy SX: so trùng không phân biệt hoa thường, bỏ tên quá dài, không bật lại mục đã ngừng (quyết định 6.2)', async () => {
     const catalogs = app.get(CatalogService);
     const spy = jest.spyOn(app.get(SyncService), 'osmFactoryLists');
     const codes = () => core.selectFrom('SysProductionFactory').select(['Code', 'Name', 'BranchCode', 'IsActive', 'Description']).where('Code', 'like', 'TEST-OSM%').orderBy('Code').execute();
