@@ -67,7 +67,7 @@ Lệnh mẫu PowerShell và lưu ý (synonym nguồn đồng bộ, `NODE_ENV=pro
 
 | Tiêu chuẩn | Hiện trạng | Tự động |
 |---|---|---|
-| Bí mật chỉ ở `backend/.env` (git ignore `.env`, `.env.*`, `*.pem`, `*.key`…); `backend/.env.example` chỉ có tên biến, giá trị mẫu | CURRENT. `.env.example` thiếu 8 biến mà `env.ts` đọc: `NODE_ENV`, `DB_ENCRYPT`, `DB_TRUST_CERT`, `JWT_ACCESS_TTL`, `PRE_AUTH_TTL`, `REFRESH_TTL_DAYS`, `LOGIN_MAX_FAILED`, `LOGIN_LOCK_MINUTES`; vì `deploy.cjs` chỉ cảnh báo biến mới theo `.env.example` nên các biến này không được nhắc. APPROVED (19/10/2026): bổ sung đủ vào `.env.example`, task T11 | `.gitignore`: có |
+| Bí mật chỉ ở `backend/.env` (git ignore `.env`, `.env.*`, `*.pem`, `*.key`…); `backend/.env.example` chỉ có tên biến, giá trị mẫu | CURRENT. `.env.example` có đủ mọi biến `env.ts` đọc (T11, 21/10/2026; chưa có bài test tự đối chiếu, nợ N12); `deploy.cjs` cảnh báo biến mà bản mới thêm vào `.env.example` (so với bản đang chạy) nhưng `.env` của máy chủ chưa có | `.gitignore`: có |
 | `NODE_ENV=production` bắt buộc `JWT_SECRET` ≥ 32 ký tự, `DEMO_PASSWORD` ≥ 8 ký tự | CURRENT (`backend/src/config/env.ts`) | Có, lúc nạp cấu hình |
 | Mật khẩu băm argon2id; tài khoản không tồn tại vẫn băm một lần (thời gian phản hồi như nhau) | CURRENT (`AuthService.login`) | Lúc chạy |
 | Cookie refresh `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Secure` theo `COOKIE_SECURE`; token không lưu `localStorage` | CURRENT | Lúc chạy |

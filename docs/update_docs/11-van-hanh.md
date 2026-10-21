@@ -83,7 +83,7 @@ Tài khoản trong `.env` không tạo được database thì nhờ quản trị
 
 Bài test backend luôn đặt `BRAVO_ORDER_IMPORT=false`, `OSM_FACTORY_UPDATE=false` và `PO_ALLOCATION_REFRESH=false` (`backend/test/setup-env.ts`).
 
-Bảng trên theo `backend/src/config/env.ts`. `backend/.env.example` chưa có đủ các biến trong bảng: lỗi đã biết, task T11 ở [Trạng thái](../current/STATUS.md).
+Bảng trên theo `backend/src/config/env.ts`; `backend/.env.example` có đủ các biến trong bảng: để trống là lấy mặc định; `NODE_ENV` ở dạng dòng comment `# NODE_ENV=production`, máy chủ bỏ dấu `#`.
 
 ## Lệnh npm
 
