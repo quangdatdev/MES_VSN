@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { AppException } from '../../common/app.exception';
+import { AppException, Errors } from '../../common/app.exception';
 import type { AuthUser } from '../../platform/auth/auth.types';
 import { AuditService } from '../../platform/audit/audit.service';
 import { CatalogLookupService } from '../../platform/catalog/catalog-lookup.service';
@@ -227,7 +227,7 @@ export class CuttingProgressService implements OnModuleInit {
     const col = await assertFilterField(this.fields, user, RESOURCE, CUTTING_FILTER, q.field);
     const f = await this.filter(user, q, q.field);
     if (f.derivedBlind && DERIVED.includes(q.field)) {
-      throw new AppException('FIELD_NOT_READABLE', 'Bạn không được xem nguyên giá trị của cột này nên không lọc theo cột này được.', 403);
+      throw Errors.fieldNotReadable();
     }
     await this.sync(user);
     return columnValues(this.repo, scopeOf(user), col, { q: q.q, searchExclude: f.searchExclude, where: f.where, search: q.search });

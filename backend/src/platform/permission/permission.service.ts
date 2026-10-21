@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'kysely';
-import { AppException, Errors } from '../../common/app.exception';
+import { Errors } from '../../common/app.exception';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth.types';
 import { CORE_DB, type CoreDb } from '../database/database.module';
@@ -41,8 +41,6 @@ export interface LineScopeHolder {
 
 /** Mã nhật ký của một lần đổi tập chuyền may (SysAuditLog.ActionCode) */
 export const LINE_SET_CHANGE = 'LINE_SET_CHANGE';
-/** Mã lỗi khi bộ phận đã lưu (MES_Hr) mà chưa ghi được nhật ký, phiên bản quyền (MES_Core) */
-export const LINE_SCOPE_UPDATE_FAILED = 'LINE_SCOPE_UPDATE_FAILED';
 const LINE_CHANGE_ATTEMPTS = 3;
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -502,12 +500,7 @@ export class PermissionService {
       `Đã lưu bộ phận ${change.code} nhưng không ghi được ${LINE_SET_CHANGE} và không tăng được phiên bản quyền sau ${LINE_CHANGE_ATTEMPTS} lần: ${(lastError as Error)?.message}. ` +
         `Dữ liệu để dựng lại: ${JSON.stringify({ actor: { userId: actor.userId, username: actor.username, branchCode: actor.branchCode }, change })}`,
     );
-    throw new AppException(
-      LINE_SCOPE_UPDATE_FAILED,
-      `Đã lưu bộ phận ${change.code} nhưng chưa cập nhật được phân quyền theo chuyền (chưa ghi nhật ký, người được giao chuyền có thể chưa thấy thay đổi). Báo quản trị hệ thống: máy chủ đã ghi lại chi tiết.`,
-      500,
-      details,
-    );
+    throw Errors.lineScopeUpdateFailed(change.code, details);
   }
 
   /**

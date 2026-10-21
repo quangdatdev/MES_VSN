@@ -177,7 +177,7 @@ Không có gói kiểu chung giữa backend và frontend. Kiểu API ở fronten
 | Quy ước | Trạng thái | Tham chiếu |
 |---|---|---|
 | Lỗi nghiệp vụ dùng `Errors.*` (`AppException` có `code`, `message`, `status`, `details`) | CURRENT | `backend/src/common/app.exception.ts` |
-| Có mã lỗi tạo bằng `new AppException` ngoài `Errors`: `FIELD_NOT_READABLE` (`platform/data/column-filter.ts`, `cutting-progress.service.ts`, `po-allocation.service.ts`), `LINE_SCOPE_UPDATE_FAILED` (`permission.service.ts`) | CURRENT (lệch) | APPROVED (19/10/2026): gom vào `Errors`, task T10 |
+| Mã lỗi mới khai ở `Errors`. `new AppException` ngoài `Errors` chỉ dùng mã đã có trong bảng mã lỗi ([04](update_docs/04-phan-quyen.md#ma-loi) mục 13: `VALIDATION_FAILED`, `CONFLICT`, `NOT_FOUND`, `PERMISSION_DENIED`) để kèm thông điệp, `details` riêng | CURRENT, kiểm bằng review (T10, 21/10/2026: đã gom `FIELD_NOT_READABLE`, `LINE_SCOPE_UPDATE_FAILED`) | `backend/src/common/app.exception.ts` |
 | Thông điệp tiếng Việt nói cách xử lý; số liệu cấu trúc đặt ở `details` | CURRENT | `Errors.factoryOfOtherBranch` |
 | Lỗi validate: 422 `VALIDATION_FAILED` từ `ValidationPipe`; DTO lồng nhau chỉ lấy `constraints` cấp đầu nên mất thông điệp con | CURRENT | `backend/src/app.factory.ts` |
 | Deadlock thành 409 `CONFLICT`; body vượt giới hạn của bộ đọc thành 413 `PAYLOAD_TOO_LARGE`; lỗi khác không phải `HttpException` thành 500 `INTERNAL_ERROR` kèm `traceId` | CURRENT | `common/http-exception.filter.ts` |

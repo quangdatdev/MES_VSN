@@ -253,7 +253,7 @@ export class PoAllocationService {
     const branch = await this.branchCase();
     const col = await assertFilterField(this.fields, user, RESOURCE, filterSpec(branch), q.field);
     const blind = await this.blind(user);
-    if (blind.has(q.field as Field)) throw new AppException('FIELD_NOT_READABLE', 'Bạn không được xem nguyên giá trị của cột này nên không lọc theo cột này được.', 403);
+    if (blind.has(q.field as Field)) throw Errors.fieldNotReadable();
     const c = this.criteria(q, blind, branch, q.field);
     const res = await this.repo.distinctValues(scopeOf(user), col, { q: c.q, where: c.where, searchExclude: c.searchExclude, search: q.search, limit: VALUES_LIMIT });
     return { values: presentValues(res.rows, col.kind), truncated: res.truncated };

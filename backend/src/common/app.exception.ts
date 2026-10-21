@@ -45,6 +45,9 @@ export const Errors = {
       403,
       { rows, total },
     ),
+  /** Danh sách giá trị của cột Ẩn, Che (hoặc cột suy ra từ chúng) làm lộ nguyên giá trị nên không trả */
+  fieldNotReadable: () =>
+    new AppException('FIELD_NOT_READABLE', 'Bạn không được xem nguyên giá trị của cột này nên không lọc theo cột này được.', 403),
   fieldReadonly: (fields: string[], names: string[] = []) =>
     new AppException('FIELD_READONLY', names.length ? `Bạn không được sửa cột: ${names.join(', ')}.` : 'Bạn không được sửa một số cột trong dữ liệu gửi lên.', 403, { fields }),
   syncNotReady: () =>
@@ -52,6 +55,14 @@ export const Errors = {
       'SYNC_NOT_READY',
       'Chưa có database đồng bộ (MES_Sync), tài khoản ứng dụng chưa được cấp quyền vào, hoặc chưa chạy migration. Nhờ quản trị CSDL tạo database và cấp quyền, rồi chạy npm run migrate.',
       503,
+    ),
+  /** Bộ phận chuyền may đã lưu (MES_Hr) nhưng chưa ghi được nhật ký, phiên bản quyền (MES_Core): không có transaction chung nên báo riêng; `details` do bên gọi truyền */
+  lineScopeUpdateFailed: (departmentCode: string, details: unknown) =>
+    new AppException(
+      'LINE_SCOPE_UPDATE_FAILED',
+      `Đã lưu bộ phận ${departmentCode} nhưng chưa cập nhật được phân quyền theo chuyền (chưa ghi nhật ký, người được giao chuyền có thể chưa thấy thay đổi). Báo quản trị hệ thống: máy chủ đã ghi lại chi tiết.`,
+      500,
+      details,
     ),
   resourceNotRegistered: (code: string) =>
     new AppException('RESOURCE_NOT_REGISTERED', `Tài nguyên "${code}" chưa khai báo hợp lệ trong danh bạ tài nguyên.`, 500),

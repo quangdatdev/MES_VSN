@@ -1,5 +1,5 @@
 import { sql, type Expression, type ExpressionBuilder, type RawBuilder, type SqlBool } from 'kysely';
-import { AppException } from '../../common/app.exception';
+import { AppException, Errors } from '../../common/app.exception';
 import type { AuthUser } from '../auth/auth.types';
 import type { FieldPolicyService } from '../permission/field-policy.service';
 
@@ -208,7 +208,7 @@ export async function assertFilterField(fields: FieldPolicyService, user: AuthUs
   const col = Object.prototype.hasOwnProperty.call(spec, field) ? spec[field] : undefined;
   if (!col) throw invalid(`Không lọc được theo cột "${field}".`);
   if ((await fields.unreadable(user, resource, [field])).size) {
-    throw new AppException('FIELD_NOT_READABLE', 'Bạn không được xem nguyên giá trị của cột này nên không lọc theo cột này được.', 403);
+    throw Errors.fieldNotReadable();
   }
   return col;
 }
