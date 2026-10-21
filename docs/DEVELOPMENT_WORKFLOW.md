@@ -99,9 +99,10 @@ Sau khi sửa: lint, typecheck, test (số bài qua, bộ database test đã dù
 
 - Remote: `origin` (GitHub) là remote chính, máy chủ kéo code từ đây (Tech Lead xác nhận 19/10/2026); `githq5` là máy chủ Gitea nội bộ.
 - Đến 19/10/2026 code được commit thẳng lên `main`; nhánh theo phase (`phase-5-10`, `phase-5-11`…) đã gộp cục bộ vào `main`, không có PR, không có tag. Ngày 19/10/2026 Tech Lead yêu cầu **tạm theo dõi trên `main`** cho đợt chuẩn hóa tài liệu.
+- Từ 21/10/2026 (T6) có nhánh `develop` tạo từ `main` trên `origin`; task mới làm trên `feature/*` từ `develop`, gộp qua PR. Bảo vệ nhánh: xem 4.3.
 - CI: `.github/workflows/ci.yml` (T2, 21/10/2026), các bước ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9; chưa có git hook; máy chủ triển khai từ commit đã push bằng `deploy/deploy.cjs`.
 
-### 4.2 Mô hình nhánh — APPROVED (19/10/2026), áp dụng khi Tech Lead bảo bắt đầu
+### 4.2 Mô hình nhánh — APPROVED (19/10/2026), áp dụng từ 21/10/2026 (task T6)
 
 | Nhánh | Vai trò | Tách từ | Gộp về |
 |---|---|---|---|
@@ -121,7 +122,7 @@ Không code trực tiếp trên `main` khi mô hình đã áp dụng.
 | CI phải qua trước khi merge; các bước kiểm ở [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) mục 9 | APPROVED (workflow có từ T2; cưỡng chế khi bật bảo vệ nhánh, task T6) |
 | Mô tả PR ghi: task, phạm vi, migration (có/không, chạy được khi bản cũ còn chạy không), link báo cáo review, kết quả lint/typecheck/test/build, việc cần làm trên máy chủ | APPROVED |
 | Tech Lead duyệt mọi PR vào `develop`, `main` | APPROVED |
-| Bảo vệ nhánh `main`, `develop` trên GitHub: cấm push thẳng, cấm force push, bắt CI qua | APPROVED (chưa cấu hình: task T6) |
+| Bảo vệ nhánh `main`, `develop` trên GitHub: cấm push thẳng, cấm force push, bắt CI qua | APPROVED; Tech Lead bật trên giao diện GitHub theo các bước ở [STATUS](current/STATUS.md) dòng T6 (máy dev không có GitHub CLI) |
 | Kiểu gộp: `feature/*` → `develop` bằng **squash** (một commit mỗi task); `develop` → `main` và `hotfix/*` bằng **merge commit** | APPROVED |
 
 ### 4.4 Commit
