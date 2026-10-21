@@ -257,7 +257,7 @@ function CuttingModal({ planId, onClose, onSaved }: { planId: number; onClose: (
       onConfirm: () => removeEntries.mutate(),
     });
 
-  // Lưới nhập của thư viện chỉ đọc cột ở lần vẽ đầu: quyền sửa đọc qua ref
+  // Quyền sửa đọc qua ref: hàm editable dựng lại mỗi lần vẽ, đưa vào phụ thuộc thì cột dựng lại mỗi phím
   const editRef = useRef(canEdit);
   editRef.current = canEdit;
   const editable = (r: CutRow) => editRef.current && !r.total && r.inPlan && !r.dayMasked;

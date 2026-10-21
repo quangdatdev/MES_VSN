@@ -7,7 +7,7 @@ import {
   createAddRowsComponent,
   createContextMenuComponent,
   createTextColumn,
-  DataSheetGrid,
+  DynamicDataSheetGrid,
   keyColumn,
   type AddRowsComponentProps,
   type CellProps,
@@ -583,7 +583,7 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
         : null,
     [columns, overlay],
   );
-  // Lưới tĩnh đọc cột số thứ tự một lần: nhãn riêng của dòng đọc qua ref
+  // Lưới đọc lại cột số thứ tự mỗi khi tham chiếu đổi (vẽ lại cả lưới): nhãn riêng của dòng đọc qua ref để cột giữ nguyên
   const labelled = !!rowLabel;
   const gutter = useMemo(
     () =>
@@ -592,7 +592,13 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
         : GUTTER,
     [indexOffset, labelled],
   );
+  // Lưới bản động gọi lại hàm này với cùng ô mỗi khi cột đổi (dữ liệu của cột tải về sau): chỉ xử lý khi ô thật sự đổi, không thì
+  // cờ đang gõ dở bị tắt và chặn rời màn mất tác dụng
+  const reported = useRef<{ row: number; col: number } | null>(null);
   const handleActive = useCallback(({ cell }: { cell: { row: number; col: number } | null }) => {
+    const prev = reported.current;
+    if (prev === cell || (prev && cell && prev.row === cell.row && prev.col === cell.col)) return;
+    reported.current = cell ? { row: cell.row, col: cell.col } : null;
     activeRow.current = cell?.row ?? null;
     setTyping(false);
     const { onActiveRowChange: emit, value: rows, rowKey: key } = latest.current;
@@ -660,7 +666,8 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
   const gridRowKey = useCallback(({ rowData }: { rowData: T }) => String(latest.current.rowKey(rowData)), []);
   const gridDuplicate = useCallback(({ rowData }: { rowData: T }) => latest.current.duplicateRow?.(rowData) ?? { ...rowData }, []);
   const gridCreate = useCallback(() => latest.current.createRow!(), []);
-  // Lưới tĩnh đọc addRowsComponent một lần: hàm chèn đọc dữ liệu mới nhất qua ref
+  // Hàm chèn đọc dữ liệu mới nhất qua ref để addRowsComponent giữ nguyên tham chiếu: tham chiếu mới thì thư viện dựng lại nút Thêm
+  // (mất số dòng đang gõ)
   const addRows = useMemo(() => {
     if (!addAtActive) return AddRows;
     const insert = (count: number) => {
@@ -711,7 +718,9 @@ export function SheetGrid<T>({ label, value, onChange, columns, rowKey, createRo
             // Lưới nằm tuyệt đối trong khung: chiều cao lưới không đẩy ngược chiều cao khung (vòng lặp đo kích thước)
             <div ref={scroll.fillRef} className="sheet-fill">
               {layout && <GroupHeader layout={layout} height={grouped ? HEAD2 : HEAD} host={scroll.fillRef} release={release} />}
-              <DataSheetGrid<T>
+              {/* Bản động: đọc lại columns, rowClassName, gutterColumn… khi tham chiếu đổi (bản tĩnh chỉ đọc lần vẽ đầu nên vạch
+                  dòng chọn, ô lỗi tính sau không hiện). Cột đổi thì thư viện xử lý lại cột, gắn lại trình nghe phím: giữ tham chiếu ổn định */}
+              <DynamicDataSheetGrid<T>
                 ref={grid}
                 className="sheet-root"
                 value={value}

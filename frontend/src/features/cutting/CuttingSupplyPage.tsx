@@ -297,7 +297,7 @@ const qtyCopy = (v: unknown) => (typeof v === 'number' ? v : null);
 
 /**
  * Cột của lưới chi tiết theo ảnh: Chuyền sản xuất, Mã hàng, Màu, Cỡ, SL kế hoạch, SL đồng bộ, SL đã cấp, SL cấp trong ngày (ô nhập
- * duy nhất), SL còn lại (tô đỏ khi âm hoặc tổng cấp vượt số đã cắt). Lưới của thư viện chỉ đọc cột ở lần vẽ đầu: quyền sửa, ô vượt đọc qua ref.
+ * duy nhất), SL còn lại (tô đỏ khi âm hoặc tổng cấp vượt số đã cắt). Quyền sửa, ô vượt (tính lại mỗi phím gõ) đọc qua ref để cột giữ nguyên.
  */
 function useSheetColumns(editable: (r: SupplyRow) => boolean, over: () => Set<string>) {
   const fns = useRef({ editable, over });

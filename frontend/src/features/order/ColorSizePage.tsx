@@ -249,7 +249,7 @@ function AllocationModal({ planId, canWrite, onClose, onSaved }: { planId: numbe
     });
   };
 
-  // Lưới nhập của thư viện (react-datasheet-grid 4.x xuất bản "tĩnh") chỉ đọc cột ở lần vẽ đầu: cột dựng một lần theo kế hoạch,
+  // Tổng, lỗi tính lại mỗi phím gõ: đưa vào cột thì thư viện xử lý lại cột mỗi phím. Cột dựng một lần theo kế hoạch,
   // tổng và lỗi mới nhất đọc qua ref. Mỗi lần đổi số lưới vẽ lại theo dữ liệu mới nên ô đỏ, cột Còn lại của mọi dòng cập nhật
   const checkRef = useRef(check);
   checkRef.current = check;

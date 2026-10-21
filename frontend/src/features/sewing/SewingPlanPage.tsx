@@ -368,8 +368,8 @@ function DayStatus({ lines, past, loading }: { lines: SewingPlanLine[]; past: bo
 
 /**
  * Lưới theo ảnh mẫu: Tổ SX, Mã hàng, PO/buydate, Giá CM, Ngày vào chuyền, Ngày kết thúc, Tổng kế hoạch, Đã giao, Còn lại, Kế hoạch theo
- * linemap, Kế hoạch ngày xưởng giao, Doanh số kế hoạch, Từ giờ, Đến giờ; dòng Tổng (n) nền xanh cuối lưới. Thư viện chỉ đọc cột ở lần vẽ
- * đầu: quyền sửa, số tổng đọc qua ref; cột bị Ẩn thì không có (lưới dựng lại khi chính sách cột đổi).
+ * linemap, Kế hoạch ngày xưởng giao, Doanh số kế hoạch, Từ giờ, Đến giờ; dòng Tổng (n) nền xanh cuối lưới. Quyền sửa, số tổng (tính lại
+ * mỗi phím gõ) đọc qua ref để cột giữ nguyên; cột bị Ẩn thì không có (lưới dựng lại khi chính sách cột đổi).
  */
 function PlanSheet({ rows, totals, policy, onChange, empty }: { rows: PlanRow[]; totals: ReturnType<typeof totalsOf>; policy: FieldPolicy; onChange: (rows: PlanRow[]) => void; empty: string }) {
   const totalsRef = useRef(totals);
