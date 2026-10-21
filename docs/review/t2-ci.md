@@ -24,3 +24,5 @@ Phiên chính đã kiểm chứng: đúng cả 11 phát hiện.
 | L8 | LOW | `ci.yml` (comment `npm ls`) | Comment nói "cài không theo lockfile" trong khi CI luôn `npm ci` | Sửa comment | Đóng |
 
 Sau khi sửa (21/10/2026): `catalog.spec.ts` 16/16 trên `MES_*_CI21` (in cảnh báo bỏ qua `DM_CHINHANH`, `DM_Size`) và trên `MES_*_T514` (kiểm đủ); lint, `tsc` backend qua. Workflow chưa chạy trên GitHub: NEEDS VERIFICATION tới lần push đầu.
+
+Lần chạy đầu trên GitHub (21/10/2026, push `f0df12b` lên `main`, run `39557020051`): xanh cả hai job (`checks` 1,6 phút, `backend-test` 2,6 phút), mọi bước `success`. Số bài test trong log chưa xem được vì tải log cần đăng nhập GitHub.

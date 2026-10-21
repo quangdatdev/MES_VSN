@@ -7,7 +7,7 @@
 | Nguồn quy tắc | Luật phân quyền, an toàn AI ở [AGENTS.md](../AGENTS.md); quy trình review ở [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) |
 | Đối chiếu code | Commit `98d19db` trên `main` (19/10/2026) |
 
-Cột "Tự động" cho biết tiêu chuẩn có được công cụ kiểm không. CI: `.github/workflows/ci.yml` (GitHub Actions, T2), chạy khi mở PR vào hoặc push lên `main`, `develop` trên `origin` (lần chạy đầu: NEEDS VERIFICATION); chưa có git hook. Trên máy dev, mọi kiểm "tự động" chỉ chạy khi có người gọi lệnh (`npm run lint`, `npm run typecheck`, `npm test`, `npm run build`) hoặc lúc ứng dụng chạy.
+Cột "Tự động" cho biết tiêu chuẩn có được công cụ kiểm không. CI: `.github/workflows/ci.yml` (GitHub Actions, T2), chạy khi mở PR vào hoặc push lên `main`, `develop` trên `origin` (lần chạy đầu 21/10/2026 xanh); chưa có git hook. Trên máy dev, mọi kiểm "tự động" chỉ chạy khi có người gọi lệnh (`npm run lint`, `npm run typecheck`, `npm test`, `npm run build`) hoặc lúc ứng dụng chạy.
 
 ## 1. Testing
 
@@ -159,7 +159,7 @@ Cưỡng chế lúc chạy: `AuthGuard`, `PermissionGuard`, `FieldPolicyIntercep
 | Kiểm kiểu | `npm run typecheck`: `tsc --noEmit` backend (`src`, `scripts`, `test`); `npm run build`: `nest build` (backend `src`), `tsc --noEmit` + `vite build` (frontend, gồm `src/test`) | Chạy tay; `deploy.cjs` chạy build khi triển khai, không chạy `typecheck` |
 | Test | `npm test` | Chạy tay; CI (T2); `deploy.cjs` **không** chạy test, không chạy lint |
 | Kiểm trước khi chuyển bản | `deploy.cjs`: `npm ci`, build, có `frontend/dist/index.html`, nạp `env.js` với `.env` mới, `migrate --check` khi có migration mới, chờ `/api/v1/health` | Tự động khi triển khai |
-| CI | `.github/workflows/ci.yml` | CURRENT (T2, 21/10/2026): GitHub Actions trên `origin`, các bước dưới; Gitea Actions của máy chủ git nội bộ dùng lại được khi bật runner. Lần chạy đầu trên GitHub: NEEDS VERIFICATION (chờ push) |
+| CI | `.github/workflows/ci.yml` | CURRENT (T2, 21/10/2026): GitHub Actions trên `origin`, các bước dưới; Gitea Actions của máy chủ git nội bộ dùng lại được khi bật runner. Lần chạy đầu trên GitHub (21/10/2026, push `f0df12b`) xanh cả hai job |
 
 **Các bước CI — CURRENT (T2, 21/10/2026):** chạy khi mở hoặc cập nhật PR vào `develop`, `main`, khi push lên hai nhánh này, và khi bấm chạy tay (`workflow_dispatch`). Hai job song song trên `ubuntu-24.04`, Node 22 (`actions/checkout@v5`, `actions/setup-node@v5`); PR đẩy tiếp thì hủy lần chạy cũ, push lên `main`, `develop` thì commit nào cũng chạy đủ:
 
